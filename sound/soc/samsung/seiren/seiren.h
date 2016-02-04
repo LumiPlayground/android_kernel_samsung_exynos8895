@@ -366,8 +366,6 @@ struct seiren_info {
 	void __iomem	*effect_ram;
 	bool		effect_on;
 	unsigned int	out_sample_rate;
-	atomic_t	update_myspace;
-	unsigned int	myspace;
 #endif
 	bool		fx_ext_on;
 	unsigned char	*fx_work_buf;
@@ -452,7 +450,6 @@ extern void esa_compr_set_state(bool flag);
 int esa_effect_write(int type, int *value, int count);
 extern void esa_compr_set_sample_rate(u32 rate);
 extern u32 esa_compr_get_sample_rate(void);
-extern void esa_compr_set_myspace(u32 ms);
 #endif
 
 #endif /* __SEIREN_H */
