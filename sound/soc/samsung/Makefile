@@ -12,12 +12,7 @@ snd-soc-i2s-objs := i2s.o
 snd-soc-lpass-objs := lpass.o
 snd-soc-compr-objs := compr.o visualizercap-dummydai.o
 snd-soc-eax-dai-objs := eax-dai.o
-ifeq ($(CONFIG_SND_SOC_EAX_NONE_KMIXING),y)
-snd-soc-eax-dma-objs := eax-dma-v2.o
-else
 snd-soc-eax-dma-objs := eax-dma.o
-endif
-snd-soc-eax-slowpath-objs := eax-dai-slowpath.o eax-dma-slowpath.o
 snd-soc-esa-sa-effect-objs := esa_sa_effect.o
 snd-soc-dp_dma-objs := dp_dma.o
 
@@ -44,7 +39,6 @@ obj-$(CONFIG_SOC_EXYNOS8890) += lpass-exynos8890.o
 endif
 obj-$(CONFIG_SND_SOC_SAMSUNG) += snd-soc-eax-dai.o snd-soc-eax-dma.o
 obj-$(CONFIG_SND_ESA_SA_EFFECT) += snd-soc-esa-sa-effect.o
-obj-$(CONFIG_SND_SOC_EAX_SLOWPATH) += snd-soc-eax-slowpath.o
 
 obj-$(CONFIG_SND_SAMSUNG_SEIREN) += seiren/
 obj-$(CONFIG_SND_SOC_SAMSUNG_VTS) += vts/
