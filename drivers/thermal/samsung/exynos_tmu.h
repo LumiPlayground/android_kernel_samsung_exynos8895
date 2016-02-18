@@ -132,6 +132,7 @@ struct sensor_info {
  * @num_probe: number of probe for TMU_CONTROL1 SFR setting.
  * @regulator: pointer to the TMU regulator structure.
  * @reg_conf: pointer to structure to register with core thermal.
+ * @ntrip: number of supported trip points.
  * @tmu_initialize: SoC specific TMU initialization method
  * @tmu_control: SoC specific TMU control method
  * @tmu_read: SoC specific TMU temperature read method
@@ -152,6 +153,7 @@ struct exynos_tmu_data {
 	struct mutex lock;
 	u16 temp_error1, temp_error2;
 	struct thermal_zone_device *tzd;
+	unsigned int ntrip;
 	struct thermal_cooling_device *cool_dev;
 	struct notifier_block nb;
 	struct list_head node;
