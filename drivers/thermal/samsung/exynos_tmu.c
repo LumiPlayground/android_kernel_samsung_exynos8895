@@ -305,6 +305,14 @@ static int exynos_tmu_initialize(struct platform_device *pdev)
 	struct exynos_tmu_data *data = platform_get_drvdata(pdev);
 	int ret;
 
+	if (of_thermal_get_ntrips(data->tzd) > data->ntrip) {
+		dev_info(&pdev->dev,
+			 "More trip points than supported by this TMU.\n");
+		dev_info(&pdev->dev,
+			 "%d trip points should be configured in polling mode.\n",
+			 (of_thermal_get_ntrips(data->tzd) - data->ntrip));
+	}
+
 	mutex_lock(&data->lock);
 	ret = data->tmu_initialize(pdev);
 	mutex_unlock(&data->lock);
