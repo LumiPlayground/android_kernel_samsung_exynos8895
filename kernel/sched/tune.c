@@ -417,7 +417,7 @@ struct cgroup_subsys schedtune_cgrp_subsys = {
 	.css_alloc	= schedtune_css_alloc,
 	.css_free	= schedtune_css_free,
 	.legacy_cftypes	= files,
-	.early_init	= 1,
+	.early_init	= true,
 };
 
 #endif /* CONFIG_CGROUP_SCHEDTUNE */
