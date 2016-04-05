@@ -2095,40 +2095,7 @@ struct packet_offload {
 	struct list_head	 list;
 };
 
-struct udp_offload;
-
-struct udp_offload_callbacks {
-	struct sk_buff		**(*gro_receive)(struct sk_buff **head,
-						 struct sk_buff *skb,
-						 struct udp_offload *uoff);
-	int			(*gro_complete)(struct sk_buff *skb,
-						int nhoff,
-						struct udp_offload *uoff);
-};
-
-struct udp_offload {
-	__be16			 port;
-	u8			 ipproto;
-	struct udp_offload_callbacks callbacks;
-};
-
-typedef struct sk_buff **(*gro_receive_udp_t)(struct sk_buff **,
-					      struct sk_buff *,
-					      struct udp_offload *);
-static inline struct sk_buff **call_gro_receive_udp(gro_receive_udp_t cb,
-						    struct sk_buff **head,
-						    struct sk_buff *skb,
-						    struct udp_offload *uoff)
-{
-	if (unlikely(gro_recursion_inc_test(skb))) {
-		NAPI_GRO_CB(skb)->flush |= 1;
-		return NULL;
-	}
-
-	return cb(head, skb, uoff);
-}
-
-/* often modified stats are per cpu, other are shared (netdev->stats) */
+/* often modified stats are per-CPU, other are shared (netdev->stats) */
 struct pcpu_sw_netstats {
 	u64     rx_packets;
 	u64     rx_bytes;
