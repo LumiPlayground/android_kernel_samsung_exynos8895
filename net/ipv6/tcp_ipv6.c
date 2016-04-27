@@ -996,7 +996,7 @@ static int tcp_v6_conn_request(struct sock *sk, struct sk_buff *skb)
 		goto drop;
 
 	if (ipv6_addr_v4mapped(&ipv6_hdr(skb)->saddr)) {
-		IP6_INC_STATS_BH(sock_net(sk), NULL, IPSTATS_MIB_INHDRERRORS);
+		__IP6_INC_STATS(sock_net(sk), NULL, IPSTATS_MIB_INHDRERRORS);
 		return 0;
 	}
 
