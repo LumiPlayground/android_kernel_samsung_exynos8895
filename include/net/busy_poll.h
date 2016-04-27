@@ -104,8 +104,8 @@ static inline bool sk_busy_loop(struct sock *sk, int nonblock)
 
 		if (rc > 0)
 			/* local bh are disabled so it is ok to use _BH */
-			NET_ADD_STATS_BH(sock_net(sk),
-					 LINUX_MIB_BUSYPOLLRXPACKETS, rc);
+			__NET_ADD_STATS(sock_net(sk),
+					LINUX_MIB_BUSYPOLLRXPACKETS, rc);
 		cpu_relax();
 
 	} while (!nonblock && skb_queue_empty(&sk->sk_receive_queue) &&
