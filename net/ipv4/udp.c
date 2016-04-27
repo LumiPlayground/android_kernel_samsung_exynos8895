@@ -1257,10 +1257,10 @@ static unsigned int first_packet_length(struct sock *sk)
 	spin_lock_bh(&rcvq->lock);
 	while ((skb = skb_peek(rcvq)) != NULL &&
 		udp_lib_checksum_complete(skb)) {
-		UDP_INC_STATS_BH(sock_net(sk), UDP_MIB_CSUMERRORS,
-				 IS_UDPLITE(sk));
-		UDP_INC_STATS_BH(sock_net(sk), UDP_MIB_INERRORS,
-				 IS_UDPLITE(sk));
+		__UDP_INC_STATS(sock_net(sk), UDP_MIB_CSUMERRORS,
+				IS_UDPLITE(sk));
+		__UDP_INC_STATS(sock_net(sk), UDP_MIB_INERRORS,
+				IS_UDPLITE(sk));
 		atomic_inc(&sk->sk_drops);
 		__skb_unlink(skb, rcvq);
 		__skb_queue_tail(&list_kill, skb);
@@ -1539,9 +1539,9 @@ int __udp_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 
 		/* Note that an ENOMEM error is charged twice */
 		if (rc == -ENOMEM)
-			UDP_INC_STATS_BH(sock_net(sk), UDP_MIB_RCVBUFERRORS,
-					 is_udplite);
-		UDP_INC_STATS_BH(sock_net(sk), UDP_MIB_INERRORS, is_udplite);
+			__UDP_INC_STATS(sock_net(sk), UDP_MIB_RCVBUFERRORS,
+					is_udplite);
+		__UDP_INC_STATS(sock_net(sk), UDP_MIB_INERRORS, is_udplite);
 		kfree_skb(skb);
 		trace_udp_fail_queue_rcv_skb(rc, sk);
 		return -1;
@@ -1605,9 +1605,9 @@ int udp_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 
 			ret = encap_rcv(sk, skb);
 			if (ret <= 0) {
-				UDP_INC_STATS_BH(sock_net(sk),
-						 UDP_MIB_INDATAGRAMS,
-						 is_udplite);
+				__UDP_INC_STATS(sock_net(sk),
+						UDP_MIB_INDATAGRAMS,
+						is_udplite);
 				return -ret;
 			}
 		}
@@ -1653,8 +1653,8 @@ int udp_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 		goto csum_error;
 
 	if (sk_rcvqueues_full(sk, sk->sk_rcvbuf)) {
-		UDP_INC_STATS_BH(sock_net(sk), UDP_MIB_RCVBUFERRORS,
-				 is_udplite);
+		__UDP_INC_STATS(sock_net(sk), UDP_MIB_RCVBUFERRORS,
+				is_udplite);
 		goto drop;
 	}
 
@@ -1673,9 +1673,9 @@ int udp_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 	return rc;
 
 csum_error:
-	UDP_INC_STATS_BH(sock_net(sk), UDP_MIB_CSUMERRORS, is_udplite);
+	__UDP_INC_STATS(sock_net(sk), UDP_MIB_CSUMERRORS, is_udplite);
 drop:
-	UDP_INC_STATS_BH(sock_net(sk), UDP_MIB_INERRORS, is_udplite);
+	__UDP_INC_STATS(sock_net(sk), UDP_MIB_INERRORS, is_udplite);
 	atomic_inc(&sk->sk_drops);
 	kfree_skb(skb);
 	return -1;
@@ -1735,10 +1735,10 @@ start_lookup:
 
 		if (unlikely(!nskb)) {
 			atomic_inc(&sk->sk_drops);
-			UDP_INC_STATS_BH(net, UDP_MIB_RCVBUFERRORS,
-					 IS_UDPLITE(sk));
-			UDP_INC_STATS_BH(net, UDP_MIB_INERRORS,
-					 IS_UDPLITE(sk));
+			__UDP_INC_STATS(net, UDP_MIB_RCVBUFERRORS,
+					IS_UDPLITE(sk));
+			__UDP_INC_STATS(net, UDP_MIB_INERRORS,
+					IS_UDPLITE(sk));
 			continue;
 		}
 		if (udp_queue_rcv_skb(sk, nskb) > 0)
@@ -1756,8 +1756,8 @@ start_lookup:
 			consume_skb(skb);
 	} else {
 		kfree_skb(skb);
-		UDP_INC_STATS_BH(net, UDP_MIB_IGNOREDMULTI,
-				 proto == IPPROTO_UDPLITE);
+		__UDP_INC_STATS(net, UDP_MIB_IGNOREDMULTI,
+				proto == IPPROTO_UDPLITE);
 	}
 	return 0;
 }
@@ -1879,7 +1879,7 @@ int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 	if (udp_lib_checksum_complete(skb))
 		goto csum_error;
 
-	UDP_INC_STATS_BH(net, UDP_MIB_NOPORTS, proto == IPPROTO_UDPLITE);
+	__UDP_INC_STATS(net, UDP_MIB_NOPORTS, proto == IPPROTO_UDPLITE);
 	icmp_send(skb, ICMP_DEST_UNREACH, ICMP_PORT_UNREACH, 0);
 
 	/*
@@ -1906,9 +1906,9 @@ csum_error:
 			    proto == IPPROTO_UDPLITE ? "Lite" : "",
 			    &saddr, ntohs(uh->source), &daddr, ntohs(uh->dest),
 			    ulen);
-	UDP_INC_STATS_BH(net, UDP_MIB_CSUMERRORS, proto == IPPROTO_UDPLITE);
+	__UDP_INC_STATS(net, UDP_MIB_CSUMERRORS, proto == IPPROTO_UDPLITE);
 drop:
-	UDP_INC_STATS_BH(net, UDP_MIB_INERRORS, proto == IPPROTO_UDPLITE);
+	__UDP_INC_STATS(net, UDP_MIB_INERRORS, proto == IPPROTO_UDPLITE);
 	kfree_skb(skb);
 	return 0;
 }
