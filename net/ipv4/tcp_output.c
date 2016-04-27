@@ -2271,8 +2271,8 @@ static bool skb_still_in_host_queue(const struct sock *sk,
 				    const struct sk_buff *skb)
 {
 	if (unlikely(skb_fclone_busy(sk, skb))) {
-		NET_INC_STATS_BH(sock_net(sk),
-				 LINUX_MIB_TCPSPURIOUS_RTX_HOSTQUEUES);
+		__NET_INC_STATS(sock_net(sk),
+				LINUX_MIB_TCPSPURIOUS_RTX_HOSTQUEUES);
 		return true;
 	}
 	return false;
@@ -2341,7 +2341,7 @@ probe_sent:
 	/* Record snd_nxt for loss detection. */
 	tp->tlp_high_seq = tp->snd_nxt;
 
-	NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_TCPLOSSPROBES);
+	__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPLOSSPROBES);
 	/* Reset s.t. tcp_rearm_rto will restart timer from now */
 	inet_csk(sk)->icsk_pending = 0;
 rearm_timer:
@@ -2713,7 +2713,7 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 		/* Update global TCP statistics. */
 		TCP_INC_STATS(sock_net(sk), TCP_MIB_RETRANSSEGS);
 		if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_SYN)
-			NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_TCPSYNRETRANS);
+			__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPSYNRETRANS);
 		tp->total_retrans++;
 	}
 	return err;
@@ -2738,7 +2738,7 @@ int tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 			tp->retrans_stamp = tcp_skb_timestamp(skb);
 
 	} else if (err != -EBUSY) {
-		NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_TCPRETRANSFAIL);
+		__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPRETRANSFAIL);
 	}
 
 	if (tp->undo_retrans < 0)
@@ -2867,7 +2867,7 @@ begin_fwd:
 		if (tcp_retransmit_skb(sk, skb))
 			return;
 
-		NET_INC_STATS_BH(sock_net(sk), mib_idx);
+		__NET_INC_STATS(sock_net(sk), mib_idx);
 
 		if (tcp_in_cwnd_reduction(sk))
 			tp->prr_out += tcp_skb_pcount(skb);
@@ -3592,7 +3592,7 @@ int tcp_rtx_synack(const struct sock *sk, struct request_sock *req)
 	res = af_ops->send_synack(sk, NULL, &fl, req, NULL, true);
 	if (!res) {
 		__TCP_INC_STATS(sock_net(sk), TCP_MIB_RETRANSSEGS);
-		NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_TCPSYNRETRANS);
+		__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPSYNRETRANS);
 	}
 	return res;
 }
