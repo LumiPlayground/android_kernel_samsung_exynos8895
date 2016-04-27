@@ -258,7 +258,7 @@ static void dccp_v4_err(struct sk_buff *skb, u32 info)
 				       iph->saddr, ntohs(dh->dccph_sport),
 				       inet_iif(skb));
 	if (!sk) {
-		ICMP_INC_STATS_BH(net, ICMP_MIB_INERRORS);
+		__ICMP_INC_STATS(net, ICMP_MIB_INERRORS);
 		return;
 	}
 
