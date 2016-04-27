@@ -368,13 +368,13 @@ static void tcp_v6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 
 	bh_lock_sock(sk);
 	if (sock_owned_by_user(sk) && type != ICMPV6_PKT_TOOBIG)
-		NET_INC_STATS_BH(net, LINUX_MIB_LOCKDROPPEDICMPS);
+		__NET_INC_STATS(net, LINUX_MIB_LOCKDROPPEDICMPS);
 
 	if (sk->sk_state == TCP_CLOSE)
 		goto out;
 
 	if (ipv6_hdr(skb)->hop_limit < inet6_sk(sk)->min_hopcount) {
-		NET_INC_STATS_BH(net, LINUX_MIB_TCPMINTTLDROP);
+		__NET_INC_STATS(net, LINUX_MIB_TCPMINTTLDROP);
 		goto out;
 	}
 
@@ -384,7 +384,7 @@ static void tcp_v6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 	snd_una = fastopen ? tcp_rsk(fastopen)->snt_isn : tp->snd_una;
 	if (sk->sk_state != TCP_LISTEN &&
 	    !between(seq, snd_una, tp->snd_nxt)) {
-		NET_INC_STATS_BH(net, LINUX_MIB_OUTOFWINDOWICMPS);
+		__NET_INC_STATS(net, LINUX_MIB_OUTOFWINDOWICMPS);
 		goto out;
 	}
 
@@ -669,12 +669,12 @@ static bool tcp_v6_inbound_md5_hash(const struct sock *sk,
 		return false;
 
 	if (hash_expected && !hash_location) {
-		NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_TCPMD5NOTFOUND);
+		__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPMD5NOTFOUND);
 		return true;
 	}
 
 	if (!hash_expected && hash_location) {
-		NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_TCPMD5UNEXPECTED);
+		__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPMD5UNEXPECTED);
 		return true;
 	}
 
@@ -1004,7 +1004,7 @@ static int tcp_v6_conn_request(struct sock *sk, struct sk_buff *skb)
 				&tcp_request_sock_ipv6_ops, sk, skb);
 
 drop:
-	NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_LISTENDROPS);
+	__NET_INC_STATS(sock_net(sk), LINUX_MIB_LISTENDROPS);
 	return 0; /* don't send reset */
 }
 
@@ -1219,11 +1219,11 @@ static struct sock *tcp_v6_syn_recv_sock(const struct sock *sk, struct sk_buff *
 	return newsk;
 
 out_overflow:
-	NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_LISTENOVERFLOWS);
+	__NET_INC_STATS(sock_net(sk), LINUX_MIB_LISTENOVERFLOWS);
 out_nonewsk:
 	dst_release(dst);
 out:
-	NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_LISTENDROPS);
+	__NET_INC_STATS(sock_net(sk), LINUX_MIB_LISTENDROPS);
 	return NULL;
 }
 
@@ -1440,7 +1440,7 @@ process:
 		if (atomic_read(&req->rsk_refcnt) > (2+1) && retry_cnt > 0) {
 			reqsk_put(req);
 			if (retry_cnt == RC_RETRY_CNT)
-				NET_INC_STATS_BH(net, LINUX_MIB_TCPRACECNDREQSK);
+				__NET_INC_STATS(net, LINUX_MIB_TCPRACECNDREQSK);
 			retry_cnt--;
 			udelay(500);
 
@@ -1448,7 +1448,7 @@ process:
 		}
 
 		if (!retry_cnt)
-			NET_INC_STATS_BH(net, LINUX_MIB_TCPRACECNDREQSKDROP);
+			__NET_INC_STATS(net, LINUX_MIB_TCPRACECNDREQSKDROP);
 	}
 
 	if (sk->sk_state == TCP_NEW_SYN_RECV) {
@@ -1487,7 +1487,7 @@ process:
 		}
 	}
 	if (hdr->hop_limit < inet6_sk(sk)->min_hopcount) {
-		NET_INC_STATS_BH(net, LINUX_MIB_TCPMINTTLDROP);
+		__NET_INC_STATS(net, LINUX_MIB_TCPMINTTLDROP);
 		goto discard_and_relse;
 	}
 
@@ -1522,7 +1522,7 @@ process:
 	} else if (unlikely(sk_add_backlog(sk, skb,
 					   sk->sk_rcvbuf + sk->sk_sndbuf))) {
 		bh_unlock_sock(sk);
-		NET_INC_STATS_BH(net, LINUX_MIB_TCPBACKLOGDROP);
+		__NET_INC_STATS(net, LINUX_MIB_TCPBACKLOGDROP);
 		goto discard_and_relse;
 	}
 	bh_unlock_sock(sk);
