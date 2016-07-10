@@ -399,7 +399,7 @@ int ext4_issue_zeroout(struct inode *inode, ext4_lblk_t lblk, ext4_fsblk_t pblk,
 	int ret;
 
 	if (ext4_encrypted_inode(inode))
-		return ext4_encrypted_zeroout(inode, lblk, pblk, len);
+		return fscrypt_zeroout_range(inode, lblk, pblk, len);
 
 	ret = sb_issue_zeroout(inode->i_sb, pblk, len, GFP_NOFS);
 	if (ret > 0)
@@ -1036,7 +1036,8 @@ static int ext4_block_write_begin(struct page *page, loff_t pos, unsigned len,
 #else
 	else if (decrypt)
 #endif
-		err = ext4_decrypt(page);
+		err = fscrypt_decrypt_page(page->mapping->host, page,
+				PAGE_SIZE, 0, page->index);
 	return err;
 }
 #endif
@@ -3392,7 +3393,7 @@ static ssize_t ext4_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 	if (ext4_encrypted_inode(inode) && S_ISREG(inode->i_mode))
 		return 0;
 #elif defined(CONFIG_FMP_EXT4CRYPT_FS)
-	if (ext4_encrypted_inode(inode) && !ext4_has_encryption_key(inode))
+	if (ext4_encrypted_inode(inode) && !fscrypt_has_encryption_key(inode))
 		return 0;
 #endif
 
@@ -3593,13 +3594,15 @@ static int __ext4_block_zero_page_range(handle_t *handle,
 		if (S_ISREG(inode->i_mode) &&
 		    ext4_encrypted_inode(inode)) {
 			/* We expect the key to be set. */
-			BUG_ON(!ext4_has_encryption_key(inode));
+			BUG_ON(!fscrypt_has_encryption_key(inode));
 			BUG_ON(blocksize != PAGE_CACHE_SIZE);
 #ifdef CONFIG_FMP_EXT4CRYPT_FS
 			if (!page->mapping->private_enc_mode)
-				WARN_ON_ONCE(ext4_decrypt(page));
+				WARN_ON_ONCE(fscrypt_decrypt_page(page->mapping->host,
+							page, PAGE_SIZE, 0, page->index));
 #else
-			WARN_ON_ONCE(ext4_decrypt(page));
+			WARN_ON_ONCE(fscrypt_decrypt_page(page->mapping->host,
+						page, PAGE_SIZE, 0, page->index));
 #endif /* CONFIG_FMP_EXT4CRYPT_FS */
 		}
 	}
@@ -3669,7 +3672,7 @@ static int ext4_block_truncate_page(handle_t *handle,
 	struct inode *inode = mapping->host;
 
 	/* If we are processing an encrypted inode during orphan list handling */
-	if (ext4_encrypted_inode(inode) && !ext4_has_encryption_key(inode))
+	if (ext4_encrypted_inode(inode) && !fscrypt_has_encryption_key(inode))
 		return 0;
 
 	blocksize = inode->i_sb->s_blocksize;
@@ -4018,7 +4021,7 @@ void ext4_truncate(struct inode *inode)
 	 * encryption info even if an inode has the encryption flag.
 	 */
 	if ((inode->i_size & (inode->i_sb->s_blocksize - 1)) &&
-	    (!ext4_encrypted_inode(inode) || ext4_get_encryption_info(inode)))
+	    (!ext4_encrypted_inode(inode) || fscrypt_get_encryption_info(inode)))
 		ext4_block_truncate_page(handle, mapping, inode->i_size);
 
 	/*
@@ -5010,7 +5013,7 @@ int ext4_setattr(struct dentry *dentry, struct iattr *attr)
 		return error;
 
 	if (attr->ia_valid & ATTR_SIZE &&
-	    ext4_encrypted_inode(inode) && ext4_get_encryption_info(inode))
+	    ext4_encrypted_inode(inode) && fscrypt_get_encryption_info(inode))
 		return -EACCES;
 
 	if (is_quota_modification(inode, attr)) {
