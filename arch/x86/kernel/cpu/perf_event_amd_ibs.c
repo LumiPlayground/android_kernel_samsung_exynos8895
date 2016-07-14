@@ -591,8 +591,12 @@ static int perf_ibs_handle_irq(struct perf_ibs *perf_ibs, struct pt_regs *iregs)
 	}
 
 	if (event->attr.sample_type & PERF_SAMPLE_RAW) {
-		raw.size = sizeof(u32) + ibs_data.size;
-		raw.data = ibs_data.data;
+		raw = (struct perf_raw_record){
+			.frag = {
+				.size = sizeof(u32) + ibs_data.size,
+				.data = ibs_data.data,
+			},
+		};
 		data.raw = &raw;
 	}
 
