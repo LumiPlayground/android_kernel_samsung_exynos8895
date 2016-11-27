@@ -67,7 +67,6 @@ static bool mall_destroy(struct tcf_proto *tp, bool force)
 
 	if (head->filter)
 		call_rcu(&head->filter->rcu, mall_destroy_filter);
-	RCU_INIT_POINTER(tp->root, NULL);
 	kfree_rcu(head, rcu);
 	return true;
 }
