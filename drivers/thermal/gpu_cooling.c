@@ -72,7 +72,7 @@ struct power_table {
 struct gpufreq_cooling_device {
 	int id;
 	struct thermal_cooling_device *cool_dev;
-	unsigned int gpufreq_state;
+	unsigned long gpufreq_state;
 	unsigned int gpufreq_val;
 	u32 last_load;
 	struct power_table *dyn_power_table;
@@ -243,6 +243,28 @@ unsigned long gpufreq_cooling_get_level(unsigned int gpu, unsigned int freq)
 		return THERMAL_CSTATE_INVALID;
 
 	return (unsigned long)val;
+}
+EXPORT_SYMBOL_GPL(gpufreq_cooling_get_level);
+
+/**
+ * gpufreq_cooling_get_freq - for a give gpu, return the cooling frequency.
+ * @gpu: gpu for which the level is required
+ * @level: the level of interest
+ *
+ * This function will match the cooling level corresponding to the
+ * requested @freq and return it.
+ *
+ * Return: The matched cooling level on success or THERMAL_CFREQ_INVALID
+ * otherwise.
+ */
+static u32 gpufreq_cooling_get_freq(unsigned int gpu, unsigned long level)
+{
+	unsigned int val = 0;
+
+	if (get_property(gpu, level, &val, GET_FREQ))
+		return THERMAL_CFREQ_INVALID;
+
+	return val;
 }
 EXPORT_SYMBOL_GPL(gpufreq_cooling_get_level);
 
@@ -532,6 +554,7 @@ extern struct thermal_data_devices thermal_data_info[THERMAL_ZONE_MAX];
 static int gpufreq_apply_cooling(struct gpufreq_cooling_device *gpufreq_device,
 				 unsigned long cooling_state)
 {
+	unsigned int gpu_cooling_freq = 0;
 #if defined(CONFIG_SEC_DEBUG_HW_PARAM)
 	int tid = gpufreq_device->id + THERMAL_ZONE_GPU;
 #endif
@@ -551,7 +574,15 @@ static int gpufreq_apply_cooling(struct gpufreq_cooling_device *gpufreq_device,
 	last_time[tid] = curr_time[tid];	
 #endif
 		
-	blocking_notifier_call_chain(&gpu_notifier, GPU_THROTTLING, &cooling_state);
+	gpu_cooling_freq = gpufreq_cooling_get_freq(0, gpufreq_device->gpufreq_state);
+	if (gpu_cooling_freq == THERMAL_CFREQ_INVALID) {
+		pr_warn("Failed to convert %lu gpu_level\n",
+				     gpufreq_device->gpufreq_state);
+		return -EINVAL;
+	}
+
+	gpu_cooling_freq = gpu_cooling_freq / 1000;
+	blocking_notifier_call_chain(&gpu_notifier, GPU_THROTTLING, &gpu_cooling_freq);
 
 	return 0;
 }
@@ -1030,7 +1061,6 @@ int gpu_cooling_table_init(struct platform_device *pdev)
 	struct ect_ap_thermal_function *function;
 	int last_level = -1, count = 0;
 #else
-	struct cpufreq_frequency_table *table_ptr;
 	unsigned int table_size;
 	u32 gpu_idx_num = 0;
 #endif
