@@ -2784,11 +2784,33 @@ static bool __is_valid_access(int off, int size)
 {
 	if (off < 0 || off >= sizeof(struct __sk_buff))
 		return false;
+
 	/* The verifier guarantees that size > 0. */
 	if (off % size != 0)
 		return false;
-	if (size != sizeof(__u32))
-		return false;
+
+	switch (off) {
+	case offsetof(struct __sk_buff, cb[0]) ...
+	     offsetof(struct __sk_buff, cb[4]) + sizeof(__u32) - 1:
+		if (size == sizeof(__u16) &&
+		    off > offsetof(struct __sk_buff, cb[4]) + sizeof(__u16))
+			return false;
+		if (size == sizeof(__u32) &&
+		    off > offsetof(struct __sk_buff, cb[4]))
+			return false;
+		if (size == sizeof(__u64) &&
+		    off > offsetof(struct __sk_buff, cb[2]))
+			return false;
+		if (size != sizeof(__u8)  &&
+		    size != sizeof(__u16) &&
+		    size != sizeof(__u32) &&
+		    size != sizeof(__u64))
+			return false;
+		break;
+	default:
+		if (size != sizeof(__u32))
+			return false;
+	}
 
 	return true;
 }
@@ -2807,7 +2829,7 @@ static bool sk_filter_is_valid_access(int off, int size,
 	if (type == BPF_WRITE) {
 		switch (off) {
 		case offsetof(struct __sk_buff, cb[0]) ...
-		     offsetof(struct __sk_buff, cb[4]):
+		     offsetof(struct __sk_buff, cb[4]) + sizeof(__u32) - 1:
 			break;
 		default:
 			return false;
@@ -2831,7 +2853,7 @@ static bool lwt_is_valid_access(int off, int size,
 		case offsetof(struct __sk_buff, mark):
 		case offsetof(struct __sk_buff, priority):
 		case offsetof(struct __sk_buff, cb[0]) ...
-		     offsetof(struct __sk_buff, cb[4]):
+		     offsetof(struct __sk_buff, cb[4]) + sizeof(__u32) - 1:
 			break;
 		default:
 			return false;
@@ -2923,7 +2945,7 @@ static bool tc_cls_act_is_valid_access(int off, int size,
 		case offsetof(struct __sk_buff, tc_index):
 		case offsetof(struct __sk_buff, priority):
 		case offsetof(struct __sk_buff, cb[0]) ...
-		     offsetof(struct __sk_buff, cb[4]):
+		     offsetof(struct __sk_buff, cb[4]) + sizeof(__u32) - 1:
 		case offsetof(struct __sk_buff, tc_classid):
 			break;
 		default:
@@ -3074,8 +3096,11 @@ static u32 sk_filter_convert_ctx_access(enum bpf_access_type type,
 					  si->dst_reg, si->src_reg, insn);
 
 	case offsetof(struct __sk_buff, cb[0]) ...
-	     offsetof(struct __sk_buff, cb[4]):
+	     offsetof(struct __sk_buff, cb[4]) + sizeof(__u32) - 1:
 		BUILD_BUG_ON(FIELD_SIZEOF(struct qdisc_skb_cb, data) < 20);
+		BUILD_BUG_ON((offsetof(struct sk_buff, cb) +
+			      offsetof(struct qdisc_skb_cb, data)) %
+			     sizeof(__u64));
 
 		prog->cb_access = 1;
 		off  = si->off;
@@ -3083,10 +3108,10 @@ static u32 sk_filter_convert_ctx_access(enum bpf_access_type type,
 		off += offsetof(struct sk_buff, cb);
 		off += offsetof(struct qdisc_skb_cb, data);
 		if (type == BPF_WRITE)
-			*insn++ = BPF_STX_MEM(BPF_W, si->dst_reg,
+			*insn++ = BPF_STX_MEM(BPF_SIZE(si->code), si->dst_reg,
 					      si->src_reg, off);
 		else
-			*insn++ = BPF_LDX_MEM(BPF_W, si->dst_reg,
+			*insn++ = BPF_LDX_MEM(BPF_SIZE(si->code), si->dst_reg,
 					      si->src_reg, off);
 		break;
 
