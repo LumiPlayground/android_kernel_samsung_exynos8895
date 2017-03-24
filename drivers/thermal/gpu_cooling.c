@@ -266,7 +266,7 @@ static u32 gpufreq_cooling_get_freq(unsigned int gpu, unsigned long level)
 
 	return val;
 }
-EXPORT_SYMBOL_GPL(gpufreq_cooling_get_level);
+EXPORT_SYMBOL_GPL(gpufreq_cooling_get_freq);
 
 /**
  * build_dyn_power_table() - create a dynamic power to frequency table
@@ -658,6 +658,12 @@ static int gpufreq_set_cur_state(struct thermal_cooling_device *cdev,
 	return gpufreq_apply_cooling(gpufreq_device, state);
 }
 
+static int exynos_gpufreq_cooling_get_level(struct thermal_cooling_device *cdev,
+				 unsigned long value)
+{
+	return gpufreq_cooling_get_level(0, value);
+}
+
 static enum gpu_noti_state_t gpu_tstate = GPU_COLD;
 
 static int gpufreq_set_cur_temp(struct thermal_cooling_device *cdev,
@@ -829,6 +835,7 @@ static struct thermal_cooling_device_ops gpufreq_cooling_ops = {
 	.get_cur_state = gpufreq_get_cur_state,
 	.set_cur_state = gpufreq_set_cur_state,
 	.set_cur_temp = gpufreq_set_cur_temp,
+	.get_cooling_level = exynos_gpufreq_cooling_get_level,
 };
 
 
@@ -1083,6 +1090,7 @@ static int gpu_cooling_table_init(void)
 
 		pr_info("[GPU cooling] index : %d, frequency : %d\n",
 			gpu_freq_table[count].driver_data, gpu_freq_table[count].frequency);
+
 		count++;
 	}
 
@@ -1103,7 +1111,6 @@ static int __init exynos_gpu_cooling_init(void)
 	if (ret) {
 		pr_err("Fail to initialize gpu_cooling_table\n");
 		return ret;
-
 	}
 
 	np = of_find_node_by_name(NULL, "mali");

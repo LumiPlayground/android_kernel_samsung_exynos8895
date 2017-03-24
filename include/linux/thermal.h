@@ -158,7 +158,8 @@ struct thermal_cooling_device_ops {
 			   struct thermal_zone_device *, unsigned long, u32 *);
 	int (*power2state)(struct thermal_cooling_device *,
 			   struct thermal_zone_device *, u32, unsigned long *);
-	int (*set_cur_temp) (struct thermal_cooling_device *, bool, int);
+	int (*set_cur_temp)(struct thermal_cooling_device *, bool, int);
+	int (*get_cooling_level)(struct thermal_cooling_device *, unsigned long);
 };
 
 struct thermal_cooling_device {
@@ -406,6 +407,7 @@ struct thermal_trip {
  * @usage: the percentage (from 0 to 100) of cooling contribution
  * @min: minimum cooling state used at this trip point
  * @max: maximum cooling state used at this trip point
+ * @value: cooling value corresponding to max state
  */
 
 struct __thermal_bind_params {
@@ -414,6 +416,7 @@ struct __thermal_bind_params {
 	unsigned int usage;
 	unsigned long min;
 	unsigned long max;
+	unsigned long value;
 };
 
 /**
