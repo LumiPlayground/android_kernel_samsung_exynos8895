@@ -908,6 +908,7 @@ static struct thermal_cooling_device_ops cpufreq_cooling_ops = {
 	.get_cur_state = cpufreq_get_cur_state,
 	.set_cur_state = cpufreq_set_cur_state,
 	.get_cooling_level = exynos_cpufreq_cooling_get_level,
+	.set_cur_temp = cpufreq_set_cur_temp,
 };
 
 static struct thermal_cooling_device_ops cpufreq_power_cooling_ops = {
@@ -917,6 +918,7 @@ static struct thermal_cooling_device_ops cpufreq_power_cooling_ops = {
 	.get_requested_power	= cpufreq_get_requested_power,
 	.state2power		= cpufreq_state2power,
 	.power2state		= cpufreq_power2state,
+	.set_cur_temp = cpufreq_set_cur_temp,
 };
 
 /* Notifier for cpufreq policy change */
@@ -1064,9 +1066,6 @@ __cpufreq_cooling_register(struct device_node *np,
 		else
 			pr_debug("%s: freq:%u KHz\n", __func__, freq);
 	}
-
-	if (cpufreq_dev->id == 0)
-		cooling_ops->set_cur_temp = cpufreq_set_cur_temp;
 
 	snprintf(dev_name, sizeof(dev_name), "thermal-cpufreq-%d",
 		 cpufreq_dev->id);
