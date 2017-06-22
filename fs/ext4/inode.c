@@ -722,7 +722,7 @@ has_zeroout:
 		 */
 		if (map->m_flags & EXT4_MAP_NEW &&
 		    !(map->m_flags & EXT4_MAP_UNWRITTEN) &&
-		    !IS_NOQUOTA(inode) &&
+		    !ext4_is_quota_file(inode) &&
 		    ext4_should_order_data(inode)) {
 			ret = ext4_jbd2_file_inode(handle, inode);
 			if (ret)
