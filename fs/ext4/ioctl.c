@@ -214,7 +214,7 @@ static int ext4_ioctl_setflags(struct inode *inode,
 	unsigned int jflag;
 
 	/* Is it quota file? Do not allow user to mess with it */
-	if (IS_NOQUOTA(inode))
+	if (ext4_is_quota_file(inode))
 		goto flags_out;
 
 	oldflags = ei->i_flags;
@@ -335,7 +335,7 @@ static int ext4_ioctl_setproject(struct file *filp, __u32 projid)
 	err = -EPERM;
 	mutex_lock(&inode->i_mutex);
 	/* Is it quota file? Do not allow user to mess with it */
-	if (IS_NOQUOTA(inode))
+	if (ext4_is_quota_file(inode))
 		goto out_unlock;
 
 	err = ext4_get_inode_loc(inode, &iloc);
