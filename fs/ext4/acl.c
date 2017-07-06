@@ -186,7 +186,7 @@ ext4_get_acl(struct inode *inode, int type)
  */
 static int
 __ext4_set_acl(handle_t *handle, struct inode *inode, int type,
-	     struct posix_acl *acl)
+	     struct posix_acl *acl, int xattr_flags)
 {
 	int name_index;
 	void *value = NULL;
@@ -214,7 +214,7 @@ __ext4_set_acl(handle_t *handle, struct inode *inode, int type,
 	}
 
 	error = ext4_xattr_set_handle(handle, inode, name_index, "",
-				      value, size, 0);
+				      value, size, xattr_flags);
 
 	kfree(value);
 	if (!error)
@@ -236,7 +236,8 @@ ext4_set_acl(struct inode *inode, struct posix_acl *acl, int type)
 	if (error)
 		return error;
 retry:
-	error = ext4_xattr_set_credits(inode, acl_size, &credits);
+	error = ext4_xattr_set_credits(inode, acl_size, false /* is_create */,
+				       &credits);
 	if (error)
 		return error;
 
@@ -251,7 +252,7 @@ retry:
 		update_mode = 1;
 	}
 
-	error = __ext4_set_acl(handle, inode, type, acl);
+	error = __ext4_set_acl(handle, inode, type, acl, 0 /* xattr_flags */);
 	if (!error && update_mode) {
 		inode->i_mode = mode;
 		inode->i_ctime = ext4_current_time(inode);
@@ -282,13 +283,13 @@ ext4_init_acl(handle_t *handle, struct inode *inode, struct inode *dir)
 
 	if (default_acl) {
 		error = __ext4_set_acl(handle, inode, ACL_TYPE_DEFAULT,
-				       default_acl);
+				       default_acl, XATTR_CREATE);
 		posix_acl_release(default_acl);
 	}
 	if (acl) {
 		if (!error)
 			error = __ext4_set_acl(handle, inode, ACL_TYPE_ACCESS,
-					       acl);
+					       acl, XATTR_CREATE);
 		posix_acl_release(acl);
 	}
 	return error;
