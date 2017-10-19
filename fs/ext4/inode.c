@@ -5031,9 +5031,9 @@ int ext4_setattr(struct dentry *dentry, struct iattr *attr)
 	if (error)
 		return error;
 
-	if (attr->ia_valid & ATTR_SIZE &&
-	    ext4_encrypted_inode(inode) && fscrypt_get_encryption_info(inode))
-		return -EACCES;
+	error = fscrypt_prepare_setattr(dentry, attr);
+	if (error)
+		return error;
 
 	if (is_quota_modification(inode, attr)) {
 		error = dquot_initialize(inode);
