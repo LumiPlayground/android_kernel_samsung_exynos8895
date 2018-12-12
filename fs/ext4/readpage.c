@@ -49,7 +49,7 @@
 
 static inline bool ext4_bio_encrypted(struct bio *bio)
 {
-#ifdef CONFIG_EXT4_FS_ENCRYPTION
+#ifdef CONFIG_FS_ENCRYPTION
 #ifdef CONFIG_FMP_EXT4CRYPT_FS
         struct page *page;
         int private_enc_mode;
