@@ -2338,11 +2338,6 @@ static inline int ext4_sb_has_crypto(struct super_block *sb)
 	return ext4_has_feature_encrypt(sb);
 }
 
-static inline bool ext4_encrypted_inode(struct inode *inode)
-{
-	return ext4_test_inode_flag(inode, EXT4_INODE_ENCRYPT);
-}
-
 #ifdef CONFIG_EXT4_FS_ENCRYPTION
 static inline int ext4_fname_setup_filename(struct inode *dir,
 			const struct qstr *iname,
