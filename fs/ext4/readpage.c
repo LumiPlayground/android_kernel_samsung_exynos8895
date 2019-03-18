@@ -299,7 +299,7 @@ int ext4_mpage_readpages(struct address_space *mapping,
 #else
 			if (IS_ENCRYPTED(inode) && S_ISREG(inode->i_mode)) {
 #endif /* CONFIG_FMP_EXT4CRYPT_FS */
-				ctx = fscrypt_get_ctx(inode, GFP_NOFS);
+				ctx = fscrypt_get_ctx(GFP_NOFS);
 				if (IS_ERR(ctx))
 					goto set_error_page;
 			}
