@@ -1041,8 +1041,7 @@ static int ext4_block_write_begin(struct page *page, loff_t pos, unsigned len,
 #else
 	else if (decrypt)
 #endif
-		err = fscrypt_decrypt_page(page->mapping->host, page,
-				PAGE_SIZE, 0, page->index);
+		err = fscrypt_decrypt_pagecache_blocks(page, PAGE_SIZE, 0);
 	return err;
 }
 #endif
@@ -3599,15 +3598,12 @@ static int __ext4_block_zero_page_range(handle_t *handle,
 		if (S_ISREG(inode->i_mode) && IS_ENCRYPTED(inode)) {
 			/* We expect the key to be set. */
 			BUG_ON(!fscrypt_has_encryption_key(inode));
-			BUG_ON(blocksize != PAGE_CACHE_SIZE);
+			BUG_ON(blocksize != PAGE_SIZE);
 #ifdef CONFIG_FMP_EXT4CRYPT_FS
-			if (!page->mapping->private_enc_mode)
-				WARN_ON_ONCE(fscrypt_decrypt_page(page->mapping->host,
-							page, PAGE_SIZE, 0, page->index));
-#else
-			WARN_ON_ONCE(fscrypt_decrypt_page(page->mapping->host,
-						page, PAGE_SIZE, 0, page->index));
-#endif /* CONFIG_FMP_EXT4CRYPT_FS */
+        if (!page->mapping->private_enc_mode)
+#endif
+            WARN_ON_ONCE(fscrypt_decrypt_pagecache_blocks(
+                        page, PAGE_SIZE, 0));
 		}
 	}
 	if (ext4_should_journal_data(inode)) {
