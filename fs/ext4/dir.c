@@ -669,7 +669,7 @@ static int ext4_d_compare(const struct dentry *parent, const struct dentry *dent
 		return memcmp(str, name->name, len);
 	}
 
-	return ext4_ci_compare(dentry->d_parent->d_inode, name, &qstr);
+	return ext4_ci_compare(dentry->d_parent->d_inode, name, &qstr, false);
 }
 
 static int ext4_d_hash(const struct dentry *dentry, struct qstr *str)
