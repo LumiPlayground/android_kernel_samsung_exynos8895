@@ -202,8 +202,6 @@ typedef enum {
 	FS_ENCRYPT,
 } fscrypt_direction_t;
 
-#define FS_CTX_REQUIRES_FREE_ENCRYPT_FL		0x00000001
-
 /* bio stuffs */
 #define REQ_OP_READ	READ
 #define REQ_OP_WRITE	WRITE
