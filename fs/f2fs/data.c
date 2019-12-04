@@ -177,13 +177,8 @@ static void f2fs_write_end_io(struct bio *bio)
 	int i;
 
 	if (time_to_inject(sbi, FAULT_WRITE_IO)) {
-<<<<<<< HEAD
 		f2fs_show_injection_info(FAULT_WRITE_IO);
 		bio->bi_error = -EIO;
-=======
-		f2fs_show_injection_info(sbi, FAULT_WRITE_IO);
-		bio->bi_status = BLK_STS_IOERR;
->>>>>>> f8db0be1 (f2fs: show f2fs instance in printk_ratelimited)
 	}
 
 	bio_for_each_segment_all(bvec, bio, i) {
@@ -2588,13 +2583,15 @@ static void f2fs_write_failed(struct address_space *mapping, loff_t to)
 	struct inode *inode = mapping->host;
 	loff_t i_size = i_size_read(inode);
 
+	if (IS_NOQUOTA(inode))
+		return;
+
 	if (to > i_size) {
 		down_write(&F2FS_I(inode)->i_gc_rwsem[WRITE]);
 		down_write(&F2FS_I(inode)->i_mmap_sem);
 
 		truncate_pagecache(inode, i_size);
-		if (!IS_NOQUOTA(inode))
-			f2fs_truncate_blocks(inode, i_size, true);
+		f2fs_truncate_blocks(inode, i_size, true);
 
 		up_write(&F2FS_I(inode)->i_mmap_sem);
 		up_write(&F2FS_I(inode)->i_gc_rwsem[WRITE]);
