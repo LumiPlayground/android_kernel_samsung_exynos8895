@@ -18,3 +18,8 @@ static inline void clear_and_wake_up_bit(int bit, void *word)
 	smp_mb__after_atomic();
 	wake_up_bit(word, bit);
 }
+
+/* super.c */
+static inline bool sb_rdonly(const struct super_block *sb) {
+	return sb->s_flags & MS_RDONLY;
+}
