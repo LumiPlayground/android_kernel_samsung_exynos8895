@@ -158,13 +158,6 @@ config SEC_AVC_LOG
 	help
 	  This option enables additional log buffer for audit log.
 
-config SEC_DEBUG_TSP_LOG
-	default n
-	bool "Enable tsp log support" if EMBEDDED
-	depends on SEC_EXT
-	help
-	  This option enables additional log buffer for tsp log.
-
 comment "Samsung TN Power Management Options"
 menuconfig SEC_PM
 	bool "Samsung TN Power Management"
