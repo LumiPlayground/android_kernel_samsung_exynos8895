@@ -252,11 +252,8 @@ SUBARCH := $(shell uname -m | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
 # "make" in the configured kernel build directory always uses that.
 # Default value for CROSS_COMPILE is not to prefix executables
 # Note: Some architectures assign CROSS_COMPILE in their arch/*/Makefile
-#ARCH		?= $(SUBARCH)
-#CROSS_COMPILE	?= $(CONFIG_CROSS_COMPILE:"%"=%)
-ARCH            ?= arm64
-#CROSS_COMPILE   ?= ../PLATFORM/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
-CROSS_COMPILE	?= $(srctree)/toolchain/gcc-cfp/gcc-cfp-jopp-only/aarch64-linux-android-4.9/bin/aarch64-linux-android-
+ARCH		?= $(SUBARCH)
+CROSS_COMPILE	?= $(CONFIG_CROSS_COMPILE:"%"=%)
 
 # Architecture as present in compile.h
 UTS_MACHINE 	:= $(ARCH)
@@ -409,7 +406,6 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
-		   -Werror \
 		   -std=gnu89 $(call cc-option,-fno-PIE)
 
 KBUILD_AFLAGS_KERNEL :=
@@ -992,7 +988,7 @@ quiet_cmd_link-vmlinux = LINK    $@
 
 # Include targets which we want to
 # execute if the rest of the kernel build went well.
-vmlinux: scripts/link-vmlinux.sh print_info $(vmlinux-deps) FORCE
+vmlinux: scripts/link-vmlinux.sh $(vmlinux-deps) FORCE
 ifdef CONFIG_HEADERS_CHECK
 	$(Q)$(MAKE) -f $(srctree)/Makefile headers_check
 endif
@@ -1006,10 +1002,6 @@ ifdef CONFIG_GDB_SCRIPTS
 	$(Q)ln -fsn `cd $(srctree) && /bin/pwd`/scripts/gdb/vmlinux-gdb.py
 endif
 	+$(call if_changed,link-vmlinux)
-
-PHONY += print_info
-print_info:
-	@echo "INFO: CC is $(CC)"
 
 # The actual objects are generated when descending,
 # make sure no implicit rule kicks in
