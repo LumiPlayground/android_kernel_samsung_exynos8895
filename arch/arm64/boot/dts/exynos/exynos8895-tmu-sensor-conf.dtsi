@@ -1,7 +1,8 @@
 /*
  * Device tree sources for Exynos8895 TMU sensor configuration
  *
- * Copyright (c) 2014 Lukasz Majewski <l.majewski@samsung.com>
+ * Copyright (c) 2016 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
