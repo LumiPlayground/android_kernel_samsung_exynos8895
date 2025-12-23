@@ -312,10 +312,6 @@ extern int sysctl_tcp_invalid_ratelimit;
 extern int sysctl_tcp_pacing_ss_ratio;
 extern int sysctl_tcp_pacing_ca_ratio;
 extern int sysctl_tcp_default_init_rwnd;
-#ifdef CONFIG_CLTCP
-extern int sysctl_tcp_cltcp[4]; 
-extern unsigned long long sysctl_tcp_cltcp_ifdevs;
-#endif
 
 extern atomic_long_t tcp_memory_allocated;
 extern struct percpu_counter tcp_sockets_allocated;
@@ -1384,16 +1380,6 @@ void tcp_select_initial_window(int __space, __u32 mss, __u32 *rcv_wnd,
 		, const struct sock *sk
 #endif
 		);
-
-#ifdef CONFIG_CLTCP
-static inline int tcp_space_from_win(int win)
-{
-	return sysctl_tcp_adv_win_scale<=0 ?
-			(win<<(-sysctl_tcp_adv_win_scale)) :
-			(win<<sysctl_tcp_adv_win_scale)/
-				((1<<sysctl_tcp_adv_win_scale)-1);
-}
-#endif
 
 static inline int tcp_win_from_space(int space)
 {
