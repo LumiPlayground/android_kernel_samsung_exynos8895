@@ -2572,8 +2572,7 @@ extern int ext4_search_dir(struct buffer_head *bh,
 			   struct ext4_filename *fname,
 			   const struct qstr *d_name,
 			   unsigned int offset,
-			   struct ext4_dir_entry_2 **res_dir,
-			   char *ci_name_buf);
+			   struct ext4_dir_entry_2 **res_dir);
 extern int ext4_generic_delete_entry(handle_t *handle,
 				     struct inode *dir,
 				     struct ext4_dir_entry_2 *de_del,
@@ -3282,11 +3281,6 @@ extern void ext4_resize_end(struct super_block *sb);
 static inline bool ext4_android_claim_sec_r_blocks(unsigned int flags) {
 	if (flags & EXT4_MB_USE_EXTRA_ROOT_BLOCKS)
 		return true;
-
-#if ANDROID_VERSION < 90000
-	if (in_group_p(AID_USE_SEC_RESERVED))
-		return true;
-#endif
 
 	return false;
 }
