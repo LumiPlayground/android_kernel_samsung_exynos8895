@@ -533,13 +533,13 @@ config SND_SOC_MAX98925
        tristate
 
 config SND_SOC_MAX98506
-	bool "Support MAX98506"
+	tristate "Support MAX98506"
 	depends on I2C
 	help
 	MAX98506 driver
 
 config SND_SOC_MAXIM_DSM
-	bool "Support MAXIM DSM"
+	tristate "Support MAXIM DSM"
 	depends on SND_SOC_MAX98504 || SND_SOC_MAX98505 || SND_SOC_MAX98506
 	help
 	MAXIM DSM driver
