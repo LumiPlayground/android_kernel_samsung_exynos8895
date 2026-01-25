@@ -34,8 +34,6 @@
 #include <linux/mfd/syscon.h>
 #include <linux/regmap.h>
 
-#include <asm/tlbflush.h>
-
 #include <sound/exynos.h>
 
 #include <soc/samsung/exynos-pm.h>
@@ -764,11 +762,6 @@ static void ass_disable(void)
 
 static void lpass_disable(void)
 {
-#ifdef CONFIG_SOC_EXYNOS8890
-	unsigned long start;
-	unsigned long end;
-#endif
-
 	if (!lpass.valid) {
 		pr_debug("%s: LPASS is not available", __func__);
 		return;
@@ -801,10 +794,7 @@ static void lpass_disable(void)
 	lpass_enable_pll(false);
 
 #ifdef CONFIG_SOC_EXYNOS8890
-	start = (unsigned long)lpass.mem;
-	end = (unsigned long)lpass.mem + lpass.mem_size;
 	iounmap(lpass.mem);
-	flush_tlb_kernel_range(start, end);
 	lpass.mem = NULL;
 #endif
 }
