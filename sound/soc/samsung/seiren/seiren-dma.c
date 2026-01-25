@@ -27,6 +27,7 @@
 #include <sound/exynos.h>
 
 #include <asm/dma.h>
+#include <mach/map.h>
 
 #include "seiren.h"
 #include "seiren-dma.h"
@@ -267,7 +268,7 @@ static int esa_dma_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 
-	sdi.regs = devm_ioremap_resource(&pdev->dev, res);
+	sdi.regs = devm_request_and_ioremap(&pdev->dev, res);
 	if (!sdi.regs) {
 		dev_err(dev, "SFR ioremap failed\n");
 		return -ENOMEM;
