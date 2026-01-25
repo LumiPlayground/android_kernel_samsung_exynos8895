@@ -1153,9 +1153,6 @@ static int lpass_probe(struct platform_device *pdev)
 	regmap_update_bits(lpass.pmureg,
 			EXYNOS_PMU_PMU_DEBUG_OFFSET,
 			0x1F00, 0x1F00);
-	regmap_update_bits(lpass.pmureg,
-			EXYNOS_PMU_PMU_DEBUG_OFFSET,
-			0x1, 0x0);
 
 	ret = iommu_attach_device(lpass.domain, &lpass.pdev->dev);
 	if (ret) {
