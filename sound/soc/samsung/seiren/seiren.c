@@ -843,10 +843,7 @@ int esa_effect_write(int type, int *value, int count)
 	if (!si.effect_ram) {
 		esa_err("%s: memory for effect parameters isn't ready\n",
 				__func__);
-		goto out;
-	} else if (!si.fw_ready) {
-		esa_err("%s: audio firmware isn't ready\n", __func__);
-		goto out;
+		return -ENOMEM;
 	}
 
 	switch (type) {
