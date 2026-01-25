@@ -32,8 +32,6 @@
 #endif
 
 #include "dma.h"
-#include "lpass.h"
-
 #ifdef CONFIG_SND_SAMSUNG_SEIREN_DMA
 #include "seiren/seiren-dma.h"
 #endif
@@ -370,8 +368,6 @@ static int dma_trigger(struct snd_pcm_substream *substream, int cmd)
 		ret = -EINVAL;
 		break;
 	}
-
-	lpass_update_lpclock(LPCLK_CTRLID_LEGACY, false);
 
 	spin_unlock(&prtd->lock);
 
