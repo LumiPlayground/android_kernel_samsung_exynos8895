@@ -1698,7 +1698,7 @@ static int samsung_i2s_probe(struct platform_device *pdev)
 	struct resource *res;
 	u32 regs_base, quirks = 0;
 	u32 amixer = 0;
-	int slotnum;
+	int slotnum = I2S_DEFAULT_SLOT_NUM;
 #ifdef CONFIG_SND_SAMSUNG_IDMA
 	u32 idma_addr;
 #endif
@@ -1789,8 +1789,6 @@ static int samsung_i2s_probe(struct platform_device *pdev)
 		if (of_find_property(np, "samsung,supports-tdm", NULL)) {
 			quirks |= QUIRK_SUPPORTS_TDM;
 			of_property_read_u32(np, "samsung,tdm-slotnum", &slotnum);
-			if (!slotnum)
-				pri_dai->slotnum = I2S_DEFAULT_SLOT_NUM;
 			dev_info(&pdev->dev, "TDM mode was applied : %d\n",
 				slotnum);
 		}
@@ -1908,7 +1906,6 @@ static int samsung_i2s_probe(struct platform_device *pdev)
 			ret = -ENOMEM;
 			goto err;
 		}
-		compr_dai->slotnum = pri_dai->slotnum;
 		compr_dai->dma_playback.dma_addr = regs_base + I2STXDS;
 		compr_dai->dma_playback.client =
 			(struct s3c2410_dma_client *)&compr_dai->dma_playback;
