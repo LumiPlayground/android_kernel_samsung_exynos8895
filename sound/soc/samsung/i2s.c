@@ -32,7 +32,6 @@
 #endif
 
 #include "dma.h"
-#include "lpass.h"
 #ifdef CONFIG_SND_SAMSUNG_IDMA
 #include "idma.h"
 #endif
@@ -887,9 +886,6 @@ static int i2s_startup(struct snd_pcm_substream *substream,
 
 	i2s_print_dai_name(i2s, dai_name);
 	pr_info("%s : %s --\n", __func__, dai_name);
-
-	if (i2s->is_compress)
-		lpass_update_lpclock(LPCLK_CTRLID_OFFLOAD, true);
 #else
 	pr_info("%s : %s --\n", __func__, is_secondary(i2s)? "sec" : "pri");
 #endif
@@ -955,9 +951,6 @@ static void i2s_shutdown(struct snd_pcm_substream *substream,
 
 	i2s_print_dai_name(i2s, dai_name);
 	pr_info("%s : %s --\n", __func__, dai_name);
-
-	if (i2s->is_compress)
-		lpass_update_lpclock(LPCLK_CTRLID_OFFLOAD, false);
 #else
 	pr_info("%s : %s ++\n", __func__, is_secondary(i2s)? "sec" : "pri");
 #endif
