@@ -25,7 +25,6 @@
 
 #include <sound/soc.h>
 #include <sound/pcm_params.h>
-#include <sound/exynos.h>
 
 #include "dma.h"
 #include "dp_dma.h"
@@ -77,17 +76,6 @@ struct runtime_data {
 	dma_addr_t irq_pos;
 	u32 irq_cnt;
 };
-
-#ifdef CONFIG_SND_SAMSUNG_IOMMU
-struct dma_iova {
-	dma_addr_t		iova;
-	dma_addr_t		pa;
-	unsigned char		*va;
-	struct list_head	node;
-};
-
-static LIST_HEAD(iova_list);
-#endif
 
 static void audio_buffdone(void *data);
 
@@ -463,18 +451,9 @@ static int dma_mmap(struct snd_pcm_substream *substream,
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	dma_addr_t dma_pa = runtime->dma_addr;
-#ifdef CONFIG_SND_SAMSUNG_IOMMU
-	struct dma_iova *di;
-#endif
 
 	pr_debug("Entered %s\n", __func__);
 
-#ifdef CONFIG_SND_SAMSUNG_IOMMU
-	list_for_each_entry(di, &iova_list, node) {
-		if (di->iova == runtime->dma_addr)
-			dma_pa = di->pa;
-	}
-#endif
 	return dma_mmap_writecombine(substream->pcm->card->dev, vma,
 				     runtime->dma_area, dma_pa,
 				     runtime->dma_bytes);

@@ -48,9 +48,6 @@
 #include <linux/slab.h>
 #include <soc/samsung/exynos-pmu.h>
 
-#ifdef CONFIG_SND_SAMSUNG_AUDSS
-#include <sound/exynos.h>
-#endif
 #include <asm/irq.h>
 
 #include "samsung.h"
@@ -1695,10 +1692,6 @@ static int s3c24xx_serial_init_port(struct s3c24xx_uart_port *ourport,
 	if (ret > 0)
 		ourport->tx_irq = ret;
 
-#if defined(CONFIG_PM) && defined(CONFIG_SND_SAMSUNG_AUDSS)
-	if (ourport->domain == DOMAIN_AUD)
-		lpass_register_subip(&platdev->dev, "aud-uart");
-#endif
 	if (of_get_property(platdev->dev.of_node,
 			"samsung,separate-uart-clk", NULL))
 		ourport->check_separated_clk = 1;
@@ -2215,9 +2208,6 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 
 	/* Registering notifier for audio uart */
 	if (ourport->domain == DOMAIN_AUD) {
-#ifdef CONFIG_SND_SAMSUNG_AUDSS
-		lpass_set_gpio_cb(&pdev->dev, &aud_uart_gpio_idle);
-#endif
 #ifdef CONFIG_PINCTRL_SAMSUNG
 		aud_uart_pinctrl = devm_pinctrl_get(&pdev->dev);
 		if (IS_ERR(aud_uart_pinctrl)) {
@@ -2230,12 +2220,6 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 			uart_pin_state[AUD_UART_PIN_DEFAULT] =
 				pinctrl_lookup_state(aud_uart_pinctrl, PINCTRL_STATE_DEFAULT);
 		}
-#endif
-
-#ifdef CONFIG_SND_SAMSUNG_AUDSS
-		/* Audio uart always on */
-		lpass_get_sync(&pdev->dev);
-		dev_err(&pdev->dev, "AUD-UART : Audio block power enable.\n");
 #endif
 	}
 	if (ourport->uart_logging == 1) {
