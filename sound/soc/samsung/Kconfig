@@ -290,53 +290,6 @@ config SND_SOC_SAMSUNG_UNIVERSAL8890_DUMMY
 	help
 	  Say Y if you want to add support for SoC audio on the UNIVERSAL8890.
 
-config SND_SOC_SAMSUNG_ZERO_CLEARWATER
-	tristate "SoC I2S Audio support for Clearwater on Zero"
-	depends on SND_SOC_SAMSUNG
-	select SND_SOC_CLEARWATER
-	select MFD_CLEARWATER
-	select MFD_ARIZONA_DEFERRED_RESUME
-	select SND_SOC_SAMSUNG_ARIZONA
-	help
-	  Say Y if you want to add support for SoC audio on the Pacific.
-
-config SND_SOC_SAMSUNG_LUCKY_MOON
-    tristate "SoC I2S Audio support for Moon on Lucky"
-    depends on SND_SOC_SAMSUNG
-    select SND_SOC_MOON
-    select MFD_MOON
-    select MFD_ARIZONA_DEFERRED_RESUME
-    select SND_SOC_SAMSUNG_ARIZONA
-    help
-        Say Y if you want to add support for SoC audio on the Zero.
-
-config SND_SOC_SAMSUNG_ESPRESSO8890_CLEARWATER
-	tristate "SoC I2S Audio support for Clearwater on ESPRESSO8890"
-	depends on SND_SOC_SAMSUNG
-	select SND_SOC_CLEARWATER
-	select MFD_CLEARWATER
-	select MFD_ARIZONA_DEFERRED_RESUME
-	select SND_SOC_SAMSUNG_ARIZONA
-	help
-	  Say Y if you want to add support for SoC audio on the Pacific.
-
-config SND_SOC_SAMSUNG_ARIZONA
-        tristate "Audio support for arizona platform on the Exynos7420"
-        depends on SND_SOC_SAMSUNG
-        select SND_SAMSUNG_I2S
-        select SND_SAMSUNG_AUDSS
-        select SND_SAMSUNG_IOMMU
-        select SND_SOC_DUMMY_CODEC
-        select MFD_ARIZONA
-        select MFD_ARIZONA_SPI
-        select REGULATOR_ARIZONA
-        select GPIO_ARIZONA
-        select SWITCH
-        select SWITCH_ARIZONA
-        select SND_DYNAMIC_MINORS
-        help
-                Say Y if you want to add support for Arizona Platform on the Exynos7420.
-
 config SND_SOC_SAMSUNG_EXYNOS8895
 	tristate "Audio support on exynos8895"
 	select SND_SOC_SAMSUNG_ABOX
