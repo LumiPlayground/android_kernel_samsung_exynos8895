@@ -358,7 +358,8 @@ static int dma_trigger(struct snd_pcm_substream *substream, int cmd)
 			lpass_inc_dram_usage_count();
 			lpass_update_lpclock(LPCLK_CTRLID_LEGACY, false);
 		} else {
-			lpass_update_lpclock(LPCLK_CTRLID_RECORD, true);
+			lpass_update_lpclock(LPCLK_CTRLID_OFFLOAD, true);
+			lpass_disable_mif_status(true);
 		}
 		break;
 
@@ -371,7 +372,7 @@ static int dma_trigger(struct snd_pcm_substream *substream, int cmd)
 			lpass_dec_dram_usage_count();
 			lpass_update_lpclock(LPCLK_CTRLID_LEGACY, false);
 		} else {
-			lpass_update_lpclock(LPCLK_CTRLID_RECORD, false);
+			lpass_update_lpclock(LPCLK_CTRLID_OFFLOAD, false);
 			lpass_disable_mif_status(false);
 		}
 		break;

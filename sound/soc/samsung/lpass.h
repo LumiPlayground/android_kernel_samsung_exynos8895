@@ -58,7 +58,6 @@
 
 #define LPCLK_CTRLID_OFFLOAD	(1 << 0)
 #define LPCLK_CTRLID_LEGACY	(1 << 1)
-#define LPCLK_CTRLID_RECORD	(1 << 2)
 
 struct lpass_info {
 	spinlock_t		lock;
