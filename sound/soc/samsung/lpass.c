@@ -134,11 +134,6 @@
 #define EXYNOS_GPIO_MODE_AUD_SYS_PWR_REG_OFFSET	0x1340
 #define EXYNOS_PAD_RETENTION_AUD_OPTION_OFFSET 	0x3028
 
-#ifdef CONFIG_SOC_EXYNOS8890
-#define SRAM_BASE 0x3000000
-#define SRAM_SIZE 0x24000
-#endif
-
 /* Audio subsystem version */
 enum {
 	LPASS_VER_000100 = 0,		/* pega/carmen */
@@ -645,13 +640,6 @@ static void lpass_release_pad(void)
 static void ass_enable(void)
 {
 
-#ifdef CONFIG_SOC_EXYNOS8890
-	lpass.mem = ioremap_wc(SRAM_BASE, SRAM_SIZE);
-	if (!lpass.mem) {
-		pr_err("LPASS driver failed to ioremap sram \n");
-		return;
-	}
-#endif
 	/* Enable PLL */
 	lpass_enable_pll(true);
 
@@ -688,14 +676,6 @@ static void lpass_enable(void)
 		return;
 	}
 
-#ifdef CONFIG_SOC_EXYNOS8890
-	lpass.mem = ioremap_wc(SRAM_BASE, SRAM_SIZE);
-	if (!lpass.mem) {
-		pr_err("LPASS driver failed to ioremap sram \n");
-		return;
-	}
-#endif
-
 	/* Enable PLL */
 	lpass_enable_pll(true);
 
@@ -720,7 +700,7 @@ static void lpass_enable(void)
 	lpass_release_pad();
 
 	/* Clear memory */
-	memset(lpass.mem, 0, lpass.mem_size);
+//	memset(lpass.mem, 0, lpass.mem_size);
 
 	lpass.enabled = true;
 	#if 0
@@ -752,12 +732,6 @@ static void ass_disable(void)
 
 	/* Disable PLL */
 	lpass_enable_pll(false);
-
-#ifdef CONFIG_SOC_EXYNOS8890
-	iounmap(lpass.mem);
-	lpass.mem = NULL;
-#endif
-
 }
 
 static void lpass_disable(void)
@@ -792,11 +766,6 @@ static void lpass_disable(void)
 
 	/* Disable PLL */
 	lpass_enable_pll(false);
-
-#ifdef CONFIG_SOC_EXYNOS8890
-	iounmap(lpass.mem);
-	lpass.mem = NULL;
-#endif
 }
 
 #if 0
@@ -1165,13 +1134,11 @@ static int lpass_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 
-#ifndef CONFIG_SOC_EXYNOS8890
 	lpass.mem = ioremap_wc(res->start, resource_size(res));
 	if (!lpass.mem) {
 		dev_err(dev, "SRAM ioremap failed\n");
 		return -ENOMEM;
 	}
-#endif
 	lpass.mem_size = resource_size(res);
 	pr_info("%s: sram_base = %08X (%08X bytes)\n",
 		__func__, (u32)res->start, (u32)resource_size(res));
@@ -1183,7 +1150,7 @@ static int lpass_probe(struct platform_device *pdev)
 			return -ENXIO;
 		}
 
-		lpass.regs_s = ioremap(res->start, resource_size(res));
+		lpass.regs_s = ioremap_wc(res->start, resource_size(res));
 		if (!lpass.regs_s) {
 			dev_err(dev, "SFR ioremap failed\n");
 			return -ENOMEM;
@@ -1308,9 +1275,8 @@ static int lpass_remove(struct platform_device *pdev)
 #endif
 	iounmap(lpass.regs);
 	iounmap(lpass.regs_s);
-#ifndef CONFIG_SOC_EXYNOS8890
 	iounmap(lpass.mem);
-#endif
+
 	return 0;
 }
 
