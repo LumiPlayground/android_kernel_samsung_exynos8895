@@ -1700,7 +1700,7 @@ static int lucky_set_bias_level_post(struct snd_soc_card *card,
 	return 0;
 }
 
-int lucky_change_sysclk(struct snd_soc_card *card, int source)
+static int lucky_change_sysclk(struct snd_soc_card *card, int source)
 {
 	struct arizona_machine_priv *priv = card->drvdata;
 	struct snd_soc_codec *codec = priv->codec;
@@ -1774,7 +1774,7 @@ static int lucky_check_clock_conditions(struct snd_soc_card *card)
 
 static int lucky_suspend_post(struct snd_soc_card *card)
 {
-//	struct arizona_machine_priv *priv = card->drvdata;
+	struct arizona_machine_priv *priv = card->drvdata;
 	int ret;
 
 	/* When the card goes to suspend state, If codec is not active,
@@ -1782,7 +1782,7 @@ static int lucky_suspend_post(struct snd_soc_card *card)
 	 * The MCLK and the FLL3 should be disable to reduce the sleep current.
 	 * In the other cases, these should keep previous status */
 	ret = lucky_check_clock_conditions(card);
-/*
+
 	if (ret == LUCKY_RUN_EARMIC) {
 		arizona_enable_force_bypass(priv->codec);
 		lucky_stop_sysclk(card);
@@ -1802,13 +1802,13 @@ static int lucky_suspend_post(struct snd_soc_card *card)
 		snd_soc_update_bits(priv->codec, ARIZONA_AIF1_RX_PIN_CTRL,
 				ARIZONA_AIF1RX_LRCLK_MSTR_MASK, 0);
 	}
-*/
+
 	return 0;
 }
 
 static int lucky_resume_pre(struct snd_soc_card *card)
 {
-//	struct arizona_machine_priv *priv = card->drvdata;
+	struct arizona_machine_priv *priv = card->drvdata;
 	int ret;
 
 	/* When the card goes to resume state, If codec is not active,
@@ -1816,7 +1816,7 @@ static int lucky_resume_pre(struct snd_soc_card *card)
 	 * The MCLK and the FLL3 should be enable.
 	 * In the other cases, these should keep previous status */
 	ret = lucky_check_clock_conditions(card);
-/*
+
 	if (ret == LUCKY_RUN_EARMIC) {
 		lucky_start_sysclk(card);
 		arizona_disable_force_bypass(priv->codec);
@@ -1824,7 +1824,7 @@ static int lucky_resume_pre(struct snd_soc_card *card)
 	} else if (ret == LUCKY_RUN_MAINMIC) {
 		arizona_disable_force_bypass(priv->codec);
 	}
-*/
+
 	return 0;
 }
 
