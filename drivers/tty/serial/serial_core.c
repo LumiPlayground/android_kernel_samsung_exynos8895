@@ -38,6 +38,11 @@
 #include <asm/irq.h>
 #include <asm/uaccess.h>
 
+#define BT43XX_LINE 1
+
+#if defined(CONFIG_BCM4361)
+#define WIFI_UART_PORT_LINE 15
+#endif
 /*
  * This is used to lock changes in serial line configuration.
  */
@@ -138,7 +143,7 @@ static int uart_port_startup(struct tty_struct *tty, struct uart_state *state,
 		int init_hw)
 {
 	struct uart_port *uport = state->uart_port;
-	unsigned long page;
+	void *addr;
 	int retval = 0;
 
 	if (uport->type == PORT_UNKNOWN)
@@ -155,11 +160,11 @@ static int uart_port_startup(struct tty_struct *tty, struct uart_state *state,
 	 */
 	if (!state->xmit.buf) {
 		/* This is protected by the per port mutex */
-		page = get_zeroed_page(GFP_KERNEL);
-		if (!page)
+		addr = alloc_pages_exact(PAGE_SIZE * 4, GFP_KERNEL|__GFP_ZERO);
+		if (!addr)
 			return -ENOMEM;
 
-		state->xmit.buf = (unsigned char *) page;
+		state->xmit.buf = (unsigned char *) addr;
 		uart_circ_clear(&state->xmit);
 	}
 
@@ -260,7 +265,7 @@ static void uart_shutdown(struct tty_struct *tty, struct uart_state *state)
 	 * Free the transmit buffer page.
 	 */
 	if (state->xmit.buf) {
-		free_page((unsigned long)state->xmit.buf);
+		free_pages_exact((void *)state->xmit.buf, PAGE_SIZE * 4);
 		state->xmit.buf = NULL;
 	}
 }
@@ -476,8 +481,23 @@ static void uart_change_speed(struct tty_struct *tty, struct uart_state *state,
 
 	/* reset sw-assisted CTS flow control based on (possibly) new mode */
 	hw_stopped = uport->hw_stopped;
-	uport->hw_stopped = uart_softcts_mode(uport) &&
-				!(uport->ops->get_mctrl(uport) & TIOCM_CTS);
+	if(uart_softcts_mode(uport) &&
+				!(uport->ops->get_mctrl(uport) & TIOCM_CTS))
+	{
+	
+#if defined(CONFIG_BCM4361)
+		if ((uport->line != BT43XX_LINE) && (uport->line != WIFI_UART_PORT_LINE))	
+			uport->hw_stopped = 1;
+#else				
+		if(uport->line != BT43XX_LINE)
+			uport->hw_stopped = 1;
+#endif
+	}
+	else
+	{
+		uport->hw_stopped = 0;
+	}
+	
 	if (uport->hw_stopped) {
 		if (!hw_stopped)
 			uport->ops->stop_tx(uport);
