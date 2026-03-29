@@ -2347,14 +2347,9 @@ static int exynos_fips_fmp_probe(struct platform_device *pdev)
 	return 0;
 
 err:
-#if defined(CONFIG_NODE_FOR_SELFTEST_FAIL)
 	set_fmp_fips_state(FMP_FIPS_ERR_STATE);
 	fips_fmp_result = 0;
 	return 0;
-#else
-	panic("Panic due to FMP self test for FIPS KAT");
-#endif
-
 sysfs_err:
 misc_err:
 	return -1;

@@ -240,7 +240,7 @@ extern int fmp_ufs_map_sg(struct ufshcd_sg_entry *prd_table, struct scatterlist 
 extern int fmp_map_sg_st(struct ufs_hba *hba, struct ufshcd_sg_entry *prd_table,
 					struct scatterlist *sg, int enc_mode,
 					uint32_t idx, uint32_t sector);
-#if defined(CONFIG_UFS_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_EXT4CRYPT_FS)
+#if defined(CONFIG_UFS_FMP_EXT4CRYPT_FS)
 extern void fmp_clear_sg(struct ufshcd_lrb *lrbp);
 #endif
 #endif
@@ -1493,10 +1493,6 @@ static void get_enc_mode_from_page(struct page *page, int *enc_mode)
 	if (!page->mapping)
 		return;
 
-#if defined(CONFIG_UFS_FMP_ECRYPT_FS)
-	if (page->mapping->plain_text || page->index < 2)
-		return;
-#endif
 	if (page->mapping->private_enc_mode == FMP_FILE_ENC_MODE)
 		*enc_mode |= UFS_FILE_ENC_MODE;
 	return;
@@ -4286,7 +4282,7 @@ static void __ufshcd_transfer_req_compl(struct ufs_hba *hba, int reason)
 		cmd = lrbp->cmd;
 		if (cmd) {
 #if defined(CONFIG_FIPS_FMP)
-#if defined(CONFIG_UFS_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_EXT4CRYPT_FS)
+#if defined(CONFIG_UFS_FMP_EXT4CRYPT_FS)
 			fmp_clear_sg(lrbp);
 #endif
 #endif

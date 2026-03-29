@@ -896,10 +896,6 @@ static void get_enc_mode_from_page(struct page *page, int *enc_mode)
 	if (!page->mapping)
 		return;
 
-#if defined(CONFIG_DW_MMC_FMP_ECRYPT_FS)
-	if (page->mapping->plain_text || page->index < 2)
-		return;
-#endif
 	if (page->mapping->private_enc_mode == FMP_FILE_ENC_MODE)
 		*enc_mode |= MMC_FILE_ENC_MODE;
 	return;

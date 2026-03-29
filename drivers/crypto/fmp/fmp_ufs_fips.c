@@ -28,9 +28,6 @@
 #include "fmpdev_int.h"
 #include "../scsi_priv.h"
 
-#if defined(CONFIG_UFS_FMP_ECRYPT_FS)
-#include "fmp_derive_iv.h"
-#endif
 #if defined(CONFIG_FIPS_FMP)
 #include "fmpdev_info.h"
 #endif
