@@ -28,10 +28,6 @@
 #define NETLINK_RDMA		20
 #define NETLINK_CRYPTO		21	/* Crypto layer */
 
-#ifdef CONFIG_SAMSUNG_FREECESS
-#define NETLINK_KFREECESS       27
-#endif
-
 #define NETLINK_INET_DIAG	NETLINK_SOCK_DIAG
 
 #define MAX_LINKS 32		
