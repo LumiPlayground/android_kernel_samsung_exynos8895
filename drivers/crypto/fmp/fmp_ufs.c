@@ -19,7 +19,7 @@
 
 #include <crypto/fmp.h>
 
-#if defined(CONFIG_UFS_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_EXT4CRYPT_FS)
+#if defined(CONFIG_UFS_FMP_EXT4CRYPT_FS)
 #include <linux/pagemap.h>
 #include "fmp_derive_iv.h"
 #endif
@@ -357,7 +357,7 @@ int fmp_ufs_map_sg(struct ufshcd_sg_entry *prd_table, struct scatterlist *sg,
 EXPORT_SYMBOL_GPL(fmp_map_sg);
 
 #if defined(CONFIG_FIPS_FMP)
-#if defined(CONFIG_UFS_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_EXT4CRYPT_FS)
+#if defined(CONFIG_UFS_FMP_EXT4CRYPT_FS)
 void fmp_clear_sg(struct ufshcd_lrb *lrbp)
 {
 	struct scatterlist *sg;

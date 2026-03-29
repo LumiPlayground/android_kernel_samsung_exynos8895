@@ -14,7 +14,7 @@
 #include <linux/smc.h>
 
 #include "dw_mmc-exynos.h"
-#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_MMC_DW_FMP_EXT4CRYPT_FS)
+#if defined(CONFIG_MMC_DW_FMP_EXT4CRYPT_FS)
 #include "fmp_derive_iv.h"
 #endif
 
@@ -57,7 +57,7 @@ int fmp_mmc_map_sg(struct dw_mci *host, struct idmac_desc_64addr *desc, int idx,
 		}
 	}
 #endif
-#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_MMC_DW_FMP_EXT4CRYPT_FS)
+#if defined(CONFIG_MMC_DW_FMP_EXT4CRYPT_FS)
 	if (enc_mode & MMC_FILE_ENC_MODE) {
 		int ret;
 		unsigned int aes_alg = 0;

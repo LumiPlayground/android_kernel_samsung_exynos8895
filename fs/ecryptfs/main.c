@@ -166,24 +166,11 @@ int ecryptfs_get_lower_file(struct dentry *dentry, struct inode *inode)
 void ecryptfs_put_lower_file(struct inode *inode)
 {
 	struct ecryptfs_inode_info *inode_info;
-#if defined(CONFIG_FMP_ECRYPT_FS)
-        struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
-		&ecryptfs_superblock_to_private(inode->i_sb)->mount_crypt_stat;
-#endif
 
 	inode_info = ecryptfs_inode_to_private(inode);
 	if (atomic_dec_and_mutex_lock(&inode_info->lower_file_count,
 				      &inode_info->lower_file_mutex)) {
 		filemap_write_and_wait(inode->i_mapping);
-#if defined(CONFIG_FMP_ECRYPT_FS)
-		if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP) {
-			int rc = 0;
-
-			rc = vfs_fsync(inode_info->lower_file, 0);
-			if (rc)
-				printk(KERN_ERR "%s: vfs_sync returned err rc: %d\n", __func__, rc);
-		}
-#endif
 #ifdef CONFIG_SDP
 		if (inode_info->crypt_stat.flags & ECRYPTFS_DEK_IS_SENSITIVE) {
 			ecryptfs_mm_do_sdp_cleanup(inode);
@@ -203,9 +190,6 @@ enum { ecryptfs_opt_sig, ecryptfs_opt_ecryptfs_sig,
        ecryptfs_opt_fn_cipher, ecryptfs_opt_fn_cipher_key_bytes,
        ecryptfs_opt_unlink_sigs, ecryptfs_opt_mount_auth_tok_only,
        ecryptfs_opt_check_dev_ruid,
-#if defined(CONFIG_FMP_ECRYPT_FS)
-       ecryptfs_opt_use_fmp,
-#endif
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
        ecryptfs_opt_enable_filtering,
 #endif
@@ -236,9 +220,6 @@ static const match_table_t tokens = {
 	{ecryptfs_opt_unlink_sigs, "ecryptfs_unlink_sigs"},
 	{ecryptfs_opt_mount_auth_tok_only, "ecryptfs_mount_auth_tok_only"},
 	{ecryptfs_opt_check_dev_ruid, "ecryptfs_check_dev_ruid"},
-#if defined(CONFIG_FMP_ECRYPT_FS)
-	{ecryptfs_opt_use_fmp, "ecryptfs_use_fmp"},
-#endif
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
 	{ecryptfs_opt_enable_filtering, "ecryptfs_enable_filtering=%s"},
 #endif
@@ -530,11 +511,6 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 		case ecryptfs_opt_check_dev_ruid:
 			*check_ruid = 1;
 			break;
-#if defined(CONFIG_FMP_ECRYPT_FS)
-		case ecryptfs_opt_use_fmp:
-			mount_crypt_stat->flags |= ECRYPTFS_USE_FMP;
-			break;
-#endif
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
 		case ecryptfs_opt_enable_filtering:
 			rc = parse_enc_filter_parms(mount_crypt_stat,
@@ -674,22 +650,6 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 		goto out;
 	}
 
-#if defined(CONFIG_FMP_ECRYPT_FS)
-	mount_crypt_stat->cipher_code = cipher_code;
-
-	if (cipher_code == RFC2440_CIPHER_AES_XTS_256) {
-		if (!(mount_crypt_stat->flags & ECRYPTFS_USE_FMP)) {
-			ecryptfs_printk(KERN_ERR,
-					"eCryptfs doesn't support cipher with FMP: %s",
-					mount_crypt_stat->global_default_cipher_name);
-			rc = -EINVAL;
-			goto out;
-		}
-		strncpy(mount_crypt_stat->global_default_cipher_name, ECRYPTFS_DEFAULT_CIPHER, ECRYPTFS_MAX_CIPHER_NAME_SIZE);
-		if (mount_crypt_stat->flags & ECRYPTFS_GLOBAL_ENCRYPT_FILENAMES)
-			strncpy(mount_crypt_stat->global_default_fn_cipher_name, ECRYPTFS_DEFAULT_CIPHER, ECRYPTFS_MAX_CIPHER_NAME_SIZE);
-	}
-#endif
 	mutex_lock(&key_tfm_list_mutex);
 #ifdef CONFIG_CRYPTO_FIPS
 	if (!ecryptfs_tfm_exists(mount_crypt_stat->global_default_cipher_name, cipher_mode,
@@ -947,10 +907,6 @@ static void ecryptfs_kill_block_super(struct super_block *sb)
 	if (sb_info->wsi_sb)
 		atomic_dec(&sb_info->wsi_sb->s_active);
 
-#if defined(CONFIG_FMP_ECRYPT_FS)
-	if (sb_info->mount_crypt_stat.flags & ECRYPTFS_USE_FMP)
-		shrink_dcache_parent(sb_info->wsi_sb->s_root);
-#endif
 	ecryptfs_destroy_mount_crypt_stat(&sb_info->mount_crypt_stat);
 	bdi_destroy(&sb_info->bdi);
 	kmem_cache_free(ecryptfs_sb_info_cache, sb_info);
