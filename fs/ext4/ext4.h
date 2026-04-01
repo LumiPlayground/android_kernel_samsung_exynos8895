@@ -1272,9 +1272,7 @@ struct ext4_super_block {
 	__le32	s_lpf_ino;		/* Location of the lost+found inode */
 	__le32	s_prj_quota_inum;	/* inode for tracking project quota */
 	__le32	s_checksum_seed;	/* crc32c(uuid) if csum_seed set */
-	__le32	s_reserved[92];	 	/* Padding to the s_sec_magic */
-	__le32	s_sec_magic;		/* flag for reserved inodes */
-	__le32	s_reserved2[5];		/* Padding to the end of the block */
+	__le32	s_reserved[98];	 	/* Padding to the end of the block */
 	__le32	s_checksum;		/* crc32c(superblock) */
 };
 
@@ -1886,12 +1884,6 @@ static inline bool ext4_has_incompat_features(struct super_block *sb)
  */
 #define EXT4_DEF_MIN_BATCH_TIME	0
 #define EXT4_DEF_MAX_BATCH_TIME	15000 /* 15ms */
-
-/*
- * Default reserved inode count
- */
-#define EXT4_DEF_RESERVE_INODE 4096
-#define EXT4_SEC_DATA_MAGIC 0xBAB0CAFE /* data partition magic */
 
 /*
  * Minimum number of groups in a flexgroup before we separate out
