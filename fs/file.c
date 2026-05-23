@@ -23,11 +23,6 @@
 #include <linux/rcupdate.h>
 #include <linux/workqueue.h>
 
-#if defined(CONFIG_SEC_FD_DETECT)
-extern void save_open_close_fdinfo(int fd, int flag, struct task_struct *cur, struct files_struct *files);
-extern void check_fd_invalid_close(int fd, struct task_struct *cur, struct files_struct *files, struct file *file);
-#endif // END CONFIG_SEC_FD_DETECT
-
 int sysctl_nr_open __read_mostly = 1024*1024;
 int sysctl_nr_open_min = BITS_PER_LONG;
 /* our max() is unusable in constant expressions ;-/ */
@@ -629,10 +624,6 @@ void __fd_install(struct files_struct *files, unsigned int fd,
 	fdt = rcu_dereference_sched(files->fdt);
 	BUG_ON(fdt->fd[fd] != NULL);
 	rcu_assign_pointer(fdt->fd[fd], file);
-
-#if defined(CONFIG_SEC_FD_DETECT)
-	save_open_close_fdinfo(fd, true, current, files);
-#endif // END CONFIG_SEC_FD_DETECT
 	rcu_read_unlock_sched();
 }
 
@@ -658,12 +649,6 @@ int __close_fd(struct files_struct *files, unsigned fd)
 	file = fdt->fd[fd];
 	if (!file)
 		goto out_unlock;
-
-#if defined(CONFIG_SEC_FD_DETECT)
-	check_fd_invalid_close(fd, current, files, file);
-	save_open_close_fdinfo(fd, false, current, files);
-#endif // END CONFIG_SEC_FD_DETECT
-
 	rcu_assign_pointer(fdt->fd[fd], NULL);
 	__clear_close_on_exec(fd, fdt);
 	__put_unused_fd(files, fd);
