@@ -48,10 +48,6 @@
 #include <linux/sec_debug.h>
 #endif
 
-#ifdef CONFIG_SEC_MMIOTRACE
-#include <linux/sec_mmiotrace.h>
-#endif
-
 static int safe_fault_in_progress = 0;
 static const char *fault_name(unsigned int esr);
 
@@ -322,11 +318,6 @@ static int __kprobes do_page_fault(unsigned long addr, unsigned int esr,
 
 	tsk = current;
 	mm  = tsk->mm;
-
-#ifdef CONFIG_SEC_MMIOTRACE
-	if (mmiotrace_do_fault_handler(addr, esr, regs))
-		return 0;
-#endif
 
 	/* Enable interrupts if they were enabled in the parent context. */
 	if (interrupts_enabled(regs))

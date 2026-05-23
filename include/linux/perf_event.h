@@ -590,10 +590,6 @@ struct perf_event {
 	struct perf_cgroup		*cgrp; /* cgroup event is attach to */
 	int				cgrp_defer_enabled;
 #endif
-
-#ifdef CONFIG_SEC_KWATCHER
-	int used_in_kwatcher;
-#endif
 #endif /* CONFIG_PERF_EVENTS */
 };
 
