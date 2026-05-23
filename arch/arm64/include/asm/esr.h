@@ -20,19 +20,6 @@
 
 #include <asm/memory.h>
 
-#define ESR_EL1_WRITE		(1 << 6)
-#define ESR_EL1_CM		(1 << 8)
-#define ESR_EL1_IL		(1 << 25)
-#define ESR_EL1_WRITE_SHIFT	(6)
-
-#define ESR_EL1_WRITE_SHIFT	(6)
-#define ESR_EL1_ISV_SHIFT	(24)
-#define ESR_EL1_ISV		(1 << ESR_EL1_ISV_SHIFT)
-
-#define ESR_EL1_SRT_SHIFT	(16)
-#define ESR_EL1_SRT_MASK	(1F << ESR_EL1_SRT_SHIFT)
-
-
 #define ESR_ELx_EC_UNKNOWN	(0x00)
 #define ESR_ELx_EC_WFx		(0x01)
 /* Unallocated EC: 0x02 */
