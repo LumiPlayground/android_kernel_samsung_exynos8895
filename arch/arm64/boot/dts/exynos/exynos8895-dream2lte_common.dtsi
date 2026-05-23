@@ -13,7 +13,6 @@
 #include "exynos8895.dtsi"
 #include "exynos8895-display-lcd.dtsi"
 #include "modem-ss355ap-pdata.dtsi"
-#include "exynos8895-dream2lte-mmiotrace.dtsi"
 
 / {
 	model = "Samsung UNIVERSAL8895 board based on EXYNOS8895";
