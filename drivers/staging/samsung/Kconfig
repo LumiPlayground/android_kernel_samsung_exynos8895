@@ -112,19 +112,6 @@ config ARGOS
 	help
 	  Check throughput and set appropriate system parameters(CPU freq, affinity, etc)
 
-config SEC_KWATCHER
-	bool "Enable kwatchder support" if EMBEDDED
-	depends on PERF_EVENTS
-	default n
-	help
-	  This option supports for ARM self hosted debugger.
-
-config SEC_MMIOTRACE
-	bool "MMIO Trace"
-	default n
-	help
-	  This option supports for ARM self hosted debugger
-
 comment "Samsung TN Build Options"
 config SEC_FACTORY
 	bool "SAMSUNG Factory build option"
