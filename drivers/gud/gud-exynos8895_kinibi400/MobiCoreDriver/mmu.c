@@ -81,7 +81,15 @@ static inline long gup_local(struct mm_struct *mm, uintptr_t start,
 			     unsigned long nr_pages, int write,
 			     struct page **pages)
 {
-	return get_user_pages(NULL, mm, start, nr_pages, write, 0, pages, NULL);
+	unsigned int flags = 0;
+
+	if (write)
+		flags |= FOLL_WRITE;
+
+	/* ExySp */
+	flags |= FOLL_CMA;
+
+	return get_user_pages(NULL, mm, start, nr_pages, flags, pages, NULL);
 }
 #elif KERNEL_VERSION(4, 9, 0) > LINUX_VERSION_CODE
 static inline long gup_local(struct mm_struct *mm, uintptr_t start,
@@ -530,16 +538,16 @@ struct tee_mmu *tee_mmu_create(struct mm_struct *mm,
 			sg_miter_stop(&miter);
 		} else if (mm) {
 			long gup_ret;
-			/* ExySp: for page migration */
-			unsigned int foll_flags =
-				FOLL_TOUCH | FOLL_GET | FOLL_WRITE | FOLL_CMA;
 
 			/* Buffer was allocated in user space */
 			down_read(&mm->mmap_sem);
-			gup_ret = __get_user_pages(NULL, mm,
-						 (uintptr_t)reader, pages_nr,
-						 foll_flags, pages, 0, 0);
-			/* ExySp: end */
+			gup_ret = gup_local_repeat(mm, (uintptr_t)reader,
+						   pages_nr, 1, pages);
+			if ((gup_ret == -EFAULT) && !write) {
+				gup_ret = gup_local_repeat(mm,
+							   (uintptr_t)reader,
+							   pages_nr, 0, pages);
+			}
 			up_read(&mm->mmap_sem);
 			if (gup_ret < 0) {
 				ret = gup_ret;
