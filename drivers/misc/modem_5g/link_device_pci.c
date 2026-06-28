@@ -1923,7 +1923,7 @@ static int modem_pci_send(struct link_device *ld, struct io_device *iod,
 
 	switch (id) {
 	case IPC_RAW:
-		if (unlikely(atomic_read(&ld->netif_stopped) > 0)) {
+		if (unlikely(atomic_read(&ld->netif_stopped))) {
 			if (in_interrupt()) {
 				mif_err("raw tx is suspended, drop size=%d\n",
 						skb->len);
