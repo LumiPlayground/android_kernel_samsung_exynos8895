@@ -758,7 +758,7 @@ void stop_net_ifaces(struct link_device *ld)
 	unsigned long flags;
 	spin_lock_irqsave(&ld->netif_lock, flags);
 
-	if (!atomic_read(&ld->netif_stopped) > 0) {
+	if (!atomic_read(&ld->netif_stopped)) {
 		if (ld->msd)
 			netif_tx_flowctl(ld->msd, true);
 
@@ -794,7 +794,7 @@ void resume_net_ifaces(struct link_device *ld)
 
 	spin_lock_irqsave(&ld->netif_lock, flags);
 
-	if (atomic_read(&ld->netif_stopped) != 0) {
+	if (atomic_read(&ld->netif_stopped)) {
 		if (ld->msd)
 			netif_tx_flowctl(ld->msd, false);
 
