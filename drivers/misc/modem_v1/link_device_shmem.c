@@ -1969,7 +1969,7 @@ static int shmem_send(struct link_device *ld, struct io_device *iod,
 	switch (id) {
 	case IPC_RAW:
 		if (sipc_ps_ch(iod->id)) {
-			if (unlikely(atomic_read(&ld->netif_stopped) > 0)) {
+			if (unlikely(atomic_read(&ld->netif_stopped))) {
 				if (skb->queue_mapping != 1) {
 					if (in_interrupt()) {
 						mif_err("raw tx is suspended, drop size=%d\n",
