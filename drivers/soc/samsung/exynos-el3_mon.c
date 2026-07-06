@@ -35,11 +35,8 @@ static int __init exynos_protect_kernel_text(void)
 								__func__);
 		return -1;
 	}
-#ifdef CONFIG_RKP
-	ktext_end_va = kallsyms_lookup_name("rkp_pgt_bitmap");
-#else
+
 	ktext_end_va = kallsyms_lookup_name("_etext");
-#endif
 	if (!ktext_end_va) {
 		pr_err("%s: [ERROR] Kernel text end address is invalid\n",
 								__func__);
