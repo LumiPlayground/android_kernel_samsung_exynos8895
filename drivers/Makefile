@@ -219,6 +219,3 @@ obj-y	+= ccic/
 
 # Gator for ARM DS5 tool
 obj-$(CONFIG_GATOR)	+= gator_5.26/
-
-# RKP
-obj-$(CONFIG_RKP) 		+= rkp/

@@ -48,9 +48,6 @@
 #include <asm/alternative.h>
 
 #include "mm.h"
-#ifdef CONFIG_RKP
-#include <linux/rkp.h>
-#endif
 
 /*
  * We need to be able to catch inadvertent references to memstart_addr
@@ -459,11 +456,6 @@ void free_initmem(void)
 #ifdef CONFIG_DEBUG_RODATA
 	fixup_init();
 #endif
-	printk("before of rkp deferred init\n");
-#ifdef CONFIG_RKP
-	rkp_call(RKP_DEF_INIT, 0, 0, 0, 0, 0);
-#endif
-	printk("after of rkp deferred init\n");
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD

@@ -249,11 +249,6 @@ if [ -n "${CONFIG_KALLSYMS}" ]; then
 fi
 
 # CFP instrumentation will change binary, need to be before FIPS
-if [ -n "${CONFIG_RKP_CFP}" ]; then
-	echo '  RKP_CFP : instrumenting vmlinux... '
-	"${srctree}/scripts/rkp_cfp/instrument.py" --vmlinux "${objtree}/vmlinux" --config "${objtree}/.config"  --inplace
-fi
-
 if [ -n "${CONFIG_RELOCATABLE_KERNEL}" ]; then
     if [ -n "${CONFIG_CRYPTO_FIPS}" ]; then
 	echo '  FIPS with KALSR : Generating hmac of crypto and fmp, then update vmlinux... '
