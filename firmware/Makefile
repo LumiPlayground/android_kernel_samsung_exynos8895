@@ -149,10 +149,6 @@ fw-shipped-$(CONFIG_KEYBOARD_TC300K) += coreriver/tc350k_gts28.fw
 
 # Touchscreen Firmware
 fw-shipped-$(CONFIG_TOUCHSCREEN_MXT540E) += tsp_atmel/mXT540E.fw
-fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_DSX) += tsp_synaptics/synaptics_b0_h.fw
-fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_DSX2) +=  \
-						tsp_synaptics/synaptics_5807_gts28.fw \
-						tsp_synaptics/synaptics_5806_gts28.fw
 fw-shipped-$(CONFIG_TOUCHSCREEN_FTS) += tsp_stm/fts8cd56_dream2.fw tsp_stm/fts8cd56_dream2_old.fw tsp_stm/fts9cd56_dream1.fw
 fw-shipped-$(CONFIG_TOUCHSCREEN_FTS7_VALLEY) += tsp_stm/fts7bd50_vlte.fw
 fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS_A552) += tsp_sec/hero2la.bin
