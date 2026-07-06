@@ -21,10 +21,6 @@
 #include <linux/reboot.h>
 
 #include <linux/ctype.h>
-#if defined(CONFIG_TZ_ICCC)
-#include <linux/smc.h>
-#define SMC_CMD_DMV_WRITE_STATUS (0x83000014)
-#endif
 
 #define DM_MSG_PREFIX			"verity"
 
@@ -625,12 +621,8 @@ static int verity_verify_io(struct dm_verity_io *io)
 #else
 		r = verity_handle_err(v, DM_VERITY_BLOCK_TYPE_DATA,io->block + b);
 #endif
-		if(r){
-#if defined(CONFIG_TZ_ICCC)
-			printk(KERN_ERR "ICCC smc ret = %llu \n",(unsigned long long)exynos_smc(SMC_CMD_DMV_WRITE_STATUS, 1, 0, 0));
-#endif
+		if (r)
 			return -EIO;
-		}
 	}
 	return 0;
 }

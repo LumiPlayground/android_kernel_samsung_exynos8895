@@ -68,7 +68,5 @@ obj-$(CONFIG_FAN_G761)		+= g761.o
 # Secure OS Mobicore Interface
 obj-$(CONFIG_TRUSTONIC_TEE)	+= tzic64.o
 
-# Tima
-obj-$(CONFIG_TIMA_LOG)		+= tima_debug_log.o
 # DM-Verity
 obj-$(CONFIG_DM_VERITY)		+= dmverity_query.o
