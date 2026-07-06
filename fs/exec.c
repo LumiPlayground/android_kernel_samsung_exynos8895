@@ -73,9 +73,6 @@
 
 #ifdef CONFIG_RKP_KDP
 #define rkp_is_nonroot(x) ((x->cred->type)>>1 & 1)
-#ifdef CONFIG_LOD_SEC
-#define rkp_is_lod(x) ((x->cred->type)>>3 & 1)
-#endif
 #endif /*CONFIG_RKP_KDP*/
 
 int suid_dumpable = 0;
@@ -1627,13 +1624,6 @@ static int rkp_restrict_fork(struct filename *path)
 	if(!strcmp(path->name,"/system/bin/patchoat")){
 		return 0 ;
 	}
-/* If the Process is from Linux on Dex, 
-then no need to reduce privilege */
-#ifdef CONFIG_LOD_SEC
-    if(rkp_is_lod(current)){
-        return 0;
-    }
-#endif
 
 	if(rkp_is_nonroot(current)){
 		shellcred = prepare_creds();
