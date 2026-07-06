@@ -157,7 +157,6 @@ fw-shipped-$(CONFIG_TOUCHSCREEN_FTS) += tsp_stm/fts8cd56_dream2.fw tsp_stm/fts8c
 fw-shipped-$(CONFIG_TOUCHSCREEN_FTS7_VALLEY) += tsp_stm/fts7bd50_vlte.fw
 fw-shipped-$(CONFIG_TOUCHSCREEN_MELFAS_MMS449) += tsp_melfas/mms449_s5neo.fw
 fw-shipped-$(CONFIG_TOUCHSCREEN_MMS144) += tsp_melfas/DIABLO_CoreV54_V35_master.fw
-fw-shipped-$(CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5) += cyttsp5_csp.fw
 fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS_A552) += tsp_sec/hero2la.bin
 fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS) += tsp_sec/y761_dream1_nosync.fw tsp_sec/y761_dream1.fw
 fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS_Y661) += tsp_sec/y661_great.fw
