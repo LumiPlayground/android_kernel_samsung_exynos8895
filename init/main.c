@@ -92,10 +92,6 @@
 #ifdef CONFIG_SEC_EXT
 #include <linux/sec_ext.h>
 #endif
-#ifdef CONFIG_RKP
-#include <linux/vmm.h>
-#include <linux/rkp.h> 
-#endif //CONFIG_RKP
 #ifdef CONFIG_RELOCATABLE_KERNEL
 #include <linux/memblock.h>
 #endif
@@ -104,10 +100,6 @@ static int kernel_init(void *);
 extern void init_IRQ(void);
 extern void fork_init(void);
 extern void radix_tree_init(void);
-
-#ifdef CONFIG_RKP
-extern struct vm_struct *vmlist;
-#endif
 
 /*
  * Debug helper: via this flag we know that we are in 'early bootup code'
@@ -447,10 +439,6 @@ static noinline void __init_refok rest_init(void)
 	cpu_startup_entry(CPUHP_ONLINE);
 }
 
-#ifdef CONFIG_RKP_KDP
-RKP_RO_AREA int is_boot_recovery = 0;
-#endif
-
 /* Check for early params. */
 static int __init do_early_param(char *param, char *val,
 				 const char *unused, void *arg)
@@ -475,14 +463,6 @@ static int __init do_early_param(char *param, char *val,
 			}
 	}
 
-#endif
-#ifdef CONFIG_RKP_KDP
-	if ((strncmp(param, "bootmode", 9) == 0)) {
-			//printk("\n RKP22 In Recovery Mode= %d\n",*val);
-			if ((strncmp(val, "2", 2) == 0)) {
-				is_boot_recovery = 1;
-			}
-	}
 #endif
 	return 0;
 }
@@ -550,93 +530,6 @@ static void __init mm_init(void)
 	ioremap_huge_init();
 	kaiser_init();
 }
-#ifdef CONFIG_RKP
-
-#ifdef CONFIG_RKP_6G
-__attribute__((section(".rkp.bitmap"))) u8 rkp_pgt_bitmap_arr[0x30000] = {0};
-__attribute__((section(".rkp.dblmap"))) u8 rkp_map_bitmap_arr[0x30000] = {0};
-#else
-__attribute__((section(".rkp.bitmap"))) u8 rkp_pgt_bitmap_arr[0x20000] = {0};
-__attribute__((section(".rkp.dblmap"))) u8 rkp_map_bitmap_arr[0x20000] = {0};
-#endif
-
-u8 rkp_started = 0;
-
-static void __init rkp_init(void)
-{
-	rkp_init_t init;
-	struct vm_struct *p;
-
-	init.magic = RKP_INIT_MAGIC;
-	init.vmalloc_start = (u64)VMALLOC_START;
-	//init.vmalloc_end = (u64)high_memory;
-	init.vmalloc_end = (u64)VMALLOC_END;
-	printk("in rkp_init, swapper_pg_dir : %llx\n", (unsigned long long)swapper_pg_dir);
-	init.init_mm_pgd = (u64)__pa(swapper_pg_dir);
-	init.id_map_pgd = (u64)__pa(idmap_pg_dir);
-	init.zero_pg_addr = __pa(empty_zero_page);
-#ifdef CONFIG_UNMAP_KERNEL_AT_EL0
-	init.tramp_pgd = __pa(tramp_pg_dir);
-#endif
-	init.rkp_pgt_bitmap = (u64)__pa(rkp_pgt_bitmap);
-	init.rkp_dbl_bitmap = (u64)__pa(rkp_map_bitmap);
-	init.rkp_bitmap_size = RKP_PGT_BITMAP_LEN;
-	init._text = (u64) _text;
-	init._etext = (u64) _etext;
-	init.extra_memory_addr = RKP_EXTRA_MEM_START;
-	init.extra_memory_size = RKP_EXTRA_MEM_SIZE;
-	init._srodata = (u64) __start_rodata;
-	init._erodata =(u64) __end_rodata;
-	init.large_memory = 0;
-	//init.fimc_phys_addr = (u64)page_to_phys(vmalloc_to_page((void *)FIMC_LIB_START_VA));
-	init.fimc_phys_addr = 0;
-	for (p = vmlist; p; p = p->next) {
-		if (p->addr == (void *)FIMC_LIB_START_VA) {
-			init.fimc_phys_addr = (u64)(p->phys_addr);
-			break;
-		}
-	}
-	init.fimc_size = FIMC_LIB_SIZE;
-
-	rkp_call(RKP_INIT, (u64)&init, (u64)kimage_voffset, 0, 0, 0);
-	//rkp_call(RKP_INIT, (u64)&init, 0, 0, 0, 0);
-	rkp_started = 1;
-	return;
-}
-#endif
-
-#ifdef CONFIG_RKP_KDP
-static void __init kdp_init(void)
-{
-	kdp_init_t cred;
-
-	cred.credSize 	= sizeof(struct cred);
-	cred.sp_size	= rkp_get_task_sec_size();
-	cred.pgd_mm 	= offsetof(struct mm_struct,pgd);
-	cred.uid_cred	= offsetof(struct cred,uid);
-	cred.euid_cred	= offsetof(struct cred,euid);
-	cred.gid_cred	= offsetof(struct cred,gid);
-	cred.egid_cred	= offsetof(struct cred,egid);
-
-	cred.bp_pgd_cred 	= offsetof(struct cred,bp_pgd);
-	cred.bp_task_cred 	= offsetof(struct cred,bp_task);
-	cred.type_cred 		= offsetof(struct cred,type);
-	cred.security_cred 	= offsetof(struct cred,security);
-	cred.usage_cred 	= offsetof(struct cred,use_cnt);
-
-	cred.cred_task  	= offsetof(struct task_struct,cred);
-	cred.mm_task 		= offsetof(struct task_struct,mm);
-	cred.pid_task		= offsetof(struct task_struct,pid);
-	cred.rp_task		= offsetof(struct task_struct,real_parent);
-	cred.comm_task 		= offsetof(struct task_struct,comm);
-
-	cred.bp_cred_secptr 	= rkp_get_offset_bp_cred();
-
-	cred.task_threadinfo = offsetof(struct thread_info,task);
-	rkp_call(RKP_CMDID(0x40),(u64)&cred,0,0,0,0);
-}
-#endif /*CONFIG_RKP_KDP*/
-
 
 asmlinkage __visible void __init start_kernel(void)
 {
@@ -702,30 +595,7 @@ asmlinkage __visible void __init start_kernel(void)
 	vfs_caches_init_early();
 	sort_main_extable();
 	trap_init();
-#ifdef CONFIG_RKP
-	rkp_reserve_mem();
-#endif
 	mm_init();
-#ifdef CONFIG_RKP
-	vmm_init();
-	rkp_init();
-
-#if !defined(CONFIG_USE_SIGNED_BINARY)
-	rkp_call(RKP_NOSHIP_BIN, 0, 0, 0, 0, 0);
-#endif
-
-#ifdef CONFIG_RKP_DEBUG
-	rkp_call(RKP_DEBUG, 0, 0, 0, 0, 0);
-#endif
-
-#ifdef CONFIG_RELOCATABLE_KERNEL 
-	rkp_call(KASLR_MEM_RESERVE, kaslr_mem, kaslr_size, 0, 0, 0);
-#endif
-
-#ifdef CONFIG_RKP_KDP
-	rkp_cred_enable = 1;
-#endif /*CONFIG_RKP_KDP*/
-#endif //CONFIG_RKP
 
 	/*
 	 * Set up the scheduler prior starting any interrupts (such as the
@@ -818,10 +688,6 @@ asmlinkage __visible void __init start_kernel(void)
 	init_espfix_bsp();
 #endif
 	thread_stack_cache_init();
-#ifdef CONFIG_RKP_KDP
-	if (rkp_cred_enable) 
-		kdp_init();
-#endif /*CONFIG_RKP_KDP*/
 	cred_init();
 	fork_init();
 	proc_caches_init();
