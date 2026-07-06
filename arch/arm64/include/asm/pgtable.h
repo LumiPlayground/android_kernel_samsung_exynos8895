@@ -22,9 +22,6 @@
 #include <asm/memory.h>
 #include <asm/pgtable-hwdef.h>
 
-#ifdef CONFIG_RKP
-#include <linux/rkp.h> 
-#endif /* CONFIG_RKP */
 /*
  * Software defined PTE bits definition.
  */
@@ -82,7 +79,6 @@ extern void __pgd_error(const char *file, int line, unsigned long val);
 #define PROT_NORMAL		(PROT_DEFAULT | PTE_PXN | PTE_UXN | PTE_DIRTY | PTE_WRITE | PTE_ATTRINDX(MT_NORMAL))
 
 #define PROT_SECT_DEVICE_nGnRE	(PROT_SECT_DEFAULT | PMD_SECT_PXN | PMD_SECT_UXN | PMD_ATTRINDX(MT_DEVICE_nGnRE))
-#define PROT_SECT_NORMAL_NC    (PROT_SECT_DEFAULT | PMD_SECT_PXN | PMD_SECT_UXN | PMD_ATTRINDX(MT_NORMAL_NC))
 #define PROT_SECT_NORMAL	(PROT_SECT_DEFAULT | PMD_SECT_PXN | PMD_SECT_UXN | PMD_ATTRINDX(MT_NORMAL))
 #define PROT_SECT_NORMAL_EXEC	(PROT_SECT_DEFAULT | PMD_SECT_UXN | PMD_ATTRINDX(MT_NORMAL))
 
@@ -131,11 +127,7 @@ extern void __pgd_error(const char *file, int line, unsigned long val);
  * ZERO_PAGE is a global shared page that is always zero: used
  * for zero-mapped memory areas etc..
  */
-#ifdef CONFIG_RKP
-extern unsigned long *empty_zero_page;
-#else
 extern unsigned long empty_zero_page[PAGE_SIZE / sizeof(unsigned long)];
-#endif
 #define ZERO_PAGE(vaddr)	phys_to_page(__pa_symbol(empty_zero_page))
 
 #define pte_ERROR(pte)		__pte_error(__FILE__, __LINE__, pte_val(pte))
@@ -244,32 +236,8 @@ static inline pmd_t pmd_mkcont(pmd_t pmd)
 	return __pmd(pmd_val(pmd) | PMD_SECT_CONT);
 }
 
-#ifdef CONFIG_RKP
-extern  int printk(const char *s, ...);
-extern void panic(const char *fmt, ...);
-#endif /* CONFIG_RKP */
 static inline void set_pte(pte_t *ptep, pte_t pte)
 {
-#ifdef CONFIG_RKP
-	if (pte && rkp_is_pg_dbl_mapped((u64)(pte)) ) {
-		panic("RKP : Double mapping Detected pte = 0x%llx ptep = %p", (u64)pte, ptep);
-		return;
-	}
-	if (rkp_is_pg_protected((u64)ptep)) {
-		rkp_call(RKP_PTE_SET, (unsigned long)ptep, pte_val(pte), 0, 0, 0);
-	} else {
-		asm volatile("mov x1, %0\n"
-					  "mov x2, %1\n"
- 					  "str x2, [x1]\n"
-		:
-		: "r" (ptep), "r" (pte)
-		: "x1", "x2", "memory" );
-		if (pte_valid_not_user(pte)) {
-			dsb(ishst);
-			isb();
-		}
-	}
-#else
 	*ptep = pte;
 
 	/*
@@ -280,7 +248,6 @@ static inline void set_pte(pte_t *ptep, pte_t pte)
 		dsb(ishst);
 		isb();
 	}
-#endif /* CONFIG_RKP */
 }
 
 struct mm_struct;
@@ -432,8 +399,6 @@ static inline int has_transparent_hugepage(void)
 	__pgprot_modify(prot, PTE_ATTRINDX_MASK, PTE_ATTRINDX(MT_NORMAL_NC) | PTE_PXN | PTE_UXN)
 #define pgprot_device(prot) \
 	__pgprot_modify(prot, PTE_ATTRINDX_MASK, PTE_ATTRINDX(MT_DEVICE_nGnRE) | PTE_PXN | PTE_UXN)
-#define pgprot_iotable_init(prot) \
-	__pgprot_modify(prot, PTE_ATTRINDX_MASK, PTE_ATTRINDX(MT_DEVICE_GRE))
 #define __HAVE_PHYS_MEM_ACCESS_PROT
 struct file;
 extern pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
@@ -458,29 +423,11 @@ extern pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
 				 PUD_TYPE_TABLE)
 #endif
 
-#ifdef CONFIG_RKP
-#define pmd_block(pmd)      ((pmd_val(pmd) & 0x3)  == 1)
-#endif
 static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
 {
-#ifdef CONFIG_RKP
-	if (rkp_is_pg_protected((u64)pmdp)) {
-		rkp_call(RKP_PMD_SET, (unsigned long)pmdp, pmd_val(pmd), 0, 0, 0);
-	} else {
-		asm volatile("mov x1, %0\n"
-					  "mov x2, %1\n"
- 					  "str x2, [x1]\n"
-		:
-		: "r" (pmdp), "r" (pmd)
-		: "x1", "x2", "memory" );
-		dsb(ishst);
-		isb();
-	}
-#else 
 	*pmdp = pmd;
 	dsb(ishst);
 	isb();
-#endif
 }
 
 static inline void pmd_clear(pmd_t *pmdp)
@@ -529,24 +476,9 @@ static inline phys_addr_t pmd_page_paddr(pmd_t pmd)
 
 static inline void set_pud(pud_t *pudp, pud_t pud)
 {
-#ifdef CONFIG_RKP
-	if (rkp_is_pg_protected((u64)pudp)) {
-		rkp_call(RKP_PGD_SET, (unsigned long)pudp, pud_val(pud), 0, 0, 0);
-	} else {
-		asm volatile("mov x1, %0\n"
-					  "mov x2, %1\n"
- 					  "str x2, [x1]\n"
-		:
-		: "r" (pudp), "r" (pud)
-		: "x1", "x2", "memory" );
-		dsb(ishst);
-		isb();
-	}
-#else
 	*pudp = pud;
 	dsb(ishst);
 	isb();
-#endif
 }
 
 static inline void pud_clear(pud_t *pudp)
