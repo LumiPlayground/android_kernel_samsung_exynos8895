@@ -46,14 +46,7 @@
 
 #include "mm.h"
 
-#include <linux/vmalloc.h>
-
-#ifdef CONFIG_RKP
-#include <linux/rkp.h> 
-#endif //CONFIG_RKP
-
 u64 idmap_t0sz = TCR_T0SZ(VA_BITS);
-static int iotable_on;
 
 u64 kimage_voffset __read_mostly;
 EXPORT_SYMBOL(kimage_voffset);
@@ -62,23 +55,12 @@ EXPORT_SYMBOL(kimage_voffset);
  * Empty_zero_page is a special page that is used for zero-initialized data
  * and COW.
  */
-#ifdef CONFIG_RKP
-__attribute__((section(".empty_zero_page"))) unsigned long __ezr[PAGE_SIZE / sizeof(unsigned long)] = { 0 };
-unsigned long *empty_zero_page = __ezr;
-#else
 unsigned long empty_zero_page[PAGE_SIZE / sizeof(unsigned long)] __page_aligned_bss;
-#endif
 EXPORT_SYMBOL(empty_zero_page);
 
-#ifdef CONFIG_RKP
-extern pte_t bm_pte[];
-extern pmd_t bm_pmd[];
-extern pud_t bm_pud[];
-#else
 static pte_t bm_pte[PTRS_PER_PTE] __page_aligned_bss;
 static pmd_t bm_pmd[PTRS_PER_PMD] __page_aligned_bss __maybe_unused;
 static pud_t bm_pud[PTRS_PER_PUD] __page_aligned_bss __maybe_unused;
-#endif
 
 pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
 			      unsigned long size, pgprot_t vma_prot)
@@ -135,137 +117,6 @@ static void split_pmd(pmd_t *pmd, pte_t *pte)
 	} while (pte++, i++, i < PTRS_PER_PTE);
 }
 
-#ifdef CONFIG_RKP
-spinlock_t ro_rkp_pages_lock = __SPIN_LOCK_UNLOCKED();
-char ro_pages_stat[RO_PAGES] = {0};
-unsigned int ro_alloc_last;
-
-static phys_addr_t rkp_ro_alloc_phys(void)
-{
-	unsigned long flags;
-	unsigned int i, j;
-	phys_addr_t alloc_addr = 0;
-
-	spin_lock_irqsave(&ro_rkp_pages_lock, flags);
-
-	for (i = 0, j = ro_alloc_last; i < (unsigned int)(RO_PAGES); i++) {
-		j =  (j+1) % (RO_PAGES);
-		if (!ro_pages_stat[j]) {
-			ro_pages_stat[j] = 1;
-			ro_alloc_last = j+1;
-			alloc_addr = (phys_addr_t)((u64)RKP_ROBUF_START + (j << PAGE_SHIFT));
-			break;
-		}
-	}
-	spin_unlock_irqrestore(&ro_rkp_pages_lock, flags);
-
-	return alloc_addr;
-}
-
-void *rkp_ro_alloc(void)
-{
-	unsigned long flags;
-	unsigned int i, j;
-	void * alloc_addr = NULL;
-
-	spin_lock_irqsave(&ro_rkp_pages_lock,flags);
-
-	for (i = 0, j = ro_alloc_last; i < (RO_PAGES) ; i++) {
-		j =  (j+1) %(RO_PAGES); 
-		if (!ro_pages_stat[j]) {
-			ro_pages_stat[j] = 1;
-			ro_alloc_last = j+1;
-			alloc_addr = (void*) ((u64)RKP_RBUF_VA +  (j << PAGE_SHIFT));
-			break;
-		}
-	}
-	spin_unlock_irqrestore(&ro_rkp_pages_lock,flags);
-
-	return alloc_addr;
-}
-
-void rkp_ro_free(void *free_addr)
-{
-	unsigned int i;
-	unsigned long flags;
-
-	i =  ((u64)free_addr - (u64)RKP_RBUF_VA) >> PAGE_SHIFT;
-	spin_lock_irqsave(&ro_rkp_pages_lock,flags);
-	ro_pages_stat[i] = 0;
-	ro_alloc_last = i; 
-	spin_unlock_irqrestore(&ro_rkp_pages_lock,flags);
-}
-
-unsigned int is_rkp_ro_page(u64 addr)
-{
-	if ((addr >= (u64)RKP_RBUF_VA)
-		&& (addr < (u64)(RKP_RBUF_VA + RKP_ROBUF_SIZE)))
-		return 1;
-	else return 0;
-}
-#endif
-
-#ifdef CONFIG_RKP
-// mapping all pte entry to prevent to write ro area.
-#if 0
-static inline void __init block_to_pages(pmd_t *pmd, unsigned long addr, 
-					unsigned long end, unsigned long pfn, 
-					phys_addr_t (*pgtable_alloc)(void)){
-	phys_addr_t old_pte_phys = 0;
-	pmd_t new;
-	pte_t *pte = NULL;
-	phys_addr_t pte_phys = 0;
-	
-	pte_phys = rkp_ro_alloc_phys();
-
-
-	pr_info("RKP: %s\n", __func__);
-
-	if ((addr >= (FIMC_LIB_START_VA & PMD_MASK)
-	       	&& addr < ((FIMC_LIB_START_VA + FIMC_LIB_SIZE + PMD_SIZE - 1) & PMD_MASK))
-        	|| (addr >= (((u64) _text) & PMD_MASK)
-	       	&& addr < ((((u64) _etext) + PMD_SIZE - 1) & PMD_MASK))) {
-		    	pte_phys = rkp_ro_alloc_phys();
-	}
-	else{
-			BUG_ON(!pgtable_alloc);
-			pte_phys = pgtable_alloc();
-			pte = pte_set_fixmap(pte_phys);
-	}
-	
-	split_pmd(pmd, pte);
-
-	old_pte_phys = pte_phys;
-
-	__pmd_populate(&new, pte_phys, PMD_TYPE_TABLE); //new->pte_phys
-
-	pte = pte_set_fixmap_offset(&new, addr);
-
-	do {
-		if(iotable_on == 1)
-			set_pte(pte, pfn_pte(pfn, pgprot_iotable_init(PAGE_KERNEL_EXEC)));
-		else
-			set_pte(pte, pfn_pte(pfn, PAGE_KERNEL_EXEC));
-		pfn++;
-	} while(pte++, addr += PAGE_SIZE, addr != end);
-	
-	__pmd_populate(pmd, old_pte_phys, PMD_TYPE_TABLE);
-
-	pr_info("RKP: %s end\n", __func__);
-}
-#endif
-#endif
-
-static phys_addr_t late_pgtable_alloc(void)
-{
-	void *ptr = (void *)__get_free_page(PGALLOC_GFP);
-	BUG_ON(!ptr);
-
-	/* Ensure the zeroed page is visible to the page table walker */
-	dsb(ishst);
-	return __pa(ptr);
-}
-
 static void alloc_init_pte(pmd_t *pmd, unsigned long addr,
 				  unsigned long end, unsigned long pfn,
 				  pgprot_t prot,
@@ -274,91 +125,26 @@ static void alloc_init_pte(pmd_t *pmd, unsigned long addr,
 	pte_t *pte;
 
 	if (pmd_none(*pmd) || pmd_sect(*pmd)) {
-		phys_addr_t pte_phys = 0;
+		phys_addr_t pte_phys;
 		BUG_ON(!pgtable_alloc);
 		pte_phys = pgtable_alloc();
 		pte = pte_set_fixmap(pte_phys);
-		if (pmd_sect(*pmd)) {
-			split_pmd(pmd, pte);
-		}
-		__pmd_populate(pmd, pte_phys, PMD_TYPE_TABLE);
-		flush_tlb_all();
-		pte_clear_fixmap();
-	}
-	BUG_ON(pmd_bad(*pmd));
-
-	pte = pte_set_fixmap_offset(pmd, addr);
-	do {
-		if (iotable_on == 1)
-			set_pte(pte, pfn_pte(pfn, pgprot_iotable_init(PAGE_KERNEL_EXEC)));
-		else
-			set_pte(pte, pfn_pte(pfn, prot));
-		pfn++;
-	} while (pte++, addr += PAGE_SIZE, addr != end);
-
-	pte_clear_fixmap();
-}
-
-/*
-static void alloc_init_pte(pmd_t *pmd, unsigned long addr,
-				  unsigned long end, unsigned long pfn,
-				  pgprot_t prot,
-				  phys_addr_t (*pgtable_alloc)(void))
-{
-	pte_t *pte;
-#ifdef CONFIG_RKP1
-	if(pmd_block(*pmd))
-		return block_to_pages(pmd, addr, end, pfn, pgtable_alloc);
-#endif
-
-	if (pmd_none(*pmd)) {
-		phys_addr_t pte_phys = 0;
-
-#ifdef CONFIG_RKP
-//#define FIMC_VA	 (0xffffff80fa000000ULL)
-//#define FIMC_SIZE	(0x780000)
-		if (((addr >= (FIMC_LIB_START_VA & PMD_MASK)
-	        	&& addr < ((FIMC_LIB_START_VA + FIMC_LIB_SIZE + PMD_SIZE - 1) & PMD_MASK))
-        		|| (addr >= (((u64) _text) & PMD_MASK)
-	        	&& addr < ((((u64) _etext) + PMD_SIZE - 1) & PMD_MASK)))
-			&& (pgtable_alloc != late_pgtable_alloc)) {
-	    		pte_phys = rkp_ro_alloc_phys();
-			printk("ro alloced in alloc_init_pte, %lx\n", addr);
-		}
-
-		if (!pte_phys) {
-
-			BUG_ON(!pgtable_alloc);
-			pte_phys = pgtable_alloc();
-			pte = pte_set_fixmap(pte_phys);
-		}
-#else	
-		BUG_ON(!pgtable_alloc);
-		pte_phys = pgtable_alloc();
-		pte = pte_set_fixmap(pte_phys);
-#endif		
 		if (pmd_sect(*pmd))
 			split_pmd(pmd, pte);
 		__pmd_populate(pmd, pte_phys, PMD_TYPE_TABLE);
 		flush_tlb_all();
 		pte_clear_fixmap();
 	}
-#if !defined(CONFIG_RKP)
 	BUG_ON(pmd_bad(*pmd));
-#endif
 
 	pte = pte_set_fixmap_offset(pmd, addr);
 	do {
-		if (iotable_on == 1)
-			set_pte(pte, pfn_pte(pfn, pgprot_iotable_init(PAGE_KERNEL_EXEC)));
-		else
-			set_pte(pte, pfn_pte(pfn, prot));
+		set_pte(pte, pfn_pte(pfn, prot));
 		pfn++;
 	} while (pte++, addr += PAGE_SIZE, addr != end);
 
 	pte_clear_fixmap();
 }
-*/
 
 static void split_pud(pud_t *old_pud, pmd_t *pmd)
 {
@@ -403,19 +189,13 @@ static void alloc_init_pmd(pud_t *pud, unsigned long addr, unsigned long end,
 	 * Check for initial section mappings in the pgd/pud and remove them.
 	 */
 	if (pud_none(*pud) || pud_sect(*pud)) {
-		phys_addr_t pmd_phys = 0;
+		phys_addr_t pmd_phys;
 		BUG_ON(!pgtable_alloc);
-#ifdef CONFIG_RKP
-		if (pgtable_alloc != late_pgtable_alloc)
-			pmd_phys = rkp_ro_alloc_phys();
-		if (!pmd_phys)
-			pmd_phys = pgtable_alloc();
-#else
 		pmd_phys = pgtable_alloc();
-#endif
 		pmd = pmd_set_fixmap(pmd_phys);
 		if (pud_sect(*pud)) {
-			/* need to have the 1G of mappings continue to be
+			/*
+			 * need to have the 1G of mappings continue to be
 			 * present
 			 */
 			split_pud(pud, pmd);
@@ -431,9 +211,6 @@ static void alloc_init_pmd(pud_t *pud, unsigned long addr, unsigned long end,
 		next = pmd_addr_end(addr, end);
 		/* try section mapping first */
 		if (((addr | next | phys) & ~SECTION_MASK) == 0 &&
-#ifdef CONFIG_RKP
-			phys != (__pa(swapper_pg_dir) & SECTION_MASK) &&
-#endif
 		      block_mappings_allowed(pgtable_alloc)) {
 			pmd_t old_pmd =*pmd;
 			pmd_set_huge(pmd, phys, prot);
@@ -468,11 +245,7 @@ static inline bool use_1G_block(unsigned long addr, unsigned long next,
 	if (((addr | next | phys) & ~PUD_MASK) != 0)
 		return false;
 
-#ifdef CONFIG_RKP
-	return false;
-#else
 	return true;
-#endif
 }
 
 static void alloc_init_pud(pgd_t *pgd, unsigned long addr, unsigned long end,
@@ -514,12 +287,7 @@ static void alloc_init_pud(pgd_t *pgd, unsigned long addr, unsigned long end,
 				if (pud_table(old_pud)) {
 					phys_addr_t table = pud_page_paddr(old_pud);
 					if (!WARN_ON_ONCE(slab_is_available())) {
-#ifdef CONFIG_RKP
-						if ((u64) table < (u64) __pa(_text) || (u64) table > (u64) __pa(_etext))
-							memblock_free(table, PAGE_SIZE);
-#else
 						memblock_free(table, PAGE_SIZE);
-#endif
 					}
 				}
 			}
@@ -560,6 +328,16 @@ static void init_pgd(pgd_t *pgd, phys_addr_t phys, unsigned long virt,
 		alloc_init_pud(pgd, addr, next, phys, prot, pgtable_alloc);
 		phys += next - addr;
 	} while (pgd++, addr = next, addr != end);
+}
+
+static phys_addr_t late_pgtable_alloc(void)
+{
+	void *ptr = (void *)__get_free_page(PGALLOC_GFP);
+	BUG_ON(!ptr);
+
+	/* Ensure the zeroed page is visible to the page table walker */
+	dsb(ishst);
+	return __pa(ptr);
 }
 
 static void __create_pgd_mapping(pgd_t *pgdir, phys_addr_t phys,
@@ -796,20 +574,6 @@ void __init paging_init(void)
 {
 	phys_addr_t pgd_phys = early_pgtable_alloc();
 	pgd_t *pgd = pgd_set_fixmap(pgd_phys);
-
-#ifdef CONFIG_RKP
-	phys_addr_t pa = RKP_ROBUF_START;
-	void *va;
-
-	for (; pa < (RKP_ROBUF_START + RKP_ROBUF_SIZE); pa += PAGE_SIZE) {
-		va = pte_set_fixmap(pa);
-		memset(va, 0, PAGE_SIZE);
-		pte_clear_fixmap();
-	}
-
-	empty_zero_page = rkp_ro_alloc();
-	BUG_ON(empty_zero_page == NULL);
-#endif
 
 	map_kernel(pgd);
 	map_mem(pgd);
