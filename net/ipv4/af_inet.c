@@ -774,7 +774,6 @@ EXPORT_SYMBOL(inet_getname);
 int inet_sendmsg(struct socket *sock, struct msghdr *msg, size_t size)
 {
 	struct sock *sk = sock->sk;
-    int err;
 
 	sock_rps_record_flow(sk);
 
@@ -783,16 +782,7 @@ int inet_sendmsg(struct socket *sock, struct msghdr *msg, size_t size)
 	    inet_autobind(sk))
 		return -EAGAIN;
 
-    err = sk->sk_prot->sendmsg(sk, msg, size);
-
-    if (err >= 0) {
-        if(sock->knox_sent + err > ULLONG_MAX) {
-            sock->knox_sent = ULLONG_MAX;
-        } else {
-            sock->knox_sent = sock->knox_sent + err;
-        }
-    }
-    return err;
+    return sk->sk_prot->sendmsg(sk, msg, size);
 }
 EXPORT_SYMBOL(inet_sendmsg);
 
@@ -825,14 +815,8 @@ int inet_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 
 	err = sk->sk_prot->recvmsg(sk, msg, size, flags & MSG_DONTWAIT,
 				   flags & ~MSG_DONTWAIT, &addr_len);
-	if (err >= 0) {
+	if (err >= 0)
 		msg->msg_namelen = addr_len;
-        if(sock->knox_recv + err > ULLONG_MAX) {
-            sock->knox_recv = ULLONG_MAX;
-        } else {
-            sock->knox_recv = sock->knox_recv + err;
-        }
-    }
 	return err;
 }
 EXPORT_SYMBOL(inet_recvmsg);
