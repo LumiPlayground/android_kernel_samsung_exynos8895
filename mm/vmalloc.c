@@ -1143,11 +1143,7 @@ void *vm_map_ram(struct page **pages, unsigned int count, int node, pgprot_t pro
 }
 EXPORT_SYMBOL(vm_map_ram);
 
-#ifdef CONFIG_RKP
-struct vm_struct *vmlist __initdata;
-#else
 static struct vm_struct *vmlist __initdata;
-#endif
 
 /**
  * vm_area_add_early - add vmap area early during boot

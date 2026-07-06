@@ -683,84 +683,11 @@ config TIMA_LKMAUTH
 	  TIMA authenticates loaded kernel modules. Disable it if you don't
 	  want TIMA enabled.
 
-config RKP
-	depends on !SEC_FACTORY
-	bool "Samsung KNOX realtime kernel protection"
-	select UH_RKP
-	help
-	  this enables realtime kernel protection
-
-config UH_RKP
-	bool "Enable RKP (Realtime Kernel Protection) UH feature"
-	help
-	  it protects a kernel text and etc.
-
-config RKP_DEBUG
-	depends on RKP
-	default n
-	bool "Support SS Sentinel for debugging"
-	help
-	  this enables to support sentinel
-
-config RKP_KDP
-	bool "Protection for cred structure"
-	depends on RKP
-	default n
-	help
-	  Prevents unauthorized cred modification.
-
-config RKP_NS_PROT
-	bool "Protection for namespace structure"
-	depends on RKP_KDP
-	default n
-	help
-	  Prevents unauthorized namespace modification.
-
-config RKP_DMAP_PROT
-	bool "Page Double Mapping protection"
-	depends on RKP_KDP
-	default n
-	help
-	  Prevents unauthorized mapping for page table.
-
-config RKP_6G
-	bool "Support 6G"
-	depends on RKP
-	help
-	  support 6G
-
 config RELOCATABLE_KERNEL
 	bool "set kernel to relocatable in both virtual and physical address"
 	default n
 	help
 	  This configuare will allow you to config the kernel into position independent kernel, with '--PIE' insert into LD script.
-
-#
-# BEGIN RKP_CFP CONFIG OPTIONS
-#
-
-menu "Control Flow Protection"
-
-config RKP_CFP
-	bool "JOPP and ROPP"
-	# depends on RKP
-	default n
-
-config RKP_CFP_JOPP
-	bool "JOP Prevention"
-	select RKP_CFP
-	default n
-
-config RKP_CFP_JOPP_MAGIC
-	hex 
-	depends on RKP_CFP && RKP_CFP_JOPP
-	default "0x00be7bad"
-
-endmenu
-
-#
-# END RKP_CFP CONFIG OPTIONS
-#
 
 source kernel/Kconfig.preempt
 source kernel/Kconfig.hz
