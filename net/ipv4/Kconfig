@@ -613,38 +613,6 @@ config TCP_CONG_DCTCP
 
 	For further details see:
 	  http://simula.stanford.edu/~alizade/Site/DCTCP_files/dctcp-final.pdf
-	  
-config TCP_CONG_LIA
-	tristate "MPTCP Linked Increase"
-	depends on MPTCP
-	default n
-	---help---
-	MultiPath TCP Linked Increase Congestion Control
-	To enable it, just put 'lia' in tcp_congestion_control
-
-config TCP_CONG_OLIA
-	tristate "MPTCP Opportunistic Linked Increase"
-	depends on MPTCP
-	default n
-	---help---
-	MultiPath TCP Opportunistic Linked Increase Congestion Control
-	To enable it, just put 'olia' in tcp_congestion_control
-
-config TCP_CONG_WVEGAS
-	tristate "MPTCP WVEGAS CONGESTION CONTROL"
-	depends on MPTCP
-	default n
-	---help---
-	wVegas congestion control for MPTCP
-	To enable it, just put 'wvegas' in tcp_congestion_control
-
-config TCP_CONG_BALIA
-	tristate "MPTCP BALIA CONGESTION CONTROL"
-	depends on MPTCP
-	default n
-	---help---
-	Multipath TCP Balanced Linked Adaptation Congestion Control
-	To enable it, just put 'balia' in tcp_congestion_control
 
 config TCP_CONG_CDG
 	tristate "CAIA Delay-Gradient (CDG)"
