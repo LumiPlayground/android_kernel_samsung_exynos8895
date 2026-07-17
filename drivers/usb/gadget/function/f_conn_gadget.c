@@ -134,7 +134,7 @@ static struct usb_interface_descriptor conn_gadget_interface_desc = {
 	.bNumEndpoints          = 2,
 	.bInterfaceClass        = 0xFF,
 	.bInterfaceSubClass     = 0x40,
-	.bInterfaceProtocol     = 1,
+	.bInterfaceProtocol     = 2,
 };
 
 static struct usb_endpoint_descriptor conn_gadget_superspeed_in_desc = {
