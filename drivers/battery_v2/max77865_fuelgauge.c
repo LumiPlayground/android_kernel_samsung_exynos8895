@@ -25,6 +25,7 @@ static enum power_supply_property max77865_fuelgauge_props[] = {
 bool max77865_fg_fuelalert_init(struct max77865_fuelgauge_data *fuelgauge,
 				int soc);
 
+#if defined(CONFIG_MAX77865_FG_ADAPTATION_WA)
 static void max77865_fg_adaptation_wa(struct max77865_fuelgauge_data *fuelgauge)
 {
 	u32 rcomp0;
@@ -84,6 +85,7 @@ re_calculation:
 	
 	return;
 }
+#endif
 
 #if !defined(CONFIG_SEC_FACTORY)
 static void max77865_fg_periodic_read(struct max77865_fuelgauge_data *fuelgauge)
@@ -124,8 +126,9 @@ static void max77865_fg_periodic_read(struct max77865_fuelgauge_data *fuelgauge)
 
 	pr_info("[FG] %s\n", str);
 
+#if defined(CONFIG_MAX77865_FG_ADAPTATION_WA)
 	max77865_fg_adaptation_wa(fuelgauge);
-
+#endif
 	kfree(str);
 }
 #endif
