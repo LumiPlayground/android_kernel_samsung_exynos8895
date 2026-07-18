@@ -213,6 +213,19 @@ config FUELGAUGE_MAX77865
 	 for MAXIM MAX77865 fuel gauge driver.
 	 This fuel-gauge can be used in coulomb-counting mode.
 
+config MAX77865_FG_ADAPTATION_WA
+	bool "MAX77865 fuel gauge adaptation workaround"
+	default n
+	depends on FUELGAUGE_MAX77865
+	help
+	  Enable adaptation workaround for the MAX77865 fuel gauge.
+
+	  This prevents inaccurate battery percentage readings
+	  caused by fuel gauge model drift over charge/discharge
+	  cycles by restoring the factory battery values.
+
+	  If unsure, say N.
+
 config FUELGAUGE_MAX77823_VOLTAGE_TRACKING
 	tristate "use MAX77823 fuel gauge only as voltage tracking"
 	default n
