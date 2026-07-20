@@ -143,7 +143,6 @@ static int edid_read_block(struct displayport_device *hdev, int block, u8 *buf, 
 
 	print_hex_dump(KERN_INFO, "EDID = ", DUMP_PREFIX_OFFSET, 16, 1,
 					buf, 128, false);
-	dp_print_hex_dump(buf, "EDID : ", 128);
 
 	return 0;
 }
@@ -494,10 +493,6 @@ int edid_update(struct displayport_device *hdev)
 	if (block_cnt < 0)
 		goto out;
 
-#ifdef CONFIG_SEC_DISPLAYPORT_BIGDATA
-	secdp_bigdata_save_item(BD_EDID, edid);
-#endif
-
 	preferred_preset = displayport_supported_presets[EDID_DEFAULT_TIMINGS_IDX].dv_timings;
 
 	for (i = 0; i < displayport_pre_cnt; i++)
@@ -505,9 +500,6 @@ int edid_update(struct displayport_device *hdev)
 
 	fb_edid_to_monspecs(edid, &specs);
 
-#ifdef CONFIG_SEC_DISPLAYPORT_BIGDATA
-	secdp_bigdata_save_item(BD_SINK_NAME, specs.monitor);
-#endif
 	for (i = 1; i < block_cnt; i++)
 		fb_edid_add_monspecs(edid + i * EDID_BLOCK_SIZE, &specs);
 

@@ -32,7 +32,6 @@
 #include <linux/module.h>
 #include <linux/uaccess.h>
 
-#include <linux/dp_logger.h>
 #include "secdp_aux_control.h"
 
 #define DP_ENUM_STR(x)	#x
