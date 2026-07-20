@@ -67,4 +67,19 @@ config SENSORS_FP_TKEY_NOTI
 	default n
 	help
 	  If you say yes here you can use fingerprint sensor tkey notification
+
+config SENSORS_FP_SPI_GPIO
+	depends on SENSORS_FINGERPRINT
+	string "Fingerprint spi gpio name"
+
+config SENSORS_FP_SPI_NUMBER
+	depends on SENSORS_FINGERPRINT
+	int "Fingerprint spi gpio number"
+	default 0
+
+config SENSORS_FP_USI_NUMBER
+	depends on SENSORS_FINGERPRINT
+	int "Fingerprint usi gpio number"
+	default 0
+
 endif
