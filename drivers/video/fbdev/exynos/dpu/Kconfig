@@ -95,5 +95,5 @@ config DUMPSTATE_LOGGING
 	bool "Support DumpState Logging"
 	depends on EXYNOS_DECON_8895
 	default y
-source "drivers/video/fbdev/exynos/dpu/dp_logger/Kconfig"
+
 endif
