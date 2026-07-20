@@ -25,9 +25,6 @@
 #include <linux/ccic/ccic_notifier.h>
 #endif
 
-#include <linux/dp_logger.h>
-#include <linux/displayport_bigdata.h>
-
 #include "regs-displayport.h"
 #include "decon_lcd.h"
 
@@ -42,7 +39,6 @@ extern int displayport_log_level;
 		if (displayport_log_level >= 3) {				\
 			pr_err("Displayport: " pr_fmt(fmt), ##__VA_ARGS__);			\
 			exynos_ss_printk(fmt, ##__VA_ARGS__);			\
-			dp_logger_print(fmt, ##__VA_ARGS__);			\
 		}								\
 	} while (0)
 
@@ -51,7 +47,6 @@ extern int displayport_log_level;
 		if (displayport_log_level >= 4) {				\
 			pr_warn("Displayport: " pr_fmt(fmt), ##__VA_ARGS__);			\
 			exynos_ss_printk(fmt, ##__VA_ARGS__);			\
-			dp_logger_print(fmt, ##__VA_ARGS__);			\
 		}								\
 	} while (0)
 
@@ -59,7 +54,6 @@ extern int displayport_log_level;
 	do {									\
 		if (displayport_log_level >= 6)	{				\
 			pr_info("Displayport: " pr_fmt(fmt), ##__VA_ARGS__);	\
-			dp_logger_print(fmt, ##__VA_ARGS__);			\
 		}								\
 	} while (0)
 
