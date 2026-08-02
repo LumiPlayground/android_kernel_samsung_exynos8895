@@ -222,8 +222,6 @@ source "drivers/ccic/Kconfig"
 
 source "drivers/nfc/samsung/Kconfig"
 
-source "drivers/sensorhub/stm/Kconfig"
-
 source "drivers/sensorhub/brcm/Kconfig"
 
 source "drivers/optics/Kconfig"
