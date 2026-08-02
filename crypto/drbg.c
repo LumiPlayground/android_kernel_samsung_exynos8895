@@ -254,22 +254,14 @@ static bool drbg_fips_continuous_test(struct drbg_state *drbg,
 		/* return false due to priming, i.e. another round is needed */
 		return false;
 	}
-
-#if FIPS_FUNC_TEST == 94
-	printk(KERN_ERR "FIPS : drbg.c:drbg_fips_continuous_test Intentionally failing drbg_fips_continuous_test!!!\n");
-	memcpy(drbg->prev, buf, drbg_blocklen(drbg));
-#endif
-
 	ret = memcmp(drbg->prev, buf, drbg_blocklen(drbg));
-
     if (ret == 0 ) {
-    printk(KERN_ERR "FIPS : drbg.c:drbg_fips_continuous_test failed !!!\n");
-    set_in_fips_err();
+    	printk(KERN_ERR "FIPS : drbg.c:drbg_fips_continuous_test failed !!!\n");
+    	set_in_fips_err();
         if (in_fips_err())
             printk(KERN_ERR "FIPS : drbg.c:drbg_fips_continuous_test FIPS in Error!!!\n");
         return false;
     }
-
 	memcpy(drbg->prev, buf, drbg_blocklen(drbg));
 	/* the test shall pass when the two compared values are not equal */
 	return ret != 0;

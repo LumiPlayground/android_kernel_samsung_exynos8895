@@ -1883,8 +1883,8 @@ static ssize_t s3c24xx_serial_bt_log(struct file *file, char __user *userbuf, si
 
 		copied_bytes = 0;
 
-        if (port && port->state->pm_state == UART_PM_STATE_ON)
-    		s3c24xx_print_reg_status(ourport);
+		if (port && port->state->pm_state == UART_PM_STATE_ON)
+    			s3c24xx_print_reg_status(ourport);
 		return 0;
 	}
 
@@ -2036,6 +2036,10 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 			port_index = ret;
 		}
 	}
+	if (index >= ARRAY_SIZE(s3c24xx_serial_ports)) {
+		dev_err(&pdev->dev, "serial%d out of range\n", index);
+		return -EINVAL;
+	}
 	ourport = &s3c24xx_serial_ports[port_index];
 
 	if (ourport->port.line != port_index)
@@ -2111,8 +2115,6 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 				"Please add FIFO size in device tree!(UART%d)\n", port_index);
 		return -EINVAL;
 	}
-
-	probe_index++;
 
 	dbg("%s: initialising port %p...\n", __func__, ourport);
 
@@ -2262,6 +2264,7 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 
 	ourport->dbg_mode = 0;
 
+	probe_index++;
 
 	return 0;
 }

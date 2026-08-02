@@ -23,21 +23,12 @@
 #include <linux/rcupdate.h>
 #include <linux/workqueue.h>
 
-#if defined(CONFIG_SEC_FD_DETECT)
-extern void save_open_close_fdinfo(int fd, int flag, struct task_struct *cur, struct files_struct *files);
-extern void check_fd_invalid_close(int fd, struct task_struct *cur, struct files_struct *files, struct file *file);
-#endif // END CONFIG_SEC_FD_DETECT
-
 int sysctl_nr_open __read_mostly = 1024*1024;
 int sysctl_nr_open_min = BITS_PER_LONG;
 /* our max() is unusable in constant expressions ;-/ */
 #define __const_max(x, y) ((x) < (y) ? (x) : (y))
 int sysctl_nr_open_max = __const_max(INT_MAX, ~(size_t)0/sizeof(void *)) &
 			 -BITS_PER_LONG;
-
-#ifdef CONFIG_SEC_DEBUG_FILE_LEAK
-extern void	sec_debug_EMFILE_error_proc(unsigned long files_addr);
-#endif
 
 static void *alloc_fdmem(size_t size)
 {
@@ -97,7 +88,7 @@ static void copy_fd_bitmaps(struct fdtable *nfdt, struct fdtable *ofdt,
  */
 static void copy_fdtable(struct fdtable *nfdt, struct fdtable *ofdt)
 {
-	unsigned int cpy, set;
+	size_t cpy, set;
 
 	BUG_ON(nfdt->max_fds < ofdt->max_fds);
 
@@ -197,9 +188,6 @@ static int expand_fdtable(struct files_struct *files, int nr)
 	 * caller and alloc_fdtable().  Cheaper to catch it here...
 	 */
 	if (unlikely(new_fdt->max_fds <= nr)) {
-#ifdef CONFIG_SEC_DEBUG_FILE_LEAK
-		sec_debug_EMFILE_error_proc((unsigned long)files);
-#endif
 		__free_fdtable(new_fdt);
 		return -EMFILE;
 	}
@@ -238,9 +226,6 @@ repeat:
 
 	/* Can we expand? */
 	if (nr >= sysctl_nr_open) {
-#ifdef CONFIG_SEC_DEBUG_FILE_LEAK
-		sec_debug_EMFILE_error_proc((unsigned long)files);
-#endif
 		return -EMFILE;
 	}
 
@@ -351,9 +336,6 @@ struct files_struct *dup_fd(struct files_struct *oldf, int *errorp)
 
 		/* beyond sysctl_nr_open; nothing to do */
 		if (unlikely(new_fdt->max_fds < open_files)) {
-#ifdef CONFIG_SEC_DEBUG_FILE_LEAK
-			sec_debug_EMFILE_error_proc((unsigned long)oldf);
-#endif
 			__free_fdtable(new_fdt);
 			*errorp = -EMFILE;
 			goto out_release;
@@ -496,7 +478,7 @@ struct files_struct init_files = {
 		.full_fds_bits	= init_files.full_fds_bits_init,
 	},
 	.file_lock	= __SPIN_LOCK_UNLOCKED(init_files.file_lock),
-	.resize_wait    = __WAIT_QUEUE_HEAD_INITIALIZER(init_files.resize_wait),
+	.resize_wait	= __WAIT_QUEUE_HEAD_INITIALIZER(init_files.resize_wait),
 };
 
 static unsigned long find_next_fd(struct fdtable *fdt, unsigned long start)
@@ -539,9 +521,6 @@ repeat:
 	 */
 	error = -EMFILE;
 	if (fd >= end) {
-#ifdef CONFIG_SEC_DEBUG_FILE_LEAK
-		sec_debug_EMFILE_error_proc((unsigned long)files);
-#endif
 		goto out;
 	}
 
@@ -645,10 +624,6 @@ void __fd_install(struct files_struct *files, unsigned int fd,
 	fdt = rcu_dereference_sched(files->fdt);
 	BUG_ON(fdt->fd[fd] != NULL);
 	rcu_assign_pointer(fdt->fd[fd], file);
-
-#if defined(CONFIG_SEC_FD_DETECT)
-	save_open_close_fdinfo(fd, true, current, files);
-#endif // END CONFIG_SEC_FD_DETECT
 	rcu_read_unlock_sched();
 }
 
@@ -674,12 +649,6 @@ int __close_fd(struct files_struct *files, unsigned fd)
 	file = fdt->fd[fd];
 	if (!file)
 		goto out_unlock;
-
-#if defined(CONFIG_SEC_FD_DETECT)
-	check_fd_invalid_close(fd, current, files, file);
-	save_open_close_fdinfo(fd, false, current, files);
-#endif // END CONFIG_SEC_FD_DETECT
-
 	rcu_assign_pointer(fdt->fd[fd], NULL);
 	__clear_close_on_exec(fd, fdt);
 	__put_unused_fd(files, fd);
@@ -727,7 +696,7 @@ void do_close_on_exec(struct files_struct *files)
 	spin_unlock(&files->file_lock);
 }
 
-static struct file *__fget(unsigned int fd, fmode_t mask)
+static struct file *__fget(unsigned int fd, fmode_t mask, unsigned int refs)
 {
 	struct files_struct *files = current->files;
 	struct file *file;
@@ -742,23 +711,32 @@ loop:
 		 */
 		if (file->f_mode & mask)
 			file = NULL;
-		else if (!get_file_rcu(file))
+		else if (!get_file_rcu_many(file, refs))
 			goto loop;
+		else if (__fcheck_files(files, fd) != file) {
+			fput_many(file, refs);
+			goto loop;
+		}
 	}
 	rcu_read_unlock();
 
 	return file;
 }
 
+struct file *fget_many(unsigned int fd, unsigned int refs)
+{
+	return __fget(fd, FMODE_PATH, refs);
+}
+
 struct file *fget(unsigned int fd)
 {
-	return __fget(fd, FMODE_PATH);
+	return __fget(fd, FMODE_PATH, 1);
 }
 EXPORT_SYMBOL(fget);
 
 struct file *fget_raw(unsigned int fd)
 {
-	return __fget(fd, 0);
+	return __fget(fd, 0, 1);
 }
 EXPORT_SYMBOL(fget_raw);
 
@@ -789,7 +767,7 @@ static unsigned long __fget_light(unsigned int fd, fmode_t mask)
 			return 0;
 		return (unsigned long)file;
 	} else {
-		file = __fget(fd, mask);
+		file = __fget(fd, mask, 1);
 		if (!file)
 			return 0;
 		return FDPUT_FPUT | (unsigned long)file;
@@ -930,9 +908,6 @@ SYSCALL_DEFINE3(dup3, unsigned int, oldfd, unsigned int, newfd, int, flags)
 		return -EINVAL;
 
 	if (newfd >= rlimit(RLIMIT_NOFILE)) {
-#ifdef CONFIG_SEC_DEBUG_FILE_LEAK
- 		sec_debug_EMFILE_error_proc((unsigned long)files);
-#endif
 		return -EBADF;
 	}
 

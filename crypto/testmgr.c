@@ -163,6 +163,13 @@ struct alg_test_desc {
 
 static unsigned int IDX[8] = { IDX1, IDX2, IDX3, IDX4, IDX5, IDX6, IDX7, IDX8 };
 
+static void hexdump(unsigned char *buf, unsigned int len)
+{
+	print_hex_dump(KERN_CONT, "", DUMP_PREFIX_OFFSET,
+			16, 1,
+			buf, len, false);
+}
+
 #ifdef CONFIG_CRYPTO_FIPS
 bool in_fips_err()
 {
@@ -176,17 +183,6 @@ void set_in_fips_err()
 }
 EXPORT_SYMBOL_GPL(set_in_fips_err);
 #endif
-
-#if FIPS_FUNC_TEST == 4
-void hexdump(unsigned char *buf, unsigned int len)
-#else
-static void hexdump(unsigned char *buf, unsigned int len)
-#endif
-{
-	print_hex_dump(KERN_CONT, "", DUMP_PREFIX_OFFSET,
-			16, 1,
-			buf, len, false);
-}
 
 static void tcrypt_complete(struct crypto_async_request *req, int err)
 {
@@ -3164,6 +3160,36 @@ static const struct alg_test_desc alg_test_descs[] = {
 			}
 		}
 	}, {
+		.alg = "ecb(speck128)",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = speck128_enc_tv_template,
+					.count = ARRAY_SIZE(speck128_enc_tv_template)
+				},
+				.dec = {
+					.vecs = speck128_dec_tv_template,
+					.count = ARRAY_SIZE(speck128_dec_tv_template)
+				}
+			}
+		}
+	}, {
+		.alg = "ecb(speck64)",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = speck64_enc_tv_template,
+					.count = ARRAY_SIZE(speck64_enc_tv_template)
+				},
+				.dec = {
+					.vecs = speck64_dec_tv_template,
+					.count = ARRAY_SIZE(speck64_dec_tv_template)
+				}
+			}
+		}
+	}, {
 		.alg = "ecb(tea)",
 		.test = alg_test_skcipher,
 		.suite = {
@@ -3911,6 +3937,36 @@ static const struct alg_test_desc alg_test_descs[] = {
 			}
 		}
 	}, {
+		.alg = "xts(speck128)",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = speck128_xts_enc_tv_template,
+					.count = ARRAY_SIZE(speck128_xts_enc_tv_template)
+				},
+				.dec = {
+					.vecs = speck128_xts_dec_tv_template,
+					.count = ARRAY_SIZE(speck128_xts_dec_tv_template)
+				}
+			}
+		}
+	}, {
+		.alg = "xts(speck64)",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = speck64_xts_enc_tv_template,
+					.count = ARRAY_SIZE(speck64_xts_enc_tv_template)
+				},
+				.dec = {
+					.vecs = speck64_xts_dec_tv_template,
+					.count = ARRAY_SIZE(speck64_xts_dec_tv_template)
+				}
+			}
+		}
+	}, {
 		.alg = "xts(twofish)",
 		.test = alg_test_skcipher,
 		.suite = {
@@ -4029,12 +4085,6 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 	if (i < 0 && j < 0)
 		goto notest;
 
-#if FIPS_FUNC_TEST == 3
-	// change@wtl.rsengott - FIPS mode self test Functional Test
-	if (fips_enabled)
-		printk(KERN_INFO "FIPS: %s: %s alg self test START in fips mode!\n",
-			driver, alg);
-#endif
 	if (fips_enabled && ((i >= 0 && !alg_test_descs[i].fips_allowed) ||
 			     (j >= 0 && !alg_test_descs[j].fips_allowed)))
 		goto non_fips_alg;

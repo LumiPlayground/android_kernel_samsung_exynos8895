@@ -31,10 +31,6 @@
 #include <asm/smp_plat.h>
 #include <asm/suspend.h>
 
-#if defined(CONFIG_SEC_MMIOTRACE) || defined(CONFIG_SEC_KWATCHER)
-#include <asm/debug-monitors.h>
-#endif
-
 static DEFINE_PER_CPU_READ_MOSTLY(u32 *, psci_power_state);
 
 static int __maybe_unused cpu_psci_cpu_init_idle(unsigned int cpu)
@@ -126,16 +122,6 @@ static int cpu_psci_cpu_boot(unsigned int cpu)
 	return err;
 }
 
-static void cpu_psci_cpu_postboot(void)
-{
-#ifdef CONFIG_SEC_KWATCHER
-	restore_debug_monitors();
-#endif
-#ifdef CONFIG_SEC_MMIOTRACE
-	check_and_clear_os_lock();
-#endif
-}
-
 #ifdef CONFIG_HOTPLUG_CPU
 static int cpu_psci_cpu_disable(unsigned int cpu)
 {
@@ -152,7 +138,6 @@ static int cpu_psci_cpu_disable(unsigned int cpu)
 
 static void cpu_psci_cpu_die(unsigned int cpu)
 {
-	int ret;
 	/*
 	 * There are no known implementations of PSCI actually using the
 	 * power state field, pass a sensible default for now.
@@ -160,14 +145,13 @@ static void cpu_psci_cpu_die(unsigned int cpu)
 	u32 state = PSCI_POWER_STATE_TYPE_POWER_DOWN <<
 		    PSCI_0_2_POWER_STATE_TYPE_SHIFT;
 
-	ret = psci_ops.cpu_off(state);
-
-	pr_crit("unable to power off CPU%u (%d)\n", cpu, ret);
+	psci_ops.cpu_off(state);
 }
 
 static int cpu_psci_cpu_kill(unsigned int cpu)
 {
-	int err, i;
+	int err;
+	unsigned long start, end;
 
 	if (!psci_ops.affinity_info)
 		return 0;
@@ -177,16 +161,18 @@ static int cpu_psci_cpu_kill(unsigned int cpu)
 	 * while it is dying. So, try again a few times.
 	 */
 
-	for (i = 0; i < 10; i++) {
+	start = jiffies;
+	end = start + msecs_to_jiffies(100);
+	do {
 		err = psci_ops.affinity_info(cpu_logical_map(cpu), 0);
 		if (err == PSCI_0_2_AFFINITY_LEVEL_OFF) {
-			pr_info("CPU%d killed.\n", cpu);
+			pr_info("CPU%d killed (polled %d ms)\n", cpu,
+				jiffies_to_msecs(jiffies - start));
 			return 0;
 		}
 
-		msleep(10);
-		pr_info("Retrying again to check for CPU kill\n");
-	}
+		usleep_range(100, 1000);
+	} while (time_before(jiffies, end));
 
 	pr_warn("CPU%d may not have shut down cleanly (AFFINITY_INFO reports %d)\n",
 			cpu, err);
@@ -285,7 +271,6 @@ const struct cpu_operations cpu_psci_ops = {
 	.cpu_init	= cpu_psci_cpu_init,
 	.cpu_prepare	= cpu_psci_cpu_prepare,
 	.cpu_boot	= cpu_psci_cpu_boot,
-	.cpu_postboot	= cpu_psci_cpu_postboot,
 #ifdef CONFIG_HOTPLUG_CPU
 	.cpu_disable	= cpu_psci_cpu_disable,
 	.cpu_die	= cpu_psci_cpu_die,

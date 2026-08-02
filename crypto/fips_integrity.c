@@ -153,9 +153,6 @@ update_hash (struct hash_desc * desc, unsigned char * start_addr, unsigned int s
 	unsigned int bytes_remaining;
 	unsigned int bytes;
 	int ret = -1;
-#if FIPS_FUNC_TEST == 2
-	static int total = 0;
-#endif
 
 	buf = kmalloc (PAGE_SIZE, GFP_KERNEL);
 
@@ -179,14 +176,6 @@ update_hash (struct hash_desc * desc, unsigned char * start_addr, unsigned int s
 
 		sg_init_one (&sg, buf, bytes);
 
-#if FIPS_FUNC_TEST == 2
-		if (total == 0)
-		{
-			printk(KERN_INFO "FIPS : Failing Integrity Test\n");		
-			buf[bytes / 2] += 1;
-		}
-#endif
-
 		ret = crypto_hash_update (desc, &sg, bytes);
 
 		if (ret)
@@ -200,10 +189,6 @@ update_hash (struct hash_desc * desc, unsigned char * start_addr, unsigned int s
 		cur += bytes;
 
 		bytes_remaining -= bytes;
-
-#if FIPS_FUNC_TEST == 2
-		total += bytes;
-#endif
 	}
 
 	//printk(KERN_INFO "FIPS : total bytes = %d\n", total);		

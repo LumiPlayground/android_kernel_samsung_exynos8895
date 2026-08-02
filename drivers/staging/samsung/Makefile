@@ -36,14 +36,8 @@ obj-$(CONFIG_SEC_BOOTSTAT)	+= sec_bootstat.o
 obj-$(CONFIG_SEC_INITCALL_DEBUG)+= sec_initcall_debug.o
 obj-$(CONFIG_ARGOS)		+= sec_argos.o
 
-obj-$(CONFIG_SEC_MMIOTRACE)	+= sec_mmiotrace.o
-obj-$(CONFIG_SEC_KWATCHER)	+= sec_kwatcher.o sec_unit_test_core.o sec_kwatcher_ut_config.o sec_kwatcher_ut_hit.o sec_kwatcher_ut_compare.o
-
 # Samsung sec NAD Feature
 obj-$(CONFIG_SEC_NAD)		+= sec_nad.o
-
-# Samsung sec invalid file descriptor close detection feature
-obj-$(CONFIG_SEC_FD_DETECT) += sec_fd_detect.o
 
 # Samsung TN NAD Balancer Feature
 obj-$(CONFIG_SEC_NAD_BALANCER)		+= sec_nad_balancer.o

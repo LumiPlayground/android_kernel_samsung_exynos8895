@@ -1,13 +1,13 @@
 /*
- * SAMSUNG EXYNOS device tree source for reserved-memory
+ * SAMSUNG EXYNOS8895 SoC device tree source for reserved-memory
  *
- * Copyright (c) 2015 Samsung Electronics Co., Ltd.
+ * Copyright (c) 2016 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
-*/
+ */
 
 /memreserve/ 0xE0000000 0x1900000;
 
@@ -20,11 +20,6 @@
 		dram_test {
 			compatible = "exynos8895,dram_test";
 			reg = <0x0 0x80002000 0x2000>;
-		};
-
-		tima_mem: tima_region@0xB1000000 {
-			compatible = "removed-dma-pool";
-			reg = <0x0 0xB1000000 0x200000>;
 		};
 
 		seclog_mem {
