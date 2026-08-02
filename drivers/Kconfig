@@ -222,7 +222,7 @@ source "drivers/ccic/Kconfig"
 
 source "drivers/nfc/Kconfig"
 
-source "drivers/sensorhub/brcm/Kconfig"
+source "drivers/sensorhub/Kconfig"
 
 source "drivers/optics/Kconfig"
 

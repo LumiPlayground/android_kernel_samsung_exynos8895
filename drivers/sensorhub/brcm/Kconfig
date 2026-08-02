@@ -5,32 +5,10 @@ config SENSORS_SYSFS
 	tristate "Sensors sysfs"
 	help
 	  Support sysfs for sensors.
-          If you say yes here you get sysfs support for
+	  If you say yes here you get sysfs support for
 	  sensor factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called sensors_core.
-
-config SENSORS_SSP
-	tristate "Sensors ssp"
-	default n
-	depends on SPI
-	help
-	  ssp driver for sensor hub.
-          If you say yes here you get ssp support for
-	  sensor hub.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
-
-config SENSORS_SSP_BBD
-	tristate "Sensors ssp brcm"
-	default n
-	depends on SPI
-	help
-	  ssp driver for sensor hub.
-          If you say yes here you get ssp support for
-	  sensor hub.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
 
 config SENSORS_SSP_MPU6500
 	tristate "Sensors ssp mpu6500"
@@ -38,7 +16,7 @@ config SENSORS_SSP_MPU6500
 	depends on SPI
 	help
 	  mpu6500 file for factory test in ssp driver.
-          If you say yes here you get mpu6500 support for
+	  If you say yes here you get mpu6500 support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -49,7 +27,7 @@ config SENSORS_SSP_ICM20610
 	depends on SPI
 	help
 	  icm20610 file for factory test in ssp driver.
-          If you say yes here you get icm20610 support for
+	  If you say yes here you get icm20610 support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -60,7 +38,7 @@ config SENSORS_SSP_BMI058
 	depends on SPI
 	help
 	  bmi058 file for factory test in ssp driver.
-          If you say yes here you get bmi058 support for
+	  If you say yes here you get bmi058 support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -71,7 +49,7 @@ config SENSORS_SSP_K6DS3TR
 	depends on SPI
 	help
 	  k6ds3tr file for factory test in ssp driver.
-          If you say yes here you get k6ds3tr support for
+	  If you say yes here you get k6ds3tr support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -89,7 +67,7 @@ config SENSORS_SSP_AK09911
 	depends on SPI
 	help
 	  ak09911 file for factory test and doeplus in ssp driver.
-          If you say yes here you get ak09911 support for
+	  If you say yes here you get ak09911 support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -100,7 +78,7 @@ config SENSORS_SSP_YAS532
 	depends on SPI
 	help
 	  yas532 file for factory test in ssp driver.
-          If you say yes here you get yas532 support for
+	  If you say yes here you get yas532 support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -111,7 +89,7 @@ config SENSORS_SSP_YAS537
 	depends on SPI
 	help
 	  yas537 file for factory test in ssp driver.
-          If you say yes here you get yas537 support for
+	  If you say yes here you get yas537 support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -122,7 +100,7 @@ config SENSORS_SSP_YAS539
 	depends on SPI
 	help
 	  yas539 file for factory test in ssp driver.
-          If you say yes here you get yas539 support for
+	  If you say yes here you get yas539 support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -133,7 +111,7 @@ config SENSORS_SSP_MAGNETIC_COMMON
 	depends on SPI
 	help
 	  magnetic file for factory test in ssp driver.
-          If you say yes here you get magnetic common support for
+	  If you say yes here you get magnetic common support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -144,7 +122,7 @@ config SENSORS_SSP_CM3320
 	depends on SPI
 	help
 	  cm3320 file for factory test in ssp driver.
-          If you say yes here you get cm3320 support for
+	  If you say yes here you get cm3320 support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -155,7 +133,7 @@ config SENSORS_SSP_MAX88920
 	depends on SPI
 	help
 	  max88920 file for factory test in ssp driver.
-          If you say yes here you get max88920 support for
+	  If you say yes here you get max88920 support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -166,7 +144,7 @@ config SENSORS_SSP_MAX88921
 	depends on SPI
 	help
 	  max88921 file for factory test in ssp driver.
-          If you say yes here you get max88921 support for
+	  If you say yes here you get max88921 support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -177,7 +155,7 @@ config SENSORS_SSP_LPS25H
 	depends on SPI
 	help
 	  lps25h file for factory test in ssp driver.
-          If you say yes here you get lps25h support for
+	  If you say yes here you get lps25h support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -195,7 +173,7 @@ config SENSORS_SSP_SHTC1
 	depends on SPI
 	help
 	  shtc1 file for factory test in ssp driver.
-          If you say yes here you get shtc1 support for
+	  If you say yes here you get shtc1 support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -206,7 +184,7 @@ config SENSORS_SSP_SHTC1_VER
 	depends on SENSORS_SSP_SHTC1
 	help
 	  shtc1 version for temphumid factory test in ssp driver.
-          If you give version name here you get shtc1 version for
+	  If you give version name here you get shtc1 version for
 	  lcd test.
 
 config SENSORS_SSP_STM32F401
@@ -215,7 +193,7 @@ config SENSORS_SSP_STM32F401
 	depends on SPI
 	help
 	  stm32f401 file for factory test in ssp driver.
-          If you say yes here you get stm32f401 support for
+	  If you say yes here you get stm32f401 support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -226,7 +204,7 @@ config SENSORS_SSP_SENSORHUB
 	depends on SPI
 	help
 	  ssp sensor hub driver for sensor hub.
-          If you say yes here you get ssp support for
+	  If you say yes here you get ssp support for
 	  sensor hub.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -237,7 +215,7 @@ config SENSORS_SSP_MOBEAM
 	depends on I2C
 	help
 	  mobeam file for ssp driver.
-          If you say yes here you get mobeam support using TMG399x.
+	  If you say yes here you get mobeam support using TMG399x.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
 
@@ -247,7 +225,7 @@ config SENSORS_SSP_IRLED
 	depends on I2C
 	help
 	  mobeam file for ssp driver.
-          If you say yes here you get irled support using TMD4903.
+	  If you say yes here you get irled support using TMD4903.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
 
@@ -265,7 +243,7 @@ config SENSORS_SSP_TMD4905
 	depends on SPI
 	help
 	  This option enables tmd4905 proxitmity sensor.
-	  
+
 config SENSORS_SSP_TMD4906
 	tristate "Sensors ssp tmd4906"
 	default n
@@ -286,7 +264,7 @@ config SENSORS_SSP_TMD4903
 	depends on SPI
 	help
 	  tmd4903 file for factory test in ssp driver.
-          If you say yes here you get tmd4903 support for
+	  If you say yes here you get tmd4903 support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -296,8 +274,8 @@ config SENSORS_SSP_TMG399x
 	default n
 	depends on SPI
 	help
-	  tmd4903 file for factory test in ssp driver.
-          If you say yes here you get tmd4903 support for
+	  tmg399x file for factory test in ssp driver.
+	  If you say yes here you get tmg399x support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -308,13 +286,13 @@ config SENSORS_SSP_CM3323
 	depends on SPI
 	help
 	  This option enables cm3323 proxitmity sensor.
-      
+
 config SENSORS_SSP_PROX_SETTING
 	tristate "Sensors ssp prox setting"
 	default n
 	depends on SPI
 	help
-	   If you say yes here you get support for the proximity setting.
+	  If you say yes here you get support for the proximity setting.
 
 config SENSORS_SSP_PROX_AUTOCAL_AMS
 	tristate "Sensors ssp proxautocal ams"
@@ -322,18 +300,18 @@ config SENSORS_SSP_PROX_AUTOCAL_AMS
 	depends on SPI
 	help
 	  prox_autocal_ams file for factory test in ssp driver.
-          If you say yes here you get prox_autocal_ams support for
+	  If you say yes here you get prox_autocal_ams support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
-	  
+
 config SENSORS_SSP_PROX_FACTORYCAL
 	tristate "Sensors ssp prox factorycal"
 	default n
 	depends on SPI
 	help
 	  prox_factorycal file for factory test in ssp driver.
-          If you say yes here you get prox_autocal_ams support for
+	  If you say yes here you get prox_autocal_ams support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -372,26 +350,15 @@ config SENSORS_SSP_SX9306
 	depends on SPI
 	help
 	  sx9306 file for factory test in ssp driver.
-          If you say yes here you get sx9306 support for
-	  factory test.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
-
-config SENSORS_SSP_SX9306
-	tristate "SX9306 Grip sensor"
-	default n
-	depends on SPI
-	help
-	  sx9306 file for factory test in ssp driver.
-          If you say yes here you get sx9306 support for
+	  If you say yes here you get sx9306 support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
 
 config SENSORS_SX9310
-	depends on I2C
 	tristate "SX9310 driver"
 	default n
+	depends on I2C
 	help
 	  Say Y here if you use sx9310.
 	  This option enables grip sensors using
@@ -399,9 +366,9 @@ config SENSORS_SX9310
 	  Say N here if you do not use sx9310.
 
 config SENSORS_SX9310_USE_2ND_CH
-	depends on I2C
-	tristate "SX9310 driver"
+	tristate "SX9310 second channel support"
 	default n
+	depends on SENSORS_SX9310
 	help
 	  Say Y here if you use sx9310 second channel.
 	  This option enables grip sensors using
@@ -419,54 +386,55 @@ config SENSORS_SX9310_NORMAL_TOUCH_THRESHOLD
 config SENSORS_SX9310_NORMAL_TOUCH_THRESHOLD_CH2
 	int "SX9310 Grip sensor threshold for init touch"
 	depends on SENSORS_SX9310
+	depends on SENSORS_SX9310_USE_2ND_CH
 	default "246"
 	help
 	  This value is the standard of normal touch ch2 using
 	  SemTech sx9310 device driver.
 
 config SENSORS_SX9310_CP_LDO_CONTROL
-	depends on SENSORS_SX9310
-	tristate "SX9310 driver"
+	tristate "SX9310 CP LDO control"
 	default n
+	depends on SENSORS_SX9310
 	help
 	  Say Y here if you control grip power in cp.
 	  Say N here if you do not use grip power in cp.
 
 config SENSORS_HERO2
-	depends on SENSORS_SX9310
-	tristate "SX9310 driver"
+	tristate "HERO2 grip sensor variant"
 	default n
+	depends on SENSORS_SX9310
 	help
 	  Say Y here if you accept HERO2 Grip sensor
 	  Say N here if you do not access HERO2 Grip Sensor
 
 config SENSORS_CAN
-	depends on SENSORS_SX9310
-	tristate "SX9310 driver"
+	tristate "HERO CAN grip sensor variant"
 	default n
+	depends on SENSORS_SX9310
 	help
 	  Say Y here if you accept HERO CAN Grip sensor
 	  Say N here if you do not access HERO CAN Grip Sensor
 
-config SENSORS_SX9320_MULTI
-	depends on I2C
-	tristate "SX9320 driver"
-	default n
-	help
-	  Say Y here if you use four sx9320 multi.
-	  This option enables additional grip sensors using
-	  SemTech sx9320 device driver especially in multi grip.
-	  Say N here if you do not use four sx9320.
-
 config SENSORS_SX9320
-	depends on I2C
 	tristate "SX9320 driver"
 	default n
+	depends on I2C
 	help
 	  Say Y here if you use sx9320.
 	  This option enables grip sensors using
 	  SemTech sx9320 device driver.
 	  Say N here if you do not use sx9320.
+
+config SENSORS_SX9320_MULTI
+	tristate "SX9320 multi-channel driver"
+	default n
+	depends on SENSORS_SX9320
+	help
+	  Say Y here if you use four sx9320 multi.
+	  This option enables additional grip sensors using
+	  SemTech sx9320 device driver especially in multi grip.
+	  Say N here if you do not use four sx9320.
 
 config SENSORS_SX9320_NORMAL_TOUCH_THRESHOLD
 	int "SX9320 Grip sensor threshold for normal touch"
@@ -477,73 +445,29 @@ config SENSORS_SX9320_NORMAL_TOUCH_THRESHOLD
 	  SemTech sx9320 device driver.
 
 config SENSORS_SSP_INTERRUPT_GYRO_SENSOR
-         tristate "Sensors ssp interrpt gyro"
-         default n
-         depends on SPI
-         help
-         	If you want to use interrupt gyro data, it should be set.
+	tristate "Sensors ssp interrupt gyro"
+	default n
+	depends on SPI
+	help
+	  If you want to use interrupt gyro data, it should be set.
 
 config SENSORS_SSP_HIFI_BATCHING
-         tristate "Sensors ssp hifi batching"
-         default n
-         depends on SPI
-         help
-         	If you want to use hifi batching, it should be set.
-         	
+	tristate "Sensors ssp hifi batching"
+	default n
+	depends on SPI
+	help
+	  If you want to use hifi batching, it should be set.
+
 config SENSORS_SSP_VLTE
 	tristate "V Project"
 	default n
 	depends on SPI
 	help
 	  Binary file for ssp driver.
-          If you say yes here you get V project support for
-       	  factory test.
- 	  To compile this driver as a module, choose M here: the
- 	  module will be called ssp.
-
-config SENSORS_SSP_NOBLELTE
-	tristate "NOBLE Project"
-	default n
-	depends on SPI
-	help
-	  Binary file for ssp driver.
-          If you say yes here you get NOBLE project support for
-       	  factory test.
- 	  To compile this driver as a module, choose M here: the
- 	  module will be called ssp.
- 	  
-config SENSORS_SSP_ZENLTE
-	tristate "ZEN Project"
-	default n
-	depends on SPI
-	help
-	  Binary file for ssp driver.
-          If you say yes here you get ZEN project support for
-       	  factory test.
- 	  To compile this driver as a module, choose M here: the
- 	  module will be called ssp.
-
-config SENSORS_SSP_LUCKY
-	tristate "LUCKY Project"
-	default n
-	depends on SPI
-	help
-	  Binary file for ssp driver.
-          If you say yes here you get LUCKY project support for
-       	  factory test.
- 	  To compile this driver as a module, choose M here: the
- 	  module will be called ssp.
-
-config SENSORS_SSP_GRACE
-	tristate "GRACE Project"
-	default n
-	depends on SPI
-	help
-	  Binary file for ssp driver.
-          If you say yes here you get GRACE project support for
-       	  factory test.
- 	  To compile this driver as a module, choose M here: the
- 	  module will be called ssp.
+	  If you say yes here you get V project support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
 
 config SENSORS_SSP_DREAM
 	tristate "DREAM Project"
@@ -551,32 +475,32 @@ config SENSORS_SSP_DREAM
 	depends on SPI
 	help
 	  Binary file for ssp driver.
-          If you say yes here you get GRACE project support for
-       	  factory test.
- 	  To compile this driver as a module, choose M here: the
- 	  module will be called ssp.
-      
+	  If you say yes here you get DREAM project support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
 config SENSORS_SSP_GREAT
-	tristate "DREAM Project"
+	tristate "GREAT Project"
 	default n
 	depends on SPI
 	help
 	  Binary file for ssp driver.
-          If you say yes here you get GRACE project support for
-       	  factory test.
- 	  To compile this driver as a module, choose M here: the
- 	  module will be called ssp.
-      
+	  If you say yes here you get GREAT project support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
 config SENSORS_SSP_LUGE
-	tristate "DREAM Project"
+	tristate "LUGE Project"
 	default n
 	depends on SPI
 	help
 	  Binary file for ssp driver.
-          If you say yes here you get GRACE project support for
-       	  factory test.
- 	  To compile this driver as a module, choose M here: the
- 	  module will be called ssp.
+	  If you say yes here you get LUGE project support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
 
 config SSP_MOTOR_CALLBACK
 	tristate "Sensors support motor"
@@ -584,17 +508,19 @@ config SSP_MOTOR_CALLBACK
 	depends on SPI
 	help
 	  If you want to use royce project, it should be set.
-      
+
 config SSP_REGISTER_RW
 	tristate "SensorHub support Register RW"
 	default n
+	depends on SPI
 	help
 	  If you want to use Register RW sysfs, it should be set.
-      
+
 config SSP_SUPPORT_MAGNETIC_OVERFLOW
-	tristate "SensorHub support Register RW"
+	tristate "SensorHub support magnetic overflow"
 	default n
+	depends on SPI
 	help
-	  If you want to use Register RW sysfs, it should be set.
+	  If you want to use magnetic overflow handling, it should be set.
 
 source "drivers/sensorhub/brcm/bbdpl/Kconfig"
