@@ -1,0 +1,29 @@
+#
+# sensor drivers configuration
+#
+
+comment "Sensor hub configs"
+
+config SENSORS_SSP
+	tristate "Sensors ssp"
+	default n
+	depends on SPI
+	help
+	  ssp driver for sensor hub.
+	  If you say yes here you get ssp support for
+	  sensor hub.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_BBD
+	tristate "Sensors ssp brcm"
+	default n
+	depends on SENSORS_SSP
+	help
+	  ssp driver for brcm sensor hub.
+	  If you say yes here you get ssp support for
+	  brcm sensor hub.
+
+if SENSORS_SSP_BBD
+source "drivers/sensorhub/brcm/Kconfig"
+endif # SENSORS_SSP_BBD
