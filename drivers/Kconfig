@@ -220,7 +220,7 @@ source "drivers/vision/Kconfig"
 
 source "drivers/ccic/Kconfig"
 
-source "drivers/nfc/Kconfig"
+source "drivers/nfc/samsung/Kconfig"
 
 source "drivers/sensorhub/stm/Kconfig"
 
