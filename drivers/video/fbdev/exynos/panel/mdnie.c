@@ -936,7 +936,7 @@ static ssize_t night_mode_store(struct device *dev,
 	if (ret < 0)
 		return ret;
 
-	if (level < 0 || level >= MAX_NIGHT_LEVEL)
+	if (level < 0 || level >= mdnie->props.num_night_level)
 		return -EINVAL;
 
 	mutex_lock(&mdnie->lock);
