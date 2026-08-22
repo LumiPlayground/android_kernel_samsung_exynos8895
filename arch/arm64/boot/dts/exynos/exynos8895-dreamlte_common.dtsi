@@ -148,36 +148,6 @@
 			samsung,pin-pud = <0>;
 			samsung,pin-drv = <0>;
 		};
-
-		hall_irq: hall-irq {
-			samsung,pins = "gpa0-1";
-			samsung,pin-function = <0xf>;
-			samsung,pin-pud = <0>;
-			samsung,pin-drv = <0>;
-		};
-
-		certify_hall_irq: certify-hall-irq {
-			samsung,pins = "gpa0-2";
-			samsung,pin-function = <0xf>;
-			samsung,pin-pud = <0>;
-			samsung,pin-drv = <0>;
-		};
-	};
-
-	hall {
-		status = "okay";
-		compatible = "hall";
-		pinctrl-names = "default";
-		pinctrl-0 = <&hall_irq>;
-		hall,gpio_flip_cover = <&gpa0 1 0>;
-	};
-
-	certify_hall {
-		status = "okay";
-		compatible = "certify_hall";
-		pinctrl-names = "default";
-		pinctrl-0 = <&certify_hall_irq>;
-		certify_hall,gpio_certify_cover = <&gpa0 2 0>;
 	};
 
 	pinctrl@11430000 {
@@ -849,19 +819,49 @@
 
 	pinctrl@164B0000 {
 		dwmmc2_cd_ext_irq: dwmmc2_cd_ext_irq {
-			   samsung,pins = "gpa1-5";
-			   samsung,pin-function = <0xf>;
-			   samsung,pin-pud = <0>;
-			   samsung,pin-drv = <4>;
+			samsung,pins = "gpa1-5";
+			samsung,pin-function = <0xf>;
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <4>;
 		};
 
 		dwmmc2_tflash_en: dwmmc2_tflash_en {
-			   samsung,pins = "gpb1-1";
-			   samsung,pin-function = <0x1>;
-			   samsung,pin-val = <1>;
-			   samsung,pin-pud = <3>;
-			   samsung,pin-drv = <4>;
+			samsung,pins = "gpb1-1";
+			samsung,pin-function = <0x1>;
+			samsung,pin-val = <1>;
+			samsung,pin-pud = <3>;
+			samsung,pin-drv = <4>;
 		};
+
+		hall_irq: hall-irq {
+			samsung,pins = "gpa0-1";
+			samsung,pin-function = <0xf>;
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <0>;
+		};
+
+		certify_hall_irq: certify-hall-irq {
+			samsung,pins = "gpa0-2";
+			samsung,pin-function = <0xf>;
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <0>;
+		};
+	};
+
+	hall {
+		status = "okay";
+		compatible = "hall";
+		pinctrl-names = "default";
+		pinctrl-0 = <&hall_irq>;
+		hall,gpio_flip_cover = <&gpa0 1 0>;
+	};
+
+	certify_hall {
+		status = "okay";
+		compatible = "certify_hall";
+		pinctrl-names = "default";
+		pinctrl-0 = <&certify_hall_irq>;
+		certify_hall,gpio_certify_cover = <&gpa0 2 0>;
 	};
 
 	dwmmc2@11500000 {
@@ -916,13 +916,13 @@
 	};
 
 	sd_fixed_vcc: fixedregulator@3 {
-		      compatible = "regulator-fixed";
-		      regulator-name = "vmmc";
-		      gpio = <&gpb1 1 1>;
-		      regulator-min-microvolt = <2800000>;
-		      regulator-max-microvolt = <2800000>;
-		      enable-active-high;
-		      regulator-initial-mode = <0>;
+		compatible = "regulator-fixed";
+		regulator-name = "vmmc";
+		gpio = <&gpb1 1 1>;
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		enable-active-high;
+		regulator-initial-mode = <0>;
 	};
 
 	dsim_0: dsim@0x12870000 {
@@ -1015,56 +1015,6 @@
 		hs-regulator = "vdd_ldo6";
 		ss-regulator = "vdd_ldo10";
 		dp-regulator = "VDD_DP_1P8";
-	};
-
-	hsi2c_23: hsi2c@108E0000 {
-		status = "okay";
-		samsung,reset-before-trans;
-		touchscreen@49 {
-			compatible = "stm,fts_touch";
-			reg = <0x49>;
-			pinctrl-names = "on_state", "off_state";
-			pinctrl-0 = <&attn_irq>;
-			pinctrl-1 = <&attn_input>;
-			pressure-sensor = "Y";
-			stm,tsp-icid_gpio = <&gpe6 5 0>;
-			stm,icid_match_value = <0>;
-			stm,irq_gpio = <&gpa1 0 0>;
-			stm,irq_type = <8200>;
-			stm,max_coords = <1439 2959>;	/* x y */
-			stm,regulator_dvdd = "tsp_io";
-			stm,regulator_avdd = "tsp_avdd";
-			stm,project_name = "Dream1", "G950";
-			stm,firmware_name = "tsp_stm/fts9cd56_dream1.fw", "tsp_stm/fts9cd56_dream1.fw";
-			stm,device_gpio = <&gpa4 6 0>;
-			support_dex_mode;
-		};
-	};
-
-	hsi2c_23: hsi2c@108E0000 {
-		status = "okay";
-		samsung,reset-before-trans;
-//		samsung,stop-after-trans;
-		touchscreen@48 {
-			compatible = "sec,sec_ts";
-			reg = <0x48>;
-			pinctrl-names = "on_state", "off_state";
-			pinctrl-0 = <&attn_irq>;
-			pinctrl-1 = <&attn_input>;
-			pressure-sensor = "Y";
-			sec,irq_gpio = <&gpa1 0 0>;
-			sec,irq_type = <8200>;
-			sec,max_coords = <4095 4095>;
-			sec,mis_cal_check = <1>;
-			sec,regulator_dvdd = "tsp_io";
-			sec,regulator_avdd = "tsp_avdd";
-			sec,regulator_boot_on;
-			sec,pat_function = <2>;
-			sec,afe_base = <0x0121>;
-			sec,project_name = "Dream1", "G950";
-			sec,firmware_name = "tsp_sec/y761_dream1_nosync.fw";
-			support_dex_mode;
-		};
 	};
 
 	hsi2c_24: hsi2c@108F0000 {
@@ -1953,22 +1903,6 @@
 		flash-gpio = <&gpc0 1 0x1>;
 	};
 
-	sec_abc {
-		compatible = "samsung,sec_abc";
-		status = "okay";
-
-		gpu {
-			gpu,label="GPU fault";
-			gpu,threshold_count=<20>;
-			gpu,threshold_time=<1200>;
-		};
-		aicl {
-			aicl,label="battery aicl";
-			aicl,threshold_count=<5>;
-			aicl,threshold_time=<300>;
-		};
-	};
-
 	fimc_is@13140000 {
 		pinctrl-names = "default","release";
 		pinctrl-0 = <&fimc_is_flash_is &fimc_is_mclk0_out &fimc_is_mclk1_out &fimc_is_mclk2_out &fimc_is_mclk3_out>;
@@ -2011,7 +1945,7 @@
 				ois = <0>;                      /* 0 : N , 1 : Y  */
 				valid = <1>;					/* 0 : INVALID , 1 : VALID   */
 		        };
-		    camera_info2 {                          // 2 : tele
+			camera_info2 {                          // 2 : tele
 				valid = <0>;					/* 0 : INVALID , 1 : VALID   */
 		        };
 			camera_info3 {				// 3 : iris
@@ -2887,7 +2821,7 @@
 		mclk_ch = <1>;
 		sensor_i2c_ch = <1>; /* I2C 1 */
 		sensor_i2c_addr = <0x6A>;
-		
+
 		use_initial_ae;
 
 		gpio_mclk = <&gpk0 1 0x1>;
@@ -3145,6 +3079,56 @@
 		};
 	};
 
+	hsi2c_23: hsi2c@108E0000 {
+		status = "okay";
+		samsung,reset-before-trans;
+		touchscreen@49 {
+			compatible = "stm,fts_touch";
+			reg = <0x49>;
+			pinctrl-names = "on_state", "off_state";
+			pinctrl-0 = <&attn_irq>;
+			pinctrl-1 = <&attn_input>;
+			pressure-sensor = "Y";
+			stm,tsp-icid_gpio = <&gpe6 5 0>;
+			stm,icid_match_value = <0>;
+			stm,irq_gpio = <&gpa1 0 0>;
+			stm,irq_type = <8200>;
+			stm,max_coords = <1439 2959>;	/* x y */
+			stm,regulator_dvdd = "tsp_io";
+			stm,regulator_avdd = "tsp_avdd";
+			stm,project_name = "Dream1", "G950";
+			stm,firmware_name = "tsp_stm/fts9cd56_dream1.fw", "tsp_stm/fts9cd56_dream1.fw";
+			stm,device_gpio = <&gpa4 6 0>;
+			support_dex_mode;
+		};
+	};
+
+	hsi2c_23: hsi2c@108E0000 {
+		status = "okay";
+		samsung,reset-before-trans;
+//		samsung,stop-after-trans;
+		touchscreen@48 {
+			compatible = "sec,sec_ts";
+			reg = <0x48>;
+			pinctrl-names = "on_state", "off_state";
+			pinctrl-0 = <&attn_irq>;
+			pinctrl-1 = <&attn_input>;
+			pressure-sensor = "Y";
+			sec,irq_gpio = <&gpa1 0 0>;
+			sec,irq_type = <8200>;
+			sec,max_coords = <4095 4095>;
+			sec,mis_cal_check = <1>;
+			sec,regulator_dvdd = "tsp_io";
+			sec,regulator_avdd = "tsp_avdd";
+			sec,regulator_boot_on;
+			sec,pat_function = <2>;
+			sec,afe_base = <0x0121>;
+			sec,project_name = "Dream1", "G950";
+			sec,firmware_name = "tsp_sec/y761_dream1_nosync.fw";
+			support_dex_mode;
+		};
+	};
+
 	hsi2c_27: hsi2c@10920000 {
 		gpios = <&gpe4 0 0 &gpe4 1 0>;
 		status = "okay";
@@ -3255,6 +3239,22 @@
 				/* default panel */
 				0x000000 0x000000 0x0   /* not found : s6e3ha6_dream_a3_da_default */
 			>;
+		};
+	};
+
+	sec_abc {
+		compatible = "samsung,sec_abc";
+		status = "okay";
+
+		gpu {
+			gpu,label="GPU fault";
+			gpu,threshold_count=<20>;
+			gpu,threshold_time=<1200>;
+		};
+		aicl {
+			aicl,label="battery aicl";
+			aicl,threshold_count=<5>;
+			aicl,threshold_time=<300>;
 		};
 	};
 
