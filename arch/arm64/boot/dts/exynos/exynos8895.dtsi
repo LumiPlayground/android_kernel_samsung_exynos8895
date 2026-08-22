@@ -561,12 +561,12 @@
 	};
 
 	gic: interrupt-controller@10200000 {
-		compatible = "arm,cortex-a15-gic", "arm,cortex-a9-gic";
+		compatible = "arm,gic-400";
 		#interrupt-cells = <3>;
 		#address-cells = <0>;
 		interrupt-controller;
 		reg = <0x0 0x10201000 0x1000>,
-			<0x0 0x10202000 0x1000>,
+			<0x0 0x10202000 0x2000>,
 			<0x0 0x10204000 0x2000>,
 			<0x0 0x10206000 0x2000>;
 		interrupts = <1 9 0xf04>;
