@@ -140,6 +140,19 @@
 			samsung,pin-pud = <3>;
 			samsung,pin-drv = <3>;
 		};
+
+		max77865_irq: max77865-irq {
+			samsung,pins = "gpa1-6";
+			samsung,pin-function = <0xf>;
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <0>;
+		};
+
+		muic_irq: muic-irq {
+			samsung,pins = "gpa0-0";
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <0>;
+		};
 	};
 
 	pinctrl@11430000 {
@@ -821,18 +834,18 @@
 
 	pinctrl@164B0000 {
 		dwmmc2_cd_ext_irq: dwmmc2_cd_ext_irq {
-			   samsung,pins = "gpa1-5";
-			   samsung,pin-function = <0xf>;
-			   samsung,pin-pud = <0>;
-			   samsung,pin-drv = <4>;
+			samsung,pins = "gpa1-5";
+			samsung,pin-function = <0xf>;
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <4>;
 		};
 
 		dwmmc2_tflash_en: dwmmc2_tflash_en {
-			   samsung,pins = "gpb1-1";
-			   samsung,pin-function = <0x1>;
-			   samsung,pin-val = <1>;
-			   samsung,pin-pud = <3>;
-			   samsung,pin-drv = <4>;
+			samsung,pins = "gpb1-1";
+			samsung,pin-function = <0x1>;
+			samsung,pin-val = <1>;
+			samsung,pin-pud = <3>;
+			samsung,pin-drv = <4>;
 		};
 
 		hall_irq: hall-irq {
@@ -918,19 +931,52 @@
 	};
 
 	sd_fixed_vcc: fixedregulator@3 {
-		      compatible = "regulator-fixed";
-		      regulator-name = "vmmc";
-		      gpio = <&gpb1 1 1>;
-		      regulator-min-microvolt = <2800000>;
-		      regulator-max-microvolt = <2800000>;
-		      enable-active-high;
-		      regulator-initial-mode = <0>;
+		compatible = "regulator-fixed";
+		regulator-name = "vmmc";
+		gpio = <&gpb1 1 1>;
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		enable-active-high;
+		regulator-initial-mode = <0>;
 	};
 
 	dsim_0: dsim@0x12870000 {
 		lcd_info = <&s6e3ha6_great>;
 		/* lcd reset */
 		gpios = <&gpi1 0 0x1>;
+	};
+
+	hsi2c@10970000 {
+		status = "okay";
+
+		max77865@66 {
+			compatible = "maxim,max77865";
+			pinctrl-names = "default";
+			pinctrl-0 = <&max77865_irq &muic_irq &pwm_tout1>;
+			reg = <0x66>;
+			max77865,irq-gpio = <&gpa1 6 1>;
+			muic-universal,irq-gpio = <&gpa0 0 1>;
+			muic-universal,chip_name = "max,max77865";
+			max77865,wakeup;
+			muic,undefined_range;
+
+			regulators {
+				ESAFEOUT1 {
+					regulator-compatible = "safeout1";
+					regulator-name = "safeout1_range";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <4900000>;
+					regulator-boot-on;
+				};
+
+				ESAFEOUT2 {
+					regulator-compatible = "safeout2";
+					regulator-name = "safeout2_range";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <4900000>;
+				};
+			};
+		};
 	};
 
 	muic {
@@ -2849,7 +2895,7 @@
 		sensor_i2c_ch = <1>; /* I2C 1 */
 		sensor_i2c_addr = <0x20>;
                 
-                use_initial_ae;
+        use_initial_ae;
 
 		gpio_mclk = <&gpk0 1 0x1>;
 		gpio_reset = <&gpc0 3 0x1>; /* sensor reset */
@@ -2899,7 +2945,7 @@
 		sensor_i2c_ch = <1>; /* I2C 1 */
 		sensor_i2c_addr = <0x6A>;
 
-                use_initial_ae;
+        use_initial_ae;
 
 		gpio_mclk = <&gpk0 1 0x1>;
 		gpio_reset = <&gpc0 3 0x1>; /* sensor reset */
@@ -2949,7 +2995,7 @@
 		sensor_i2c_ch = <1>; /* I2C 1 */
 		sensor_i2c_addr = <0x20>;
                 
-                use_initial_ae;
+        use_initial_ae;
 
 		gpio_mclk = <&gpk0 1 0x1>;
 		gpio_reset = <&gpc0 3 0x1>; /* sensor reset */
@@ -2994,7 +3040,7 @@
 		sensor_i2c_ch = <1>; /* I2C 1 */
 		sensor_i2c_addr = <0x6A>;
 
-                use_initial_ae;
+        use_initial_ae;
 
 		gpio_mclk = <&gpk0 1 0x1>;
 		gpio_reset = <&gpc0 3 0x1>; /* sensor reset */
@@ -3022,7 +3068,6 @@
 			/* DUMMY */
 		};
 	};
-
 
 	#define SENSOR_SCENARIO_NORMAL		0
 	#define SENSOR_SCENARIO_VISION		1
@@ -3167,32 +3212,6 @@
 		};
 	};
 
-	hsi2c_27: hsi2c@10920000 {
-		gpios = <&gpe4 0 0 &gpe4 1 0>;
-		status = "okay";
-		clock-frequency = <400000>;
-		samsung,reset-before-trans;
-
-		pinctrl-names = "default","on_i2c","off_i2c";
-		pinctrl-0 = <&hsi2c27_bus_in>;
-		pinctrl-1 = <&hsi2c27_bus>;
-		pinctrl-2 = <&hsi2c27_bus_in>;
-
-		fimc-is-imx320@10 {
-			compatible = "samsung,exynos5-fimc-is-cis-imx320";
-			reg = <0x10>; /* 1 bit right shift */
-			id = <0 1>; /* matching sensor id */
-			setfile = "default";
-		};
-
-		fimc-is-3h1@35 {
-			compatible = "samsung,exynos5-fimc-is-cis-3h1";
-			reg = <0x35>; /* 1 bit right shift */
-			id = <0 1>; /* matching sensor id */
-			setfile = "default";
-		};
-	};
-
 	hsi2c_9: hsi2c@10480000 {
 		status = "okay";
 		sx9320-i2c@22 {
@@ -3224,37 +3243,6 @@
 			sx9320,afeph1 = <0x0>;
 			sx9320,afeph2 = <0x0>;
 			sx9320,afeph3 = <0x4>;
-		};
-	};
-
-	/* tsp-id:0 = lsi 9v */
-	/* tsp-id:1 = lsi 6v (default) */
-	hsi2c_23: hsi2c@108E0000 {
-		status = "okay";
-		samsung,reset-before-trans;
-		t-data-su = <2>;
-//		samsung,stop-after-trans;
-		touchscreen@48 {
-			compatible = "sec,sec_ts";
-			reg = <0x48>;
-			pinctrl-names = "on_state", "off_state";
-			pinctrl-0 = <&attn_irq>;
-			pinctrl-1 = <&attn_input>;
-			sec,tsp-id_gpio = <&gpe6 5 0>;
-			pressure-sensor = "Y";
-			sec,irq_gpio = <&gpa1 0 0>;
-			sec,irq_type = <8200>;
-			sec,max_coords = <4095 4095>;
-			sec,mis_cal_check = <1>;
-			sec,regulator_dvdd = "tsp_io";
-			sec,regulator_avdd = "tsp_avdd";
-			sec,regulator_boot_on;
-//			sec,always_lpmode = <1>;
-			sec,pat_function = <2>;
-			sec,afe_base = <0x0117>;
-			sec,project_name = "GREAT", "N950";
-			sec,firmware_name = "tsp_sec/y661_great.fw", "tsp_sec/y661_great.fw";
-			support_dex_mode;
 		};
 	};
 
@@ -3304,6 +3292,63 @@
 			wacom,support_dex_mode;
 			wacom,dex_rate = <10>;
 			wacom,table_swap_for_dex_station;
+		};
+	};
+
+	/* tsp-id:0 = lsi 9v */
+	/* tsp-id:1 = lsi 6v (default) */
+	hsi2c_23: hsi2c@108E0000 {
+		status = "okay";
+		samsung,reset-before-trans;
+		t-data-su = <2>;
+//		samsung,stop-after-trans;
+		touchscreen@48 {
+			compatible = "sec,sec_ts";
+			reg = <0x48>;
+			pinctrl-names = "on_state", "off_state";
+			pinctrl-0 = <&attn_irq>;
+			pinctrl-1 = <&attn_input>;
+			sec,tsp-id_gpio = <&gpe6 5 0>;
+			pressure-sensor = "Y";
+			sec,irq_gpio = <&gpa1 0 0>;
+			sec,irq_type = <8200>;
+			sec,max_coords = <4095 4095>;
+			sec,mis_cal_check = <1>;
+			sec,regulator_dvdd = "tsp_io";
+			sec,regulator_avdd = "tsp_avdd";
+			sec,regulator_boot_on;
+//			sec,always_lpmode = <1>;
+			sec,pat_function = <2>;
+			sec,afe_base = <0x0117>;
+			sec,project_name = "GREAT", "N950";
+			sec,firmware_name = "tsp_sec/y661_great.fw", "tsp_sec/y661_great.fw";
+			support_dex_mode;
+		};
+	};
+
+	hsi2c_27: hsi2c@10920000 {
+		gpios = <&gpe4 0 0 &gpe4 1 0>;
+		status = "okay";
+		clock-frequency = <400000>;
+		samsung,reset-before-trans;
+
+		pinctrl-names = "default","on_i2c","off_i2c";
+		pinctrl-0 = <&hsi2c27_bus_in>;
+		pinctrl-1 = <&hsi2c27_bus>;
+		pinctrl-2 = <&hsi2c27_bus_in>;
+
+		fimc-is-imx320@10 {
+			compatible = "samsung,exynos5-fimc-is-cis-imx320";
+			reg = <0x10>; /* 1 bit right shift */
+			id = <0 1>; /* matching sensor id */
+			setfile = "default";
+		};
+
+		fimc-is-3h1@35 {
+			compatible = "samsung,exynos5-fimc-is-cis-3h1";
+			reg = <0x35>; /* 1 bit right shift */
+			id = <0 1>; /* matching sensor id */
+			setfile = "default";
 		};
 	};
 

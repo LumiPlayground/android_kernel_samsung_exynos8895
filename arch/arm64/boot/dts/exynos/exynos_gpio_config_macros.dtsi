@@ -10,10 +10,10 @@
 */
 
 #define PIN_DAT_LOW		0
-#define PIN_DAT_HIGH		1
+#define PIN_DAT_HIGH	1
 
-#define PIN_PULL_NONE		0
-#define PIN_PULL_DOWN		1
+#define PIN_PULL_NONE	0
+#define PIN_PULL_DOWN	1
 #define PIN_PULL_UP		3
 
 #define PIN_DRV_LV1		0x0
