@@ -71,6 +71,7 @@
 			vfsspi-wog = <1>;
 			vfsspi-chipid = "NAMSAN";
 			vfsspi-csgpio = <&gpd1 2 0>;
+
 			controller-data {
 				samsung,spi-feedback-delay = <0>;
 				samsung,spi-chip-select-mode = <1>;

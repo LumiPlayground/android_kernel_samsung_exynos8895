@@ -279,12 +279,12 @@
 	};
 
 	psci {
-                compatible = "arm,psci";
-                method = "smc";
-                cpu_suspend = <0xC4000001>;
-                cpu_off = <0x84000002>;
-                cpu_on = <0xC4000003>;
-        };
+		compatible = "arm,psci";
+		method = "smc";
+		cpu_suspend = <0xC4000001>;
+		cpu_off = <0x84000002>;
+		cpu_on = <0xC4000003>;
+	};
 
 	cpu_hotplug {
 		compatible = "exynos,cpu_hotplug";
@@ -560,12 +560,12 @@
 		};
 	};
 
-	gic:interrupt-controller@10200000 {
+	gic: interrupt-controller@10200000 {
 		compatible = "arm,cortex-a15-gic", "arm,cortex-a9-gic";
 		#interrupt-cells = <3>;
 		#address-cells = <0>;
 		interrupt-controller;
-		reg =	<0x0 0x10201000 0x1000>,
+		reg = <0x0 0x10201000 0x1000>,
 			<0x0 0x10202000 0x1000>,
 			<0x0 0x10204000 0x2000>,
 			<0x0 0x10206000 0x2000>;
@@ -573,12 +573,12 @@
 	};
 
 	timer {
-	        compatible = "arm,armv8-timer";
-	        interrupts = <1 13 0xff01>,
-	                     <1 14 0xff01>,
-	                     <1 11 0xff01>,
-	                     <1 10 0xff01>;
-	        clock-frequency = <26000000>;
+		compatible = "arm,armv8-timer";
+		interrupts = <1 13 0xff01>,
+				<1 14 0xff01>,
+				<1 11 0xff01>,
+				<1 10 0xff01>;
+		clock-frequency = <26000000>;
 		use-clocksource-only;
 		use-physical-timer;
 	};
@@ -673,7 +673,6 @@
 			coherent-mask-bit = <36>;
 		};
 	};
-
 
 	ITMON@0 {
 		compatible = "samsung,exynos-itmon";
@@ -1078,10 +1077,9 @@
 			#address-cells = <2>;
 			#size-cells = <1>;
 			ranges;
-			
-			reg =
-				<0x0 0x11020700 0x4>;
-			
+
+			reg = <0x0 0x11020700 0x4>;
+
 			mask = <(BIT_8 | BIT_9)>;
 			bits = <(BIT_8 | BIT_9)>;
 		};
@@ -1091,20 +1089,19 @@
 			#size-cells = <1>;
 			ranges;
 
-			reg =
-				<0x0 0x11021150 0x4>;
+			reg = <0x0 0x11021150 0x4>;
 
 			mask = <BIT_0>;
-			bits = <BIT_0>;			// use alternative
+			bits = <BIT_0>; // use alternative
 		};
 	};
 
 	ufs_fixed_vcc: fixedregulator@0 {
-		       compatible = "regulator-fixed";
-		       regulator-name = "ufs-vcc";
-		       gpio = <&gpg0 0 0>;
-		       regulator-boot-on;
-		       enable-active-high;
+		compatible = "regulator-fixed";
+		regulator-name = "ufs-vcc";
+		gpio = <&gpg0 0 0>;
+		regulator-boot-on;
+		enable-active-high;
 	};
 
 	/* UART_DBG */
@@ -2668,12 +2665,12 @@
 		hw_ppc = <2800>, <2400>, <3800>;
 						/* cluster1 cluster0 mif */
 		skia_qos_table = <0 0 1014000
-						0 0 1014000
-						0 0 845000
-						0 0 845000
-						0 0 676000
-						0 0 0
-						>;
+				0 0 1014000
+				0 0 845000
+				0 0 845000
+				0 0 676000
+				0 0 0
+				>;
 	};
 
 	sysmmu_g2d_0: sysmmu@13A60000 {
@@ -2687,6 +2684,7 @@
 		sysmmu,secure_base = <0x13A80000>;
 		#iommu-cells = <0>;
 	};
+
 	sysmmu_g2d_1: sysmmu@13A70000 {
 		compatible = "samsung,exynos-sysmmu";
 		reg = <0x0 0x13A70000 0x3000>;
@@ -2782,6 +2780,7 @@
 			<(SYSMMU_PRIV_ID_PREFETCH_PREDICTION_READ | SYSMMU_BL8)  SYSMMU_ID_MASK(0x80, 0x180)>;
 		#iommu-cells = <0>;
 	};
+
 	sysmmu_dpu1: sysmmu@12910000 {
 		compatible = "samsung,exynos-sysmmu";
 		reg = <0x0 0x12910000 0x3000>;
@@ -2800,6 +2799,7 @@
 			<(SYSMMU_PRIV_ID_PREFETCH_PREDICTION_READ | SYSMMU_BL1) SYSMMU_ID_MASK(0x600, 0x600)>;
 		#iommu-cells = <0>;
 	};
+
 	sysmmu_dpu2: sysmmu@12920000 {
 		compatible = "samsung,exynos-sysmmu";
 		reg = <0x0 0x12920000 0x3000>;
@@ -3214,89 +3214,89 @@
 		#clock-cells = <1>;
 	};
 
-        coresight@17000000 {
-                compatible = "exynos,coresight";
-                base = <0x17000000>;
+	coresight@17000000 {
+		compatible = "exynos,coresight";
+		base = <0x17000000>;
 		sj-offset = <0x6000>;
-                /* coresight component count */
-                funnel-num = <3>;
-                etf-num = <2>;
+		/* coresight component count */
+		funnel-num = <3>;
+		etf-num = <2>;
 
-                cl0_cpu0@400000 {
-                        device_type = "cs";
+		cl0_cpu0@400000 {
+			device_type = "cs";
 			dbg-offset = <0x410000>;
-                        etm-offset = <0x440000>;
-                        funnel-port = <0 0>;
-                };
-                cl0_cpu1@500000 {
-                        device_type = "cs";
+			etm-offset = <0x440000>;
+			funnel-port = <0 0>;
+		};
+		cl0_cpu1@500000 {
+			device_type = "cs";
 			dbg-offset = <0x510000>;
-                        etm-offset = <0x540000>;
-                        funnel-port = <0 1>;
-                };
-                cl0_cpu2@600000 {
-                        device_type = "cs";
+			etm-offset = <0x540000>;
+			funnel-port = <0 1>;
+		};
+		cl0_cpu2@600000 {
+			device_type = "cs";
 			dbg-offset = <0x610000>;
-                        etm-offset = <0x640000>;
-                        funnel-port = <0 2>;
-                };
-                cl0_cpu3@700000 {
-                        device_type = "cs";
+			etm-offset = <0x640000>;
+			funnel-port = <0 2>;
+		};
+		cl0_cpu3@700000 {
+			device_type = "cs";
 			dbg-offset = <0x710000>;
-                        etm-offset = <0x740000>;
-                        funnel-port = <0 3>;
-                };
-                cl1_cpu0@800000 {
-                        device_type = "cs";
+			etm-offset = <0x740000>;
+			funnel-port = <0 3>;
+		};
+		cl1_cpu0@800000 {
+			device_type = "cs";
 			dbg-offset = <0x810000>;
-                        etm-offset = <0x840000>;
-                        funnel-port = <1 0>;
-                };
-                cl1_cpu1@900000 {
-                        device_type = "cs";
+			etm-offset = <0x840000>;
+			funnel-port = <1 0>;
+		};
+		cl1_cpu1@900000 {
+			device_type = "cs";
 			dbg-offset = <0x910000>;
-                        etm-offset = <0x940000>;
-                        funnel-port = <1 1>;
-                };
-                cl1_cpu2@A00000 {
-                        device_type = "cs";
+			etm-offset = <0x940000>;
+			funnel-port = <1 1>;
+		};
+		cl1_cpu2@A00000 {
+			device_type = "cs";
 			dbg-offset = <0xA10000>;
-                        etm-offset = <0xA40000>;
-                        funnel-port = <1 2>;
-                };
-                cl1_cpu3@B00000 {
-                        device_type = "cs";
+			etm-offset = <0xA40000>;
+			funnel-port = <1 2>;
+		};
+		cl1_cpu3@B00000 {
+			device_type = "cs";
 			dbg-offset = <0xB10000>;
-                        etm-offset = <0xB40000>;
-                        funnel-port = <1 3>;
+			etm-offset = <0xB40000>;
+			funnel-port = <1 3>;
 		};
 
-                cs_etf0: cs_etf0@C000 {
-                        device_type = "etf";
-                        offset = <0x4000>;
-                        funnel-port = <2 0>;
-                };
-                cs_etf1: cs_etf1@5000 {
-                        device_type = "etf";
-                        offset = <0x5000>;
-                        funnel-port = <2 1>;
-                };
-                cs_funnel0@4000 {
-                        device_type = "funnel";
-                        offset = <0x7000>;
-                };
-                cs_funnel1@9000 {
-                        device_type = "funnel";
-                        offset = <0x8000>;
-                };
-                cs_funnelm2@9000 {
-                        device_type = "funnel";
-                        offset = <0x9000>;
-                };
-                cs_etr@B000 {
-                        device_type = "etr";
-                        offset = <0xA000>;
-                };
+		cs_etf0: cs_etf0@C000 {
+			device_type = "etf";
+			offset = <0x4000>;
+			funnel-port = <2 0>;
+		};
+		cs_etf1: cs_etf1@5000 {
+			device_type = "etf";
+			offset = <0x5000>;
+			funnel-port = <2 1>;
+		};
+		cs_funnel0@4000 {
+			device_type = "funnel";
+			offset = <0x7000>;
+		};
+		cs_funnel1@9000 {
+			device_type = "funnel";
+			offset = <0x8000>;
+		};
+		cs_funnelm2@9000 {
+			device_type = "funnel";
+			offset = <0x9000>;
+		};
+		cs_etr@B000 {
+			device_type = "etr";
+			offset = <0xA000>;
+		};
 	};
 
 	udc: usb@10C00000 {
@@ -3879,36 +3879,36 @@
 		#iommu-cells = <0>;
 	};
 
-        iva: iva@0x13600000 {
-                compatible = "samsung,iva";
+	iva: iva@0x13600000 {
+		compatible = "samsung,iva";
 		reg = <0x0 0x13600000 0x200000>;
 
-                iommus = <&sysmmu_iva>;
+		iommus = <&sysmmu_iva>;
 
-                interrupt-names = "iva_mbox_irq";
-                interrupts = <0 236 0>;
+		interrupt-names = "iva_mbox_irq";
+		interrupts = <0 236 0>;
 
-                clocks = <&clock GATE_IVA>;
-                clock-names = "clk_iva";
-                samsung,power-domain = <&pd_iva>;
+		clocks = <&clock GATE_IVA>;
+		clock-names = "clk_iva";
+		samsung,power-domain = <&pd_iva>;
 
-                mcu-info {
-                        mem_size = <0x20000>;
-                        shmem_size = <0x1000>;
-                        print_delay = <0>;     /* us */
-                };
-        };
+		mcu-info {
+			mem_size = <0x20000>;
+			shmem_size = <0x1000>;
+			print_delay = <0>;     /* us */
+		};
+	};
 
-        sysmmu_iva: sysmmu@13530000 {
-                compatible = "samsung,exynos-sysmmu";
-                reg = <0x0 0x13530000 0x3000>;
-                interrupts = <0 240 0>;
-                clock-names = "aclk";
-                clocks = <&clock GATE_SMMU_IVA>;
-                #iommu-cells = <0>;
-        };
+	sysmmu_iva: sysmmu@13530000 {
+		compatible = "samsung,exynos-sysmmu";
+		reg = <0x0 0x13530000 0x3000>;
+		interrupts = <0 240 0>;
+		clock-names = "aclk";
+		clocks = <&clock GATE_SMMU_IVA>;
+		#iommu-cells = <0>;
+	};
 
-    score: score@134C0000 {
+	score: score@134C0000 {
 		compatible = "samsung,score";
 		dma-coherent;
 		reg = <0x0 0x134C0000 0x20000>;
@@ -4819,33 +4819,32 @@
 
 			cooling-maps {
 				map0 {
-				     trip = <&isp_alert0>;
-				     /* Corresponds to No limit */
-				     cooling-device = <&fimc_is 0 0>;
+					trip = <&isp_alert0>;
+					/* Corresponds to No limit */
+					cooling-device = <&fimc_is 0 0>;
 				};
 				map1 {
-				     trip = <&isp_alert1>;
-				     /* Corresponds to No limit */
-				     cooling-device = <&fimc_is 0 0>;
-			       };
+					trip = <&isp_alert1>;
+					/* Corresponds to No limit */
+					cooling-device = <&fimc_is 0 0>;
+				};
 				map2 {
-				     trip = <&isp_alert2>;
-				     /* Corresponds to 15fps at freq_table */
-				     cooling-device = <&fimc_is 0 0>;
+					trip = <&isp_alert2>;
+					/* Corresponds to 15fps at freq_table */
+					cooling-device = <&fimc_is 0 0>;
 				};
 				map3 {
-				     trip = <&isp_alert3>;
-				     /* Corresponds to 5fps at freq_table */
-				     cooling-device = <&fimc_is 0 0>;
+					trip = <&isp_alert3>;
+					/* Corresponds to 5fps at freq_table */
+					cooling-device = <&fimc_is 0 0>;
 				};
 				map4 {
-				     trip = <&isp_hot>;
-				     /* Corresponds to HW trip */
-				     cooling-device = <&fimc_is 0 0>;
+					trip = <&isp_hot>;
+					/* Corresponds to HW trip */
+					cooling-device = <&fimc_is 0 0>;
 				};
 			};
 		};
-
 	};
 
 	input_booster {
@@ -5108,9 +5107,8 @@
 					1066000 1690000
 					 962000 1690000
 					 858000 1690000
-					 741000 1690000 >;
+					 741000 1690000>;
 			};
-
 		};
 	};
 };
