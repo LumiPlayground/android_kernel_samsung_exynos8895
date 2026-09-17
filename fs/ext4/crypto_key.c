@@ -18,7 +18,6 @@
 #include "ext4.h"
 #include "xattr.h"
 
-#ifndef CONFIG_EXT4_SEC_CRYPTO_EXTENSION
 static void derive_crypt_complete(struct crypto_async_request *req, int rc)
 {
 	struct ext4_completion_result *ecr = req->data;
@@ -169,7 +168,6 @@ static int ext4_derive_key(const struct ext4_encryption_context *ctx,
 	else
 		return ext4_derive_key_v1(ctx->nonce, master_key, derived_key);
 }
-#endif
 
 void ext4_free_crypt_info(struct ext4_crypt_info *ci)
 {
@@ -197,15 +195,6 @@ void ext4_free_encryption_info(struct inode *inode,
 		return;
 
 	ext4_free_crypt_info(ci);
-}
-
-static inline int __ext4_get_fek(char *nonce, char *src_key, char *fe_key)
-{
-#ifdef CONFIG_EXT4_SEC_CRYPTO_EXTENSION
-	return ext4_sec_get_key_aes(nonce, src_key, fe_key);
-#else
-	return ext4_derive_key(nonce, src_key, fe_key);
-#endif
 }
 
 int ext4_get_encryption_info(struct inode *inode)
@@ -359,7 +348,7 @@ int ext4_get_encryption_info(struct inode *inode)
 		up_read(&keyring_key->sem);
 		goto out;
 	}
-	res = __ext4_get_fek(ctx.nonce, master_key->raw, raw_key);
+	res = ext4_derive_key(&ctx, master_key->raw, raw_key);
 	up_read(&keyring_key->sem);
 	if (res)
 		goto out;
