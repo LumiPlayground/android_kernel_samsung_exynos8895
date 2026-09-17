@@ -127,6 +127,13 @@ config USB_GADGET_STORAGE_NUM_BUFFERS
 	   a module parameter as well.
 	   If unsure, say 2.
 
+config USB_OLD_CONFIGFS
+	bool "Old style configfs"
+	depends on USB_CONFIGFS
+	default n
+	help
+	  It supports old style configfs
+
 config USB_G_ANDROID
 	bool "Android Composite Gadget"
 	help
