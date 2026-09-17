@@ -13,10 +13,6 @@
 
 #include <linux/fs.h>
 
-#ifdef CONFIG_EXT4_SEC_CRYPTO_EXTENSION
-#include "crypto_sec.h"
-#endif
-
 #define EXT4_KEY_DESCRIPTOR_SIZE 8
 
 /* Policy provided via an ioctl on the topmost directory */

@@ -48,12 +48,8 @@ static int ext4_is_encryption_context_consistent_with_policy(
 
 static inline int __ext4_set_nonce(char *nonce, char *master_key_desc)
 {
-#ifdef CONFIG_EXT4_SEC_CRYPTO_EXTENSION
-	return ext4_sec_set_key_aes(nonce, master_key_desc);
-#else
 	get_random_bytes(nonce, EXT4_KEY_DERIVATION_NONCE_SIZE);
 	return 0;
-#endif
 }
 
 static int ext4_create_encryption_context_from_policy(
