@@ -205,7 +205,7 @@ static int allocate_filesystem_keyring(struct super_block *sb)
 	keyring = keyring_alloc(description, GLOBAL_ROOT_UID, GLOBAL_ROOT_GID,
 				current_cred(), KEY_POS_SEARCH |
 				  KEY_USR_SEARCH | KEY_USR_READ | KEY_USR_VIEW,
-				KEY_ALLOC_NOT_IN_QUOTA, NULL, NULL);
+				KEY_ALLOC_NOT_IN_QUOTA, NULL);
 	if (IS_ERR(keyring))
 		return PTR_ERR(keyring);
 
@@ -249,7 +249,7 @@ static int allocate_master_key_users_keyring(struct fscrypt_master_key *mk)
 	keyring = keyring_alloc(description, GLOBAL_ROOT_UID, GLOBAL_ROOT_GID,
 				current_cred(), KEY_POS_SEARCH |
 				  KEY_USR_SEARCH | KEY_USR_READ | KEY_USR_VIEW,
-				KEY_ALLOC_NOT_IN_QUOTA, NULL, NULL);
+				KEY_ALLOC_NOT_IN_QUOTA, NULL);
 	if (IS_ERR(keyring))
 		return PTR_ERR(keyring);
 
@@ -285,7 +285,7 @@ static int add_master_key_user(struct fscrypt_master_key *mk)
 	format_mk_user_description(description, mk->mk_spec.u.identifier);
 	mk_user = key_alloc(&key_type_fscrypt_user, description,
 			    current_fsuid(), current_gid(), current_cred(),
-			    KEY_POS_SEARCH | KEY_USR_VIEW, 0, NULL);
+			    KEY_POS_SEARCH | KEY_USR_VIEW, 0);
 	if (IS_ERR(mk_user))
 		return PTR_ERR(mk_user);
 
@@ -358,7 +358,7 @@ static int add_new_master_key(struct fscrypt_master_key_secret *secret,
 	key = key_alloc(&key_type_fscrypt, description,
 			GLOBAL_ROOT_UID, GLOBAL_ROOT_GID, current_cred(),
 			KEY_POS_SEARCH | KEY_USR_SEARCH | KEY_USR_VIEW,
-			KEY_ALLOC_NOT_IN_QUOTA, NULL);
+			KEY_ALLOC_NOT_IN_QUOTA);
 	if (IS_ERR(key)) {
 		err = PTR_ERR(key);
 		goto out_free_mk;

@@ -326,7 +326,7 @@ struct fscrypt_master_key_secret {
 	/* For v1 policy keys: the raw key.  Wiped for v2 policy keys. */
 	u8			raw[FSCRYPT_MAX_KEY_SIZE];
 
-} __randomize_layout;
+};
 
 /*
  * fscrypt_master_key - an in-use master key
@@ -399,7 +399,7 @@ struct fscrypt_master_key {
 	/* Per-mode tfms for DIRECT_KEY policies, allocated on-demand */
 	struct crypto_skcipher	*mk_mode_keys[__FSCRYPT_MODE_MAX + 1];
 
-} __randomize_layout;
+};
 
 static inline bool
 is_master_key_secret_present(const struct fscrypt_master_key_secret *secret)
