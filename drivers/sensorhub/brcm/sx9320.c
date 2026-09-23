@@ -64,7 +64,11 @@
 #define TOUCH_STATE		1
 #define BODY_STATE		2
 
-#define HALLIC1_PATH		"/sys/class/sec/sec_key/hall_detect"
+#if IS_ENABLED(CONFIG_HALL_NEW_NODE)
+#define HALLIC_PATH	"/sys/class/sec/hall_ic/hall_detect"
+#else
+#define HALLIC_PATH		"/sys/class/sec/sec_key/hall_detect"
+#endif
 
 struct sx9320_p {
 	struct i2c_client *client;
@@ -1363,7 +1367,7 @@ static void sx9320_debug_work_func(struct work_struct *work)
 
 	static int hall_flag = 1;
 
-	sx9320_check_hallic_state(HALLIC1_PATH, data->hall_ic1);
+	sx9320_check_hallic_state(HALLIC_PATH, data->hall_ic1);
 
 	/* Hall IC closed : offset cal (once) */
 	if (strcmp(data->hall_ic1, "CLOSE") == 0) {
