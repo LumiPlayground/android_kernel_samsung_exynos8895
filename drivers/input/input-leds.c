@@ -120,19 +120,8 @@ static int input_leds_connect(struct input_handler *handler,
 
 	led_no = 0;
 	for_each_set_bit(led_code, dev->ledbit, LED_CNT) {
-<<<<<<< HEAD
-		struct input_led *led = &leds->leds[led_no];
-
-
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 		if (!input_led_info[led_code].name)
 			continue;
-		if (led_no >= num_leds)
-			break;
-
-		led->handle = &leds->handle;
-		led->code = led_code;
 
 		led = &leds->leds[led_no];
 		led->handle = &leds->handle;

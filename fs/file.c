@@ -478,11 +478,7 @@ struct files_struct init_files = {
 		.full_fds_bits	= init_files.full_fds_bits_init,
 	},
 	.file_lock	= __SPIN_LOCK_UNLOCKED(init_files.file_lock),
-<<<<<<< HEAD
-	.resize_wait    = __WAIT_QUEUE_HEAD_INITIALIZER(init_files.resize_wait),
-=======
 	.resize_wait	= __WAIT_QUEUE_HEAD_INITIALIZER(init_files.resize_wait),
->>>>>>> ACK/deprecated/android-4.4-p
 };
 
 static unsigned long find_next_fd(struct fdtable *fdt, unsigned long start)

@@ -5080,7 +5080,6 @@ static int ufshcd_eh_device_reset_handler(struct scsi_cmnd *cmd)
 	host = cmd->device->host;
 	hba = shost_priv(host);
 
-<<<<<<< HEAD
 	/* secure log */
 	exynos_smc(SMC_CMD_LOG, 1, 0, hba->secure_log.paddr);
 
@@ -5088,13 +5087,8 @@ static int ufshcd_eh_device_reset_handler(struct scsi_cmnd *cmd)
 	ufshcd_vops_dbg_register_dump(hba);
 	exynos_ufs_show_uic_info(hba);
 
-
-	lrbp = &hba->lrb[tag];
-	err = ufshcd_issue_tm_cmd(hba, lrbp->lun, 0, UFS_LOGICAL_RESET, &resp);
-=======
 	lun = ufshcd_scsi_to_upiu_lun(cmd->device->lun);
 	err = ufshcd_issue_tm_cmd(hba, lun, 0, UFS_LOGICAL_RESET, &resp);
->>>>>>> ACK/deprecated/android-4.4-p
 	if (err || resp != UPIU_TASK_MANAGEMENT_FUNC_COMPL) {
 		if (!err)
 			err = resp;
@@ -5744,14 +5738,6 @@ retry:
 		if (!hba->is_init_prefetch)
 			ufshcd_init_icc_levels(hba);
 
-<<<<<<< HEAD
-=======
-		/* Add required well known logical units to scsi mid layer */
-		ret = ufshcd_scsi_add_wlus(hba);
-		if (ret)
-			goto out;
-
->>>>>>> ACK/deprecated/android-4.4-p
 		scsi_scan_host(hba->host);
 
 		/* Add required well known logical units to scsi mid layer */

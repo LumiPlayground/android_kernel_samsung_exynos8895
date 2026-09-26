@@ -565,12 +565,9 @@ asmlinkage __visible void __init start_kernel(void)
 
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 	pr_notice("Kernel command line: %s\n", boot_command_line);
-<<<<<<< HEAD
 #endif
-=======
 	/* parameters may set static keys */
 	jump_label_init();
->>>>>>> ACK/deprecated/android-4.4-p
 	parse_early_param();
 	after_dashes = parse_args("Booting kernel",
 				  static_command_line, __start___param,

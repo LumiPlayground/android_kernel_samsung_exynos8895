@@ -408,11 +408,7 @@ ipt_do_table(struct sk_buff *skb,
 				continue;
 			}
 			if (table_base + v != ipt_next_entry(e) &&
-<<<<<<< HEAD
-				!(e->ip.flags & IPT_F_GOTO)) {
-=======
 			    !(e->ip.flags & IPT_F_GOTO)) {
->>>>>>> ACK/deprecated/android-4.4-p
 				if (unlikely(stackidx >= private->stacksize)) {
 					verdict = NF_DROP;
 					break;
@@ -838,16 +834,10 @@ translate_table(struct net *net, struct xt_table_info *newinfo, void *entry0,
 						 repl->hook_entry,
 						 repl->underflow,
 						 repl->valid_hooks);
-<<<<<<< HEAD
-		if (ret != 0) {
-			return ret;
-		}
-=======
 		if (ret != 0)
 			goto out_free;
 		if (i < repl->num_entries)
 			offsets[i] = (void *)iter - entry0;
->>>>>>> ACK/deprecated/android-4.4-p
 		++i;
 		if (strcmp(ipt_get_target(iter)->u.user.name,
 		    XT_ERROR_TARGET) == 0) {

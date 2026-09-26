@@ -723,18 +723,6 @@ asmlinkage int __exception do_debug_exception(unsigned long addr_if_watchpoint,
 	if (interrupts_enabled(regs))
 		trace_hardirqs_off();
 
-<<<<<<< HEAD
-	if (unhandled_signal(current, inf->sig)
-	    && show_unhandled_signals_ratelimited())
-		pr_alert("Unhandled debug exception: %s (0x%08x) at 0x%016lx\n",
-			 inf->name, esr, addr);
-
-	info.si_signo = inf->sig;
-	info.si_errno = 0;
-	info.si_code  = inf->code;
-	info.si_addr  = (void __user *)addr;
-	arm64_notify_die("Oops - Debug exception", regs, &info, 0);
-=======
 	if (!inf->fn(addr_if_watchpoint, esr, regs)) {
 		rv = 1;
 	} else {
@@ -748,7 +736,6 @@ asmlinkage int __exception do_debug_exception(unsigned long addr_if_watchpoint,
 		arm64_notify_die("", regs, &info, 0);
 		rv = 0;
 	}
->>>>>>> ACK/deprecated/android-4.4-p
 
 	if (interrupts_enabled(regs))
 		trace_hardirqs_on();

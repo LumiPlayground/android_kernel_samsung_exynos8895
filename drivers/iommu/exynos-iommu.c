@@ -1589,14 +1589,9 @@ static int exynos_iommu_of_xlate(struct device *master,
 	if (!sysmmu_pdev)
 		return -ENODEV;
 
-<<<<<<< HEAD
 	data = platform_get_drvdata(sysmmu_pdev);
-	if (!data)
-=======
-	data = platform_get_drvdata(sysmmu);
 	if (!data) {
-		put_device(&sysmmu->dev);
->>>>>>> ACK/deprecated/android-4.4-p
+		put_device(&sysmmu_pdev->dev);
 		return -ENODEV;
 	}
 
@@ -1604,7 +1599,7 @@ static int exynos_iommu_of_xlate(struct device *master,
 	if (!owner) {
 		owner = kzalloc(sizeof(*owner), GFP_KERNEL);
 		if (!owner) {
-			put_device(&sysmmu->dev);
+			put_device(&sysmmu_pdev->dev);
 			return -ENOMEM;
 		}
 

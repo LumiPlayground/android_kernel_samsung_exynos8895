@@ -221,11 +221,7 @@ ext4_xattr_check_block(struct inode *inode, struct buffer_head *bh)
 	if (buffer_verified(bh))
 		return 0;
 
-<<<<<<< HEAD
-	if (!ext4_xattr_block_csum_verify(inode, bh->b_blocknr, BHDR(bh)))
-=======
 	if (!ext4_xattr_block_csum_verify(inode, bh))
->>>>>>> ACK/deprecated/android-4.4-p
 		return -EFSBADCRC;
 	error = ext4_xattr_check_names(BFIRST(bh), bh->b_data + bh->b_size,
 				       bh->b_data);
@@ -593,7 +589,6 @@ ext4_xattr_release_block(handle_t *handle, struct inode *inode,
 				 EXT4_FREE_BLOCKS_METADATA |
 				 EXT4_FREE_BLOCKS_FORGET);
 	} else {
-<<<<<<< HEAD
 		ref--;
 		BHDR(bh)->h_refcount = cpu_to_le32(ref);
 		if (ref == EXT4_XATTR_REFCOUNT_MAX - 1) {
@@ -607,11 +602,7 @@ ext4_xattr_release_block(handle_t *handle, struct inode *inode,
 			}
 		}
 
-=======
-		le32_add_cpu(&BHDR(bh)->h_refcount, -1);
-
 		ext4_xattr_block_csum_set(inode, bh);
->>>>>>> ACK/deprecated/android-4.4-p
 		/*
 		 * Beware of this ugliness: Releasing of xattr block references
 		 * from different inodes can race and so we have to protect
@@ -964,12 +955,8 @@ inserted:
 				if (ref >= EXT4_XATTR_REFCOUNT_MAX)
 					ce->e_reusable = 0;
 				ea_bdebug(new_bh, "reusing; refcount now=%d",
-<<<<<<< HEAD
 					  ref);
-=======
-					le32_to_cpu(BHDR(new_bh)->h_refcount));
 				ext4_xattr_block_csum_set(inode, new_bh);
->>>>>>> ACK/deprecated/android-4.4-p
 				unlock_buffer(new_bh);
 				error = ext4_handle_dirty_metadata(handle,
 								   inode,

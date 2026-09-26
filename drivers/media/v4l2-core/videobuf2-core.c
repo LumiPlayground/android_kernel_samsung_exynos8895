@@ -205,18 +205,15 @@ static int __vb2_queue_alloc(struct vb2_queue *q, enum vb2_memory memory,
 	struct vb2_buffer *vb;
 	int ret;
 
-<<<<<<< HEAD
 	q->timeline_max = 0;
 	q->timeline = sw_sync_timeline_create("vb2");
 	if (!q->timeline) {
 		dprintk(1, "Failed to create timeline\n");
 		return 0;
 	}
-=======
 	/* Ensure that q->num_buffers+num_buffers is below VB2_MAX_FRAME */
 	num_buffers = min_t(unsigned int, num_buffers,
 			    VB2_MAX_FRAME - q->num_buffers);
->>>>>>> ACK/deprecated/android-4.4-p
 
 	for (buffer = 0; buffer < num_buffers; ++buffer) {
 		/* Allocate videobuf buffer structures */

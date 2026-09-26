@@ -25,12 +25,9 @@
 #include <linux/spinlock.h>
 #include <linux/uhid.h>
 #include <linux/wait.h>
-<<<<<<< HEAD
 #include <linux/fb.h>
-=======
 #include <linux/uaccess.h>
 #include <linux/eventpoll.h>
->>>>>>> ACK/deprecated/android-4.4-p
 
 #define UHID_NAME	"uhid"
 #define UHID_BUFSIZE	32
@@ -219,7 +216,7 @@ static int __uhid_report_queue_and_wait(struct uhid_device *uhid,
 
 	ret = wait_event_interruptible_timeout(uhid->report_wait,
 				!uhid->report_running || !uhid->running,
-				10/*5 * HZ*/);  // from 5000 to 10 due to BT stuck when connecting apple magic mouse during a2dp playing
+				5 * HZ);
 	if (!ret || !uhid->running || uhid->report_running)
 		ret = -EIO;
 	else if (ret < 0)

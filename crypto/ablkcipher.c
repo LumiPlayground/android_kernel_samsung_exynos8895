@@ -110,18 +110,13 @@ int ablkcipher_walk_done(struct ablkcipher_request *req,
 	unsigned int n; /* bytes processed */
 	bool more;
 
-<<<<<<< HEAD
 #ifdef CONFIG_CRYPTO_FIPS
 	if (unlikely(in_fips_err()))
 		return -EACCES;
 #endif
 
-	if (likely(err >= 0)) {
-		unsigned int n = walk->nbytes - err;
-=======
 	if (unlikely(err < 0))
 		goto finish;
->>>>>>> ACK/deprecated/android-4.4-p
 
 	n = walk->nbytes - err;
 	walk->total -= n;

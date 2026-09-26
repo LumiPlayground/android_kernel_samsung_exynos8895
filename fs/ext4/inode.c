@@ -3398,18 +3398,7 @@ static ssize_t ext4_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 	size_t count = iov_iter_count(iter);
 	ssize_t ret;
 
-<<<<<<< HEAD
 #if defined(CONFIG_EXT4_FS_ENCRYPTION) && !defined(CONFIG_FMP_EXT4CRYPT_FS)
-=======
-	if (iov_iter_rw(iter) == READ) {
-		loff_t size = i_size_read(inode);
-
-		if (offset >= size)
-			return 0;
-	}
-
-#ifdef CONFIG_EXT4_FS_ENCRYPTION
->>>>>>> ACK/deprecated/android-4.4-p
 	if (ext4_encrypted_inode(inode) && S_ISREG(inode->i_mode))
 		return 0;
 #elif defined(CONFIG_FMP_EXT4CRYPT_FS)

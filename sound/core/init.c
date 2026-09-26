@@ -405,10 +405,6 @@ int snd_card_disconnect(struct snd_card *card)
 	card->shutdown = 1;
 
 	/* replace file->f_op with special dummy operations */
-<<<<<<< HEAD
-	spin_lock(&card->files_lock);
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 	list_for_each_entry(mfile, &card->files_list, list) {
 		/* it's critical part, use endless loop */
 		/* we have no room to fail */

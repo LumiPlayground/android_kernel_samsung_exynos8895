@@ -1260,47 +1260,6 @@ static inline bool ext4_match(const struct ext4_filename *fname,
 	return (memcmp(de->name, name, len) == 0) ? 1 : 0;
 }
 
-static inline int ext4_ci_match(struct ext4_filename *fname,
-				struct ext4_dir_entry_2 *de,
-				struct inode *dir, char *ci_name_buf)
-{
-	struct ext4_str dname = {.name = de->name, .len = de->name_len};
-	const char *uname = fname_name(fname);
-	u32 uname_len = fname_len(fname);
-
-	if (!de->inode)
-		return 0;
-
-#ifdef CONFIG_EXT4_FS_ENCRYPTION
-	if (ext4_encrypted_inode(dir)) {
-		dname.name = ci_name_buf;
-		dname.len = EXT4_NAME_LEN;
-
-		/* Directory is encrypted */
-		if (ext4_fname_disk_to_usr(dir, NULL, de, &dname) < 0)
-			return -1;
-		/* is required? */
-		dname.name[dname.len] = '\0';
-
-		uname = fname->usr_fname->name;
-		uname_len = strlen(fname->usr_fname->name);
-	}
-#endif
-	if (dname.len != uname_len)
-		goto mismatch;
-
-	if (!strncasecmp(dname.name, uname, uname_len)) {
-		if ((void*)ci_name_buf != (void*)dname.name) {
-			memcpy(ci_name_buf, dname.name, uname_len);
-			ci_name_buf[uname_len] = '\0';
-		}
-		return 1;
-	}
-mismatch:
-	ci_name_buf[0] = '\0';
-	return 0;
-}
-
 /*
  * Returns 0 if not found, -1 on failure, and 1 on success
  */
@@ -1331,21 +1290,8 @@ int ext4_search_dir(struct buffer_head *bh, char *search_buf, int buf_size,
 		/* prevent looping on a bad block */
 		de_len = ext4_rec_len_from_disk(de->rec_len,
 						dir->i_sb->s_blocksize);
-<<<<<<< HEAD
-		if (de_len <= 0) {
-			res = -1;
-			printk(KERN_ERR
-			   "%s: Get invalid rec_len from disk."
-			   "usr_name : %s, buf : %p, offset : %lu, rec_len: %d\n",
-			   __func__, fname->usr_fname->name, search_buf,
-			   (unsigned long)de - (unsigned long)search_buf,
-			   (int)le16_to_cpu(de->rec_len));
-			goto return_result;
-		}
-=======
 		if (de_len <= 0)
 			return -1;
->>>>>>> ACK/deprecated/android-4.4-p
 		offset += de_len;
 		de = (struct ext4_dir_entry_2 *) ((char *) de + de_len);
 	}

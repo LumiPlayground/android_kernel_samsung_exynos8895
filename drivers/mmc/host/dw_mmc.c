@@ -2504,10 +2504,6 @@ static void dw_mci_tasklet_func(unsigned long priv)
 			}
 
 			if (cmd->data && err) {
-<<<<<<< HEAD
-				dw_mci_fifo_reset(host->dev, host);
-				dw_mci_stop_dma(host);
-=======
 				/*
 				 * During UHS tuning sequence, sending the stop
 				 * command after the response CRC error would
@@ -2535,7 +2531,7 @@ static void dw_mci_tasklet_func(unsigned long priv)
 					continue;
 				}
 
->>>>>>> ACK/deprecated/android-4.4-p
+				dw_mci_fifo_reset(host->dev, host);
 				send_stop_abort(host, data);
 				dw_mci_stop_dma(host);
 				state = STATE_SENDING_STOP;
@@ -2570,16 +2566,11 @@ static void dw_mci_tasklet_func(unsigned long priv)
 			 */
 			if (test_and_clear_bit(EVENT_DATA_ERROR,
 					       &host->pending_events)) {
-<<<<<<< HEAD
 				dw_mci_fifo_reset(host->dev, host);
-				dw_mci_stop_dma(host);
-				send_stop_abort(host, data);
-=======
 				if (!(host->data_status & (SDMMC_INT_DRTO |
 							   SDMMC_INT_EBE)))
 					send_stop_abort(host, data);
 				dw_mci_stop_dma(host);
->>>>>>> ACK/deprecated/android-4.4-p
 				state = STATE_DATA_ERROR;
 				dw_mci_debug_req_log(host,
 						host->mrq,
@@ -2616,16 +2607,11 @@ static void dw_mci_tasklet_func(unsigned long priv)
 			 */
 			if (test_and_clear_bit(EVENT_DATA_ERROR,
 					       &host->pending_events)) {
-<<<<<<< HEAD
 				dw_mci_fifo_reset(host->dev, host);
-				dw_mci_stop_dma(host);
-				send_stop_abort(host, data);
-=======
 				if (!(host->data_status & (SDMMC_INT_DRTO |
 							   SDMMC_INT_EBE)))
 					send_stop_abort(host, data);
 				dw_mci_stop_dma(host);
->>>>>>> ACK/deprecated/android-4.4-p
 				state = STATE_DATA_ERROR;
 				dw_mci_debug_req_log(host, host->mrq,
 						STATE_REQ_DATA_PROCESS, state);

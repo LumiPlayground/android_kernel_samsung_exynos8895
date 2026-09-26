@@ -1719,15 +1719,9 @@ static int ep_loop_check_proc(void *priv, void *cookie, int call_nests)
 			 * during ep_insert().
 			 */
 			if (list_empty(&epi->ffd.file->f_tfile_llink)) {
-<<<<<<< HEAD
-				get_file(epi->ffd.file);
-				list_add(&epi->ffd.file->f_tfile_llink,
-					 &tfile_check_list);
-=======
 				if (get_file_rcu(epi->ffd.file))
 					list_add(&epi->ffd.file->f_tfile_llink,
 						 &tfile_check_list);
->>>>>>> ACK/deprecated/android-4.4-p
 			}
 		}
 	}
@@ -1903,10 +1897,6 @@ SYSCALL_DEFINE4(epoll_ctl, int, epfd, int, op, int, fd,
 				error = -ELOOP;
 				if (ep_loop_check(ep, tf.file) != 0)
 					goto error_tgt_fput;
-<<<<<<< HEAD
-				}
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 			} else {
 				get_file(tf.file);
 				list_add(&tf.file->f_tfile_llink,

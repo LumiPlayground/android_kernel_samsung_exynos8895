@@ -338,11 +338,7 @@ struct ion_heap *ion_heap_create(struct ion_platform_heap *heap_data)
 	switch (heap_data->type) {
 	case ION_HEAP_TYPE_SYSTEM_CONTIG:
 		pr_err("%s: Heap type is disabled: %d\n", __func__,
-<<<<<<< HEAD
-			heap_data->type);
-=======
 		       heap_data->type);
->>>>>>> ACK/deprecated/android-4.4-p
 		return ERR_PTR(-EINVAL);
 	case ION_HEAP_TYPE_SYSTEM:
 		heap = ion_system_heap_create(heap_data);
@@ -391,11 +387,7 @@ void ion_heap_destroy(struct ion_heap *heap)
 	switch (heap->type) {
 	case ION_HEAP_TYPE_SYSTEM_CONTIG:
 		pr_err("%s: Heap type is disabled: %d\n", __func__,
-<<<<<<< HEAD
-			heap->type);
-=======
 		       heap->type);
->>>>>>> ACK/deprecated/android-4.4-p
 		break;
 	case ION_HEAP_TYPE_SYSTEM:
 		ion_system_heap_destroy(heap);

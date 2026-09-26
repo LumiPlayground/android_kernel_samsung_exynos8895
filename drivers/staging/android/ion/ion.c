@@ -457,12 +457,8 @@ static void ion_handle_get(struct ion_handle *handle)
 }
 
 /* Must hold the client lock */
-<<<<<<< HEAD
-static struct ion_handle* ion_handle_get_check_overflow(struct ion_handle *handle)
-=======
 static struct ion_handle *ion_handle_get_check_overflow(
 					struct ion_handle *handle)
->>>>>>> ACK/deprecated/android-4.4-p
 {
 	if (atomic_read(&handle->ref.refcount) + 1 == 0)
 		return ERR_PTR(-EOVERFLOW);
@@ -564,21 +560,6 @@ static struct ion_handle *ion_handle_get_by_id_nolock(struct ion_client *client,
 		return ion_handle_get_check_overflow(handle);
 
 	return ERR_PTR(-EINVAL);
-<<<<<<< HEAD
-}
-
-struct ion_handle *ion_handle_get_by_id(struct ion_client *client,
-						int id)
-{
-	struct ion_handle *handle;
-
-	mutex_lock(&client->lock);
-	handle = ion_handle_get_by_id_nolock(client, id);
-	mutex_unlock(&client->lock);
-
-	return handle;
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 }
 
 static int ion_handle_add(struct ion_client *client, struct ion_handle *handle)
@@ -1102,12 +1083,9 @@ void ion_client_destroy(struct ion_client *client)
 	struct ion_device *dev = client->dev;
 	struct rb_node *n;
 
-<<<<<<< HEAD
 	pr_debug("%s: %d\n", __func__, __LINE__);
 
 	mutex_lock(&client->lock);
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 	while ((n = rb_first(&client->handles))) {
 		struct ion_handle *handle = rb_entry(n, struct ion_handle,
 						     node);
@@ -1161,6 +1139,7 @@ static struct sg_table *ion_map_dma_buf(struct dma_buf_attachment *attachment,
 	struct ion_buffer *buffer = dmabuf->priv;
 
 	ion_buffer_sync_for_device(buffer, attachment->dev, direction);
+
 	return buffer->sg_table;
 }
 
@@ -1199,15 +1178,12 @@ static void ion_buffer_sync_for_device(struct ion_buffer *buffer,
 	int pages = PAGE_ALIGN(buffer->size) / PAGE_SIZE;
 	int i;
 
-<<<<<<< HEAD
 	if (!ion_buffer_cached(buffer))
 		return;
 
 	pr_debug("%s: syncing for device %s\n", __func__,
 		 dev ? dev_name(dev) : "null");
 
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 	if (!ion_buffer_fault_user_mappings(buffer))
 		return;
 
@@ -1261,10 +1237,7 @@ static void ion_vm_open(struct vm_area_struct *vma)
 	mutex_lock(&buffer->lock);
 	list_add(&vma_list->list, &buffer->vmas);
 	mutex_unlock(&buffer->lock);
-<<<<<<< HEAD
 	pr_debug("%s: adding %pK\n", __func__, vma);
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 }
 
 static void ion_vm_close(struct vm_area_struct *vma)
@@ -1278,10 +1251,7 @@ static void ion_vm_close(struct vm_area_struct *vma)
 			continue;
 		list_del(&vma_list->list);
 		kfree(vma_list);
-<<<<<<< HEAD
 		pr_debug("%s: deleting %pK\n", __func__, vma);
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 		break;
 	}
 	mutex_unlock(&buffer->lock);
