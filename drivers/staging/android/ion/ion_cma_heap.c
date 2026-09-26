@@ -48,8 +48,8 @@ static int ion_cma_allocate(struct ion_heap *heap, struct ion_buffer *buffer,
 
 	dev_dbg(dev, "Request buffer allocation len %ld\n", len);
 
-	if (!ion_is_heap_available(heap, flags, NULL))
-		return -EPERM;
+	if (buffer->flags & ION_FLAG_CACHED)
+		return -EINVAL;
 
 	info = kzalloc(sizeof(struct ion_buffer_info), GFP_KERNEL);
 	if (!info) {

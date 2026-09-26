@@ -1127,13 +1127,13 @@ static unsigned int s3c24xx_serial_getclk(struct s3c24xx_uart_port *ourport,
 {
 	struct s3c24xx_uart_info *info = ourport->info;
 	unsigned long rate;
-	unsigned int cnt, baud, quot, clk_sel, best_quot = 0;
+	unsigned int cnt, baud, quot, best_quot = 0;
 	int calc_deviation, deviation = (1 << 30) - 1;
 
-	clk_sel = (ourport->cfg->clk_sel) ? ourport->cfg->clk_sel :
-			ourport->info->def_clk_sel;
 	for (cnt = 0; cnt < info->num_clks; cnt++) {
-		if (!(clk_sel & (1 << cnt)))
+		/* Keep selected clock if provided */
+		if (ourport->cfg->clk_sel &&
+			!(ourport->cfg->clk_sel & (1 << cnt)))
 			continue;
 
 		rate = clk_get_rate(ourport->clk);
@@ -1299,16 +1299,21 @@ static void s3c24xx_serial_set_termios(struct uart_port *port,
 	wr_regl(port, S3C2410_ULCON, ulcon);
 	wr_regl(port, S3C2410_UBRDIV, quot);
 
-	if (ourport->info->has_divslot)
-		wr_regl(port, S3C2443_DIVSLOT, udivslot);
+	port->status &= ~UPSTAT_AUTOCTS;
 
 	umcon = rd_regl(port, S3C2410_UMCON);
 	if (termios->c_cflag & CRTSCTS) {
 		umcon |= S3C2410_UMCOM_AFC;
+		/* Disable RTS when RX FIFO contains 63 bytes */
+		umcon &= ~S3C2412_UMCON_AFC_8;
+		port->status = UPSTAT_AUTOCTS;
 	} else {
 		umcon &= ~S3C2410_UMCOM_AFC;
 	}
 	wr_regl(port, S3C2410_UMCON, umcon);
+
+	if (ourport->info->has_divslot)
+		wr_regl(port, S3C2443_DIVSLOT, udivslot);
 
 	dbg("uart: ulcon = 0x%08x, ucon = 0x%08x, ufcon = 0x%08x\n",
 	    rd_regl(port, S3C2410_ULCON),
@@ -2027,6 +2032,11 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 
 	dbg("s3c24xx_serial_probe(%p) %d\n", pdev, index);
 
+	if (index >= ARRAY_SIZE(s3c24xx_serial_ports)) {
+		dev_err(&pdev->dev, "serial%d out of range\n", index);
+		return -EINVAL;
+	}
+
 	if (pdev->dev.of_node) {
 		ret = of_alias_get_id(pdev->dev.of_node, "uart");
 		if (ret < 0) {
@@ -2111,8 +2121,6 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 				"Please add FIFO size in device tree!(UART%d)\n", port_index);
 		return -EINVAL;
 	}
-
-	probe_index++;
 
 	dbg("%s: initialising port %p...\n", __func__, ourport);
 
@@ -2262,6 +2270,8 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 
 	ourport->dbg_mode = 0;
 
+
+	probe_index++;
 
 	return 0;
 }
