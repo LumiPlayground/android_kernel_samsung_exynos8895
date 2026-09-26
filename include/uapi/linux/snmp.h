@@ -55,6 +55,7 @@ enum
 	IPSTATS_MIB_ECT1PKTS,			/* InECT1Pkts */
 	IPSTATS_MIB_ECT0PKTS,			/* InECT0Pkts */
 	IPSTATS_MIB_CEPKTS,			/* InCEPkts */
+	IPSTATS_MIB_REASM_OVERLAPS,		/* ReasmOverlaps */
 	__IPSTATS_MIB_MAX
 };
 
@@ -280,8 +281,12 @@ enum
 	LINUX_MIB_TCPKEEPALIVE,			/* TCPKeepAlive */
 	LINUX_MIB_TCPMTUPFAIL,			/* TCPMTUPFail */
 	LINUX_MIB_TCPMTUPSUCCESS,		/* TCPMTUPSuccess */
+<<<<<<< HEAD
 	LINUX_MIB_TCPRACECNDREQSK,		/* TCPRaceCondInReqsk */
 	LINUX_MIB_TCPRACECNDREQSKDROP,		/* TCPRaceCondInReqskDrop */
+=======
+	LINUX_MIB_TCPWQUEUETOOBIG,		/* TCPWqueueTooBig */
+>>>>>>> ACK/deprecated/android-4.4-p
 	__LINUX_MIB_MAX
 };
 

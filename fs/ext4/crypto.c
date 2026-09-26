@@ -475,14 +475,26 @@ errout:
 	return err;
 }
 
-bool ext4_valid_contents_enc_mode(uint32_t mode)
+bool ext4_valid_enc_modes(uint32_t contents_mode, uint32_t filenames_mode)
 {
+<<<<<<< HEAD
 #ifdef CONFIG_FMP_EXT4CRYPT_FS
 	return (mode == EXT4_ENCRYPTION_MODE_AES_256_XTS) || (mode == FMP_ENCRYPTION_MODE_AES_256_XTS) ||
 		      (mode == EXT4_ENCRYPTION_MODE_PRIVATE);
 #else
 	return (mode == EXT4_ENCRYPTION_MODE_AES_256_XTS);
 #endif
+=======
+	if (contents_mode == EXT4_ENCRYPTION_MODE_AES_256_XTS) {
+		return (filenames_mode == EXT4_ENCRYPTION_MODE_AES_256_CTS ||
+			filenames_mode == EXT4_ENCRYPTION_MODE_AES_256_HEH);
+	}
+
+	if (contents_mode == EXT4_ENCRYPTION_MODE_SPECK128_256_XTS)
+		return filenames_mode == EXT4_ENCRYPTION_MODE_SPECK128_256_CTS;
+
+	return false;
+>>>>>>> ACK/deprecated/android-4.4-p
 }
 
 /**

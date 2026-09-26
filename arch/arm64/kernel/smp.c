@@ -126,6 +126,7 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 		}
 	} else {
 		pr_err("CPU%u: failed to boot: %d\n", cpu, ret);
+		return ret;
 	}
 
 #ifdef CONFIG_THREAD_INFO_IN_TASK
@@ -146,7 +147,7 @@ static void smp_store_cpu_info(unsigned int cpuid)
  * This is the secondary CPU boot entry.  We're using this CPUs
  * idle thread stack, but a set of temporary page tables.
  */
-asmlinkage void secondary_start_kernel(void)
+asmlinkage notrace void secondary_start_kernel(void)
 {
 	struct mm_struct *mm = &init_mm;
 	unsigned int cpu;
@@ -868,13 +869,26 @@ void tick_broadcast(const struct cpumask *mask)
 }
 #endif
 
+<<<<<<< HEAD
 extern const struct cpumask *const cpu_online_mask;
+=======
+/*
+ * The number of CPUs online, not counting this CPU (which may not be
+ * fully online and so not counted in num_online_cpus()).
+ */
+static inline unsigned int num_other_online_cpus(void)
+{
+	unsigned int this_cpu_online = cpu_online(smp_processor_id());
+
+	return num_online_cpus() - this_cpu_online;
+}
+>>>>>>> ACK/deprecated/android-4.4-p
 
 void smp_send_stop(void)
 {
 	unsigned long timeout;
 
-	if (num_online_cpus() > 1) {
+	if (num_other_online_cpus()) {
 		cpumask_t mask;
 
 		cpumask_copy(&mask, cpu_online_mask);
@@ -883,12 +897,21 @@ void smp_send_stop(void)
 		smp_cross_call(&mask, IPI_CPU_STOP);
 	}
 
+<<<<<<< HEAD
 	/* Wait up to 5 seconds for other CPUs to stop */
 	timeout = USEC_PER_SEC * 5;
 	while (num_online_cpus() > 1 && timeout--)
 		udelay(1);
 
 	if (num_online_cpus() > 1) {
+=======
+	/* Wait up to one second for other CPUs to stop */
+	timeout = USEC_PER_SEC;
+	while (num_other_online_cpus() && timeout--)
+		udelay(1);
+
+	if (num_other_online_cpus())
+>>>>>>> ACK/deprecated/android-4.4-p
 		pr_warning("SMP: failed to stop secondary CPUs\n");
 	} else {
 		pr_info("SMP: completed to stop secondary CPUS\n");

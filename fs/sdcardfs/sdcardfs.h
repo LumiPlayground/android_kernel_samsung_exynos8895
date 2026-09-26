@@ -225,7 +225,10 @@ struct sdcardfs_mount_options {
 	bool multiuser;
 	bool gid_derivation;
 	bool default_normal;
+<<<<<<< HEAD
 	bool unshared_obb;
+=======
+>>>>>>> ACK/deprecated/android-4.4-p
 	unsigned int reserved_mb;
 	bool nocache;
 };
@@ -436,6 +439,7 @@ static inline int get_gid(struct vfsmount *mnt,
 	struct sdcardfs_vfsmount_options *vfsopts = mnt->data;
 	struct sdcardfs_sb_info *sbi = SDCARDFS_SB(sb);
 
+<<<<<<< HEAD
 	if (data->under_knox) {
 		switch (data->perm) {
 		case PERM_KNOX_PRE_ROOT:
@@ -452,6 +456,8 @@ static inline int get_gid(struct vfsmount *mnt,
 		}
 	}
 
+=======
+>>>>>>> ACK/deprecated/android-4.4-p
 	if (vfsopts->gid == AID_SDCARD_RW && !sbi->options.default_normal)
 		/* As an optimization, certain trusted system components only run
 		 * as owner but operate across all users. Since we're now handing

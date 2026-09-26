@@ -29,9 +29,17 @@
 
 #include "compatibility.h"
 
+<<<<<<< HEAD
 /* Version Information */
 #define DRIVER_VERSION "v2.08.0 (2016/12/09)"
 #define DRIVER_AUTHOR "Realtek nic sw <nic_swsd@realtek.com>"
+=======
+/* Information for net */
+#define NET_VERSION		"3"
+
+#define DRIVER_VERSION		"v1." NETNEXT_VERSION "." NET_VERSION
+#define DRIVER_AUTHOR "Realtek linux nic maintainers <nic_swsd@realtek.com>"
+>>>>>>> ACK/deprecated/android-4.4-p
 #define DRIVER_DESC "Realtek RTL8152/RTL8153 Based USB Ethernet Adapters"
 #define MODULENAME "r8152"
 
@@ -605,7 +613,11 @@ enum rtl8152_flags {
 #define VENDOR_ID_REALTEK		0x0bda
 #define VENDOR_ID_SAMSUNG		0x04e8
 #define VENDOR_ID_LENOVO		0x17ef
+<<<<<<< HEAD
 #define VENDOR_ID_TPLINK		0x2357
+=======
+#define VENDOR_ID_LINKSYS		0x13b1
+>>>>>>> ACK/deprecated/android-4.4-p
 #define VENDOR_ID_NVIDIA		0x0955
 
 #define MCU_TYPE_PLA			0x0100
@@ -707,11 +719,16 @@ struct r8152 {
 	struct delayed_work schedule, hw_phy_work;
 	struct mii_if_info mii;
 	struct mutex control;	/* use for hw setting */
+<<<<<<< HEAD
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 0, 0)
 	struct vlan_group *vlgrp;
 #endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 22)
 	struct net_device_stats stats;
+=======
+#ifdef CONFIG_PM_SLEEP
+	struct notifier_block pm_notifier;
+>>>>>>> ACK/deprecated/android-4.4-p
 #endif
 
 	struct rtl_ops {
@@ -1812,7 +1829,7 @@ static int r8152_tx_agg_fill(struct r8152 *tp, struct tx_agg *agg)
 
 		tx_data += len;
 		agg->skb_len += len;
-		agg->skb_num++;
+		agg->skb_num += skb_shinfo(skb)->gso_segs ?: 1;
 
 		dev_kfree_skb_any(skb);
 
@@ -2242,11 +2259,14 @@ static void _rtl8152_set_rx_mode(struct net_device *netdev)
 	__le32 tmp[2];
 	u32 ocp_data;
 
+<<<<<<< HEAD
 	clear_bit(RTL8152_SET_RX_MODE, &tp->flags);
 
 	if (!netif_carrier_ok(netdev))
 		return;
 
+=======
+>>>>>>> ACK/deprecated/android-4.4-p
 	netif_stop_queue(netdev);
 	ocp_data = ocp_read_dword(tp, MCU_TYPE_PLA, PLA_RCR);
 	ocp_data &= ~RCR_ACPT_ALL;
@@ -2948,9 +2968,29 @@ static void rtl_runtime_suspend_enable(struct r8152 *tp, bool enable)
 
 static void rtl8153_runtime_enable(struct r8152 *tp, bool enable)
 {
+<<<<<<< HEAD
 	rtl_runtime_suspend_enable(tp, enable);
 	tp->rtl_ops.u1u2_enable(tp, !enable);
 	tp->rtl_ops.u2p3_enable(tp, !enable);
+=======
+	u16 data;
+	int i;
+
+	data = r8152_mdio_read(tp, MII_BMCR);
+
+	/* don't reset again before the previous one complete */
+	if (data & BMCR_RESET)
+		return;
+
+	data |= BMCR_RESET;
+	r8152_mdio_write(tp, MII_BMCR, data);
+
+	for (i = 0; i < 50; i++) {
+		msleep(20);
+		if ((r8152_mdio_read(tp, MII_BMCR) & BMCR_RESET) == 0)
+			break;
+	}
+>>>>>>> ACK/deprecated/android-4.4-p
 }
 
 static void rtl8153b_runtime_enable(struct r8152 *tp, bool enable)
@@ -3016,6 +3056,7 @@ static void r8153_teredo_off(struct r8152 *tp)
 	ocp_write_dword(tp, MCU_TYPE_PLA, PLA_TEREDO_TIMER, 0);
 }
 
+<<<<<<< HEAD
 static void rtl_reset_bmu(struct r8152 *tp)
 {
 	u32 ocp_data;
@@ -3686,6 +3727,10 @@ static void r8152b_firmware(struct r8152 *tp)
 
 static void r8152_aldps_en(struct r8152 *tp, bool enable)
 {
+=======
+static void r8152_aldps_en(struct r8152 *tp, bool enable)
+{
+>>>>>>> ACK/deprecated/android-4.4-p
 	if (enable) {
 		ocp_reg_write(tp, OCP_ALDPS_CONFIG, ENPWRSAVE | ENPDNPS |
 						    LINKENA | DIS_SDSAVE);
@@ -3694,6 +3739,7 @@ static void r8152_aldps_en(struct r8152 *tp, bool enable)
 						    DIS_SDSAVE);
 		msleep(20);
 	}
+<<<<<<< HEAD
 }
 
 static inline void r8152_mmd_indirect(struct r8152 *tp, u16 dev, u16 reg)
@@ -3767,13 +3813,21 @@ static void r8152b_enable_fc(struct r8152 *tp)
 	anar = r8152_mdio_read(tp, MII_ADVERTISE);
 	anar |= ADVERTISE_PAUSE_CAP | ADVERTISE_PAUSE_ASYM;
 	r8152_mdio_write(tp, MII_ADVERTISE, anar);
+=======
+>>>>>>> ACK/deprecated/android-4.4-p
 }
 
 static void rtl8152_disable(struct r8152 *tp)
 {
+<<<<<<< HEAD
 	tp->rtl_ops.aldps_enable(tp, false);
 	rtl_disable(tp);
 	tp->rtl_ops.aldps_enable(tp, true);
+=======
+	r8152_aldps_en(tp, false);
+	rtl_disable(tp);
+	r8152_aldps_en(tp, true);
+>>>>>>> ACK/deprecated/android-4.4-p
 }
 
 static void r8152b_hw_phy_cfg(struct r8152 *tp)
@@ -5335,12 +5389,35 @@ static void r8153_enter_oob(struct r8152 *tp)
 	ocp_write_dword(tp, MCU_TYPE_PLA, PLA_RCR, ocp_data);
 }
 
+<<<<<<< HEAD
 static void rtl8153_disable(struct r8152 *tp)
 {
 	tp->rtl_ops.aldps_enable(tp, false);
 	rtl_disable(tp);
 	rtl_reset_bmu(tp);
 	tp->rtl_ops.aldps_enable(tp, true);
+=======
+static void r8153_aldps_en(struct r8152 *tp, bool enable)
+{
+	u16 data;
+
+	data = ocp_reg_read(tp, OCP_POWER_CFG);
+	if (enable) {
+		data |= EN_ALDPS;
+		ocp_reg_write(tp, OCP_POWER_CFG, data);
+	} else {
+		data &= ~EN_ALDPS;
+		ocp_reg_write(tp, OCP_POWER_CFG, data);
+		msleep(20);
+	}
+}
+
+static void rtl8153_disable(struct r8152 *tp)
+{
+	r8153_aldps_en(tp, false);
+	rtl_disable(tp);
+	r8153_aldps_en(tp, true);
+>>>>>>> ACK/deprecated/android-4.4-p
 	usb_enable_lpm(tp->udev);
 }
 
@@ -5430,6 +5507,7 @@ static int rtl8152_set_speed(struct r8152 *tp, u8 autoneg, u16 speed, u8 duplex)
 	r8152_mdio_write(tp, MII_ADVERTISE, anar);
 	r8152_mdio_write(tp, MII_BMCR, bmcr);
 
+<<<<<<< HEAD
 	switch (tp->version) {
 	case RTL_VER_08:
 	case RTL_VER_09:
@@ -5442,6 +5520,9 @@ static int rtl8152_set_speed(struct r8152 *tp, u8 autoneg, u16 speed, u8 duplex)
 	}
 
 	if (bmcr & BMCR_RESET) {
+=======
+	if (test_and_clear_bit(PHY_RESET, &tp->flags)) {
+>>>>>>> ACK/deprecated/android-4.4-p
 		int i;
 
 		for (i = 0; i < 50; i++) {
@@ -5476,8 +5557,11 @@ static void rtl8152_down(struct r8152 *tp)
 	r8152_aldps_en(tp, false);
 	r8152b_enter_oob(tp);
 	r8152_aldps_en(tp, true);
+<<<<<<< HEAD
 	if (tp->version == RTL_VER_01)
 		rtl8152_set_speed(tp, AUTONEG_ENABLE, SPEED_10, DUPLEX_FULL);
+=======
+>>>>>>> ACK/deprecated/android-4.4-p
 }
 
 static void rtl8153_up(struct r8152 *tp)
@@ -5485,12 +5569,21 @@ static void rtl8153_up(struct r8152 *tp)
 	if (test_bit(RTL8152_UNPLUG, &tp->flags))
 		return;
 
+<<<<<<< HEAD
 	tp->rtl_ops.u1u2_enable(tp, false);
 	tp->rtl_ops.aldps_enable(tp, false);
 	r8153_first_init(tp);
 	tp->rtl_ops.aldps_enable(tp, true);
 	tp->rtl_ops.u2p3_enable(tp, true);
 	tp->rtl_ops.u1u2_enable(tp, true);
+=======
+	r8153_u1u2en(tp, false);
+	r8153_aldps_en(tp, false);
+	r8153_first_init(tp);
+	r8153_aldps_en(tp, true);
+	r8153_u2p3en(tp, true);
+	r8153_u1u2en(tp, true);
+>>>>>>> ACK/deprecated/android-4.4-p
 	usb_enable_lpm(tp->udev);
 }
 
@@ -5501,12 +5594,21 @@ static void rtl8153_down(struct r8152 *tp)
 		return;
 	}
 
+<<<<<<< HEAD
 	tp->rtl_ops.u1u2_enable(tp, false);
 	tp->rtl_ops.u2p3_enable(tp, false);
 	tp->rtl_ops.power_cut_en(tp, false);
 	tp->rtl_ops.aldps_enable(tp, false);
 	r8153_enter_oob(tp);
 	tp->rtl_ops.aldps_enable(tp, true);
+=======
+	r8153_u1u2en(tp, false);
+	r8153_u2p3en(tp, false);
+	r8153_power_cut_en(tp, false);
+	r8153_aldps_en(tp, false);
+	r8153_enter_oob(tp);
+	r8153_aldps_en(tp, true);
+>>>>>>> ACK/deprecated/android-4.4-p
 }
 
 static bool rtl8152_in_nway(struct r8152 *tp)
@@ -5583,13 +5685,19 @@ static inline void __rtl_work_func(struct r8152 *tp)
 	if (test_and_clear_bit(RTL8152_LINK_CHG, &tp->flags))
 		set_carrier(tp);
 
-	if (test_bit(RTL8152_SET_RX_MODE, &tp->flags))
+	if (test_and_clear_bit(RTL8152_SET_RX_MODE, &tp->flags))
 		_rtl8152_set_rx_mode(tp->netdev);
 
 	/* don't schedule napi before linking */
 	if (test_and_clear_bit(SCHEDULE_NAPI, &tp->flags) &&
 	    netif_carrier_ok(tp->netdev))
 		napi_schedule(&tp->napi);
+<<<<<<< HEAD
+=======
+
+	if (test_and_clear_bit(PHY_RESET, &tp->flags))
+		rtl_phy_reset(tp);
+>>>>>>> ACK/deprecated/android-4.4-p
 
 	mutex_unlock(&tp->control);
 
@@ -5597,6 +5705,7 @@ out1:
 	usb_autopm_put_interface(tp->intf);
 }
 
+<<<<<<< HEAD
 static inline void __rtl_hw_phy_work_func(struct r8152 *tp)
 {
 	if (test_bit(RTL8152_UNPLUG, &tp->flags))
@@ -5662,6 +5771,35 @@ static int rtk_disable_diag(struct r8152 *tp)
 	return 0;
 }
 
+=======
+#ifdef CONFIG_PM_SLEEP
+static int rtl_notifier(struct notifier_block *nb, unsigned long action,
+			void *data)
+{
+	struct r8152 *tp = container_of(nb, struct r8152, pm_notifier);
+
+	switch (action) {
+	case PM_HIBERNATION_PREPARE:
+	case PM_SUSPEND_PREPARE:
+		usb_autopm_get_interface(tp->intf);
+		break;
+
+	case PM_POST_HIBERNATION:
+	case PM_POST_SUSPEND:
+		usb_autopm_put_interface(tp->intf);
+		break;
+
+	case PM_POST_RESTORE:
+	case PM_RESTORE_PREPARE:
+	default:
+		break;
+	}
+
+	return NOTIFY_DONE;
+}
+#endif
+
+>>>>>>> ACK/deprecated/android-4.4-p
 static int rtl8152_open(struct net_device *netdev)
 {
 	struct r8152 *tp = netdev_priv(netdev);
@@ -5703,6 +5841,10 @@ static int rtl8152_open(struct net_device *netdev)
 	mutex_unlock(&tp->control);
 
 	usb_autopm_put_interface(tp->intf);
+#ifdef CONFIG_PM_SLEEP
+	tp->pm_notifier.notifier_call = rtl_notifier;
+	register_pm_notifier(&tp->pm_notifier);
+#endif
 
 out:
 	pr_info("%s : end of function!\n", __func__);
@@ -5715,6 +5857,14 @@ static int rtl8152_close(struct net_device *netdev)
 	int res = 0;
 	int timeleft = -1;
 
+<<<<<<< HEAD
+=======
+#ifdef CONFIG_PM_SLEEP
+	unregister_pm_notifier(&tp->pm_notifier);
+#endif
+	if (!test_bit(RTL8152_UNPLUG, &tp->flags))
+		napi_disable(&tp->napi);
+>>>>>>> ACK/deprecated/android-4.4-p
 	clear_bit(WORK_ENABLE, &tp->flags);
 	usb_kill_urb(tp->intr_urb);
 	cancel_delayed_work_sync(&tp->schedule);
@@ -5739,12 +5889,13 @@ static int rtl8152_close(struct net_device *netdev)
 		res = rtl_s5_wol(tp);
 #endif
 		mutex_unlock(&tp->control);
-
-		usb_autopm_put_interface(tp->intf);
 	}
 	timeleft = wait_event_interruptible_timeout(tp->bottom_half_wait_q,
 					tp->bottom_half_event, (tp->bottom_half_wait_time)*HZ);
 	pr_info("%s : wait for end of rx_bottom , timeleft = %d\n", __func__, timeleft);
+
+	if (!res)
+		usb_autopm_put_interface(tp->intf);
 
 	free_all_mem(tp);
 
@@ -5768,6 +5919,7 @@ static void r8152b_init(struct r8152 *tp)
 	if (test_bit(RTL8152_UNPLUG, &tp->flags))
 		return;
 
+<<<<<<< HEAD
 #if 0
 	/* Clear EP3 Fifo before using interrupt transfer */
 	if (ocp_read_byte(tp, MCU_TYPE_USB, 0xb963) & 0x80) {
@@ -5786,6 +5938,8 @@ static void r8152b_init(struct r8152 *tp)
 		r8152_mdio_write(tp, MII_BMCR, data);
 	}
 
+=======
+>>>>>>> ACK/deprecated/android-4.4-p
 	r8152_aldps_en(tp, false);
 
 	if (tp->version == RTL_VER_01) {
@@ -5807,6 +5961,7 @@ static void r8152b_init(struct r8152 *tp)
 		   SPDWN_RXDV_MSK | SPDWN_LINKCHG_MSK;
 	ocp_write_word(tp, MCU_TYPE_PLA, PLA_GPHY_INTR_IMR, ocp_data);
 
+<<<<<<< HEAD
 	ocp_data = ocp_read_word(tp, MCU_TYPE_USB, USB_USB_TIMER);
 	ocp_data |= BIT(15);
 	ocp_write_word(tp, MCU_TYPE_USB, USB_USB_TIMER, ocp_data);
@@ -5814,6 +5969,11 @@ static void r8152b_init(struct r8152 *tp)
 	ocp_data &= ~BIT(15);
 	ocp_write_word(tp, MCU_TYPE_USB, USB_USB_TIMER, ocp_data);
 
+=======
+	r8152b_enable_eee(tp);
+	r8152_aldps_en(tp, true);
+	r8152b_enable_fc(tp);
+>>>>>>> ACK/deprecated/android-4.4-p
 	rtl_tally_reset(tp);
 
 	/* enable rx aggregation */
@@ -5831,20 +5991,30 @@ static void r8153_init(struct r8152 *tp)
 	if (test_bit(RTL8152_UNPLUG, &tp->flags))
 		return;
 
+<<<<<<< HEAD
+=======
+	r8153_aldps_en(tp, false);
+>>>>>>> ACK/deprecated/android-4.4-p
 	r8153_u1u2en(tp, false);
 
 	for (i = 0; i < 500; i++) {
 		if (ocp_read_word(tp, MCU_TYPE_PLA, PLA_BOOT_CTRL) &
 		    AUTOLOAD_DONE)
 			break;
+
 		msleep(20);
+		if (test_bit(RTL8152_UNPLUG, &tp->flags))
+			break;
 	}
 
 	for (i = 0; i < 500; i++) {
 		ocp_data = ocp_reg_read(tp, OCP_PHY_STATUS) & PHY_STAT_MASK;
 		if (ocp_data == PHY_STAT_LAN_ON || ocp_data == PHY_STAT_PWRDN)
 			break;
+
 		msleep(20);
+		if (test_bit(RTL8152_UNPLUG, &tp->flags))
+			break;
 	}
 
 	if (tp->version == RTL_VER_03 || tp->version == RTL_VER_04 ||
@@ -5931,6 +6101,12 @@ static void r8153_init(struct r8152 *tp)
 	ocp_write_word(tp, MCU_TYPE_PLA, PLA_MAC_PWR_CTRL3, 0);
 	ocp_write_word(tp, MCU_TYPE_PLA, PLA_MAC_PWR_CTRL4, 0);
 
+<<<<<<< HEAD
+=======
+	r8153_enable_eee(tp);
+	r8153_aldps_en(tp, true);
+	r8152b_enable_fc(tp);
+>>>>>>> ACK/deprecated/android-4.4-p
 	rtl_tally_reset(tp);
 	r8153_u2p3en(tp, true);
 
@@ -6258,8 +6434,13 @@ static int rtl8152_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 	if (!rtl_can_wakeup(tp))
 		return -EOPNOTSUPP;
 
+<<<<<<< HEAD
 	if (unlikely(tp->rtk_enable_diag))
 		return -EBUSY;
+=======
+	if (wol->wolopts & ~WAKE_ANY)
+		return -EINVAL;
+>>>>>>> ACK/deprecated/android-4.4-p
 
 	ret = usb_autopm_get_interface(tp->intf);
 	if (ret < 0)
@@ -6522,7 +6703,7 @@ static void rtl8152_get_strings(struct net_device *dev, u32 stringset, u8 *data)
 {
 	switch (stringset) {
 	case ETH_SS_STATS:
-		memcpy(data, *rtl8152_gstrings, sizeof(rtl8152_gstrings));
+		memcpy(data, rtl8152_gstrings, sizeof(rtl8152_gstrings));
 		break;
 	}
 }
@@ -7260,6 +7441,9 @@ static int rtl8152_probe(struct usb_interface *intf,
 		return -ENODEV;
 	}
 
+	if (intf->cur_altsetting->desc.bNumEndpoints < 3)
+		return -ENODEV;
+
 	usb_reset_device(udev);
 	netdev = alloc_etherdev(sizeof(struct r8152));
 	if (!netdev) {
@@ -7339,6 +7523,11 @@ static int rtl8152_probe(struct usb_interface *intf,
 
 	intf->needs_remote_wakeup = 1;
 
+	if (!rtl_can_wakeup(tp))
+		__rtl_set_wol(tp, 0);
+	else
+		tp->saved_wolopts = __rtl_get_wol(tp);
+
 	tp->rtl_ops.init(tp);
 	queue_delayed_work(system_long_wq, &tp->hw_phy_work, 0);
 	set_ethernet_addr(tp);
@@ -7352,10 +7541,6 @@ static int rtl8152_probe(struct usb_interface *intf,
 		goto out1;
 	}
 
-	if (!rtl_can_wakeup(tp))
-		__rtl_set_wol(tp, 0);
-
-	tp->saved_wolopts = __rtl_get_wol(tp);
 	if (tp->saved_wolopts)
 		device_set_wakeup_enable(&udev->dev, true);
 	else
@@ -7411,6 +7596,7 @@ static void rtl8152_disconnect(struct usb_interface *intf)
 
 /* table of devices that work with this driver */
 static struct usb_device_id rtl8152_table[] = {
+<<<<<<< HEAD
 	/* Realtek */
 	{REALTEK_USB_DEVICE_INTERFACE_CLASS(VENDOR_ID_REALTEK, 0x8050)},
 	{REALTEK_USB_DEVICE_INTERFACE_CLASS_AND_INTERFACE_INFO(VENDOR_ID_REALTEK, 0x8050)},
@@ -7455,6 +7641,15 @@ static struct usb_device_id rtl8152_table[] = {
 	/* Nvidia */
 	{REALTEK_USB_DEVICE_INTERFACE_CLASS(VENDOR_ID_NVIDIA,  0x09ff)},
 	{REALTEK_USB_DEVICE_INTERFACE_CLASS_AND_INTERFACE_INFO(VENDOR_ID_NVIDIA,  0x09ff)},
+=======
+	{REALTEK_USB_DEVICE(VENDOR_ID_REALTEK, 0x8152)},
+	{REALTEK_USB_DEVICE(VENDOR_ID_REALTEK, 0x8153)},
+	{REALTEK_USB_DEVICE(VENDOR_ID_SAMSUNG, 0xa101)},
+	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x7205)},
+	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x304f)},
+	{REALTEK_USB_DEVICE(VENDOR_ID_LINKSYS, 0x0041)},
+	{REALTEK_USB_DEVICE(VENDOR_ID_NVIDIA,  0x09ff)},
+>>>>>>> ACK/deprecated/android-4.4-p
 	{}
 };
 
