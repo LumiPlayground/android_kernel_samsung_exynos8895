@@ -176,6 +176,8 @@ config ARCH_EXYNOS8
 	help
 	  Samsung EXYNOS8 (Mongoose/A53) SoC based systems
 
+source "arch/arm64/Kconfig.projects"
+
 menuconfig EXYNOS_DTBTOOL
 	bool "Build dtbtool for Exynos"
 	select DTC
