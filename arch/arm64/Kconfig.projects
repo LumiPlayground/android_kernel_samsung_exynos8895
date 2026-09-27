@@ -1,0 +1,62 @@
+config SEC_DREAM2LTE_PROJECT
+	depends on SOC_EXYNOS8895
+	select EXYNOS_DTBTOOL
+	bool "Samsung DREAM2LTE Project"
+	help
+	  Support for Samsung DREAM2LTE Project
+
+config MACH_DREAM2LTE_EUR_OPEN
+	depends on SEC_DREAM2LTE_PROJECT
+	default n
+	bool "Samsung DREAM2LTE EUR OPEN"
+	help
+	  Support for Samsung DREAM2LTE EUR OPEN device.
+
+config MACH_DREAM2LTE_KOR_SINGLE
+	depends on SEC_DREAM2LTE_PROJECT
+	default n
+	bool "Samsung DREAM2LTE KOR SINGLE"
+	help
+	  Support for Samsung DREAM2LTE KOR SINGLE device.
+
+config SEC_DREAMLTE_PROJECT
+	depends on SOC_EXYNOS8895
+	select EXYNOS_DTBTOOL
+	bool "Samsung DREAMLTE Project"
+	help
+	  Support for Samsung DREAMLTE Project
+
+config MACH_DREAMLTE_EUR_OPEN
+	depends on SEC_DREAMLTE_PROJECT
+	default n
+	bool "Samsung DREAMLTE EUR OPEN"
+	help
+	  Support for Samsung DREAMLTE EUR OPEN device.
+
+config MACH_DREAMLTE_KOR_SINGLE
+	depends on SEC_DREAMLTE_PROJECT
+	default n
+	bool "Samsung DREAMLTE KOR SINGLE"
+	help
+	  Support for Samsung DREAMLTE KOR SINGLE device.
+
+config SEC_GREATLTE_PROJECT
+	depends on SOC_EXYNOS8895
+	select EXYNOS_DTBTOOL
+	bool "Samsung GREATLTE Project"
+	help
+	  Support for Samsung GREATLTE Project
+
+config MACH_GREATLTE_EUR_OPEN
+	depends on SEC_GREATLTE_PROJECT
+	default n
+	bool "Samsung GREATLTE EUR OPEN"
+	help
+	  Support for Samsung GREATLTE EUR OPEN device.
+
+config MACH_GREATLTE_KOR_SINGLE
+	depends on SEC_GREATLTE_PROJECT
+	default n
+	bool "Samsung GREATLTE KOR SINGLE"
+	help
+	  Support for Samsung GREATLTE KOR SINGLE device.
