@@ -11,7 +11,7 @@
 
 #include "exynos8895-greatlte-rmem.dtsi"
 #include "exynos8895.dtsi"
-#include "exynos8895-display-lcd.dtsi"
+#include "exynos8895-greatlte_display_00.dtsi"
 #include "modem-ss355ap-pdata.dtsi"
 
 / {
