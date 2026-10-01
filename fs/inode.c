@@ -186,7 +186,7 @@ int inode_init_always(struct super_block *sb, struct inode *inode)
 #endif
 	mapping->private_data = NULL;
 	mapping->writeback_index = 0;
-#if defined(CONFIG_FMP_ECRYPT_FS) || defined(CONFIG_FMP_EXT4CRYPT_FS)
+#if defined(CONFIG_FMP_EXT4CRYPT_FS)
 	mapping->iv = NULL;
 	memset(mapping->key, 0, KEY_MAX_SIZE);
 	mapping->key_length = 0;
@@ -658,6 +658,7 @@ again:
 
 	dispose_list(&dispose);
 }
+EXPORT_SYMBOL_GPL(evict_inodes);
 
 /**
  * invalidate_inodes	- attempt to free all inodes on a superblock
@@ -1485,11 +1486,7 @@ static void iput_final(struct inode *inode)
 	else
 		drop = generic_drop_inode(inode);
 
-#if defined(CONFIG_FMP_ECRYPT_FS)
-	if (!drop && (sb->s_flags & MS_ACTIVE) && !inode->i_mapping->use_fmp) {
-#else
 	if (!drop && (sb->s_flags & MS_ACTIVE)) {
-#endif
 		inode->i_state |= I_REFERENCED;
 		inode_add_lru(inode);
 		spin_unlock(&inode->i_lock);
@@ -2081,3 +2078,27 @@ void inode_nohighmem(struct inode *inode)
 	mapping_set_gfp_mask(inode->i_mapping, GFP_USER);
 }
 EXPORT_SYMBOL(inode_nohighmem);
+
+/*
+ * Generic function to check FS_IOC_SETFLAGS values and reject any invalid
+ * configurations.
+ *
+ * Note: the caller should be holding i_mutex, or else be sure that they have
+ * exclusive access to the inode structure.
+ */
+int vfs_ioc_setflags_prepare(struct inode *inode, unsigned int oldflags,
+			     unsigned int flags)
+{
+	/*
+	 * The IMMUTABLE and APPEND_ONLY flags can only be changed by
+	 * the relevant capability.
+	 *
+	 * This test looks nicer. Thanks to Pauline Middelink
+	 */
+	if ((flags ^ oldflags) & (FS_APPEND_FL | FS_IMMUTABLE_FL) &&
+	    !capable(CAP_LINUX_IMMUTABLE))
+		return -EPERM;
+
+	return 0;
+}
+EXPORT_SYMBOL(vfs_ioc_setflags_prepare);
