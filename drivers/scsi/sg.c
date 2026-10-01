@@ -433,10 +433,6 @@ sg_read(struct file *filp, char __user *buf, size_t count, loff_t * ppos)
 	struct sg_header *old_hdr = NULL;
 	int retval = 0;
 
-<<<<<<< HEAD
-	if (unlikely(segment_eq(get_fs(), KERNEL_DS)))
-		return -EINVAL;
-=======
 	/*
 	 * This could cause a response to be stranded. Close the associated
 	 * file descriptor to free up any resources being held.
@@ -444,7 +440,6 @@ sg_read(struct file *filp, char __user *buf, size_t count, loff_t * ppos)
 	retval = sg_check_file_access(filp, __func__);
 	if (retval)
 		return retval;
->>>>>>> ACK/deprecated/android-4.4-p
 
 	if ((!(sfp = (Sg_fd *) filp->private_data)) || (!(sdp = sfp->parentdp)))
 		return -ENXIO;
@@ -983,31 +978,11 @@ sg_ioctl(struct file *filp, unsigned int cmd_in, unsigned long arg)
 				/* strange ..., for backward compatibility */
 		return sfp->timeout_user;
 	case SG_SET_FORCE_LOW_DMA:
-<<<<<<< HEAD
-		result = get_user(val, ip);
-		if (result)
-			return result;
-		if (val) {
-			sfp->low_dma = 1;
-			if ((0 == sfp->low_dma) && !sfp->res_in_use) {
-				val = (int) sfp->reserve.bufflen;
-				mutex_lock(&sfp->parentdp->open_rel_lock);
-				sg_remove_scat(sfp, &sfp->reserve);
-				sg_build_reserve(sfp, val);
-				mutex_unlock(&sfp->parentdp->open_rel_lock);
-			}
-		} else {
-			if (atomic_read(&sdp->detaching))
-				return -ENODEV;
-			sfp->low_dma = sdp->device->host->unchecked_isa_dma;
-		}
-=======
 		/*
 		 * N.B. This ioctl never worked properly, but failed to
 		 * return an error value. So returning '0' to keep compability
 		 * with legacy applications.
 		 */
->>>>>>> ACK/deprecated/android-4.4-p
 		return 0;
 	case SG_GET_LOW_DMA:
 		return put_user((int) sdp->device->host->unchecked_isa_dma, ip);

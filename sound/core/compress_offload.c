@@ -688,14 +688,10 @@ static int snd_compr_stop(struct snd_compr_stream *stream)
 {
 	int retval;
 
-<<<<<<< HEAD
-	if (stream->runtime->state == SNDRV_PCM_STATE_PREPARED)
-=======
 	switch (stream->runtime->state) {
 	case SNDRV_PCM_STATE_OPEN:
 	case SNDRV_PCM_STATE_SETUP:
 	case SNDRV_PCM_STATE_PREPARED:
->>>>>>> ACK/deprecated/android-4.4-p
 		return -EPERM;
 	default:
 		break;
@@ -914,13 +910,9 @@ static const struct file_operations snd_compr_file_ops = {
 		.write =	snd_compr_write,
 		.read =		snd_compr_read,
 		.unlocked_ioctl = snd_compr_ioctl,
-<<<<<<< HEAD
-		.compat_ioctl	= snd_compr_ioctl,
-=======
 #ifdef CONFIG_COMPAT
 		.compat_ioctl = snd_compr_ioctl_compat,
 #endif
->>>>>>> ACK/deprecated/android-4.4-p
 		.mmap =		snd_compr_mmap,
 		.poll =		snd_compr_poll,
 };

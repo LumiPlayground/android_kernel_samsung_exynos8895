@@ -281,12 +281,9 @@ enum
 	LINUX_MIB_TCPKEEPALIVE,			/* TCPKeepAlive */
 	LINUX_MIB_TCPMTUPFAIL,			/* TCPMTUPFail */
 	LINUX_MIB_TCPMTUPSUCCESS,		/* TCPMTUPSuccess */
-<<<<<<< HEAD
+	LINUX_MIB_TCPWQUEUETOOBIG,		/* TCPWqueueTooBig */
 	LINUX_MIB_TCPRACECNDREQSK,		/* TCPRaceCondInReqsk */
 	LINUX_MIB_TCPRACECNDREQSKDROP,		/* TCPRaceCondInReqskDrop */
-=======
-	LINUX_MIB_TCPWQUEUETOOBIG,		/* TCPWqueueTooBig */
->>>>>>> ACK/deprecated/android-4.4-p
 	__LINUX_MIB_MAX
 };
 

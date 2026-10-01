@@ -236,7 +236,6 @@ void __delete_from_page_cache(struct page *page, void *shadow,
 			      struct mem_cgroup *memcg)
 {
 	struct address_space *mapping = page->mapping;
-
 #ifdef CONFIG_SDP
 	if(mapping_sensitive(mapping))
 		sdp_page_cleanup(page);

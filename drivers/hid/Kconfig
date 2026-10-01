@@ -958,7 +958,7 @@ config HID_TVR
 	depends on USB_HID
 	---help---
 	Support for TVR devices.
-	Say Y here if you have a TVR device.	
+	Say Y here if you have a TVR device.
 
 config HID_MADCATZ
 	tristate "Madcatz wireless game controller support"

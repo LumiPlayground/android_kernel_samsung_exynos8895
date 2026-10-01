@@ -53,15 +53,9 @@ static void spin_dump(raw_spinlock_t *lock, const char *msg)
 {
 	struct task_struct *owner = READ_ONCE(lock->owner);
 
-<<<<<<< HEAD
-	if (lock->owner && lock->owner != SPINLOCK_OWNER_INIT)
-		owner = lock->owner;
-	pr_auto(ASL8, "BUG: spinlock %s on CPU#%d, %s/%d\n",
-=======
 	if (owner == SPINLOCK_OWNER_INIT)
 		owner = NULL;
-	printk(KERN_EMERG "BUG: spinlock %s on CPU#%d, %s/%d\n",
->>>>>>> ACK/deprecated/android-4.4-p
+	pr_auto(ASL8, "BUG: spinlock %s on CPU#%d, %s/%d\n",
 		msg, raw_smp_processor_id(),
 		current->comm, task_pid_nr(current));
 	pr_auto(ASL8, " lock: %pS, .magic: %08x, .owner: %s/%d, "

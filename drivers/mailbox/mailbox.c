@@ -381,8 +381,6 @@ struct mbox_chan *mbox_request_channel(struct mbox_client *cl, int index)
 }
 EXPORT_SYMBOL_GPL(mbox_request_channel);
 
-<<<<<<< HEAD
-=======
 struct mbox_chan *mbox_request_channel_byname(struct mbox_client *cl,
 					      const char *name)
 {
@@ -414,7 +412,6 @@ struct mbox_chan *mbox_request_channel_byname(struct mbox_client *cl,
 }
 EXPORT_SYMBOL_GPL(mbox_request_channel_byname);
 
->>>>>>> ACK/deprecated/android-4.4-p
 /**
  * mbox_free_channel - The client relinquishes control of a mailbox
  *			channel by this call.

@@ -42,6 +42,12 @@
 #define DBG_ESR_EVT_HWWP	0x2
 #define DBG_ESR_EVT_BRK		0x6
 
+/* OSLSR os lock status bits */
+#define AARCH64_OSLSR_OSLM0	(1 << 0)
+#define AARCH64_OSLSR_OSLK	(1 << 1)
+#define AARCH64_OSLSR_NTT	(1 << 2)
+#define AARCH64_OSLSR_OSLM1	(1 << 3)
+
 /*
  * Break point instruction encoding
  */

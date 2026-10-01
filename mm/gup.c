@@ -232,7 +232,6 @@ retry:
 		}
 	}
 
-<<<<<<< HEAD
 	if (__need_migrate_cma_page(page, vma, address, flags)) {
 		if (__isolate_cma_pinpage(page)) {
 			pr_warn("%s: Failed to migrate a cma page\n", __func__);
@@ -262,16 +261,12 @@ retry:
 		}
 	}
 
-	if (flags & FOLL_GET)
-		get_page_foll(page);
-=======
 	if (flags & FOLL_GET) {
 		if (unlikely(!try_get_page_foll(page))) {
 			page = ERR_PTR(-ENOMEM);
 			goto out;
 		}
 	}
->>>>>>> ACK/deprecated/android-4.4-p
 	if (flags & FOLL_TOUCH) {
 		if ((flags & FOLL_WRITE) &&
 		    !pte_dirty(pte) && !PageDirty(page))
@@ -922,12 +917,9 @@ __always_inline long __get_user_pages_unlocked(struct task_struct *tsk, struct m
 	long ret;
 	int locked = 1;
 
-<<<<<<< HEAD
 	if ((gup_flags & FOLL_CMA) != 0)
 		migrate_prep();
 
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 	down_read(&mm->mmap_sem);
 	ret = __get_user_pages_locked(tsk, mm, start, nr_pages, pages, NULL,
 				      &locked, false, gup_flags);

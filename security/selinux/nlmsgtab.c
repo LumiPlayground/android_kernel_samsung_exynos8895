@@ -83,11 +83,7 @@ static struct nlmsg_perm nlmsg_tcpdiag_perms[] =
 	{ TCPDIAG_GETSOCK,	NETLINK_TCPDIAG_SOCKET__NLMSG_READ },
 	{ DCCPDIAG_GETSOCK,	NETLINK_TCPDIAG_SOCKET__NLMSG_READ },
 	{ SOCK_DIAG_BY_FAMILY,	NETLINK_TCPDIAG_SOCKET__NLMSG_READ },
-<<<<<<< HEAD
-	{ SOCK_DESTROY_BACKPORT,    NETLINK_TCPDIAG_SOCKET__NLMSG_WRITE },
-=======
 	{ SOCK_DESTROY_BACKPORT,NETLINK_TCPDIAG_SOCKET__NLMSG_WRITE },
->>>>>>> ACK/deprecated/android-4.4-p
 };
 
 static struct nlmsg_perm nlmsg_xfrm_perms[] =

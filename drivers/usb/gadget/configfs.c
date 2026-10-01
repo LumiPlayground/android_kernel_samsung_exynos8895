@@ -112,8 +112,6 @@ struct gadget_info {
 	bool use_os_desc;
 	char b_vendor_code;
 	char qw_sign[OS_STRING_QW_SIGN_LEN];
-	spinlock_t spinlock;
-	bool unbind;
 #ifdef CONFIG_USB_CONFIGFS_UEVENT
 	bool enabled;
 	bool connected;
@@ -123,6 +121,8 @@ struct gadget_info {
 	struct list_head linked_func;
 	char *prev_func_list;
 #endif
+	spinlock_t spinlock;
+	bool unbind;
 };
 
 static inline struct gadget_info *to_gadget_info(struct config_item *item)
@@ -178,11 +178,7 @@ static int usb_string_copy(const char *s, char **s_copy)
 	char *str;
 	char *copy = *s_copy;
 	ret = strlen(s);
-<<<<<<< HEAD
-	if (ret > MAX_USB_STRING_LEN)
-=======
 	if (ret > USB_MAX_STRING_LEN)
->>>>>>> ACK/deprecated/android-4.4-p
 		return -EOVERFLOW;
 	if (copy) {
 		str = copy;
@@ -193,11 +189,6 @@ static int usb_string_copy(const char *s, char **s_copy)
 	}
 	strncpy(str, s, MAX_USB_STRING_WITH_NULL_LEN);
 
-<<<<<<< HEAD
-	if (str[ret - 1] == '\n')
-		str[ret - 1] = '\0';
-
-=======
 	if (copy) {
 		str = copy;
 	} else {
@@ -208,7 +199,6 @@ static int usb_string_copy(const char *s, char **s_copy)
 	strcpy(str, s);
 	if (str[ret - 1] == '\n')
 		str[ret - 1] = '\0';
->>>>>>> ACK/deprecated/android-4.4-p
 	*s_copy = str;
 	return 0;
 }
@@ -364,12 +354,10 @@ static ssize_t gadget_dev_desc_UDC_store(struct config_item *item,
 	char *name;
 	int ret;
 
-<<<<<<< HEAD
 	pr_info("%s: +++\n", __func__);
-=======
+
 	if (strlen(page) < len)
 		return -EOVERFLOW;
->>>>>>> ACK/deprecated/android-4.4-p
 
 	name = kstrdup(page, GFP_KERNEL);
 	if (!name)
@@ -1626,6 +1614,7 @@ static void configfs_composite_unbind(struct usb_gadget *gadget)
 	spin_unlock_irqrestore(&gi->spinlock, flags);
 }
 
+#ifndef CONFIG_USB_CONFIGFS_UEVENT
 static int configfs_composite_setup(struct usb_gadget *gadget,
 		const struct usb_ctrlrequest *ctrl)
 {
@@ -1672,7 +1661,7 @@ static void configfs_composite_disconnect(struct usb_gadget *gadget)
 	composite_disconnect(gadget);
 	spin_unlock_irqrestore(&gi->spinlock, flags);
 }
-
+#endif
 static void configfs_composite_suspend(struct usb_gadget *gadget)
 {
 	struct usb_composite_dev *cdev;

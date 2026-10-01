@@ -1101,12 +1101,7 @@ static int fat_zeroed_cluster(struct inode *dir, sector_t blknr, int nr_used,
 		lock_buffer(bhs[n]);
 		memset(bhs[n]->b_data, 0, sb->s_blocksize);
 		set_buffer_uptodate(bhs[n]);
-<<<<<<< HEAD
 		mark_buffer_dirty_inode_sync(bhs[n], dir);
-=======
-		unlock_buffer(bhs[n]);
-		mark_buffer_dirty_inode(bhs[n], dir);
->>>>>>> ACK/deprecated/android-4.4-p
 
 		n++;
 		blknr++;
@@ -1186,12 +1181,7 @@ int fat_alloc_new_dir(struct inode *dir, struct timespec *ts)
 	de[0].size = de[1].size = 0;
 	memset(de + 2, 0, sb->s_blocksize - 2 * sizeof(*de));
 	set_buffer_uptodate(bhs[0]);
-<<<<<<< HEAD
 	mark_buffer_dirty_inode_sync(bhs[0], dir);
-=======
-	unlock_buffer(bhs[0]);
-	mark_buffer_dirty_inode(bhs[0], dir);
->>>>>>> ACK/deprecated/android-4.4-p
 
 	err = fat_zeroed_cluster(dir, blknr, 1, bhs, MAX_BUF_PER_PAGE);
 	if (err)
@@ -1256,11 +1246,8 @@ static int fat_add_new_entries(struct inode *dir, void *slots, int nr_slots,
 			mark_buffer_dirty_inode(bhs[n], dir);
 			slots += copy;
 			size -= copy;
-<<<<<<< HEAD
 			set_buffer_uptodate(bhs[n]);
 			mark_buffer_dirty_inode_sync(bhs[n], dir);
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 			if (!size)
 				break;
 			n++;

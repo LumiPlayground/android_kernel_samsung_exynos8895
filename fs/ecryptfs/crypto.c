@@ -1479,19 +1479,14 @@ int ecryptfs_read_and_validate_header_region(struct inode *inode)
 #endif
 	rc = ecryptfs_read_lower(file_size, 0, ECRYPTFS_SIZE_AND_MARKER_BYTES,
 				 inode);
-<<<<<<< HEAD
 #if defined(CONFIG_FMP_ECRYPT_FS)
 	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP)
 		ecryptfs_propagate_rapages(lower_file, RA_RESTORE);
 #endif
-	if (rc < ECRYPTFS_SIZE_AND_MARKER_BYTES)
-		return rc >= 0 ? -EINVAL : rc;
-=======
 	if (rc < 0)
 		return rc;
 	else if (rc < ECRYPTFS_SIZE_AND_MARKER_BYTES)
 		return -EINVAL;
->>>>>>> ACK/deprecated/android-4.4-p
 	rc = ecryptfs_validate_marker(marker);
 	if (!rc)
 		ecryptfs_i_size_init(file_size, inode);

@@ -91,12 +91,7 @@ static inline void efi_set_pgd(struct mm_struct *mm)
 			 * thread's saved ttbr0 corresponding to its active_mm
 			 */
 			uaccess_ttbr0_disable();
-<<<<<<< HEAD
-			if (current->active_mm != &init_mm)
-				update_saved_ttbr0(current, current->active_mm);
-=======
 			update_saved_ttbr0(current, current->active_mm);
->>>>>>> ACK/deprecated/android-4.4-p
 		}
 	}
 }

@@ -132,6 +132,19 @@ static void clear_os_lock(void *unused)
 	asm volatile("msr oslar_el1, %0" : : "r" (0));
 }
 
+/*
+ * check_and_clear_os_lock : check OS lock and clear if it is locked
+ */
+void check_and_clear_os_lock(void)
+{
+	u32 oslsr_el1;
+
+	asm volatile("mrs %0, oslsr_el1":"=r"(oslsr_el1)::);
+
+	if (oslsr_el1 & AARCH64_OSLSR_OSLK)
+		clear_os_lock(NULL);
+}
+
 static int os_lock_notify(struct notifier_block *self,
 				    unsigned long action, void *data)
 {

@@ -721,15 +721,12 @@ struct ufs_hba {
 	struct ufs_secure_log secure_log;
 
 	int			latency_hist_enabled;
-<<<<<<< HEAD
 	struct io_latency_state io_lat_s;
+	struct io_latency_state io_lat_read;
+	struct io_latency_state io_lat_write;
 #if defined(SEC_UFS_ERROR_COUNT)
 	struct SEC_UFS_counting SEC_err_info;
 #endif
-=======
-	struct io_latency_state io_lat_read;
-	struct io_latency_state io_lat_write;
->>>>>>> ACK/deprecated/android-4.4-p
 };
 
 /* Returns true if clocks can be gated. Otherwise false */

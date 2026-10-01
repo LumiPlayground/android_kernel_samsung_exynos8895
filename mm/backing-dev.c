@@ -785,7 +785,7 @@ int bdi_init(struct backing_dev_info *bdi)
 	bdi->min_ratio = 0;
 	bdi->max_ratio = 100;
 	bdi->max_prop_frac = FPROP_FRAC_BASE;
-	
+
 	bdi->last_thresh = 0;
 	bdi->last_nr_dirty = 0;
 	bdi->paused_total = 0;

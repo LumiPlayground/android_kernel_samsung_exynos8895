@@ -748,14 +748,10 @@ __acquires(bitlock)
 	}
 
 	ext4_unlock_group(sb, grp);
-<<<<<<< HEAD
+	ext4_commit_super(sb, 1);
 	ext4_handle_error(sb, page_buf);
 	if (page_buf)
 		free_page((unsigned long)page_buf);
-=======
-	ext4_commit_super(sb, 1);
-	ext4_handle_error(sb);
->>>>>>> ACK/deprecated/android-4.4-p
 	/*
 	 * We only get here in the ERRORS_RO case; relocking the group
 	 * may be dangerous, but nothing bad will happen since the

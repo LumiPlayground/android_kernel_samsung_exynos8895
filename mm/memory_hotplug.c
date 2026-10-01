@@ -32,11 +32,8 @@
 #include <linux/hugetlb.h>
 #include <linux/memblock.h>
 #include <linux/bootmem.h>
-<<<<<<< HEAD
 #include <linux/compaction.h>
-=======
 #include <linux/rmap.h>
->>>>>>> ACK/deprecated/android-4.4-p
 
 #include <asm/tlbflush.h>
 

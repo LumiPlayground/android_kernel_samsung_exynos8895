@@ -4896,13 +4896,8 @@ static void tcp_collapse_ofo_queue(struct sock *sk)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	u32 range_truesize, sum_tiny = 0;
-<<<<<<< HEAD
-	struct sk_buff *skb = skb_peek(&tp->out_of_order_queue);
-	struct sk_buff *head;
-=======
 	struct sk_buff *skb, *head;
 	struct rb_node *p;
->>>>>>> ACK/deprecated/android-4.4-p
 	u32 start, end;
 
 	p = rb_first(&tp->out_of_order_queue);
@@ -4920,10 +4915,6 @@ new_range:
 	start = TCP_SKB_CB(skb)->seq;
 	end = TCP_SKB_CB(skb)->end_seq;
 	range_truesize = skb->truesize;
-<<<<<<< HEAD
-	head = skb;
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 
 	for (head = skb;;) {
 		skb = tcp_skb_next(skb, NULL);
@@ -4937,11 +4928,7 @@ new_range:
 			/* Do not attempt collapsing tiny skbs */
 			if (range_truesize != head->truesize ||
 			    end - start >= SKB_WITH_OVERHEAD(SK_MEM_QUANTUM)) {
-<<<<<<< HEAD
-				tcp_collapse(sk, &tp->out_of_order_queue,
-=======
 				tcp_collapse(sk, NULL, &tp->out_of_order_queue,
->>>>>>> ACK/deprecated/android-4.4-p
 					     head, skb, start, end);
 			} else {
 				sum_tiny += range_truesize;
@@ -4949,22 +4936,7 @@ new_range:
 					return;
 			}
 
-<<<<<<< HEAD
-			head = skb;
-			if (!skb)
-				break;
-			/* Start new segment */
-			start = TCP_SKB_CB(skb)->seq;
-			end = TCP_SKB_CB(skb)->end_seq;
-			range_truesize = skb->truesize;
-		} else {
-			if (before(TCP_SKB_CB(skb)->seq, start))
-				start = TCP_SKB_CB(skb)->seq;
-			if (after(TCP_SKB_CB(skb)->end_seq, end))
-				end = TCP_SKB_CB(skb)->end_seq;
-=======
 			goto new_range;
->>>>>>> ACK/deprecated/android-4.4-p
 		}
 
 		range_truesize += skb->truesize;
@@ -5812,10 +5784,6 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 
 		tcp_finish_connect(sk, skb);
 
-<<<<<<< HEAD
-		if ((tp->syn_fastopen || tp->syn_data) &&
-		    tcp_rcv_fastopen_synack(sk, skb, &foc))
-=======
 		fastopen_fail = (tp->syn_fastopen || tp->syn_data) &&
 				tcp_rcv_fastopen_synack(sk, skb, &foc);
 
@@ -5824,7 +5792,6 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 			sk_wake_async(sk, SOCK_WAKE_IO, POLL_OUT);
 		}
 		if (fastopen_fail)
->>>>>>> ACK/deprecated/android-4.4-p
 			return -1;
 		if (sk->sk_write_pending ||
 		    icsk->icsk_accept_queue.rskq_defer_accept ||

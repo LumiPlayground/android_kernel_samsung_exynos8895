@@ -846,16 +846,10 @@ translate_table(struct net *net, struct xt_table_info *newinfo, void *entry0,
 						 repl->hook_entry,
 						 repl->underflow,
 						 repl->valid_hooks);
-<<<<<<< HEAD
-		if (ret != 0) {
-			return ret;
-		}
-=======
 		if (ret != 0)
 			goto out_free;
 		if (i < repl->num_entries)
 			offsets[i] = (void *)iter - entry0;
->>>>>>> ACK/deprecated/android-4.4-p
 		++i;
 		if (strcmp(ip6t_get_target(iter)->u.user.name,
 		    XT_ERROR_TARGET) == 0) {

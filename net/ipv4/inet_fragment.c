@@ -169,12 +169,9 @@ static struct inet_frag_queue *inet_frag_alloc(struct netns_frags *nf,
 {
 	struct inet_frag_queue *q;
 
-<<<<<<< HEAD
-=======
 	if (!nf->high_thresh || frag_mem_limit(nf) > nf->high_thresh)
 		return NULL;
 
->>>>>>> ACK/deprecated/android-4.4-p
 	q = kmem_cache_zalloc(f->frags_cachep, GFP_ATOMIC);
 	if (!q)
 		return NULL;
@@ -221,27 +218,6 @@ struct inet_frag_queue *inet_frag_find(struct netns_frags *nf, void *key)
 {
 	struct inet_frag_queue *fq = NULL, *prev;
 
-<<<<<<< HEAD
-	if (!nf->high_thresh || frag_mem_limit(nf) > nf->high_thresh) {
-		inet_frag_schedule_worker(f);
-		return NULL;
-	}
-
-	if (frag_mem_limit(nf) > nf->low_thresh)
-		inet_frag_schedule_worker(f);
-
-	hash &= (INETFRAGS_HASHSZ - 1);
-	hb = &f->hash[hash];
-
-	spin_lock(&hb->chain_lock);
-	hlist_for_each_entry(q, &hb->chain, list) {
-		if (q->net == nf && f->match(q, key)) {
-			atomic_inc(&q->refcnt);
-			spin_unlock(&hb->chain_lock);
-			return q;
-		}
-		depth++;
-=======
 	rcu_read_lock();
 	prev = rhashtable_lookup(&nf->rhashtable, key, nf->f->rhash_params);
 	if (!prev)
@@ -250,7 +226,6 @@ struct inet_frag_queue *inet_frag_find(struct netns_frags *nf, void *key)
 		fq = prev;
 		if (!atomic_inc_not_zero(&fq->refcnt))
 			fq = NULL;
->>>>>>> ACK/deprecated/android-4.4-p
 	}
 	rcu_read_unlock();
 	return fq;

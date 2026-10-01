@@ -88,13 +88,10 @@
 #define ARM_CPU_PART_FOUNDATION		0xD00
 #define ARM_CPU_PART_CORTEX_A57		0xD07
 #define ARM_CPU_PART_CORTEX_A53		0xD03
-<<<<<<< HEAD
-#define ARM_CPU_PART_MONGOOSE		0x001
-=======
 #define ARM_CPU_PART_CORTEX_A55		0xD05
->>>>>>> ACK/deprecated/android-4.4-p
 
 #define APM_CPU_PART_POTENZA		0x000
+#define ARM_CPU_PART_MONGOOSE		0x001
 
 #define CAVIUM_CPU_PART_THUNDERX	0x0A1
 
