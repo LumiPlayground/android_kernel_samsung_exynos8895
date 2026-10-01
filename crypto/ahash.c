@@ -56,6 +56,7 @@ static int hash_walk_next(struct crypto_hash_walk *walk)
 
 	if (offset & alignmask) {
 		unsigned int unaligned = alignmask + 1 - (offset & alignmask);
+
 		if (nbytes > unaligned)
 			nbytes = unaligned;
 	}
@@ -84,7 +85,6 @@ static int hash_walk_new_entry(struct crypto_hash_walk *walk)
 int crypto_hash_walk_done(struct crypto_hash_walk *walk, int err)
 {
 	unsigned int alignmask = walk->alignmask;
-	unsigned int nbytes = walk->entrylen;
 
 #ifdef CONFIG_CRYPTO_FIPS
 	if (unlikely(in_fips_err()))
@@ -93,15 +93,17 @@ int crypto_hash_walk_done(struct crypto_hash_walk *walk, int err)
 
 	walk->data -= walk->offset;
 
-	if (nbytes && walk->offset & alignmask && !err) {
+	if (walk->entrylen && (walk->offset & alignmask) && !err) {
+		unsigned int nbytes;
+
 		walk->offset = ALIGN(walk->offset, alignmask + 1);
-		walk->data += walk->offset;
-
-		nbytes = min(nbytes,
-			     ((unsigned int)(PAGE_SIZE)) - walk->offset);
-		walk->entrylen -= nbytes;
-
-		return nbytes;
+		nbytes = min(walk->entrylen,
+			     (unsigned int)(PAGE_SIZE - walk->offset));
+		if (nbytes) {
+			walk->entrylen -= nbytes;
+			walk->data += walk->offset;
+			return nbytes;
+		}
 	}
 
 	if (walk->flags & CRYPTO_ALG_ASYNC)
@@ -118,7 +120,7 @@ int crypto_hash_walk_done(struct crypto_hash_walk *walk, int err)
 	if (err)
 		return err;
 
-	if (nbytes) {
+	if (walk->entrylen) {
 		walk->offset = 0;
 		walk->pg++;
 		return hash_walk_next(walk);
@@ -308,11 +310,13 @@ static void ahash_restore_req(struct ahash_request *req, int err)
 
 	if (!err)
 		memcpy(priv->result, req->result,
-			   crypto_ahash_digestsize(crypto_ahash_reqtfm(req)));
+		       crypto_ahash_digestsize(crypto_ahash_reqtfm(req)));
+
 	/* Restore the original crypto request. */
 	req->result = priv->result;
+
 	ahash_request_set_callback(req, priv->flags,
-							   priv->complete, priv->data);
+				   priv->complete, priv->data);
 	req->priv = NULL;
 
 	/* Free the req->priv.priv from the ADJUSTED request. */
@@ -337,6 +341,7 @@ static void ahash_op_unaligned_done(struct crypto_async_request *req, int err)
 		ahash_notify_einprogress(areq);
 		return;
 	}
+
 	/*
 	 * Restore the original request, see ahash_op_unaligned() for what
 	 * goes where.
@@ -364,9 +369,9 @@ static int ahash_op_unaligned(struct ahash_request *req,
 
 	err = op(req);
 	if (err == -EINPROGRESS ||
-		(err == -EBUSY && (ahash_request_flags(req) &
-						   CRYPTO_TFM_REQ_MAY_BACKLOG)))
-			return err;
+	    (err == -EBUSY && (ahash_request_flags(req) &
+			       CRYPTO_TFM_REQ_MAY_BACKLOG)))
+		return err;
 
 	ahash_restore_req(req, err);
 
@@ -429,9 +434,9 @@ static int ahash_def_finup_finish1(struct ahash_request *req, int err)
 
 	err = crypto_ahash_reqtfm(req)->final(req);
 	if (err == -EINPROGRESS ||
-		(err == -EBUSY && (ahash_request_flags(req) &
-						   CRYPTO_TFM_REQ_MAY_BACKLOG)))
-			return err;
+	    (err == -EBUSY && (ahash_request_flags(req) &
+			       CRYPTO_TFM_REQ_MAY_BACKLOG)))
+		return err;
 
 out:
 	ahash_restore_req(req, err);
@@ -452,6 +457,7 @@ static void ahash_def_finup_done1(struct crypto_async_request *req, int err)
 	err = ahash_def_finup_finish1(areq, err);
 	if (areq->priv)
 		return;
+
 	areq->base.complete(&areq->base, err);
 }
 
@@ -466,9 +472,10 @@ static int ahash_def_finup(struct ahash_request *req)
 
 	err = tfm->update(req);
 	if (err == -EINPROGRESS ||
-		(err == -EBUSY && (ahash_request_flags(req) &
-						   CRYPTO_TFM_REQ_MAY_BACKLOG)))
-			return err;
+	    (err == -EBUSY && (ahash_request_flags(req) &
+			       CRYPTO_TFM_REQ_MAY_BACKLOG)))
+		return err;
+
 	return ahash_def_finup_finish1(req, err);
 }
 
@@ -661,6 +668,17 @@ struct hash_alg_common *ahash_attr_alg(struct rtattr *rta, u32 type, u32 mask)
 	return IS_ERR(alg) ? ERR_CAST(alg) : __crypto_hash_alg_common(alg);
 }
 EXPORT_SYMBOL_GPL(ahash_attr_alg);
+
+bool crypto_hash_alg_has_setkey(struct hash_alg_common *halg)
+{
+	struct crypto_alg *alg = &halg->base;
+
+	if (alg->cra_type != &crypto_ahash_type)
+		return crypto_shash_alg_has_setkey(__crypto_shash_alg(alg));
+
+	return __crypto_ahash_alg(alg)->setkey != NULL;
+}
+EXPORT_SYMBOL_GPL(crypto_hash_alg_has_setkey);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Asynchronous cryptographic hash type");

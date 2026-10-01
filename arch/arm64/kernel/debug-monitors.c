@@ -34,7 +34,7 @@
 /* Determine debug architecture. */
 u8 debug_monitors_arch(void)
 {
-	return cpuid_feature_extract_field(read_system_reg(SYS_ID_AA64DFR0_EL1),
+	return cpuid_feature_extract_unsigned_field(read_system_reg(SYS_ID_AA64DFR0_EL1),
 						ID_AA64DFR0_DEBUGVER_SHIFT);
 }
 
@@ -130,6 +130,19 @@ void disable_debug_monitors(enum dbg_active_el el)
 static void clear_os_lock(void *unused)
 {
 	asm volatile("msr oslar_el1, %0" : : "r" (0));
+}
+
+/*
+ * check_and_clear_os_lock : check OS lock and clear if it is locked
+ */
+void check_and_clear_os_lock(void)
+{
+	u32 oslsr_el1;
+
+	asm volatile("mrs %0, oslsr_el1":"=r"(oslsr_el1)::);
+
+	if (oslsr_el1 & AARCH64_OSLSR_OSLK)
+		clear_os_lock(NULL);
 }
 
 static int os_lock_notify(struct notifier_block *self,
@@ -387,13 +400,13 @@ void user_rewind_single_step(struct task_struct *task)
 	 * If single step is active for this thread, then set SPSR.SS
 	 * to 1 to avoid returning to the active-pending state.
 	 */
-	if (test_ti_thread_flag(task_thread_info(task), TIF_SINGLESTEP))
+	if (test_tsk_thread_flag(task, TIF_SINGLESTEP))
 		set_regs_spsr_ss(task_pt_regs(task));
 }
 
 void user_fastforward_single_step(struct task_struct *task)
 {
-	if (test_ti_thread_flag(task_thread_info(task), TIF_SINGLESTEP))
+	if (test_tsk_thread_flag(task, TIF_SINGLESTEP))
 		clear_regs_spsr_ss(task_pt_regs(task));
 }
 

@@ -286,8 +286,9 @@ static void alloc_init_pud(pgd_t *pgd, unsigned long addr, unsigned long end,
 				flush_tlb_all();
 				if (pud_table(old_pud)) {
 					phys_addr_t table = pud_page_paddr(old_pud);
-					if (!WARN_ON_ONCE(slab_is_available()))
+					if (!WARN_ON_ONCE(slab_is_available())) {
 						memblock_free(table, PAGE_SIZE);
+					}
 				}
 			}
 		} else {
@@ -371,6 +372,7 @@ void __init create_pgd_mapping(struct mm_struct *mm, phys_addr_t phys,
 	__create_pgd_mapping(mm->pgd, phys, virt, size, prot,
 			     late_pgtable_alloc);
 }
+
 #ifdef CONFIG_DEBUG_RODATA
 static void create_mapping_late(phys_addr_t phys, unsigned long virt,
 				  phys_addr_t size, pgprot_t prot)
@@ -383,32 +385,6 @@ static void create_mapping_late(phys_addr_t phys, unsigned long virt,
 
 	__create_pgd_mapping(init_mm.pgd, phys, virt, size, prot,
 			     late_pgtable_alloc);
-}
-
-void mark_rodata_ro(void)
-{
-	unsigned long section_size;
-
-	section_size = (unsigned long)_etext - (unsigned long)_stext;
-	create_mapping_late(__pa_symbol(_stext), (unsigned long)_stext,
-			    section_size, PAGE_KERNEL_ROX);
-	/*
-	 * mark .rodata as read only. Use __init_begin rather than __end_rodata
-	 * to cover NOTES and EXCEPTION_TABLE.
-	 */
-	section_size = (unsigned long)__init_begin - (unsigned long)__start_rodata;
-	create_mapping_late(__pa_symbol(__start_rodata),
-			    (unsigned long)__start_rodata,
-			    section_size, PAGE_KERNEL_RO);
-}
-void fixup_init(void)
-{
-	/*
-	 * Unmap the __init region but leave the VM area in place. This
-	 * prevents the region from being reused for kernel modules, which
-	 * is not supported by kallsyms.
-	 */
-	unmap_kernel_range((u64)__init_begin, (u64)(__init_end - __init_begin));
 }
 #endif
 
@@ -456,6 +432,53 @@ static void __init __map_memblock(pgd_t *pgd, phys_addr_t start, phys_addr_t end
 			     early_pgtable_alloc);
 }
 
+static void __init map_mem(pgd_t *pgd)
+{
+	struct memblock_region *reg;
+
+	/* map all the memory banks */
+	for_each_memblock(memory, reg) {
+		phys_addr_t start = reg->base;
+		phys_addr_t end = start + reg->size;
+
+		if (start >= end)
+			break;
+		if (memblock_is_nomap(reg))
+			continue;
+
+		__map_memblock(pgd, start, end);
+	}
+}
+
+#ifdef CONFIG_DEBUG_RODATA
+void mark_rodata_ro(void)
+{
+	unsigned long section_size;
+
+	section_size = (unsigned long)_etext - (unsigned long)_stext;
+	create_mapping_late(__pa_symbol(_stext), (unsigned long)_stext,
+			    section_size, PAGE_KERNEL_ROX);
+	/*
+	 * mark .rodata as read only. Use __init_begin rather than __end_rodata
+	 * to cover NOTES and EXCEPTION_TABLE.
+	 */
+	section_size = (unsigned long)__init_begin - (unsigned long)__start_rodata;
+	create_mapping_late(__pa_symbol(__start_rodata),
+			    (unsigned long)__start_rodata,
+			    section_size, PAGE_KERNEL_RO);
+}
+
+void fixup_init(void)
+{
+	/*
+	 * Unmap the __init region but leave the VM area in place. This
+	 * prevents the region from being reused for kernel modules, which
+	 * is not supported by kallsyms.
+	 */
+	unmap_kernel_range((u64)__init_begin, (u64)(__init_end - __init_begin));
+}
+#endif
+
 static void __init map_kernel_chunk(pgd_t *pgd, void *va_start, void *va_end,
 				    pgprot_t prot, struct vm_struct *vma)
 {
@@ -477,30 +500,12 @@ static void __init map_kernel_chunk(pgd_t *pgd, void *va_start, void *va_end,
 	vm_area_add_early(vma);
 }
 
-static void __init map_mem(pgd_t *pgd)
-{
-	struct memblock_region *reg;
-
-	/* map all the memory banks */
-	for_each_memblock(memory, reg) {
-		phys_addr_t start = reg->base;
-		phys_addr_t end = start + reg->size;
-
-		if (start >= end)
-			break;
-		if (memblock_is_nomap(reg))
-			continue;
-
-		__map_memblock(pgd, start, end);
-	}
-}
-
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
 static int __init map_entry_trampoline(void)
 {
 	extern char __entry_tramp_text_start[];
 
-	pgprot_t prot = PAGE_KERNEL_EXEC;
+	pgprot_t prot = PAGE_KERNEL_ROX;
 	phys_addr_t pa_start = __pa_symbol(__entry_tramp_text_start);
 
 	/* The trampoline is always mapped and can therefore be global */
@@ -855,13 +860,18 @@ void *__init fixmap_remap_fdt(phys_addr_t dt_phys)
 
 int __init arch_ioremap_pud_supported(void)
 {
-	/* only 4k granule supports level 1 block mappings */
-	return IS_ENABLED(CONFIG_ARM64_4K_PAGES);
+	/*
+	 * Only 4k granule supports level 1 block mappings.
+	 * SW table walks can't handle removal of intermediate entries.
+	 */
+	return IS_ENABLED(CONFIG_ARM64_4K_PAGES) &&
+	       !IS_ENABLED(CONFIG_ARM64_PTDUMP_DEBUGFS);
 }
 
 int __init arch_ioremap_pmd_supported(void)
 {
-	return 1;
+	/* See arch_ioremap_pud_supported() */
+	return !IS_ENABLED(CONFIG_ARM64_PTDUMP_DEBUGFS);
 }
 
 int pud_set_huge(pud_t *pud, phys_addr_t phys, pgprot_t prot)
@@ -893,3 +903,15 @@ int pmd_clear_huge(pmd_t *pmd)
 	pmd_clear(pmd);
 	return 1;
 }
+
+#ifdef CONFIG_HAVE_ARCH_HUGE_VMAP
+int pud_free_pmd_page(pud_t *pud, unsigned long addr)
+{
+	return pud_none(*pud);
+}
+
+int pmd_free_pte_page(pmd_t *pmd, unsigned long addr)
+{
+	return pmd_none(*pmd);
+}
+#endif
