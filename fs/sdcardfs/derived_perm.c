@@ -32,7 +32,10 @@ static void inherit_derived_state(struct inode *parent, struct inode *child)
 	ci->data->under_android = pi->data->under_android;
 	ci->data->under_cache = pi->data->under_cache;
 	ci->data->under_obb = pi->data->under_obb;
+<<<<<<< HEAD
 	ci->data->under_knox = pi->data->under_knox;
+=======
+>>>>>>> ACK/deprecated/android-4.4-p
 }
 
 /* helper function for derived state */
@@ -47,7 +50,10 @@ void setup_derived_state(struct inode *inode, perm_t perm, userid_t userid,
 	info->data->under_android = false;
 	info->data->under_cache = false;
 	info->data->under_obb = false;
+<<<<<<< HEAD
 	info->data->under_knox = false;
+=======
+>>>>>>> ACK/deprecated/android-4.4-p
 }
 
 /* While renaming, there is a point where we want the path from dentry,
@@ -108,9 +114,12 @@ void get_derived_permission_new(struct dentry *parent, struct dentry *dentry,
 			/* App-specific directories inside; let anyone traverse */
 			info->data->perm = PERM_ANDROID;
 			info->data->under_android = true;
+<<<<<<< HEAD
 		} else if (qstr_case_eq(name, &q_knox)) {
 			info->data->perm = PERM_KNOX_PRE_ROOT;
 			info->data->under_knox = true;
+=======
+>>>>>>> ACK/deprecated/android-4.4-p
 		} else {
 			set_top(info, parent_info);
 		}
@@ -119,9 +128,12 @@ void get_derived_permission_new(struct dentry *parent, struct dentry *dentry,
 		if (qstr_case_eq(name, &q_data)) {
 			/* App-specific directories inside; let anyone traverse */
 			info->data->perm = PERM_ANDROID_DATA;
+<<<<<<< HEAD
 		} else if (qstr_case_eq(name, &q_sandbox)) {
 			/* App-specific directories inside; let anyone traverse */
 			info->data->perm = PERM_ANDROID_DATA;
+=======
+>>>>>>> ACK/deprecated/android-4.4-p
 		} else if (qstr_case_eq(name, &q_obb)) {
 			/* App-specific directories inside; let anyone traverse */
 			info->data->perm = PERM_ANDROID_OBB;
@@ -149,6 +161,7 @@ void get_derived_permission_new(struct dentry *parent, struct dentry *dentry,
 			info->data->under_cache = true;
 		}
 		set_top(info, parent_info);
+<<<<<<< HEAD
 		break;
 
 	/* KNOX */
@@ -187,6 +200,8 @@ void get_derived_permission_new(struct dentry *parent, struct dentry *dentry,
 	case PERM_KNOX_ANDROID_SHARED:
 	case PERM_KNOX_ANDROID_PACKAGE:
 		set_top(info, parent_info);
+=======
+>>>>>>> ACK/deprecated/android-4.4-p
 		break;
 	}
 }

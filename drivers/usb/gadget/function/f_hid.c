@@ -91,7 +91,7 @@ static struct usb_interface_descriptor hidg_interface_desc = {
 static struct hid_descriptor hidg_desc = {
 	.bLength			= sizeof hidg_desc,
 	.bDescriptorType		= HID_DT_HID,
-	.bcdHID				= 0x0101,
+	.bcdHID				= cpu_to_le16(0x0101),
 	.bCountryCode			= 0x00,
 	.bNumDescriptors		= 0x1,
 	/*.desc[0].bDescriptorType	= DYNAMIC */
@@ -245,13 +245,21 @@ static ssize_t f_hidg_read(struct file *file, char __user *buffer,
 	 * call, taking into account its current read position.
 	 */
 	if (list->pos == req->actual) {
+<<<<<<< HEAD
  		kfree(list);
+=======
+		kfree(list);
+>>>>>>> ACK/deprecated/android-4.4-p
 
 		req->length = hidg->report_length;
 		ret = usb_ep_queue(hidg->out_ep, req, GFP_KERNEL);
 		if (ret < 0) {
 			free_ep_req(hidg->out_ep, req);
+<<<<<<< HEAD
  			return ret;
+=======
+			return ret;
+>>>>>>> ACK/deprecated/android-4.4-p
 		}
 	} else {
 		spin_lock_irqsave(&hidg->spinlock, flags);
@@ -507,13 +515,21 @@ static void hidg_disable(struct usb_function *f)
 	usb_ep_disable(hidg->in_ep);
 	usb_ep_disable(hidg->out_ep);
 
+<<<<<<< HEAD
 	spin_lock_irqsave(&hidg->read_spinlock, flags);
+=======
+	spin_lock_irqsave(&hidg->spinlock, flags);
+>>>>>>> ACK/deprecated/android-4.4-p
 	list_for_each_entry_safe(list, next, &hidg->completed_out_req, list) {
 		free_ep_req(hidg->out_ep, list->req);
 		list_del(&list->list);
 		kfree(list);
 	}
+<<<<<<< HEAD
 	spin_unlock_irqrestore(&hidg->read_spinlock, flags);
+=======
+	spin_unlock_irqrestore(&hidg->spinlock, flags);
+>>>>>>> ACK/deprecated/android-4.4-p
 }
 
 static int hidg_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
