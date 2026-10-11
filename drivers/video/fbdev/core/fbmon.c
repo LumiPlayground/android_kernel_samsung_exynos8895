@@ -1041,7 +1041,6 @@ void fb_edid_to_monspecs(unsigned char *edid, struct fb_monspecs *specs)
 	DPRINTK("========================================\n");
 }
 
-<<<<<<< HEAD
 /**
  * fb_edid_add_monspecs() - add monitor video modes from E-EDID data
  * @edid:	128 byte array with an E-EDID block
@@ -1134,8 +1133,6 @@ void fb_edid_add_monspecs(unsigned char *edid, struct fb_monspecs *specs)
 	specs->modedb_len = specs->modedb_len + num + svd_n;
 }
 
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 /*
  * VESA Generalized Timing Formula (GTF)
  */

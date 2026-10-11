@@ -433,16 +433,10 @@ static void snd_timer_notify1(struct snd_timer_instance *ti, int event)
 		return;
 	if (timer->hw.flags & SNDRV_TIMER_HW_SLAVE)
 		return;
-<<<<<<< HEAD
-	list_for_each_entry(ts, &ti->slave_active_head, active_list)
-		if (ts->ccallback)
-			ts->ccallback(ts, event + 100, &tstamp, resolution);
-=======
 	event += 10; /* convert to SNDRV_TIMER_EVENT_MXXX */
 	list_for_each_entry(ts, &ti->slave_active_head, active_list)
 		if (ts->ccallback)
 			ts->ccallback(ts, event, &tstamp, resolution);
->>>>>>> ACK/deprecated/android-4.4-p
 }
 
 /* start/continue a master timer */
@@ -532,15 +526,6 @@ static int snd_timer_stop1(struct snd_timer_instance *timeri, bool stop)
 	if (!timer)
 		return -EINVAL;
 	spin_lock_irqsave(&timer->lock, flags);
-<<<<<<< HEAD
-	if (!(timeri->flags & (SNDRV_TIMER_IFLG_RUNNING |
-			       SNDRV_TIMER_IFLG_START))) {
-		result = -EBUSY;
-		goto unlock;
-	}
-	list_del_init(&timeri->ack_list);
-	list_del_init(&timeri->active_list);
-=======
 	list_del_init(&timeri->ack_list);
 	list_del_init(&timeri->active_list);
 	if (!(timeri->flags & (SNDRV_TIMER_IFLG_RUNNING |
@@ -548,7 +533,6 @@ static int snd_timer_stop1(struct snd_timer_instance *timeri, bool stop)
 		result = -EBUSY;
 		goto unlock;
 	}
->>>>>>> ACK/deprecated/android-4.4-p
 	if (timer->card && timer->card->shutdown)
 		goto unlock;
 	if (stop) {
@@ -568,17 +552,12 @@ static int snd_timer_stop1(struct snd_timer_instance *timeri, bool stop)
 		}
 	}
 	timeri->flags &= ~(SNDRV_TIMER_IFLG_RUNNING | SNDRV_TIMER_IFLG_START);
-<<<<<<< HEAD
-	snd_timer_notify1(timeri, stop ? SNDRV_TIMER_EVENT_STOP :
-			  SNDRV_TIMER_EVENT_CONTINUE);
-=======
 	if (stop)
 		timeri->flags &= ~SNDRV_TIMER_IFLG_PAUSED;
 	else
 		timeri->flags |= SNDRV_TIMER_IFLG_PAUSED;
 	snd_timer_notify1(timeri, stop ? SNDRV_TIMER_EVENT_STOP :
 			  SNDRV_TIMER_EVENT_PAUSE);
->>>>>>> ACK/deprecated/android-4.4-p
  unlock:
 	spin_unlock_irqrestore(&timer->lock, flags);
 	return result;
@@ -588,32 +567,15 @@ static int snd_timer_stop1(struct snd_timer_instance *timeri, bool stop)
 static int snd_timer_stop_slave(struct snd_timer_instance *timeri, bool stop)
 {
 	unsigned long flags;
-<<<<<<< HEAD
-
-	spin_lock_irqsave(&slave_active_lock, flags);
-	if (!(timeri->flags & SNDRV_TIMER_IFLG_RUNNING)) {
-		spin_unlock_irqrestore(&slave_active_lock, flags);
-		return -EBUSY;
-	}
-=======
 	bool running;
 
 	spin_lock_irqsave(&slave_active_lock, flags);
 	running = timeri->flags & SNDRV_TIMER_IFLG_RUNNING;
->>>>>>> ACK/deprecated/android-4.4-p
 	timeri->flags &= ~SNDRV_TIMER_IFLG_RUNNING;
 	if (timeri->timer) {
 		spin_lock(&timeri->timer->lock);
 		list_del_init(&timeri->ack_list);
 		list_del_init(&timeri->active_list);
-<<<<<<< HEAD
-		snd_timer_notify1(timeri, stop ? SNDRV_TIMER_EVENT_STOP :
-				  SNDRV_TIMER_EVENT_CONTINUE);
-		spin_unlock(&timeri->timer->lock);
-	}
-	spin_unlock_irqrestore(&slave_active_lock, flags);
-	return 0;
-=======
 		if (running)
 			snd_timer_notify1(timeri, stop ? SNDRV_TIMER_EVENT_STOP :
 					  SNDRV_TIMER_EVENT_PAUSE);
@@ -621,20 +583,6 @@ static int snd_timer_stop_slave(struct snd_timer_instance *timeri, bool stop)
 	}
 	spin_unlock_irqrestore(&slave_active_lock, flags);
 	return running ? 0 : -EBUSY;
-}
-
-/*
- *  start the timer instance
- */
-int snd_timer_start(struct snd_timer_instance *timeri, unsigned int ticks)
-{
-	if (timeri == NULL || ticks < 1)
-		return -EINVAL;
-	if (timeri->flags & SNDRV_TIMER_IFLG_SLAVE)
-		return snd_timer_start_slave(timeri, true);
-	else
-		return snd_timer_start1(timeri, true, ticks);
->>>>>>> ACK/deprecated/android-4.4-p
 }
 
 /*
@@ -668,13 +616,10 @@ int snd_timer_stop(struct snd_timer_instance *timeri)
  */
 int snd_timer_continue(struct snd_timer_instance *timeri)
 {
-<<<<<<< HEAD
-=======
 	/* timer can continue only after pause */
 	if (!(timeri->flags & SNDRV_TIMER_IFLG_PAUSED))
 		return -EINVAL;
 
->>>>>>> ACK/deprecated/android-4.4-p
 	if (timeri->flags & SNDRV_TIMER_IFLG_SLAVE)
 		return snd_timer_start_slave(timeri, false);
 	else

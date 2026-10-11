@@ -922,11 +922,7 @@ static inline void hid_map_usage(struct hid_input *hidinput,
 
 	if (unlikely(c > limit || !bmap)) {
 		pr_warn_ratelimited("%s: Invalid code %d type %d\n",
-<<<<<<< HEAD
-				input->name, c, type);
-=======
 				    input->name, c, type);
->>>>>>> ACK/deprecated/android-4.4-p
 		*bit = NULL;
 		return;
 	}

@@ -143,16 +143,8 @@ typedef void (dax_iodone_t)(struct buffer_head *bh_map, int uptodate);
 /* Has write method(s) */
 #define FMODE_CAN_WRITE         ((__force fmode_t)0x40000)
 
-<<<<<<< HEAD
-/* File hasn't page cache and can't be mmaped, for stackable filesystem */
-#define FMODE_NONMAPPABLE        ((__force fmode_t)0x400000)
- 
-/* File page don't need to be cached, for stackable filesystem's lower file */
-#define FMODE_NONCACHEABLE     ((__force fmode_t)0x800000)
-=======
 /* File is stream-like */
 #define FMODE_STREAM		((__force fmode_t)0x200000)
->>>>>>> ACK/deprecated/android-4.4-p
 
 /* File was opened by fanotify and shouldn't generate fanotify events */
 #define FMODE_NONOTIFY		((__force fmode_t)0x4000000)

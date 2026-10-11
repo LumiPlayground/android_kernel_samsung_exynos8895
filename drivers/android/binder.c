@@ -555,10 +555,7 @@ struct binder_proc {
 	struct task_struct *tsk;
 	struct files_struct *files;
 	struct mutex files_lock;
-<<<<<<< HEAD
-=======
 	const struct cred *cred;
->>>>>>> ACK/deprecated/android-4.4-p
 	struct hlist_node deferred_work_node;
 	int deferred_work;
 	bool is_dead;
@@ -2104,40 +2101,18 @@ static struct binder_thread *binder_get_txn_from_and_acq_inner(
 
 static void binder_free_transaction(struct binder_transaction *t)
 {
-<<<<<<< HEAD
 	struct binder_proc *target_proc = t->to_proc;
 
 	if (target_proc) {
-=======
-	struct binder_proc *target_proc;
-
-	spin_lock(&t->lock);
-	target_proc = t->to_proc;
-	if (target_proc) {
-		atomic_inc(&target_proc->tmp_ref);
-		spin_unlock(&t->lock);
-
->>>>>>> ACK/deprecated/android-4.4-p
 		binder_inner_proc_lock(target_proc);
 		if (t->buffer)
 			t->buffer->transaction = NULL;
 		binder_inner_proc_unlock(target_proc);
-<<<<<<< HEAD
 	}
 	/*
 	 * If the transaction has no target_proc, then
 	 * t->buffer->transaction has already been cleared.
 	 */
-=======
-		binder_proc_dec_tmpref(target_proc);
-	} else {
-		/*
-		 * If the transaction has no target_proc, then
-		 * t->buffer->transaction * has already been cleared.
-		 */
-		spin_unlock(&t->lock);
-	}
->>>>>>> ACK/deprecated/android-4.4-p
 	kfree(t);
 	binder_stats_deleted(BINDER_STAT_TRANSACTION);
 }
@@ -3215,11 +3190,7 @@ static void binder_transaction(struct binder_proc *proc,
 		t->buffer = NULL;
 		goto err_binder_alloc_buf_failed;
 	}
-<<<<<<< HEAD
-		if (secctx) {
-=======
 	if (secctx) {
->>>>>>> ACK/deprecated/android-4.4-p
 		size_t buf_offset = ALIGN(tr->data_size, sizeof(void *)) +
 				    ALIGN(tr->offsets_size, sizeof(void *)) +
 				    ALIGN(extra_buffers_size, sizeof(void *)) -
@@ -3232,10 +3203,6 @@ static void binder_transaction(struct binder_proc *proc,
 		security_release_secctx(secctx, secctx_sz);
 		secctx = NULL;
 	}
-<<<<<<< HEAD
-	
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 	t->buffer->debug_id = t->debug_id;
 	t->buffer->transaction = t;
 	t->buffer->target_node = target_node;
@@ -3746,16 +3713,6 @@ static int binder_thread_write(struct binder_proc *proc,
 			if (IS_ERR_OR_NULL(buffer)) {
 				if (PTR_ERR(buffer) == -EPERM) {
 					binder_user_error(
-<<<<<<< HEAD
-					"%d:%d BC_FREE_BUFFER u%016llx matched unreturned or currently freeing buffer\n",
-					proc->pid, thread->pid,
-					(u64)data_ptr);
-				} else {
-					binder_user_error(
-					"%d:%d BC_FREE_BUFFER u%016llx no match\n",
-					proc->pid, thread->pid,
-					(u64)data_ptr);
-=======
 						"%d:%d BC_FREE_BUFFER u%016llx matched unreturned or currently freeing buffer\n",
 						proc->pid, thread->pid,
 						(u64)data_ptr);
@@ -3764,7 +3721,6 @@ static int binder_thread_write(struct binder_proc *proc,
 						"%d:%d BC_FREE_BUFFER u%016llx no match\n",
 						proc->pid, thread->pid,
 						(u64)data_ptr);
->>>>>>> ACK/deprecated/android-4.4-p
 				}
 				break;
 			}
@@ -4179,10 +4135,6 @@ retry:
 		uint32_t cmd;
 		struct binder_transaction_data_secctx tr;
 		struct binder_transaction_data *trd = &tr.transaction_data;
-<<<<<<< HEAD
-
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 		struct binder_work *w = NULL;
 		struct list_head *list = NULL;
 		struct binder_transaction *t = NULL;
@@ -4385,10 +4337,6 @@ retry:
 
 			trd->target.ptr = target_node->ptr;
 			trd->cookie =  target_node->cookie;
-<<<<<<< HEAD
-
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 			node_prio.sched_policy = target_node->sched_policy;
 			node_prio.prio = target_node->min_priority;
 			binder_transaction_priority(current, t, node_prio,
@@ -4407,14 +4355,9 @@ retry:
 		if (t_from) {
 			struct task_struct *sender = t_from->proc->tsk;
 
-<<<<<<< HEAD
-			trd->sender_pid = task_tgid_nr_ns(sender,
-							task_active_pid_ns(current));
-=======
 			trd->sender_pid =
 				task_tgid_nr_ns(sender,
 						task_active_pid_ns(current));
->>>>>>> ACK/deprecated/android-4.4-p
 		} else {
 			trd->sender_pid = 0;
 		}
@@ -4459,24 +4402,14 @@ retry:
 			return -EFAULT;
 		}
 		ptr += trsize;
-<<<<<<< HEAD
-		
-=======
-
->>>>>>> ACK/deprecated/android-4.4-p
 		trace_binder_transaction_received(t);
 		binder_stat_br(proc, thread, cmd);
 		binder_debug(BINDER_DEBUG_TRANSACTION,
 			     "%d:%d %s %d %d:%d, cmd %d size %zd-%zd ptr %016llx-%016llx\n",
 			     proc->pid, thread->pid,
 			     (cmd == BR_TRANSACTION) ? "BR_TRANSACTION" :
-<<<<<<< HEAD
-			     (cmd == BR_TRANSACTION_SEC_CTX) ?
-					"BR_TRANSACTION_SEC_CTX" : "BR_REPLY",	 
-=======
 				(cmd == BR_TRANSACTION_SEC_CTX) ?
 				     "BR_TRANSACTION_SEC_CTX" : "BR_REPLY",
->>>>>>> ACK/deprecated/android-4.4-p
 			     t->debug_id, t_from ? t_from->proc->pid : 0,
 			     t_from ? t_from->pid : 0, cmd,
 			     t->buffer->data_size, t->buffer->offsets_size,
@@ -4719,39 +4652,20 @@ static int binder_thread_release(struct binder_proc *proc,
 	}
 
 	/*
-<<<<<<< HEAD
-	 * If this thread used poll, make sure we remove the waitqueue
-	 * from any epoll data structures holding it with POLLFREE.
-	 * waitqueue_active() is safe to use here because we're holding
-	 * the inner lock.
-	 */
-	if ((thread->looper & BINDER_LOOPER_STATE_POLL) &&
-	    waitqueue_active(&thread->wait)) {
-		wake_up_poll(&thread->wait, POLLHUP | POLLFREE);
-	}
-=======
 	 * If this thread used poll, make sure we remove the waitqueue from any
 	 * poll data structures holding it.
 	 */
 	if (thread->looper & BINDER_LOOPER_STATE_POLL)
 		wake_up_pollfree(&thread->wait);
->>>>>>> ACK/deprecated/android-4.4-p
 
 	binder_inner_proc_unlock(thread->proc);
 
 	/*
-<<<<<<< HEAD
-	 * This is needed to avoid races between wake_up_poll() above and
-	 * and ep_remove_waitqueue() called for other reasons (eg the epoll file
-	 * descriptor being closed); ep_remove_waitqueue() holds an RCU read
-	 * lock, so we can be sure it's done after calling synchronize_rcu().
-=======
 	 * This is needed to avoid races between wake_up_pollfree() above and
 	 * someone else removing the last entry from the queue for other reasons
 	 * (e.g. ep_remove_wait_queue() being called due to an epoll file
 	 * descriptor being closed).  Such other users hold an RCU read lock, so
 	 * we can be sure they're done after we call synchronize_rcu().
->>>>>>> ACK/deprecated/android-4.4-p
 	 */
 	if (thread->looper & BINDER_LOOPER_STATE_POLL)
 		synchronize_rcu();
@@ -4983,10 +4897,6 @@ static long binder_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			goto err;
 		break;
 	}
-<<<<<<< HEAD
-
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 	case BINDER_SET_CONTEXT_MGR:
 		ret = binder_ioctl_set_ctx_mgr(filp, NULL);
 		if (ret)
@@ -5140,10 +5050,7 @@ static int binder_open(struct inode *nodp, struct file *filp)
 	atomic_set(&proc->tmp_ref, 0);
 	get_task_struct(current->group_leader);
 	proc->tsk = current->group_leader;
-<<<<<<< HEAD
-=======
 	proc->cred = get_cred(filp->f_cred);
->>>>>>> ACK/deprecated/android-4.4-p
 	mutex_init(&proc->files_lock);
 	INIT_LIST_HEAD(&proc->todo);
 	if (binder_supported_policy(current->policy)) {

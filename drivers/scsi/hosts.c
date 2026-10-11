@@ -256,12 +256,9 @@ int scsi_add_host_with_dma(struct Scsi_Host *shost, struct device *dev,
 	scsi_host_set_state(shost, SHOST_RUNNING);
 	get_device(shost->shost_gendev.parent);
 
-<<<<<<< HEAD
-=======
 	device_enable_async_suspend(&shost->shost_dev);
 
 	get_device(&shost->shost_gendev);
->>>>>>> ACK/deprecated/android-4.4-p
 	error = device_add(&shost->shost_dev);
 	if (error)
 		goto out_del_gendev;

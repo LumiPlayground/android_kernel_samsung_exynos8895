@@ -7,14 +7,7 @@
 
 #include <linux/slab.h>
 #include <linux/irq_work.h>
-<<<<<<< HEAD
 #include <trace/events/sched.h>
-=======
-#include <linux/hrtimer.h>
-
-#include "walt.h"
-#include "tune.h"
->>>>>>> ACK/deprecated/android-4.4-p
 
 int sched_rr_timeslice = RR_TIMESLICE;
 int sysctl_sched_rr_timeslice = (MSEC_PER_SEC / HZ) * RR_TIMESLICE;
@@ -1218,70 +1211,6 @@ static int sched_rt_runtime_exceeded(struct rt_rq *rt_rq)
 	return 0;
 }
 
-#define RT_SCHEDTUNE_INTERVAL 50000000ULL
-
-static enum hrtimer_restart rt_schedtune_timer(struct hrtimer *timer)
-{
-	struct sched_rt_entity *rt_se = container_of(timer,
-			struct sched_rt_entity,
-			schedtune_timer);
-	struct task_struct *p = rt_task_of(rt_se);
-	struct rq *rq = task_rq(p);
-
-	raw_spin_lock(&rq->lock);
-
-	/*
-	 * Nothing to do if:
-	 * - task has switched runqueues
-	 * - task isn't RT anymore
-	 */
-	if (rq != task_rq(p) || (p->sched_class != &rt_sched_class))
-		goto out;
-
-	/*
-	 * If task got enqueued back during callback time, it means we raced
-	 * with the enqueue on another cpu, that's Ok, just do nothing as
-	 * enqueue path would have tried to cancel us and we shouldn't run
-	 * Also check the schedtune_enqueued flag as class-switch on a
-	 * sleeping task may have already canceled the timer and done dq
-	 */
-	if (p->on_rq || !rt_se->schedtune_enqueued)
-		goto out;
-
-	/*
-	 * RT task is no longer active, cancel boost
-	 */
-	rt_se->schedtune_enqueued = false;
-	schedtune_dequeue_task(p, cpu_of(rq));
-	cpufreq_update_this_cpu(rq, SCHED_CPUFREQ_RT);
-out:
-	raw_spin_unlock(&rq->lock);
-
-	/*
-	 * This can free the task_struct if no more references.
-	 */
-	put_task_struct(p);
-
-	return HRTIMER_NORESTART;
-}
-
-void init_rt_schedtune_timer(struct sched_rt_entity *rt_se)
-{
-	struct hrtimer *timer = &rt_se->schedtune_timer;
-
-	hrtimer_init(timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	timer->function = rt_schedtune_timer;
-	rt_se->schedtune_enqueued = false;
-}
-
-static void start_schedtune_timer(struct sched_rt_entity *rt_se)
-{
-	struct hrtimer *timer = &rt_se->schedtune_timer;
-
-	hrtimer_start(timer, ns_to_ktime(RT_SCHEDTUNE_INTERVAL),
-			HRTIMER_MODE_REL_PINNED);
-}
-
 /*
  * Update the current task's runtime statistics. Skip current tasks that
  * are not in our scheduling class.
@@ -1683,36 +1612,6 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 
 	if (!task_current(rq, p) && p->nr_cpus_allowed > 1)
 		enqueue_pushable_task(rq, p);
-<<<<<<< HEAD
-=======
-
-	if (!schedtune_task_boost(p))
-		return;
-
-	/*
-	 * If schedtune timer is active, that means a boost was already
-	 * done, just cancel the timer so that deboost doesn't happen.
-	 * Otherwise, increase the boost. If an enqueued timer was
-	 * cancelled, put the task reference.
-	 */
-	if (hrtimer_try_to_cancel(&rt_se->schedtune_timer) == 1)
-		put_task_struct(p);
-
-	/*
-	 * schedtune_enqueued can be true in the following situation:
-	 * enqueue_task_rt grabs rq lock before timer fires
-	 *    or before its callback acquires rq lock
-	 * schedtune_enqueued can be false if timer callback is running
-	 * and timer just released rq lock, or if the timer finished
-	 * running and canceling the boost
-	 */
-	if (rt_se->schedtune_enqueued)
-		return;
-
-	rt_se->schedtune_enqueued = true;
-	schedtune_enqueue_task(p, cpu_of(rq));
-	cpufreq_update_this_cpu(rq, SCHED_CPUFREQ_RT);
->>>>>>> ACK/deprecated/android-4.4-p
 }
 
 static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
@@ -1723,22 +1622,6 @@ static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 	dequeue_rt_entity(rt_se);
 
 	dequeue_pushable_task(rq, p);
-<<<<<<< HEAD
-=======
-
-	if (!rt_se->schedtune_enqueued)
-		return;
-
-	if (flags == DEQUEUE_SLEEP) {
-		get_task_struct(p);
-		start_schedtune_timer(rt_se);
-		return;
-	}
-
-	rt_se->schedtune_enqueued = false;
-	schedtune_dequeue_task(p, cpu_of(rq));
-	cpufreq_update_this_cpu(rq, SCHED_CPUFREQ_RT);
->>>>>>> ACK/deprecated/android-4.4-p
 }
 
 /*
@@ -1778,36 +1661,7 @@ static void yield_task_rt(struct rq *rq)
 #ifdef CONFIG_SMP
 static int find_lowest_rq(struct task_struct *task);
 
-<<<<<<< HEAD
 #ifdef CONFIG_SCHED_USE_FLUID_RT
-=======
-/*
- * Perform a schedtune dequeue and cancelation of boost timers if needed.
- * Should be called only with the rq->lock held.
- */
-static void schedtune_dequeue_rt(struct rq *rq, struct task_struct *p)
-{
-	struct sched_rt_entity *rt_se = &p->rt;
-
-	BUG_ON(!raw_spin_is_locked(&rq->lock));
-
-	if (!rt_se->schedtune_enqueued)
-		return;
-
-	/*
-	 * Incase of class change cancel any active timers. If an enqueued
-	 * timer was cancelled, put the task ref.
-	 */
-	if (hrtimer_try_to_cancel(&rt_se->schedtune_timer) == 1)
-		put_task_struct(p);
-
-	/* schedtune_enqueued is true, deboost it */
-	rt_se->schedtune_enqueued = false;
-	schedtune_dequeue_task(p, task_cpu(p));
-	cpufreq_update_this_cpu(rq, SCHED_CPUFREQ_RT);
-}
-
->>>>>>> ACK/deprecated/android-4.4-p
 static int
 select_task_rq_rt_fluid(struct task_struct *p, int cpu, int sd_flag, int flags)
 {
@@ -1894,19 +1748,6 @@ select_task_rq_rt(struct task_struct *p, int cpu, int sd_flag, int flags)
 	rcu_read_unlock();
 
 out:
-	/*
-	 * If previous CPU was different, make sure to cancel any active
-	 * schedtune timers and deboost.
-	 */
-	if (task_cpu(p) != cpu) {
-		unsigned long fl;
-		struct rq *prq = task_rq(p);
-
-		raw_spin_lock_irqsave(&prq->lock, fl);
-		schedtune_dequeue_rt(prq, p);
-		raw_spin_unlock_irqrestore(&prq->lock, fl);
-	}
-
 	return cpu;
 }
 
@@ -2913,13 +2754,9 @@ static void push_rt_tasks(struct rq *rq)
  * rq->rt.push_cpu holds the last cpu returned by this function,
  * or if this is the first instance, it must hold rq->cpu.
  */
-static int rto_next_cpu(struct root_domain *rd)
+static int rto_next_cpu(struct rq *rq)
 {
-<<<<<<< HEAD
 	int prev_cpu = rq->rt.push_cpu;
-=======
-	int next;
->>>>>>> ACK/deprecated/android-4.4-p
 	int cpu;
 
 	cpu = cpumask_next(prev_cpu, rq->rd->rto_mask);
@@ -2999,42 +2836,15 @@ static void tell_cpu_to_push(struct rq *rq)
 
 	rq->rt.push_flags = RT_PUSH_IPI_EXECUTING;
 
-<<<<<<< HEAD
 	irq_work_queue_on(&rq->rt.push_work, cpu);
-=======
-	/*
-	 * The rto_cpu is updated under the lock, if it has a valid cpu
-	 * then the IPI is still running and will continue due to the
-	 * update to loop_next, and nothing needs to be done here.
-	 * Otherwise it is finishing up and an ipi needs to be sent.
-	 */
-	if (rq->rd->rto_cpu < 0)
-		cpu = rto_next_cpu(rq->rd);
-
-	raw_spin_unlock(&rq->rd->rto_lock);
-
-	rto_start_unlock(&rq->rd->rto_loop_start);
-
-	if (cpu >= 0) {
-		/* Make sure the rd does not get freed while pushing */
-		sched_get_rd(rq->rd);
-		irq_work_queue_on(&rq->rd->rto_push_work, cpu);
-	}
->>>>>>> ACK/deprecated/android-4.4-p
 }
 
 /* Called from hardirq context */
 static void try_to_push_tasks(void *arg)
 {
-<<<<<<< HEAD
 	struct rt_rq *rt_rq = arg;
 	struct rq *rq, *src_rq;
 	int this_cpu;
-=======
-	struct root_domain *rd =
-		container_of(work, struct root_domain, rto_push_work);
-	struct rq *rq;
->>>>>>> ACK/deprecated/android-4.4-p
 	int cpu;
 
 	this_cpu = rt_rq->push_cpu;
@@ -3052,7 +2862,6 @@ again:
 		raw_spin_unlock(&rq->lock);
 	}
 
-<<<<<<< HEAD
 	/* Pass the IPI to the next rt overloaded queue */
 	raw_spin_lock(&rt_rq->push_lock);
 	/*
@@ -3071,19 +2880,7 @@ again:
 	raw_spin_unlock(&rt_rq->push_lock);
 
 	if (cpu >= nr_cpu_ids)
-=======
-	raw_spin_lock(&rd->rto_lock);
-
-	/* Pass the IPI to the next rt overloaded queue */
-	cpu = rto_next_cpu(rd);
-
-	raw_spin_unlock(&rd->rto_lock);
-
-	if (cpu < 0) {
-		sched_put_rd(rd);
->>>>>>> ACK/deprecated/android-4.4-p
 		return;
-	}
 
 	/*
 	 * It is possible that a restart caused this CPU to be
@@ -3094,7 +2891,6 @@ again:
 		goto again;
 
 	/* Try the next RT overloaded CPU */
-<<<<<<< HEAD
 	irq_work_queue_on(&rt_rq->push_work, cpu);
 }
 
@@ -3103,9 +2899,6 @@ static void push_irq_work_func(struct irq_work *work)
 	struct rt_rq *rt_rq = container_of(work, struct rt_rq, push_work);
 
 	try_to_push_tasks(rt_rq);
-=======
-	irq_work_queue_on(&rd->rto_push_work, cpu);
->>>>>>> ACK/deprecated/android-4.4-p
 }
 #endif /* HAVE_RT_PUSH_IPI */
 
@@ -3246,13 +3039,6 @@ static void switched_from_rt(struct rq *rq, struct task_struct *p)
 {
 	detach_task_rt_rq(p);
 	/*
-	 * On class switch from rt, always cancel active schedtune timers,
-	 * this handles the cases where we switch class for a task that is
-	 * already rt-dequeued but has a running timer.
-	 */
-	schedtune_dequeue_rt(rq, p);
-
-	/*
 	 * If there are other RT tasks then we will reschedule
 	 * and the scheduling of the other RT tasks will handle
 	 * the balancing. But if we are the last RT task
@@ -3303,13 +3089,8 @@ static void switched_to_rt(struct rq *rq, struct task_struct *p)
 #ifdef CONFIG_SMP
 		if (p->nr_cpus_allowed > 1 && rq->rt.overloaded)
 			queue_push_tasks(rq);
-<<<<<<< HEAD
 #else
 		if (p->prio < rq->curr->prio)
-=======
-#endif /* CONFIG_SMP */
-		if (p->prio < rq->curr->prio && cpu_online(cpu_of(rq)))
->>>>>>> ACK/deprecated/android-4.4-p
 			resched_curr(rq);
 #endif /* CONFIG_SMP */
 	}

@@ -1437,10 +1437,6 @@ struct sched_rt_entity {
 	unsigned long watchdog_stamp;
 	unsigned int time_slice;
 
-	/* Accesses for these must be guarded by rq->lock of the task's rq */
-	bool schedtune_enqueued;
-	struct hrtimer schedtune_timer;
-
 	struct sched_rt_entity *back;
 #ifdef CONFIG_RT_GROUP_SCHED
 	struct sched_rt_entity	*parent;
@@ -1702,14 +1698,11 @@ struct task_struct {
 
 	cputime_t utime, stime, utimescaled, stimescaled;
 	cputime_t gtime;
-<<<<<<< HEAD
 	unsigned long long cpu_power;
-=======
 #ifdef CONFIG_CPU_FREQ_TIMES
 	u64 *time_in_state;
 	unsigned int max_state;
 #endif
->>>>>>> ACK/deprecated/android-4.4-p
 	struct prev_cputime prev_cputime;
 #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
 	seqlock_t vtime_seqlock;

@@ -2286,14 +2286,9 @@ static unsigned long __zs_compact(struct zs_pool *pool,
 				   struct size_class *class)
 {
 	struct zs_compact_control cc;
-<<<<<<< HEAD
 	struct zspage *src_zspage;
 	struct zspage *dst_zspage = NULL;
-=======
-	struct page *src_page;
-	struct page *dst_page = NULL;
 	unsigned long pages_freed = 0;
->>>>>>> ACK/deprecated/android-4.4-p
 
 	spin_lock(&class->lock);
 	while ((src_zspage = isolate_zspage(class, true))) {
@@ -2320,17 +2315,11 @@ static unsigned long __zs_compact(struct zs_pool *pool,
 		if (dst_zspage == NULL)
 			break;
 
-<<<<<<< HEAD
 		putback_zspage(class, dst_zspage);
 		if (putback_zspage(class, src_zspage) == ZS_EMPTY) {
 			free_zspage(pool, class, src_zspage);
-			pool->stats.pages_compacted += class->pages_per_zspage;
-		}
-=======
-		putback_zspage(pool, class, dst_page);
-		if (putback_zspage(pool, class, src_page) == ZS_EMPTY)
 			pages_freed += class->pages_per_zspage;
->>>>>>> ACK/deprecated/android-4.4-p
+		}
 		spin_unlock(&class->lock);
 		cond_resched();
 		spin_lock(&class->lock);

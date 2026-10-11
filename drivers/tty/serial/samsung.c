@@ -891,92 +891,6 @@ static void s3c24xx_serial_break_ctl(struct uart_port *port, int break_state)
 	spin_unlock_irqrestore(&port->lock, flags);
 }
 
-<<<<<<< HEAD
-=======
-static int s3c24xx_serial_request_dma(struct s3c24xx_uart_port *p)
-{
-	struct s3c24xx_uart_dma	*dma = p->dma;
-	dma_cap_mask_t mask;
-	unsigned long flags;
-
-	/* Default slave configuration parameters */
-	dma->rx_conf.direction		= DMA_DEV_TO_MEM;
-	dma->rx_conf.src_addr_width	= DMA_SLAVE_BUSWIDTH_1_BYTE;
-	dma->rx_conf.src_addr		= p->port.mapbase + S3C2410_URXH;
-	dma->rx_conf.src_maxburst	= 1;
-
-	dma->tx_conf.direction		= DMA_MEM_TO_DEV;
-	dma->tx_conf.dst_addr_width	= DMA_SLAVE_BUSWIDTH_1_BYTE;
-	dma->tx_conf.dst_addr		= p->port.mapbase + S3C2410_UTXH;
-	dma->tx_conf.dst_maxburst	= 1;
-
-	dma_cap_zero(mask);
-	dma_cap_set(DMA_SLAVE, mask);
-
-	dma->rx_chan = dma_request_slave_channel_compat(mask, dma->fn,
-					dma->rx_param, p->port.dev, "rx");
-	if (!dma->rx_chan)
-		return -ENODEV;
-
-	dmaengine_slave_config(dma->rx_chan, &dma->rx_conf);
-
-	dma->tx_chan = dma_request_slave_channel_compat(mask, dma->fn,
-					dma->tx_param, p->port.dev, "tx");
-	if (!dma->tx_chan) {
-		dma_release_channel(dma->rx_chan);
-		return -ENODEV;
-	}
-
-	dmaengine_slave_config(dma->tx_chan, &dma->tx_conf);
-
-	/* RX buffer */
-	dma->rx_size = PAGE_SIZE;
-
-	dma->rx_buf = kmalloc(dma->rx_size, GFP_KERNEL);
-
-	if (!dma->rx_buf) {
-		dma_release_channel(dma->rx_chan);
-		dma_release_channel(dma->tx_chan);
-		return -ENOMEM;
-	}
-
-	dma->rx_addr = dma_map_single(p->port.dev, dma->rx_buf,
-				dma->rx_size, DMA_FROM_DEVICE);
-
-	spin_lock_irqsave(&p->port.lock, flags);
-
-	/* TX buffer */
-	dma->tx_addr = dma_map_single(p->port.dev, p->port.state->xmit.buf,
-				UART_XMIT_SIZE, DMA_TO_DEVICE);
-
-	spin_unlock_irqrestore(&p->port.lock, flags);
-
-	return 0;
-}
-
-static void s3c24xx_serial_release_dma(struct s3c24xx_uart_port *p)
-{
-	struct s3c24xx_uart_dma	*dma = p->dma;
-
-	if (dma->rx_chan) {
-		dmaengine_terminate_all(dma->rx_chan);
-		dma_unmap_single(p->port.dev, dma->rx_addr,
-				dma->rx_size, DMA_FROM_DEVICE);
-		kfree(dma->rx_buf);
-		dma_release_channel(dma->rx_chan);
-		dma->rx_chan = NULL;
-	}
-
-	if (dma->tx_chan) {
-		dmaengine_terminate_all(dma->tx_chan);
-		dma_unmap_single(p->port.dev, dma->tx_addr,
-				UART_XMIT_SIZE, DMA_TO_DEVICE);
-		dma_release_channel(dma->tx_chan);
-		dma->tx_chan = NULL;
-	}
-}
-
->>>>>>> ACK/deprecated/android-4.4-p
 static void s3c24xx_serial_shutdown(struct uart_port *port)
 {
 	struct s3c24xx_uart_port *ourport = to_ourport(port);
@@ -1213,12 +1127,7 @@ static unsigned int s3c24xx_serial_getclk(struct s3c24xx_uart_port *ourport,
 {
 	struct s3c24xx_uart_info *info = ourport->info;
 	unsigned long rate;
-<<<<<<< HEAD
-	unsigned int cnt, baud, quot, clk_sel, best_quot = 0;
-=======
 	unsigned int cnt, baud, quot, best_quot = 0;
-	char clkname[MAX_CLK_NAME_LENGTH];
->>>>>>> ACK/deprecated/android-4.4-p
 	int calc_deviation, deviation = (1 << 30) - 1;
 
 	for (cnt = 0; cnt < info->num_clks; cnt++) {
@@ -1390,26 +1299,21 @@ static void s3c24xx_serial_set_termios(struct uart_port *port,
 	wr_regl(port, S3C2410_ULCON, ulcon);
 	wr_regl(port, S3C2410_UBRDIV, quot);
 
-<<<<<<< HEAD
-	if (ourport->info->has_divslot)
-		wr_regl(port, S3C2443_DIVSLOT, udivslot);
-=======
 	port->status &= ~UPSTAT_AUTOCTS;
->>>>>>> ACK/deprecated/android-4.4-p
 
 	umcon = rd_regl(port, S3C2410_UMCON);
 	if (termios->c_cflag & CRTSCTS) {
 		umcon |= S3C2410_UMCOM_AFC;
-<<<<<<< HEAD
-=======
 		/* Disable RTS when RX FIFO contains 63 bytes */
 		umcon &= ~S3C2412_UMCON_AFC_8;
 		port->status = UPSTAT_AUTOCTS;
->>>>>>> ACK/deprecated/android-4.4-p
 	} else {
 		umcon &= ~S3C2410_UMCOM_AFC;
 	}
 	wr_regl(port, S3C2410_UMCON, umcon);
+
+	if (ourport->info->has_divslot)
+		wr_regl(port, S3C2443_DIVSLOT, udivslot);
 
 	dbg("uart: ulcon = 0x%08x, ucon = 0x%08x, ufcon = 0x%08x\n",
 	    rd_regl(port, S3C2410_ULCON),
@@ -1789,31 +1693,9 @@ static int s3c24xx_serial_init_port(struct s3c24xx_uart_port *ourport,
 		ourport->tx_irq = ret + 1;
 	}
 
-<<<<<<< HEAD
 	ret = platform_get_irq(platdev, 1);
 	if (ret > 0)
 		ourport->tx_irq = ret;
-=======
-	if (!s3c24xx_serial_has_interrupt_mask(port)) {
-		ret = platform_get_irq(platdev, 1);
-		if (ret > 0)
-			ourport->tx_irq = ret;
-	}
-	/*
-	 * DMA is currently supported only on DT platforms, if DMA properties
-	 * are specified.
-	 */
-	if (platdev->dev.of_node && of_find_property(platdev->dev.of_node,
-						     "dmas", NULL)) {
-		ourport->dma = devm_kzalloc(port->dev,
-					    sizeof(*ourport->dma),
-					    GFP_KERNEL);
-		if (!ourport->dma) {
-			ret = -ENOMEM;
-			goto err;
-		}
-	}
->>>>>>> ACK/deprecated/android-4.4-p
 
 	if (of_get_property(platdev->dev.of_node,
 			"samsung,separate-uart-clk", NULL))
@@ -2150,7 +2032,11 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 
 	dbg("s3c24xx_serial_probe(%p) %d\n", pdev, index);
 
-<<<<<<< HEAD
+	if (index >= ARRAY_SIZE(s3c24xx_serial_ports)) {
+		dev_err(&pdev->dev, "serial%d out of range\n", index);
+		return -EINVAL;
+	}
+
 	if (pdev->dev.of_node) {
 		ret = of_alias_get_id(pdev->dev.of_node, "uart");
 		if (ret < 0) {
@@ -2161,13 +2047,6 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 		}
 	}
 	ourport = &s3c24xx_serial_ports[port_index];
-=======
-	if (index >= ARRAY_SIZE(s3c24xx_serial_ports)) {
-		dev_err(&pdev->dev, "serial%d out of range\n", index);
-		return -EINVAL;
-	}
-	ourport = &s3c24xx_serial_ports[index];
->>>>>>> ACK/deprecated/android-4.4-p
 
 	if (ourport->port.line != port_index)
 		ourport = exynos_serial_default_port(port_index);

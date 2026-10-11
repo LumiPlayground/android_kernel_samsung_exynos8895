@@ -1290,21 +1290,8 @@ int ext4_search_dir(struct buffer_head *bh, char *search_buf, int buf_size,
 		/* prevent looping on a bad block */
 		de_len = ext4_rec_len_from_disk(de->rec_len,
 						dir->i_sb->s_blocksize);
-<<<<<<< HEAD
-		if (de_len <= 0) {
-			res = -1;
-			printk(KERN_ERR
-			   "%s: Get invalid rec_len from disk."
-			   "usr_name : %s, buf : %p, offset : %lu, rec_len: %d\n",
-			   __func__, fname->usr_fname->name, search_buf,
-			   (unsigned long)de - (unsigned long)search_buf,
-			   (int)le16_to_cpu(de->rec_len));
-			goto return_result;
-		}
-=======
 		if (de_len <= 0)
 			return -1;
->>>>>>> ACK/deprecated/android-4.4-p
 		offset += de_len;
 		de = (struct ext4_dir_entry_2 *) ((char *) de + de_len);
 	}

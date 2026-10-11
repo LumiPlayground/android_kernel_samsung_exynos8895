@@ -1063,13 +1063,6 @@ static void _stop(struct pl330_thread *thrd)
 
 	_emit_KILL(0, insn);
 
-<<<<<<< HEAD
-	/* Stop generating interrupts and clear pandding interrupts for SEV */
-	writel(readl(regs + INTEN) & ~(1 << thrd->ev), regs + INTEN);
-	writel(1 << thrd->ev, regs + INTCLR);
-
-=======
->>>>>>> ACK/deprecated/android-4.4-p
 	_execute_DBGINSN(thrd, insn, is_manager(thrd));
 
 	/* clear the event */

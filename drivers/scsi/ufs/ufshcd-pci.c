@@ -106,11 +106,8 @@ static void ufshcd_pci_remove(struct pci_dev *pdev)
 
 	disable_irq(pdev->irq);
 	ufshcd_remove(hba);
-<<<<<<< HEAD
-	pci_set_drvdata(pdev, NULL);
-=======
 	ufshcd_dealloc_host(hba);
->>>>>>> ACK/deprecated/android-4.4-p
+	pci_set_drvdata(pdev, NULL);
 }
 
 /**

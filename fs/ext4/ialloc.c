@@ -157,11 +157,7 @@ ext4_read_inode_bitmap(struct super_block *sb, ext4_group_t block_group)
 
 	ext4_lock_group(sb, block_group);
 	if (ext4_has_group_desc_csum(sb) &&
-<<<<<<< HEAD
-		(desc->bg_flags & cpu_to_le16(EXT4_BG_INODE_UNINIT))) {
-=======
 	    (desc->bg_flags & cpu_to_le16(EXT4_BG_INODE_UNINIT))) {
->>>>>>> ACK/deprecated/android-4.4-p
 		if (block_group == 0) {
 			ext4_unlock_group(sb, block_group);
 			unlock_buffer(bh);
@@ -170,13 +166,9 @@ ext4_read_inode_bitmap(struct super_block *sb, ext4_group_t block_group)
 			err = -EFSCORRUPTED;
 			goto out;
 		}
-<<<<<<< HEAD
-		err = ext4_init_inode_bitmap(sb, bh, block_group, desc);
-=======
 		memset(bh->b_data, 0, (EXT4_INODES_PER_GROUP(sb) + 7) / 8);
 		ext4_mark_bitmap_end(EXT4_INODES_PER_GROUP(sb),
 				     sb->s_blocksize * 8, bh->b_data);
->>>>>>> ACK/deprecated/android-4.4-p
 		set_bitmap_uptodate(bh);
 		set_buffer_uptodate(bh);
 		set_buffer_verified(bh);
@@ -1353,19 +1345,6 @@ int ext4_init_inode_table(struct super_block *sb, ext4_group_t group,
 			    ext4_itable_unused_count(sb, gdp);
 		used_blks = DIV_ROUND_UP(used_inos, sbi->s_inodes_per_block);
 
-<<<<<<< HEAD
-	if ((used_blks < 0) || (used_blks > sbi->s_itb_per_group) ||
-	    ((group == 0) && ((EXT4_INODES_PER_GROUP(sb) -
-			       ext4_itable_unused_count(sb, gdp)) <
-			      EXT4_FIRST_INO(sb)))) {
-		ext4_error(sb, "Something is wrong with group %u: "
-			   "used itable blocks: %d; "
-			   "itable unused count: %u",
-			   group, used_blks,
-			   ext4_itable_unused_count(sb, gdp));
-		ret = 1;
-		goto err_out;
-=======
 		/* Bogus inode unused count? */
 		if (used_blks < 0 || used_blks > sbi->s_itb_per_group) {
 			ext4_error(sb, "Something is wrong with group %u: "
@@ -1392,7 +1371,6 @@ int ext4_init_inode_table(struct super_block *sb, ext4_group_t group,
 			ret = 1;
 			goto err_out;
 		}
->>>>>>> ACK/deprecated/android-4.4-p
 	}
 
 	blk = ext4_inode_table(sb, gdp) + used_blks;

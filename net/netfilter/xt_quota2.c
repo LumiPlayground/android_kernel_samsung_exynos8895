@@ -311,23 +311,9 @@ quota_mt2(const struct sk_buff *skb, struct xt_action_param *par)
 		 * While no_change is pointless in "grow" mode, we will
 		 * implement it here simply to have a consistent behavior.
 		 */
-<<<<<<< HEAD
-		if (!(q->flags & XT_QUOTA_NO_CHANGE)) {
-			e->quota += (q->flags & XT_QUOTA_PACKET) ? 1 : skb->len;
-		}
-		if (!e->quota) {
-			quota2_log(par->hooknum,
-				   skb,
-				   par->in,
-				   par->out,
-				   q->name);
-		} else
-			ret = true;
-=======
 		if (!no_change)
 			e->quota += charge;
 		ret = true; /* note: does not respect inversion (bug??) */
->>>>>>> ACK/deprecated/android-4.4-p
 	} else {
 		if (e->quota > charge) {
 			if (!no_change)

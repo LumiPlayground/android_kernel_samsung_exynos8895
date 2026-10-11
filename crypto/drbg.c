@@ -1506,6 +1506,7 @@ static void drbg_schedule_async_seed(struct random_ready_callback *rdy)
 {
 	struct drbg_state *drbg = container_of(rdy, struct drbg_state,
 					       random_ready);
+
 	schedule_work(&drbg->seed_work);
 }
 

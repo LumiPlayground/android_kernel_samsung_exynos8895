@@ -74,6 +74,7 @@ static inline void ablkcipher_queue_write(struct ablkcipher_walk *walk,
 static inline u8 *ablkcipher_get_spot(u8 *start, unsigned int len)
 {
 	u8 *end_page = (u8 *)(((unsigned long)(start + len - 1)) & PAGE_MASK);
+
 	return max(start, end_page);
 }
 
@@ -110,18 +111,13 @@ int ablkcipher_walk_done(struct ablkcipher_request *req,
 	unsigned int n; /* bytes processed */
 	bool more;
 
-<<<<<<< HEAD
 #ifdef CONFIG_CRYPTO_FIPS
 	if (unlikely(in_fips_err()))
 		return -EACCES;
 #endif
 
-	if (likely(err >= 0)) {
-		unsigned int n = walk->nbytes - err;
-=======
 	if (unlikely(err < 0))
 		goto finish;
->>>>>>> ACK/deprecated/android-4.4-p
 
 	n = walk->nbytes - err;
 	walk->total -= n;
@@ -294,6 +290,7 @@ static int ablkcipher_walk_first(struct ablkcipher_request *req,
 	walk->iv_buffer = NULL;
 	if (unlikely(((unsigned long)walk->iv & alignmask))) {
 		int err = ablkcipher_copy_iv(walk, tfm, alignmask);
+
 		if (err)
 			return err;
 	}
