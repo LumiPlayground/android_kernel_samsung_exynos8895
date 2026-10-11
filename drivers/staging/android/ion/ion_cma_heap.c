@@ -46,10 +46,15 @@ static int ion_cma_allocate(struct ion_heap *heap, struct ion_buffer *buffer,
 	unsigned long size = len;
 	int ret;
 
+<<<<<<< HEAD
 	dev_dbg(dev, "Request buffer allocation len %ld\n", len);
 
 	if (!ion_is_heap_available(heap, flags, NULL))
 		return -EPERM;
+=======
+	if (buffer->flags & ION_FLAG_CACHED)
+		return -EINVAL;
+>>>>>>> ACK/deprecated/android-4.4-p
 
 	info = kzalloc(sizeof(struct ion_buffer_info), GFP_KERNEL);
 	if (!info) {
@@ -90,6 +95,7 @@ static int ion_cma_allocate(struct ion_heap *heap, struct ion_buffer *buffer,
 
 	/* keep this for memory release */
 	buffer->priv_virt = info;
+<<<<<<< HEAD
 
 	if (buffer->flags & ION_FLAG_PROTECTED) {
 		info->prot_desc.chunk_count = 1;
@@ -105,6 +111,8 @@ static int ion_cma_allocate(struct ion_heap *heap, struct ion_buffer *buffer,
 	}
 
 	dev_dbg(dev, "Allocate buffer %p\n", buffer);
+=======
+>>>>>>> ACK/deprecated/android-4.4-p
 	return 0;
 err_protect:
 	sg_free_table(&info->table);
@@ -124,6 +132,7 @@ static void ion_cma_free(struct ion_buffer *buffer)
 	struct ion_buffer_info *info = buffer->priv_virt;
 	unsigned long size = buffer->size;
 
+<<<<<<< HEAD
 	dev_dbg(dev, "Release buffer %p\n", buffer);
 
 	if (buffer->flags & ION_FLAG_PROTECTED) {
@@ -131,6 +140,8 @@ static void ion_cma_free(struct ion_buffer *buffer)
 		size = ALIGN(size, ION_PROTECTED_BUF_ALIGN);
 	}
 
+=======
+>>>>>>> ACK/deprecated/android-4.4-p
 	/* release memory */
 	dma_release_from_contiguous(dev,
 			phys_to_page(dma_to_phys(dev, info->handle)),
