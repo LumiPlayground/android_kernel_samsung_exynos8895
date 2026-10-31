@@ -6,7 +6,35 @@ Original vendor tip: `6f1fa95bdd2d0fae1c38c05ed43563f0ab288bb3`.
 Upstream target: v4.9.191 (`bf489db05ebf7106dd77f79e6edabc45fc318416`).
 Working branch: `port/exynos8895-4.9.191`.
 
-## Latest saved-log boot investigation
+## Samsung entry-layout compatibility candidate
+
+The working 4.4 Image places `stext` immediately after its 64-byte header:
+its first instruction is `0x14000010`, branching to Image + 0x40. The prior
+4.9 image instead branches to `.init.text` approximately 21 MiB later, and
+contains an undefined instruction at +0x40. For Exynos8895 with Samsung
+RELOCATABLE_KERNEL enabled, primary startup now stays in `.head.text`,
+restoring the working header-adjacent entry layout. Native 4.9 relocation,
+page tables, MMU setup and the Samsung x1/x2 boot argument ABI are retained.
+
+This is a compatibility candidate: there is no evidence yet that the failing
+bootloader actually enters at +0x40. It must be tested on the device before
+calling the boot failure fixed. The existing last_kmsg driver cannot capture
+a failure before its initialization; adding later logging does not resolve
+such a failure.
+
+The candidate uses the normal dream2ltekor defconfig, hlng@longa identity,
+and no early RAM/UART tracing. All six saved defconfigs remain unchanged.
+Modeled startup reaches start_kernel from both Image and Image + 0x40 at
+four loads, including the historical Samsung load 0x80148000. The old
+normal Image faults when entered directly at +0x40. EL transitions, cache
+maintenance and MMU register operations are modeled, so these checks do
+not establish hardware boot correctness. GPU, Wi-Fi and FIMC-IS2 are unchanged.
+
+Candidate payloads: `/workspace/kernel-env/artifacts/4.9.191-dream2ltekor-samsung-entry/`.
+Use its raw Image and matching dtb_dream2lte.img together when repacking.
+The original DPU/SysMMU panic remains unresolved pending a bootable port.
+
+## Earlier saved-log diagnostics
 
 The latest hlng@longa normal image still hangs, but the reported "Starting
 kernel" is from a saved bootloader/last_kmsg log, not a live UART trace.
@@ -16,7 +44,7 @@ the working vendor Image (0x80000, 0xa). Modeled startup also passes at the
 historical Samsung load 0x80148000; EL/MMU/cache operations remain modeled.
 The physical-device hang has not been located or fixed.
 
-Primary diagnostic payloads for this case:
+Earlier logging-only diagnostic payloads:
 `/workspace/kernel-env/artifacts/4.9.191-dream2ltekor-boot-ram/`.
 They enable EXYNOS_SNAPSHOT_EARLY_LOG and append
 `loop.max_part=7 initcall_debug ignore_loglevel loglevel=8` to the DT command

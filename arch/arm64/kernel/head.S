@@ -206,7 +206,12 @@ section_table:
 efi_header_end:
 #endif
 
+#if defined(CONFIG_SOC_EXYNOS8895) && defined(CONFIG_RELOCATABLE_KERNEL)
+	/* Keep Samsung's entry immediately after the Image header. */
+	__HEAD
+#else
 	__INIT
+#endif
 
 	/* UART_DBG from exynos8895.dtsi; MMU-off use only, no UART setup. */
 	.macro exynos8895_boot_uart, character

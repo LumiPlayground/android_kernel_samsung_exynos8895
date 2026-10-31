@@ -275,3 +275,7 @@ ASSERT((__entry_tramp_text_end - __entry_tramp_text_start) == PAGE_SIZE,
  * If padding is applied before .head.text, virt<->phys conversions will fail.
  */
 ASSERT(_text == (KIMAGE_VADDR + TEXT_OFFSET), "HEAD is misaligned")
+
+#if defined(CONFIG_SOC_EXYNOS8895) && defined(CONFIG_RELOCATABLE_KERNEL) && !defined(CONFIG_EFI)
+ASSERT(stext == (_text + 0x40), "Samsung primary entry must follow Image header")
+#endif
