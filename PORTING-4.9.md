@@ -6,6 +6,17 @@ Original vendor tip: `6f1fa95bdd2d0fae1c38c05ed43563f0ab288bb3`.
 Upstream target: v4.9.191 (`bf489db05ebf7106dd77f79e6edabc45fc318416`).
 Working branch: `port/exynos8895-4.9.191`.
 
+## Samsung ONESHOT netfilter removal
+
+The Samsung ONESHOT match is removed, including its Kconfig entry, build
+registration, implementation, UAPI header and all six board defconfig entries.
+The GCC 6.3.1 Image/Image.gz and DTBH build passes. No ONESHOT match/UID
+symbols remain in vmlinux; all six configs regenerate without the option.
+Modeled bootstrap and raw-payload checks pass. The removal checks are recorded under
+`/workspace/kernel-env/remove-netfilter-oneshot/`. New payloads are packaged
+in `/workspace/kernel-env/artifacts/4.9.191-dream2ltekor-no-oneshot/`.
+Older artifact directories below predate this code removal.
+
 ## Rebased sep-10.0 without the backport range
 
 The entire inclusive range from `ad127f3a68d61bc772f421c4253ebd041e56823f`
