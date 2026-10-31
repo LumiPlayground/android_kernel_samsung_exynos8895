@@ -208,6 +208,25 @@ efi_header_end:
 
 	__INIT
 
+	/* UART_DBG from exynos8895.dtsi; MMU-off use only, no UART setup. */
+	.macro exynos8895_boot_uart, character
+#ifdef CONFIG_EXYNOS8895_BOOT_UART_TRACE
+	mov_q	x9, 0x10430000
+	mov	x10, #0xffff
+.Lboot_uart_wait\@:
+	ldr	w11, [x9, #0x10]		// UTRSTAT.TXFE works with/without FIFO
+	tbnz	w11, #1, .Lboot_uart_send\@
+	subs	x10, x10, #1
+	b.ne	.Lboot_uart_wait\@
+	b	.Lboot_uart_done\@
+.Lboot_uart_send\@:
+	mov	w11, #\character
+	strb	w11, [x9, #0x20]		// UTXH
+	dsb	sy
+.Lboot_uart_done\@:
+#endif
+	.endm
+
 	/*
 	 * The following callee saved general purpose registers are used on the
 	 * primary lowlevel boot path:
@@ -219,6 +238,7 @@ efi_header_end:
 	 *  x19/x20    __primary_switch()         callee preserved temp registers
 	 */
 ENTRY(stext)
+	exynos8895_boot_uart '0'
 #ifdef CONFIG_RELOCATABLE_KERNEL
 	/* Samsung bootloader: x1 is DRAM base, x2 is actual text offset.
 	 * Preserve the ABI for FMP, crypto integrity and crash reporting.
@@ -230,11 +250,14 @@ ENTRY(stext)
 	dc	ivac, x9
 #endif
 	bl	preserve_boot_args
+	exynos8895_boot_uart '1'
 	bl	el2_setup			// Drop to EL1, w0=cpu_boot_mode
+	exynos8895_boot_uart '2'
 	adrp	x23, __PHYS_OFFSET
 	and	x23, x23, MIN_KIMG_ALIGN - 1	// KASLR offset, defaults to 0
 	bl	set_cpu_boot_mode_flag
 	bl	__create_page_tables
+	exynos8895_boot_uart '3'
 	/*
 	 * The following calls CPU setup code, see arch/arm64/mm/proc.S for
 	 * details.
@@ -242,6 +265,7 @@ ENTRY(stext)
 	 * the TCR will have been set.
 	 */
 	bl	__cpu_setup			// initialise processor
+	exynos8895_boot_uart '4'
 	b	__primary_switch
 ENDPROC(stext)
 
@@ -757,6 +781,7 @@ ENTRY(__enable_mmu)
 	msr	ttbr0_el1, x1			// load TTBR0
 	msr	ttbr1_el1, x2			// load TTBR1
 	isb
+	exynos8895_boot_uart '5'
 	msr	sctlr_el1, x0
 	isb
 	/*

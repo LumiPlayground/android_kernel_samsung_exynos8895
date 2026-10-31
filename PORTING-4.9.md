@@ -6,6 +6,49 @@ Original vendor tip: `6f1fa95bdd2d0fae1c38c05ed43563f0ab288bb3`.
 Upstream target: v4.9.191 (`bf489db05ebf7106dd77f79e6edabc45fc318416`).
 Working branch: `port/exynos8895-4.9.191`.
 
+## Latest saved-log boot investigation
+
+The latest hlng@longa normal image still hangs, but the reported "Starting
+kernel" is from a saved bootloader/last_kmsg log, not a live UART trace.
+The device tree selects console=ram. Therefore the last bootloader line
+does not identify a kernel execution checkpoint. Header offset/flags match
+the working vendor Image (0x80000, 0xa). Modeled startup also passes at the
+historical Samsung load 0x80148000; EL/MMU/cache operations remain modeled.
+The physical-device hang has not been located or fixed.
+
+Primary diagnostic payloads for this case:
+`/workspace/kernel-env/artifacts/4.9.191-dream2ltekor-boot-ram/`.
+They enable EXYNOS_SNAPSHOT_EARLY_LOG and append
+`loop.max_part=7 initcall_debug ignore_loglevel loglevel=8` to the DT command
+line. UART tracing and serial earlycon are off. The existing snapshot buffer
+selected by ess_setup is used; no fixed physical RAM writes are added.
+After the hang, warm-reboot into recovery/a working kernel and capture
+/proc/last_kmsg and /sys/fs/pstore before another reboot. A cold power cycle
+can erase retained RAM. Look for "ESS early boot:" and initcall_debug output.
+A hang before memory/scheduler/RCU initialization may still precede this log.
+
+A separate optional UART build is archived at
+`/workspace/kernel-env/artifacts/4.9.191-dream2ltekor-boot-uart/`.
+EXYNOS8895_BOOT_UART_TRACE emits 012345 before the MMU switch, using only
+the existing UART_DBG at 0x10430000. It preserves boot arguments, uses
+bounded polling and does not initialize clocks/pins. Stages: entry, saved
+arguments, EL setup, page tables, CPU setup, then MMU enable. Stage 5 can
+repeat for secondary CPUs. This option defaults off in all six saved configs.
+The earlycon name is `exynos`, and the diagnostic UART command line uses
+`earlycon=exynos,0x10430000 console=ttySAC0,115200n8 keep_bootcon`.
+
+The Samsung earlycon writer previously waited forever for the FIFO-enable
+configuration bit, including when the bootloader left FIFO mode disabled.
+It now polls TX-empty with a bound and emits normal CRLF. Host tests cover
+FIFO off/on, delayed ready, permanently busy and empty writes. UART-stage
+emulation checks ready/busy behavior, boot arguments, relocation and page
+tables at three loads including 0x80148000. UART registers, EL/MMU and cache
+operations are simulated; these checks do not establish hardware boot.
+
+Both diagnostic builds use hlng@longa and compile with GCC 6.3.1. All six
+normal defconfigs regenerate unchanged. GPU, bcmdhd4361 and FIMC-IS2 are
+unchanged. Reports and build logs: `/workspace/kernel-env/early-boot-uart/`.
+
 ## Samsung ONESHOT netfilter removal
 
 The Samsung ONESHOT match is removed, including its Kconfig entry, build

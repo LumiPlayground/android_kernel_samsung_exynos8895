@@ -37,6 +37,18 @@ config EXYNOS_SNAPSHOT_EARLY_LOG
 	  still require an early UART trace. The normal snapshot initialization
 	  will reuse the mapping and leave the saved previous log intact.
 
+config EXYNOS8895_BOOT_UART_TRACE
+	bool "Trace Exynos8895 primary boot stages on the bootloader UART"
+	depends on SOC_EXYNOS8895 && SERIAL_SAMSUNG_CONSOLE
+	default n
+	help
+	  Diagnostic only. Emit digits 0 through 5 on the existing UART_DBG
+	  at 0x10430000 before enabling the MMU. Preserve the bootloader's
+	  UART configuration and use bounded polling. Stages identify entry,
+	  saved boot arguments, EL setup, page tables, CPU setup and the final
+	  MMU-enable step. Stage 5 also appears when secondary CPUs start.
+	  Requires an accessible, clocked UART initialized by the bootloader.
+
 config EXYNOS_SNAPSHOT_IRQ_EXIT
 	bool "Enable debugging of interrupt exit event by kevent"
 	depends on EXYNOS_SNAPSHOT && !EXYNOS_SNAPSHOT_MINIMIZED_MODE

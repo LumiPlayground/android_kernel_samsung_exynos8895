@@ -2632,33 +2632,33 @@ static struct console s3c24xx_serial_console = {
 	.data		= &s3c24xx_uart_drv,
 };
 
-#define UFCON		0x08
-#define FIFO_ENABLED	(1<<0)
-#define UTXH		0x20
-#define URXH		0x24
-#define UTRSTAT		0x10
-#define UTRSTAT_TXFE	(1<<1)
-#define UTRSTAT_RXDR	(1<<0)
+static bool exynos_serial_early_putchar(struct uart_port *port, char ch)
+{
+	unsigned int retries = 100000;
+
+	/* FIFO enable is a configuration bit, not a readiness indication. */
+	while (!(readl_relaxed(port->membase + S3C2410_UTRSTAT) &
+		 S3C2410_UTRSTAT_TXFE)) {
+		if (!--retries)
+			return false;
+		cpu_relax();
+	}
+	writeb_relaxed(ch, port->membase + S3C2410_UTXH);
+	return true;
+}
 
 static void
 exynos_serial_early_write(struct console *con, const char *s, unsigned n)
 {
 	struct earlycon_device *dev = con->data;
 	struct uart_port *port = &dev->port;
-	unsigned char __iomem *early_base = port->membase;
-	char *ch = (char *)s;
 
 	while (n--) {
-		while (!(readl_relaxed(early_base + UFCON) & FIFO_ENABLED))
-			;
-		writeb_relaxed(*ch, early_base + UTXH);
-		while (!(readl_relaxed(early_base + UTRSTAT) & UTRSTAT_TXFE))
-			;
-		ch++;
+		if (*s == '\n' && !exynos_serial_early_putchar(port, '\r'))
+			return;
+		if (!exynos_serial_early_putchar(port, *s++))
+			return;
 	}
-	while (!(readl_relaxed(early_base + UFCON) & FIFO_ENABLED))
-		;
-	writeb_relaxed('\r', early_base + UTXH);
 }
 
 static int __init
