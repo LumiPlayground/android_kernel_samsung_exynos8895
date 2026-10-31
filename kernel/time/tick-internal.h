@@ -7,6 +7,15 @@
 #include "timekeeping.h"
 #include "tick-sched.h"
 
+/* Preserve idle accounting across tick teardown and CPU preparation. */
+#ifdef CONFIG_TICK_ONESHOT
+void save_pcpu_tick(int cpu);
+void restore_pcpu_tick(int cpu);
+#else
+static inline void save_pcpu_tick(int cpu) { }
+static inline void restore_pcpu_tick(int cpu) { }
+#endif
+
 #ifdef CONFIG_GENERIC_CLOCKEVENTS
 
 # define TICK_DO_TIMER_NONE	-1

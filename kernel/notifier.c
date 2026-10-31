@@ -92,10 +92,10 @@ static int notifier_call_chain(struct notifier_block **nl,
 			continue;
 		}
 #endif
-		if (val == PM_SUSPEND_PREPARE || val == PM_POST_SUSPEND)
+		if (is_pm_chain_notifier(nl, val))
 			exynos_ss_suspend(nb->notifier_call, NULL, ESS_FLAG_IN);
 		ret = nb->notifier_call(nb, val, v);
-		if (val == PM_SUSPEND_PREPARE || val == PM_POST_SUSPEND)
+		if (is_pm_chain_notifier(nl, val))
 			exynos_ss_suspend(nb->notifier_call, NULL, ESS_FLAG_OUT);
 
 		if (nr_calls)

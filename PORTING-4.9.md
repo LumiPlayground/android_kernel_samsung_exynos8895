@@ -6,6 +6,62 @@ Original vendor tip: `6f1fa95bdd2d0fae1c38c05ed43563f0ab288bb3`.
 Upstream target: v4.9.191 (`bf489db05ebf7106dd77f79e6edabc45fc318416`).
 Working branch: `port/exynos8895-4.9.191`.
 
+## Continued r7 shared-core alignment
+
+Reference: Lunarixus android-13-oneui, commit
+`72aa73808788511125610fe83528bdd88af8d94a` (exynos9810-r7).
+This pass aligns shared 4.9 behavior while preserving the Exynos8895
+platform and sep-10.0 interfaces:
+
+- Futex shared keys use inode sequence numbers, including inode initialization
+  and the matching key layout, avoiding inode references in wait queues.
+- Writeback tracks queued inodes under i_lock, and preserves the memcg pointer
+  when clearing PG_writeback because the page can become free immediately.
+- Epoll checks graph paths before registering wait queues and holds file
+  references throughout reverse-path checking.
+- Sticky-directory creation checks snapshot parent ownership/mode before
+  pathname traversal; userfaultfd registration requires VM_MAYWRITE.
+- POSIX message queues and utimes pass mount information to existing VFS
+  helpers. The missing lookup_one_len2 declaration is supplied explicitly.
+- CPU idle accounting is saved before timer teardown and restored during timer
+  preparation, including idle_calls. The previous ARM64 SMP calls are removed
+  to avoid duplicate accounting. Tick-disabled builds have internal stubs.
+- Snapshot PM tracing recognizes the actual PM notifier chain, rather than
+  treating matching event numbers on unrelated chains as suspend events.
+- Pipe-buffer initialization clears flags; GSO handles untrusted fragmented
+  buffer layouts; IGMP source checks lock the list; IPv6 address notification
+  tolerates a missing host route; ICMP credits follow r7 randomization.
+- Block queue mapping distributes online CPUs across hardware queues and maps
+  offline CPUs safely; discard honors REQ_SYNC; max sectors updates io_pages.
+
+All six defconfigs regenerate unchanged. RELOCATABLE_KERNEL, the Samsung
+header-adjacent entry, EHMP hardware guards, FMP/eCryptfs interfaces, GPU,
+bcmdhd4361 and FIMC-IS2 are retained. Upstream mmap/vmalloc/IRQ and script
+interpreter fixes that r7 lacks are retained. The 9810 RKP/FIVE, diskcipher,
+energy tables and Android 13 userspace feature dependencies are not copied
+wholesale into the sep-10.0 target.
+
+The header-adjacent entry assertion now compares `stext - _text` to 0x40.
+Linaro's linker falsely rejects the previous absolute-address equality under
+PIE/shared linking despite identical map addresses. A minimal link regression
+accepts the correct offset and rejects 0x44; entry code remains unchanged.
+
+Validation: GCC 6.3.1 normal dream2ltekor Image/Image.gz and DTBH build passed.
+Selected core objects also compile with MEMCG, PM_SLEEP and TICK_ONESHOT off,
+and USERFAULTFD on. Host tests of the actual block mapper pass dense/sparse
+CPU masks, SMT, offline CPUs, excess queues and allocation failure under
+AddressSanitizer/UBSan. Eight modeled startup cases and raw payload checks
+pass; EL/MMU/cache operations remain modeled. All six saved configs and
+protected driver trees are unchanged.
+
+Payloads: `/workspace/kernel-env/artifacts/4.9.191-dream2ltekor-r7-shared-core/`.
+Comparison records and build logs: `/workspace/kernel-env/r7-shared-core/`.
+Across kernel/mm/fs/ipc/lib/block/crypto, approximately 89% of shared paths
+already match r7 byte-for-byte after this pass; this is a source comparison,
+not a claim of runtime equivalence. Remaining differences include upstream
+fixes, platform compatibility and separate feature backports.
+Physical boot and the original DPU/SysMMU fault remain unverified.
+
 ## Samsung entry-layout compatibility candidate
 
 The working 4.4 Image places `stext` immediately after its 64-byte header:

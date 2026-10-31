@@ -143,15 +143,10 @@ static int boot_secondary(unsigned int cpu, struct task_struct *idle)
 
 static DECLARE_COMPLETION(cpu_running);
 
-extern void save_pcpu_tick(int cpu);
-extern void restore_pcpu_tick(int cpu);
-
 int __cpu_up(unsigned int cpu, struct task_struct *idle)
 {
 	int ret;
 	long status;
-
-	restore_pcpu_tick(cpu);
 
 	/*
 	 * We need to tell the secondary core where to find its stack and the
@@ -371,8 +366,6 @@ void __cpu_die(unsigned int cpu)
 	if (err)
 		pr_warn("CPU%d may not have shut down cleanly: %d\n",
 			cpu, err);
-
-	save_pcpu_tick(cpu);
 }
 
 /*

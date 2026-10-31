@@ -478,6 +478,12 @@ static inline int unregister_pm_notifier(struct notifier_block *nb)
 	return 0;
 }
 
+static inline bool is_pm_chain_notifier(struct notifier_block **nb,
+				       unsigned long val)
+{
+	return false;
+}
+
 #define pm_notifier(fn, pri)	do { (void)(fn); } while (0)
 
 static inline bool pm_wakeup_pending(void) { return false; }
