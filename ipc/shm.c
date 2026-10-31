@@ -90,7 +90,6 @@ static void do_shm_rmid(struct ipc_namespace *ns, struct kern_ipc_perm *ipcp)
 {
 	struct shmid_kernel *shp;
 	shp = container_of(ipcp, struct shmid_kernel, shm_perm);
-	WARN_ON(ns != shp->ns);
 
 	if (shp->shm_nattch) {
 		shp->shm_perm.mode |= SHM_DEST;
@@ -181,43 +180,10 @@ static void shm_rcu_free(struct rcu_head *head)
 	ipc_rcu_free(head);
 }
 
-/*
- * It has to be called with shp locked.
- * It must be called before ipc_rmid()
- */
-static inline void shm_clist_rm(struct shmid_kernel *shp)
+static inline void shm_rmid(struct ipc_namespace *ns, struct shmid_kernel *s)
 {
-	struct task_struct *creator;
-
-	/* ensure that shm_creator does not disappear */
-	rcu_read_lock();
-
-	/*
-	 * A concurrent exit_shm may do a list_del_init() as well.
-	 * Just do nothing if exit_shm already did the work
-	 */
-	if (!list_empty(&shp->shm_clist)) {
-		/*
-		 * shp->shm_creator is guaranteed to be valid *only*
-		 * if shp->shm_clist is not empty.
-		 */
-		creator = shp->shm_creator;
-
-		task_lock(creator);
-		/*
-		 * list_del_init() is a nop if the entry was already removed
-		 * from the list.
-		 */
-		list_del_init(&shp->shm_clist);
-		task_unlock(creator);
-	}
-	rcu_read_unlock();
-}
-
-static inline void shm_rmid(struct shmid_kernel *s)
-{
-	shm_clist_rm(s);
-	ipc_rmid(&shm_ids(s->ns), &s->shm_perm);
+	list_del(&s->shm_clist);
+	ipc_rmid(&shm_ids(ns), &s->shm_perm);
 }
 
 
@@ -272,7 +238,7 @@ static void shm_destroy(struct ipc_namespace *ns, struct shmid_kernel *shp)
 	shm_file = shp->shm_file;
 	shp->shm_file = NULL;
 	ns->shm_tot -= (shp->shm_segsz + PAGE_SIZE - 1) >> PAGE_SHIFT;
-	shm_rmid(shp);
+	shm_rmid(ns, shp);
 	shm_unlock(shp);
 	if (!is_file_hugepages(shm_file))
 		shmem_lock(shm_file, 0, shp->mlock_user);
@@ -293,10 +259,10 @@ static void shm_destroy(struct ipc_namespace *ns, struct shmid_kernel *shp)
  *
  * 2) sysctl kernel.shm_rmid_forced is set to 1.
  */
-static bool shm_may_destroy(struct shmid_kernel *shp)
+static bool shm_may_destroy(struct ipc_namespace *ns, struct shmid_kernel *shp)
 {
 	return (shp->shm_nattch == 0) &&
-	       (shp->ns->shm_rmid_forced ||
+	       (ns->shm_rmid_forced ||
 		(shp->shm_perm.mode & SHM_DEST));
 }
 
@@ -327,7 +293,7 @@ static void shm_close(struct vm_area_struct *vma)
 	shp->shm_lprid = task_tgid_vnr(current);
 	shp->shm_dtim = get_seconds();
 	shp->shm_nattch--;
-	if (shm_may_destroy(shp))
+	if (shm_may_destroy(ns, shp))
 		shm_destroy(ns, shp);
 	else
 		shm_unlock(shp);
@@ -348,10 +314,10 @@ static int shm_try_destroy_orphaned(int id, void *p, void *data)
 	 *
 	 * As shp->* are changed under rwsem, it's safe to skip shp locking.
 	 */
-	if (!list_empty(&shp->shm_clist))
+	if (shp->shm_creator != NULL)
 		return 0;
 
-	if (shm_may_destroy(shp)) {
+	if (shm_may_destroy(ns, shp)) {
 		shm_lock_by_ptr(shp);
 		shm_destroy(ns, shp);
 	}
@@ -369,97 +335,48 @@ void shm_destroy_orphaned(struct ipc_namespace *ns)
 /* Locking assumes this will only be called with task == current */
 void exit_shm(struct task_struct *task)
 {
-	for (;;) {
-		struct shmid_kernel *shp;
-		struct ipc_namespace *ns;
+	struct ipc_namespace *ns = task->nsproxy->ipc_ns;
+	struct shmid_kernel *shp, *n;
 
-		task_lock(task);
+	if (list_empty(&task->sysvshm.shm_clist))
+		return;
 
-		if (list_empty(&task->sysvshm.shm_clist)) {
-			task_unlock(task);
-			break;
-		}
-
-		shp = list_first_entry(&task->sysvshm.shm_clist, struct shmid_kernel,
-				shm_clist);
-
+	/*
+	 * If kernel.shm_rmid_forced is not set then only keep track of
+	 * which shmids are orphaned, so that a later set of the sysctl
+	 * can clean them up.
+	 */
+	if (!ns->shm_rmid_forced) {
+		down_read(&shm_ids(ns).rwsem);
+		list_for_each_entry(shp, &task->sysvshm.shm_clist, shm_clist)
+			shp->shm_creator = NULL;
 		/*
-		 * 1) Get pointer to the ipc namespace. It is worth to say
-		 * that this pointer is guaranteed to be valid because
-		 * shp lifetime is always shorter than namespace lifetime
-		 * in which shp lives.
-		 * We taken task_lock it means that shp won't be freed.
+		 * Only under read lock but we are only called on current
+		 * so no entry on the list will be shared.
 		 */
-		ns = shp->ns;
-
-		/*
-		 * 2) If kernel.shm_rmid_forced is not set then only keep track of
-		 * which shmids are orphaned, so that a later set of the sysctl
-		 * can clean them up.
-		 */
-		if (!ns->shm_rmid_forced)
-			goto unlink_continue;
-
-		/*
-		 * 3) get a reference to the namespace.
-		 *    The refcount could be already 0. If it is 0, then
-		 *    the shm objects will be free by free_ipc_work().
-		 */
-		ns = get_ipc_ns_not_zero(ns);
-		if (!ns) {
-unlink_continue:
-			list_del_init(&shp->shm_clist);
-			task_unlock(task);
-			continue;
-		}
-
-		/*
-		 * 4) get a reference to shp.
-		 *   This cannot fail: shm_clist_rm() is called before
-		 *   ipc_rmid(), thus the refcount cannot be 0.
-		 */
-		WARN_ON(!ipc_rcu_getref(&shp->shm_perm));
-
-		/*
-		 * 5) unlink the shm segment from the list of segments
-		 *    created by current.
-		 *    This must be done last. After unlinking,
-		 *    only the refcounts obtained above prevent IPC_RMID
-		 *    from destroying the segment or the namespace.
-		 */
-		list_del_init(&shp->shm_clist);
-
-		task_unlock(task);
-
-		/*
-		 * 6) we have all references
-		 *    Thus lock & if needed destroy shp.
-		 */
-		down_write(&shm_ids(ns).rwsem);
-		shm_lock_by_ptr(shp);
-		/*
-		 * rcu_read_lock was implicitly taken in shm_lock_by_ptr, it's
-		 * safe to call ipc_rcu_putref here
-		 */
-		ipc_rcu_putref(&shp->shm_perm, shm_rcu_free);
-
-		if (ipc_valid_object(&shp->shm_perm)) {
-			if (shm_may_destroy(shp))
-				shm_destroy(ns, shp);
-			else
-				shm_unlock(shp);
-		} else {
-			/*
-			 * Someone else deleted the shp from namespace
-			 * idr/kht while we have waited.
-			 * Just unlock and continue.
-			 */
-			shm_unlock(shp);
-		}
-
-		up_write(&shm_ids(ns).rwsem);
-		put_ipc_ns(ns); /* paired with get_ipc_ns_not_zero */
+		list_del(&task->sysvshm.shm_clist);
+		up_read(&shm_ids(ns).rwsem);
+		return;
 	}
+
+	/*
+	 * Destroy all already created segments, that were not yet mapped,
+	 * and mark any mapped as orphan to cover the sysctl toggling.
+	 * Destroy is skipped if shm_may_destroy() returns false.
+	 */
+	down_write(&shm_ids(ns).rwsem);
+	list_for_each_entry_safe(shp, n, &task->sysvshm.shm_clist, shm_clist) {
+		shp->shm_creator = NULL;
+
+		if (shm_may_destroy(ns, shp)) {
+			shm_lock_by_ptr(shp);
+			shm_destroy(ns, shp);
+		}
+	}
+
+	/* Remove the list head from any segments still attached. */
+	list_del(&task->sysvshm.shm_clist);
+	up_write(&shm_ids(ns).rwsem);
 }
 
 static int shm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
@@ -468,6 +385,17 @@ static int shm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	struct shm_file_data *sfd = shm_file_data(file);
 
 	return sfd->vm_ops->fault(vma, vmf);
+}
+
+static int shm_split(struct vm_area_struct *vma, unsigned long addr)
+{
+	struct file *file = vma->vm_file;
+	struct shm_file_data *sfd = shm_file_data(file);
+
+	if (sfd->vm_ops && sfd->vm_ops->split)
+		return sfd->vm_ops->split(vma, addr);
+
+	return 0;
 }
 
 #ifdef CONFIG_NUMA
@@ -567,13 +495,15 @@ static const struct file_operations shm_file_operations = {
 	.mmap		= shm_mmap,
 	.fsync		= shm_fsync,
 	.release	= shm_release,
-#ifndef CONFIG_MMU
 	.get_unmapped_area	= shm_get_unmapped_area,
-#endif
 	.llseek		= noop_llseek,
 	.fallocate	= shm_fallocate,
 };
 
+/*
+ * shm_file_operations_huge is now identical to shm_file_operations,
+ * but we keep it distinct for the sake of is_file_shm_hugepages().
+ */
 static const struct file_operations shm_file_operations_huge = {
 	.mmap		= shm_mmap,
 	.fsync		= shm_fsync,
@@ -583,7 +513,7 @@ static const struct file_operations shm_file_operations_huge = {
 	.fallocate	= shm_fallocate,
 };
 
-int is_file_shm_hugepages(struct file *file)
+bool is_file_shm_hugepages(struct file *file)
 {
 	return file->f_op == &shm_file_operations_huge;
 }
@@ -592,6 +522,7 @@ static const struct vm_operations_struct shm_vm_ops = {
 	.open	= shm_open,	/* callback for a new vm-area open */
 	.close	= shm_close,	/* callback for when the vm-area is released */
 	.fault	= shm_fault,
+	.split	= shm_split,
 #if defined(CONFIG_NUMA)
 	.set_policy = shm_set_policy,
 	.get_policy = shm_get_policy,
@@ -690,11 +621,7 @@ static int newseg(struct ipc_namespace *ns, struct ipc_params *params)
 		goto no_id;
 	}
 
-	shp->ns = ns;
-
-	task_lock(current);
 	list_add(&shp->shm_clist, &current->sysvshm.shm_clist);
-	task_unlock(current);
 
 	/*
 	 * shmid gets reported as "inode#" in /proc/pid/maps.
@@ -859,10 +786,10 @@ static void shm_add_rss_swap(struct shmid_kernel *shp,
 	} else {
 #ifdef CONFIG_SHMEM
 		struct shmem_inode_info *info = SHMEM_I(inode);
-		spin_lock(&info->lock);
+		spin_lock_irq(&info->lock);
 		*rss_add += inode->i_mapping->nrpages;
 		*swp_add += info->swapped;
-		spin_unlock(&info->lock);
+		spin_unlock_irq(&info->lock);
 #else
 		*rss_add += inode->i_mapping->nrpages;
 #endif
@@ -1312,7 +1239,11 @@ long do_shmat(int shmid, char __user *shmaddr, int shmflg,
 	if (err)
 		goto out_fput;
 
-	down_write(&current->mm->mmap_sem);
+	if (down_write_killable(&current->mm->mmap_sem)) {
+		err = -EINTR;
+		goto out_fput;
+	}
+
 	if (addr && !(shmflg & SHM_REMAP)) {
 		err = -EINVAL;
 		if (addr + size < addr)
@@ -1339,8 +1270,7 @@ out_nattch:
 	down_write(&shm_ids(ns).rwsem);
 	shp = shm_lock(ns, shmid);
 	shp->shm_nattch--;
-
-	if (shm_may_destroy(shp))
+	if (shm_may_destroy(ns, shp))
 		shm_destroy(ns, shp);
 	else
 		shm_unlock(shp);
@@ -1384,7 +1314,8 @@ SYSCALL_DEFINE1(shmdt, char __user *, shmaddr)
 	if (addr & ~PAGE_MASK)
 		return retval;
 
-	down_write(&mm->mmap_sem);
+	if (down_write_killable(&mm->mmap_sem))
+		return -EINTR;
 
 	/*
 	 * This function tries to be smart and unmap shm segments that

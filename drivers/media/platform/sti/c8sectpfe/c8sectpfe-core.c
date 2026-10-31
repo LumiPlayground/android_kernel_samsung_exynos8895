@@ -132,7 +132,7 @@ static void channel_swdemux_tsklet(unsigned long data)
 		writel(channel->back_buffer_busaddr, channel->irec +
 			DMA_PRDS_BUSRP_TP(0));
 	else
-		writel(wp, channel->irec + DMA_PRDS_BUSWP_TP(0));
+		writel(wp, channel->irec + DMA_PRDS_BUSRP_TP(0));
 }
 
 static int c8sectpfe_start_feed(struct dvb_demux_feed *dvbdmxfeed)
@@ -590,7 +590,7 @@ static int configure_memdma_and_inputblock(struct c8sectpfei *fei,
 	writel(tsin->pid_buffer_busaddr,
 		fei->io + PIDF_BASE(tsin->tsin_id));
 
-	dev_info(fei->dev, "chan=%d PIDF_BASE=0x%x pid_bus_addr=%pad\n",
+	dev_dbg(fei->dev, "chan=%d PIDF_BASE=0x%x pid_bus_addr=%pad\n",
 		tsin->tsin_id, readl(fei->io + PIDF_BASE(tsin->tsin_id)),
 		&tsin->pid_buffer_busaddr);
 
@@ -828,7 +828,7 @@ static int c8sectpfe_probe(struct platform_device *pdev)
 		}
 		of_node_put(i2c_bus);
 
-		tsin->rst_gpio = of_get_named_gpio(child, "rst-gpio", 0);
+		tsin->rst_gpio = of_get_named_gpio(child, "reset-gpios", 0);
 
 		ret = gpio_is_valid(tsin->rst_gpio);
 		if (!ret) {
@@ -1163,6 +1163,7 @@ static int load_c8sectpfe_fw(struct c8sectpfei *fei)
 	if (err) {
 		dev_err(fei->dev, "c8sectpfe_elf_sanity_check failed err=(%d)\n"
 			, err);
+		release_firmware(fw);
 		return err;
 	}
 

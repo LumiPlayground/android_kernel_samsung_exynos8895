@@ -210,12 +210,12 @@ int sctp_copy_local_addr_list(struct net *net, struct sctp_bind_addr *bp,
 			 * sock as well as the remote peer.
 			 */
 			if ((((AF_INET == addr->a.sa.sa_family) &&
-			      (copy_flags & SCTP_ADDR4_ALLOWED) &&
 			      (copy_flags & SCTP_ADDR4_PEERSUPP))) ||
 			    (((AF_INET6 == addr->a.sa.sa_family) &&
 			      (copy_flags & SCTP_ADDR6_ALLOWED) &&
 			      (copy_flags & SCTP_ADDR6_PEERSUPP)))) {
 				error = sctp_add_bind_addr(bp, &addr->a,
+						    sizeof(addr->a),
 						    SCTP_ADDR_SRC, GFP_ATOMIC);
 				if (error)
 					goto end_copy;
@@ -239,6 +239,7 @@ static void sctp_v4_from_skb(union sctp_addr *addr, struct sk_buff *skb,
 	port = &addr->v4.sin_port;
 	addr->v4.sin_family = AF_INET;
 
+	/* Always called on head skb, so this is safe */
 	sh = sctp_hdr(skb);
 	if (is_saddr) {
 		*port  = sh->source;
@@ -256,7 +257,6 @@ static void sctp_v4_from_sk(union sctp_addr *addr, struct sock *sk)
 	addr->v4.sin_family = AF_INET;
 	addr->v4.sin_port = 0;
 	addr->v4.sin_addr.s_addr = inet_sk(sk)->inet_rcv_saddr;
-	memset(addr->v4.sin_zero, 0, sizeof(addr->v4.sin_zero));
 }
 
 /* Initialize sk->sk_rcv_saddr from sctp_addr. */
@@ -272,19 +272,13 @@ static void sctp_v4_to_sk_daddr(union sctp_addr *addr, struct sock *sk)
 }
 
 /* Initialize a sctp_addr from an address parameter. */
-static bool sctp_v4_from_addr_param(union sctp_addr *addr,
+static void sctp_v4_from_addr_param(union sctp_addr *addr,
 				    union sctp_addr_param *param,
 				    __be16 port, int iif)
 {
-	if (ntohs(param->v4.param_hdr.length) < sizeof(struct sctp_ipv4addr_param))
-		return false;
-
 	addr->v4.sin_family = AF_INET;
 	addr->v4.sin_port = port;
 	addr->v4.sin_addr.s_addr = param->v4.addr.s_addr;
-	memset(addr->v4.sin_zero, 0, sizeof(addr->v4.sin_zero));
-
-	return true;
 }
 
 /* Initialize an address parameter from a sctp_addr and return the length
@@ -309,7 +303,6 @@ static void sctp_v4_dst_saddr(union sctp_addr *saddr, struct flowi4 *fl4,
 	saddr->v4.sin_family = AF_INET;
 	saddr->v4.sin_port = port;
 	saddr->v4.sin_addr.s_addr = fl4->saddr;
-	memset(saddr->v4.sin_zero, 0, sizeof(saddr->v4.sin_zero));
 }
 
 /* Compare two addresses exactly. */
@@ -332,7 +325,6 @@ static void sctp_v4_inaddr_any(union sctp_addr *addr, __be16 port)
 	addr->v4.sin_family = AF_INET;
 	addr->v4.sin_addr.s_addr = htonl(INADDR_ANY);
 	addr->v4.sin_port = port;
-	memset(addr->v4.sin_zero, 0, sizeof(addr->v4.sin_zero));
 }
 
 /* Is this a wildcard address? */
@@ -416,8 +408,7 @@ static sctp_scope_t sctp_v4_scope(union sctp_addr *addr)
 		retval = SCTP_SCOPE_LINK;
 	} else if (ipv4_is_private_10(addr->v4.sin_addr.s_addr) ||
 		   ipv4_is_private_172(addr->v4.sin_addr.s_addr) ||
-		   ipv4_is_private_192(addr->v4.sin_addr.s_addr) ||
-		   ipv4_is_test_198(addr->v4.sin_addr.s_addr)) {
+		   ipv4_is_private_192(addr->v4.sin_addr.s_addr)) {
 		retval = SCTP_SCOPE_PRIVATE;
 	} else {
 		retval = SCTP_SCOPE_GLOBAL;
@@ -435,15 +426,14 @@ static void sctp_v4_get_dst(struct sctp_transport *t, union sctp_addr *saddr,
 {
 	struct sctp_association *asoc = t->asoc;
 	struct rtable *rt;
-	struct flowi _fl;
-	struct flowi4 *fl4 = &_fl.u.ip4;
+	struct flowi4 *fl4 = &fl->u.ip4;
 	struct sctp_bind_addr *bp;
 	struct sctp_sockaddr_entry *laddr;
 	struct dst_entry *dst = NULL;
 	union sctp_addr *daddr = &t->ipaddr;
 	union sctp_addr dst_saddr;
 
-	memset(&_fl, 0x0, sizeof(_fl));
+	memset(fl4, 0x0, sizeof(struct flowi4));
 	fl4->daddr  = daddr->v4.sin_addr.s_addr;
 	fl4->fl4_dport = daddr->v4.sin_port;
 	fl4->flowi4_proto = IPPROTO_SCTP;
@@ -461,11 +451,8 @@ static void sctp_v4_get_dst(struct sctp_transport *t, union sctp_addr *saddr,
 		 &fl4->saddr);
 
 	rt = ip_route_output_key(sock_net(sk), fl4);
-	if (!IS_ERR(rt)) {
+	if (!IS_ERR(rt))
 		dst = &rt->dst;
-		t->dst = dst;
-		memcpy(fl, &_fl, sizeof(_fl));
-	}
 
 	/* If there is no association or if a source address is passed, no
 	 * more validation is required.
@@ -528,33 +515,27 @@ static void sctp_v4_get_dst(struct sctp_transport *t, union sctp_addr *saddr,
 		odev = __ip_dev_find(sock_net(sk), laddr->a.v4.sin_addr.s_addr,
 				     false);
 		if (!odev || odev->ifindex != fl4->flowi4_oif) {
-			if (!dst) {
+			if (!dst)
 				dst = &rt->dst;
-				t->dst = dst;
-				memcpy(fl, &_fl, sizeof(_fl));
-			} else {
+			else
 				dst_release(&rt->dst);
-			}
 			continue;
 		}
 
 		dst_release(dst);
 		dst = &rt->dst;
-		t->dst = dst;
-		memcpy(fl, &_fl, sizeof(_fl));
 		break;
 	}
 
 out_unlock:
 	rcu_read_unlock();
 out:
-	if (dst) {
+	t->dst = dst;
+	if (dst)
 		pr_debug("rt_dst:%pI4, rt_src:%pI4\n",
-			 &fl->u.ip4.daddr, &fl->u.ip4.saddr);
-	} else {
-		t->dst = NULL;
+			 &fl4->daddr, &fl4->saddr);
+	else
 		pr_debug("no route\n");
-	}
 }
 
 /* For v4, the source address is cached in the route entry(dst). So no need
@@ -1033,7 +1014,7 @@ static const struct proto_ops inet_seqpacket_ops = {
 	.owner		   = THIS_MODULE,
 	.release	   = inet_release,	/* Needs to be wrapped... */
 	.bind		   = inet_bind,
-	.connect	   = sctp_inet_connect,
+	.connect	   = inet_dgram_connect,
 	.socketpair	   = sock_no_socketpair,
 	.accept		   = inet_accept,
 	.getname	   = inet_getname,	/* Semantics are different.  */
@@ -1044,7 +1025,7 @@ static const struct proto_ops inet_seqpacket_ops = {
 	.setsockopt	   = sock_common_setsockopt, /* IP_SOL IP_OPTION is a problem */
 	.getsockopt	   = sock_common_getsockopt,
 	.sendmsg	   = inet_sendmsg,
-	.recvmsg	   = sock_common_recvmsg,
+	.recvmsg	   = inet_recvmsg,
 	.mmap		   = sock_no_mmap,
 	.sendpage	   = sock_no_sendpage,
 #ifdef CONFIG_COMPAT
@@ -1243,6 +1224,9 @@ static int __net_init sctp_defaults_init(struct net *net)
 	/* Max.Burst		    - 4 */
 	net->sctp.max_burst			= SCTP_DEFAULT_MAX_BURST;
 
+	/* Enable pf state by default */
+	net->sctp.pf_enable = 1;
+
 	/* Association.Max.Retrans  - 10 attempts
 	 * Path.Max.Retrans         - 5  attempts (per destination address)
 	 * Max.Init.Retransmits     - 8  attempts
@@ -1352,7 +1336,7 @@ static int __net_init sctp_ctrlsock_init(struct net *net)
 	return status;
 }
 
-static void __net_exit sctp_ctrlsock_exit(struct net *net)
+static void __net_init sctp_ctrlsock_exit(struct net *net)
 {
 	/* Free the control endpoint.  */
 	inet_ctl_sock_destroy(net->sctp.ctl_sock);
@@ -1445,24 +1429,6 @@ static __init int sctp_init(void)
 	/* Limit the page order by that maximum hash table size */
 	order = min(order, max_entry_order);
 
-	do {
-		sctp_assoc_hashsize = (1UL << order) * PAGE_SIZE /
-					sizeof(struct sctp_hashbucket);
-		if ((sctp_assoc_hashsize > (64 * 1024)) && order > 0)
-			continue;
-		sctp_assoc_hashtable = (struct sctp_hashbucket *)
-			__get_free_pages(GFP_ATOMIC|__GFP_NOWARN, order);
-	} while (!sctp_assoc_hashtable && --order > 0);
-	if (!sctp_assoc_hashtable) {
-		pr_err("Failed association hash alloc\n");
-		status = -ENOMEM;
-		goto err_ahash_alloc;
-	}
-	for (i = 0; i < sctp_assoc_hashsize; i++) {
-		rwlock_init(&sctp_assoc_hashtable[i].lock);
-		INIT_HLIST_HEAD(&sctp_assoc_hashtable[i].chain);
-	}
-
 	/* Allocate and initialize the endpoint hash table.  */
 	sctp_ep_hashsize = 64;
 	sctp_ep_hashtable =
@@ -1484,7 +1450,7 @@ static __init int sctp_init(void)
 	 */
 	do {
 		sctp_port_hashtable = (struct sctp_bind_hashbucket *)
-			__get_free_pages(GFP_ATOMIC|__GFP_NOWARN, order);
+			__get_free_pages(GFP_KERNEL | __GFP_NOWARN, order);
 	} while (!sctp_port_hashtable && --order > 0);
 
 	if (!sctp_port_hashtable) {
@@ -1511,8 +1477,12 @@ static __init int sctp_init(void)
 		INIT_HLIST_HEAD(&sctp_port_hashtable[i].chain);
 	}
 
-	pr_info("Hash tables configured (established %d bind %d)\n",
-		sctp_assoc_hashsize, sctp_port_hashsize);
+	status = sctp_transport_hashtable_init();
+	if (status)
+		goto err_thash_alloc;
+
+	pr_info("Hash tables configured (bind %d/%d)\n", sctp_port_hashsize,
+		num_entries);
 
 	sctp_sysctl_register();
 
@@ -1545,6 +1515,9 @@ static __init int sctp_init(void)
 	if (status)
 		goto err_v6_add_protocol;
 
+	if (sctp_offload_init() < 0)
+		pr_crit("%s: Cannot add SCTP protocol offload\n", __func__);
+
 out:
 	return status;
 err_v6_add_protocol:
@@ -1565,12 +1538,10 @@ err_register_defaults:
 		   get_order(sctp_port_hashsize *
 			     sizeof(struct sctp_bind_hashbucket)));
 err_bhash_alloc:
+	sctp_transport_hashtable_destroy();
+err_thash_alloc:
 	kfree(sctp_ep_hashtable);
 err_ehash_alloc:
-	free_pages((unsigned long)sctp_assoc_hashtable,
-		   get_order(sctp_assoc_hashsize *
-			     sizeof(struct sctp_hashbucket)));
-err_ahash_alloc:
 	percpu_counter_destroy(&sctp_sockets_allocated);
 err_percpu_counter_init:
 	kmem_cache_destroy(sctp_chunk_cachep);
@@ -1604,13 +1575,11 @@ static __exit void sctp_exit(void)
 
 	sctp_sysctl_unregister();
 
-	free_pages((unsigned long)sctp_assoc_hashtable,
-		   get_order(sctp_assoc_hashsize *
-			     sizeof(struct sctp_hashbucket)));
-	kfree(sctp_ep_hashtable);
 	free_pages((unsigned long)sctp_port_hashtable,
 		   get_order(sctp_port_hashsize *
 			     sizeof(struct sctp_bind_hashbucket)));
+	kfree(sctp_ep_hashtable);
+	sctp_transport_hashtable_destroy();
 
 	percpu_counter_destroy(&sctp_sockets_allocated);
 

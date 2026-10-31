@@ -2036,7 +2036,7 @@ static int kdb_lsmod(int argc, const char **argv)
 			continue;
 
 		kdb_printf("%-20s%8u  0x%p ", mod->name,
-			   mod->core_size, (void *)mod);
+			   mod->core_layout.size, (void *)mod);
 #ifdef CONFIG_MODULE_UNLOAD
 		kdb_printf("%4d ", module_refcount(mod));
 #endif
@@ -2046,7 +2046,7 @@ static int kdb_lsmod(int argc, const char **argv)
 			kdb_printf(" (Loading)");
 		else
 			kdb_printf(" (Live)");
-		kdb_printf(" 0x%p", mod->module_core);
+		kdb_printf(" 0x%p", mod->core_layout.base);
 
 #ifdef CONFIG_MODULE_UNLOAD
 		{
@@ -2632,7 +2632,7 @@ static int kdb_per_cpu(int argc, const char **argv)
 		diag = kdbgetularg(argv[3], &whichcpu);
 		if (diag)
 			return diag;
-		if (whichcpu >= nr_cpu_ids || !cpu_online(whichcpu)) {
+		if (!cpu_online(whichcpu)) {
 			kdb_printf("cpu %ld is not online\n", whichcpu);
 			return KDB_BADCPUNUM;
 		}

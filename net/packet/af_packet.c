@@ -93,6 +93,7 @@
 #include <net/inet_common.h>
 #endif
 #include <linux/bpf.h>
+#include <net/compat.h>
 
 #include "internal.h"
 
@@ -563,9 +564,8 @@ static int prb_calc_retire_blk_tmo(struct packet_sock *po,
 {
 	struct net_device *dev;
 	unsigned int mbits = 0, msec = 0, div = 0, tmo = 0;
-	struct ethtool_cmd ecmd;
+	struct ethtool_link_ksettings ecmd;
 	int err;
-	u32 speed;
 
 	rtnl_lock();
 	dev = __dev_get_by_index(sock_net(&po->sk), po->ifindex);
@@ -573,22 +573,21 @@ static int prb_calc_retire_blk_tmo(struct packet_sock *po,
 		rtnl_unlock();
 		return DEFAULT_PRB_RETIRE_TOV;
 	}
-	err = __ethtool_get_settings(dev, &ecmd);
-	speed = ethtool_cmd_speed(&ecmd);
+	err = __ethtool_get_link_ksettings(dev, &ecmd);
 	rtnl_unlock();
 	if (!err) {
 		/*
 		 * If the link speed is so slow you don't really
 		 * need to worry about perf anyways
 		 */
-		if (speed < SPEED_1000 || speed == SPEED_UNKNOWN) {
+		if (ecmd.base.speed < SPEED_1000 ||
+		    ecmd.base.speed == SPEED_UNKNOWN) {
 			return DEFAULT_PRB_RETIRE_TOV;
 		} else {
 			msec = 1;
-			div = speed / 1000;
+			div = ecmd.base.speed / 1000;
 		}
-	} else
-		return DEFAULT_PRB_RETIRE_TOV;
+	}
 
 	mbits = (blk_size_in_bytes * 8) / (1024 * 1024);
 
@@ -1332,21 +1331,15 @@ static void packet_sock_destruct(struct sock *sk)
 
 static bool fanout_flow_is_huge(struct packet_sock *po, struct sk_buff *skb)
 {
-	u32 *history = po->rollover->history;
-	u32 victim, rxhash;
+	u32 rxhash;
 	int i, count = 0;
 
 	rxhash = skb_get_hash(skb);
 	for (i = 0; i < ROLLOVER_HLEN; i++)
-		if (READ_ONCE(history[i]) == rxhash)
+		if (po->rollover->history[i] == rxhash)
 			count++;
 
-	victim = prandom_u32() % ROLLOVER_HLEN;
-
-	/* Avoid dirtying the cache line if possible */
-	if (READ_ONCE(history[victim]) != rxhash)
-		WRITE_ONCE(history[victim], rxhash);
-
+	po->rollover->history[prandom_u32() % ROLLOVER_HLEN] = rxhash;
 	return count > (ROLLOVER_HLEN >> 1);
 }
 
@@ -1605,13 +1598,9 @@ static int fanout_set_data_ebpf(struct packet_sock *po, char __user *data,
 	if (copy_from_user(&fd, data, len))
 		return -EFAULT;
 
-	new = bpf_prog_get(fd);
+	new = bpf_prog_get_type(fd, BPF_PROG_TYPE_SOCKET_FILTER);
 	if (IS_ERR(new))
 		return PTR_ERR(new);
-	if (new->type != BPF_PROG_TYPE_SOCKET_FILTER) {
-		bpf_prog_put(new);
-		return -EINVAL;
-	}
 
 	__fanout_set_data_bpf(po->fanout, new);
 	return 0;
@@ -1710,7 +1699,6 @@ static int fanout_add(struct sock *sk, u16 id, u16 type_flags)
 		match->prot_hook.dev = po->prot_hook.dev;
 		match->prot_hook.func = packet_rcv_fanout;
 		match->prot_hook.af_packet_priv = match;
-		match->prot_hook.af_packet_net = read_pnet(&match->net);
 		match->prot_hook.id_match = match_fanout_group;
 		list_add(&match->list, &fanout_list);
 	}
@@ -1867,6 +1855,7 @@ static int packet_sendmsg_spkt(struct socket *sock, struct msghdr *msg,
 	DECLARE_SOCKADDR(struct sockaddr_pkt *, saddr, msg->msg_name);
 	struct sk_buff *skb = NULL;
 	struct net_device *dev;
+	struct sockcm_cookie sockc;
 	__be16 proto = 0;
 	int err;
 	int extra_len = 0;
@@ -1955,12 +1944,19 @@ retry:
 		goto out_unlock;
 	}
 
+	sockc.tsflags = sk->sk_tsflags;
+	if (msg->msg_controllen) {
+		err = sock_cmsg_send(sk, msg, &sockc);
+		if (unlikely(err))
+			goto out_unlock;
+	}
+
 	skb->protocol = proto;
 	skb->dev = dev;
 	skb->priority = sk->sk_priority;
 	skb->mark = sk->sk_mark;
 
-	sock_tx_timestamp(sk, &skb_shinfo(skb)->tx_flags);
+	sock_tx_timestamp(sk, sockc.tsflags, &skb_shinfo(skb)->tx_flags);
 
 	if (unlikely(extra_len == 4))
 		skb->no_fcs = 1;
@@ -1993,6 +1989,32 @@ static unsigned int run_filter(struct sk_buff *skb,
 	return res;
 }
 
+static int __packet_rcv_vnet(const struct sk_buff *skb,
+			     struct virtio_net_hdr *vnet_hdr)
+{
+	*vnet_hdr = (const struct virtio_net_hdr) { 0 };
+
+	if (virtio_net_hdr_from_skb(skb, vnet_hdr, vio_le(), true))
+		BUG();
+
+	return 0;
+}
+
+static int packet_rcv_vnet(struct msghdr *msg, const struct sk_buff *skb,
+			   size_t *len)
+{
+	struct virtio_net_hdr vnet_hdr;
+
+	if (*len < sizeof(vnet_hdr))
+		return -EINVAL;
+	*len -= sizeof(vnet_hdr);
+
+	if (__packet_rcv_vnet(skb, &vnet_hdr))
+		return -EINVAL;
+
+	return memcpy_to_msg(msg, (void *)&vnet_hdr, sizeof(vnet_hdr));
+}
+
 /*
  * This function makes lazy skb cloning in hope that most of packets
  * are discarded by BPF.
@@ -2014,6 +2036,7 @@ static int packet_rcv(struct sk_buff *skb, struct net_device *dev,
 	u8 *skb_head = skb->data;
 	int skb_len = skb->len;
 	unsigned int snaplen, res;
+	bool is_drop_n_account = false;
 
 	if (skb->pkt_type == PACKET_LOOPBACK)
 		goto drop;
@@ -2102,6 +2125,7 @@ static int packet_rcv(struct sk_buff *skb, struct net_device *dev,
 	return 0;
 
 drop_n_acct:
+	is_drop_n_account = true;
 	spin_lock(&sk->sk_receive_queue.lock);
 	po->stats.stats1.tp_drops++;
 	atomic_inc(&sk->sk_drops);
@@ -2113,7 +2137,10 @@ drop_n_restore:
 		skb->len = skb_len;
 	}
 drop:
-	consume_skb(skb);
+	if (!is_drop_n_account)
+		consume_skb(skb);
+	else
+		kfree_skb(skb);
 	return 0;
 }
 
@@ -2128,11 +2155,12 @@ static int tpacket_rcv(struct sk_buff *skb, struct net_device *dev,
 	int skb_len = skb->len;
 	unsigned int snaplen, res;
 	unsigned long status = TP_STATUS_USER;
-	unsigned short macoff, hdrlen;
-	unsigned int netoff;
+	unsigned short macoff, netoff, hdrlen;
 	struct sk_buff *copy_skb = NULL;
 	struct timespec ts;
 	__u32 ts_status;
+	bool is_drop_n_account = false;
+	bool do_vnet = false;
 
 	/* struct tpacket{2,3}_hdr is aligned to a multiple of TPACKET_ALIGNMENT.
 	 * We may add members to them until current aligned size without forcing
@@ -2182,14 +2210,12 @@ static int tpacket_rcv(struct sk_buff *skb, struct net_device *dev,
 		unsigned int maclen = skb_network_offset(skb);
 		netoff = TPACKET_ALIGN(po->tp_hdrlen +
 				       (maclen < 16 ? 16 : maclen)) +
-			po->tp_reserve;
+				       po->tp_reserve;
+		if (po->has_vnet_hdr) {
+			netoff += sizeof(struct virtio_net_hdr);
+			do_vnet = true;
+		}
 		macoff = netoff - maclen;
-	}
-	if (netoff > USHRT_MAX) {
-		spin_lock(&sk->sk_receive_queue.lock);
-		po->stats.stats1.tp_drops++;
-		spin_unlock(&sk->sk_receive_queue.lock);
-		goto drop_n_restore;
 	}
 	if (po->tp_version <= TPACKET_V2) {
 		if (macoff + snaplen > po->rx_ring.frame_size) {
@@ -2205,8 +2231,10 @@ static int tpacket_rcv(struct sk_buff *skb, struct net_device *dev,
 					skb_set_owner_r(copy_skb, sk);
 			}
 			snaplen = po->rx_ring.frame_size - macoff;
-			if ((int)snaplen < 0)
+			if ((int)snaplen < 0) {
 				snaplen = 0;
+				do_vnet = false;
+			}
 		}
 	} else if (unlikely(macoff + snaplen >
 			    GET_PBDQC_FROM_RB(&po->rx_ring)->max_frame_len)) {
@@ -2219,13 +2247,14 @@ static int tpacket_rcv(struct sk_buff *skb, struct net_device *dev,
 		if (unlikely((int)snaplen < 0)) {
 			snaplen = 0;
 			macoff = GET_PBDQC_FROM_RB(&po->rx_ring)->max_frame_len;
+			do_vnet = false;
 		}
 	}
 	spin_lock(&sk->sk_receive_queue.lock);
 	h.raw = packet_current_rx_frame(po, skb,
 					TP_STATUS_KERNEL, (macoff+snaplen));
 	if (!h.raw)
-		goto ring_is_full;
+		goto drop_n_account;
 	if (po->tp_version <= TPACKET_V2) {
 		packet_increment_rx_head(po, &po->rx_ring);
 	/*
@@ -2237,6 +2266,12 @@ static int tpacket_rcv(struct sk_buff *skb, struct net_device *dev,
 		if (po->stats.stats1.tp_drops)
 			status |= TP_STATUS_LOSING;
 	}
+
+	if (do_vnet &&
+	    __packet_rcv_vnet(skb, h.raw + macoff -
+			      sizeof(struct virtio_net_hdr)))
+		goto drop_n_account;
+
 	po->stats.stats1.tp_packets++;
 	if (copy_skb) {
 		status |= TP_STATUS_COPY;
@@ -2336,10 +2371,14 @@ drop_n_restore:
 		skb->len = skb_len;
 	}
 drop:
-	kfree_skb(skb);
+	if (!is_drop_n_account)
+		consume_skb(skb);
+	else
+		kfree_skb(skb);
 	return 0;
 
-ring_is_full:
+drop_n_account:
+	is_drop_n_account = true;
 	po->stats.stats1.tp_drops++;
 	spin_unlock(&sk->sk_receive_queue.lock);
 
@@ -2361,6 +2400,9 @@ static void tpacket_destruct_skb(struct sk_buff *skb)
 
 		ts = __packet_set_timestamp(po, ph, skb);
 		__packet_set_status(po, ph, TP_STATUS_AVAILABLE | ts);
+
+		if (!packet_read_pending(&po->tx_ring))
+			complete(&po->skb_completion);
 	}
 
 	sock_wfree(skb);
@@ -2375,15 +2417,93 @@ static void tpacket_set_protocol(const struct net_device *dev,
 	}
 }
 
+static int __packet_snd_vnet_parse(struct virtio_net_hdr *vnet_hdr, size_t len)
+{
+	unsigned short gso_type = 0;
+
+	if ((vnet_hdr->flags & VIRTIO_NET_HDR_F_NEEDS_CSUM) &&
+	    (__virtio16_to_cpu(vio_le(), vnet_hdr->csum_start) +
+	     __virtio16_to_cpu(vio_le(), vnet_hdr->csum_offset) + 2 >
+	      __virtio16_to_cpu(vio_le(), vnet_hdr->hdr_len)))
+		vnet_hdr->hdr_len = __cpu_to_virtio16(vio_le(),
+			 __virtio16_to_cpu(vio_le(), vnet_hdr->csum_start) +
+			__virtio16_to_cpu(vio_le(), vnet_hdr->csum_offset) + 2);
+
+	if (__virtio16_to_cpu(vio_le(), vnet_hdr->hdr_len) > len)
+		return -EINVAL;
+
+	if (vnet_hdr->gso_type != VIRTIO_NET_HDR_GSO_NONE) {
+		switch (vnet_hdr->gso_type & ~VIRTIO_NET_HDR_GSO_ECN) {
+		case VIRTIO_NET_HDR_GSO_TCPV4:
+			gso_type = SKB_GSO_TCPV4;
+			break;
+		case VIRTIO_NET_HDR_GSO_TCPV6:
+			gso_type = SKB_GSO_TCPV6;
+			break;
+		case VIRTIO_NET_HDR_GSO_UDP:
+			gso_type = SKB_GSO_UDP;
+			break;
+		default:
+			return -EINVAL;
+		}
+
+		if (vnet_hdr->gso_type & VIRTIO_NET_HDR_GSO_ECN)
+			gso_type |= SKB_GSO_TCP_ECN;
+
+		if (vnet_hdr->gso_size == 0)
+			return -EINVAL;
+	}
+
+	vnet_hdr->gso_type = gso_type;	/* changes type, temporary storage */
+	return 0;
+}
+
+static int packet_snd_vnet_parse(struct msghdr *msg, size_t *len,
+				 struct virtio_net_hdr *vnet_hdr)
+{
+	int n;
+
+	if (*len < sizeof(*vnet_hdr))
+		return -EINVAL;
+	*len -= sizeof(*vnet_hdr);
+
+	n = copy_from_iter(vnet_hdr, sizeof(*vnet_hdr), &msg->msg_iter);
+	if (n != sizeof(*vnet_hdr))
+		return -EFAULT;
+
+	return __packet_snd_vnet_parse(vnet_hdr, *len);
+}
+
+static int packet_snd_vnet_gso(struct sk_buff *skb,
+			       struct virtio_net_hdr *vnet_hdr)
+{
+	if (vnet_hdr->flags & VIRTIO_NET_HDR_F_NEEDS_CSUM) {
+		u16 s = __virtio16_to_cpu(vio_le(), vnet_hdr->csum_start);
+		u16 o = __virtio16_to_cpu(vio_le(), vnet_hdr->csum_offset);
+
+		if (!skb_partial_csum_set(skb, s, o))
+			return -EINVAL;
+	}
+
+	skb_shinfo(skb)->gso_size =
+		__virtio16_to_cpu(vio_le(), vnet_hdr->gso_size);
+	skb_shinfo(skb)->gso_type = vnet_hdr->gso_type;
+
+	/* Header must be checked, and gso_segs computed. */
+	skb_shinfo(skb)->gso_type |= SKB_GSO_DODGY;
+	skb_shinfo(skb)->gso_segs = 0;
+	return 0;
+}
+
 static int tpacket_fill_skb(struct packet_sock *po, struct sk_buff *skb,
-		void *frame, struct net_device *dev, int size_max,
-		__be16 proto, unsigned char *addr, int hlen)
+		void *frame, struct net_device *dev, void *data, int tp_len,
+		__be16 proto, unsigned char *addr, int hlen, int copylen,
+		const struct sockcm_cookie *sockc)
 {
 	union tpacket_uhdr ph;
-	int to_write, offset, len, tp_len, nr_frags, len_max;
+	int to_write, offset, len, nr_frags, len_max;
 	struct socket *sock = po->sk.sk_socket;
 	struct page *page;
-	void *data;
 	int err;
 
 	ph.raw = frame;
@@ -2392,54 +2512,12 @@ static int tpacket_fill_skb(struct packet_sock *po, struct sk_buff *skb,
 	skb->dev = dev;
 	skb->priority = po->sk.sk_priority;
 	skb->mark = po->sk.sk_mark;
-	sock_tx_timestamp(&po->sk, &skb_shinfo(skb)->tx_flags);
+	sock_tx_timestamp(&po->sk, sockc->tsflags, &skb_shinfo(skb)->tx_flags);
 	skb_shinfo(skb)->destructor_arg = ph.raw;
-
-	switch (po->tp_version) {
-	case TPACKET_V2:
-		tp_len = ph.h2->tp_len;
-		break;
-	default:
-		tp_len = ph.h1->tp_len;
-		break;
-	}
-	if (unlikely(tp_len > size_max)) {
-		pr_err("packet size is too long (%d > %d)\n", tp_len, size_max);
-		return -EMSGSIZE;
-	}
 
 	skb_reserve(skb, hlen);
 	skb_reset_network_header(skb);
 
-	if (unlikely(po->tp_tx_has_off)) {
-		int off_min, off_max, off;
-		off_min = po->tp_hdrlen - sizeof(struct sockaddr_ll);
-		off_max = po->tx_ring.frame_size - tp_len;
-		if (sock->type == SOCK_DGRAM) {
-			switch (po->tp_version) {
-			case TPACKET_V2:
-				off = ph.h2->tp_net;
-				break;
-			default:
-				off = ph.h1->tp_net;
-				break;
-			}
-		} else {
-			switch (po->tp_version) {
-			case TPACKET_V2:
-				off = ph.h2->tp_mac;
-				break;
-			default:
-				off = ph.h1->tp_mac;
-				break;
-			}
-		}
-		if (unlikely((off < off_min) || (off_max < off)))
-			return -EINVAL;
-		data = ph.raw + off;
-	} else {
-		data = ph.raw + po->tp_hdrlen - sizeof(struct sockaddr_ll);
-	}
 	to_write = tp_len;
 
 	if (sock->type == SOCK_DGRAM) {
@@ -2447,10 +2525,11 @@ static int tpacket_fill_skb(struct packet_sock *po, struct sk_buff *skb,
 				NULL, tp_len);
 		if (unlikely(err < 0))
 			return -EINVAL;
-	} else if (dev->hard_header_len) {
-		int hdrlen = min_t(int, dev->hard_header_len, tp_len);
+	} else if (copylen) {
+		int hdrlen = min_t(int, copylen, tp_len);
 
 		skb_push(skb, dev->hard_header_len);
+		skb_put(skb, copylen - dev->hard_header_len);
 		err = skb_store_bits(skb, 0, data, hdrlen);
 		if (unlikely(err))
 			return err;
@@ -2497,10 +2576,67 @@ static int tpacket_fill_skb(struct packet_sock *po, struct sk_buff *skb,
 	return tp_len;
 }
 
+static int tpacket_parse_header(struct packet_sock *po, void *frame,
+				int size_max, void **data)
+{
+	union tpacket_uhdr ph;
+	int tp_len, off;
+
+	ph.raw = frame;
+
+	switch (po->tp_version) {
+	case TPACKET_V2:
+		tp_len = ph.h2->tp_len;
+		break;
+	default:
+		tp_len = ph.h1->tp_len;
+		break;
+	}
+	if (unlikely(tp_len > size_max)) {
+		pr_err("packet size is too long (%d > %d)\n", tp_len, size_max);
+		return -EMSGSIZE;
+	}
+
+	if (unlikely(po->tp_tx_has_off)) {
+		int off_min, off_max;
+
+		off_min = po->tp_hdrlen - sizeof(struct sockaddr_ll);
+		off_max = po->tx_ring.frame_size - tp_len;
+		if (po->sk.sk_type == SOCK_DGRAM) {
+			switch (po->tp_version) {
+			case TPACKET_V2:
+				off = ph.h2->tp_net;
+				break;
+			default:
+				off = ph.h1->tp_net;
+				break;
+			}
+		} else {
+			switch (po->tp_version) {
+			case TPACKET_V2:
+				off = ph.h2->tp_mac;
+				break;
+			default:
+				off = ph.h1->tp_mac;
+				break;
+			}
+		}
+		if (unlikely((off < off_min) || (off_max < off)))
+			return -EINVAL;
+	} else {
+		off = po->tp_hdrlen - sizeof(struct sockaddr_ll);
+	}
+
+	*data = frame + off;
+	return tp_len;
+}
+
 static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 {
-	struct sk_buff *skb;
+	struct sk_buff *skb = NULL;
 	struct net_device *dev;
+	struct virtio_net_hdr *vnet_hdr = NULL;
+	struct sockcm_cookie sockc;
 	__be16 proto;
 	int err, reserve = 0;
 	void *ph;
@@ -2508,9 +2644,11 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 	bool need_wait = !(msg->msg_flags & MSG_DONTWAIT);
 	unsigned char *addr = NULL;
 	int tp_len, size_max;
+	void *data;
 	int len_sum = 0;
 	int status = TP_STATUS_AVAILABLE;
-	int hlen, tlen;
+	int hlen, tlen, copylen = 0;
+	long timeo = 0;
 
 	mutex_lock(&po->pg_vec_lock);
 
@@ -2524,7 +2662,6 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 	if (likely(saddr == NULL)) {
 		dev	= packet_cached_dev_get(po);
 		proto	= po->num;
-		addr	= NULL;
 	} else {
 		err = -EINVAL;
 		if (msg->msg_namelen < sizeof(struct sockaddr_ll))
@@ -2550,28 +2687,63 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 	if (unlikely(!(dev->flags & IFF_UP)))
 		goto out_put;
 
+	sockc.tsflags = po->sk.sk_tsflags;
+	if (msg->msg_controllen) {
+		err = sock_cmsg_send(&po->sk, msg, &sockc);
+		if (unlikely(err))
+			goto out_put;
+	}
+
 	if (po->sk.sk_socket->type == SOCK_RAW)
 		reserve = dev->hard_header_len;
 	size_max = po->tx_ring.frame_size
 		- (po->tp_hdrlen - sizeof(struct sockaddr_ll));
 
-	if (size_max > dev->mtu + reserve + VLAN_HLEN)
+	if ((size_max > dev->mtu + reserve + VLAN_HLEN) && !po->has_vnet_hdr)
 		size_max = dev->mtu + reserve + VLAN_HLEN;
+
+	reinit_completion(&po->skb_completion);
 
 	do {
 		ph = packet_current_frame(po, &po->tx_ring,
 					  TP_STATUS_SEND_REQUEST);
 		if (unlikely(ph == NULL)) {
-			if (need_wait && need_resched())
-				schedule();
+			if (need_wait && skb) {
+				timeo = sock_sndtimeo(&po->sk, msg->msg_flags & MSG_DONTWAIT);
+				timeo = wait_for_completion_interruptible_timeout(&po->skb_completion, timeo);
+				if (timeo <= 0) {
+					err = !timeo ? -ETIMEDOUT : -ERESTARTSYS;
+					goto out_put;
+				}
+			}
+			/* check for additional frames */
 			continue;
 		}
+
+		skb = NULL;
+		tp_len = tpacket_parse_header(po, ph, size_max, &data);
+		if (tp_len < 0)
+			goto tpacket_error;
 
 		status = TP_STATUS_SEND_REQUEST;
 		hlen = LL_RESERVED_SPACE(dev);
 		tlen = dev->needed_tailroom;
+		if (po->has_vnet_hdr) {
+			vnet_hdr = data;
+			data += sizeof(*vnet_hdr);
+			tp_len -= sizeof(*vnet_hdr);
+			if (tp_len < 0 ||
+			    __packet_snd_vnet_parse(vnet_hdr, tp_len)) {
+				tp_len = -EINVAL;
+				goto tpacket_error;
+			}
+			copylen = __virtio16_to_cpu(vio_le(),
+						    vnet_hdr->hdr_len);
+		}
+		copylen = max_t(int, copylen, dev->hard_header_len);
 		skb = sock_alloc_send_skb(&po->sk,
-				hlen + tlen + sizeof(struct sockaddr_ll),
+				hlen + tlen + sizeof(struct sockaddr_ll) +
+				(copylen - dev->hard_header_len),
 				!need_wait, &err);
 
 		if (unlikely(skb == NULL)) {
@@ -2580,14 +2752,16 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 				err = len_sum;
 			goto out_status;
 		}
-		tp_len = tpacket_fill_skb(po, skb, ph, dev, size_max, proto,
-					  addr, hlen);
+		tp_len = tpacket_fill_skb(po, skb, ph, dev, data, tp_len, proto,
+					  addr, hlen, copylen, &sockc);
 		if (likely(tp_len >= 0) &&
 		    tp_len > dev->mtu + reserve &&
+		    !po->has_vnet_hdr &&
 		    !packet_extra_vlan_len_allowed(dev, skb))
 			tp_len = -EMSGSIZE;
 
 		if (unlikely(tp_len < 0)) {
+tpacket_error:
 			if (po->tp_loss) {
 				__packet_set_status(po, ph,
 						TP_STATUS_AVAILABLE);
@@ -2599,6 +2773,11 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 				err = tp_len;
 				goto out_status;
 			}
+		}
+
+		if (po->has_vnet_hdr && packet_snd_vnet_gso(skb, vnet_hdr)) {
+			tp_len = -EINVAL;
+			goto tpacket_error;
 		}
 
 		packet_pick_tx_queue(dev, skb);
@@ -2683,13 +2862,10 @@ static int packet_snd(struct socket *sock, struct msghdr *msg, size_t len)
 	struct sockcm_cookie sockc;
 	struct virtio_net_hdr vnet_hdr = { 0 };
 	int offset = 0;
-	int vnet_hdr_len;
 	struct packet_sock *po = pkt_sk(sk);
-	unsigned short gso_type = 0;
 	bool has_vnet_hdr = false;
 	int hlen, tlen, linear;
 	int extra_len = 0;
-	ssize_t n;
 
 	/*
 	 *	Get and verify the address.
@@ -2721,6 +2897,7 @@ static int packet_snd(struct socket *sock, struct msghdr *msg, size_t len)
 	if (unlikely(!(dev->flags & IFF_UP)))
 		goto out_unlock;
 
+	sockc.tsflags = sk->sk_tsflags;
 	sockc.mark = sk->sk_mark;
 	if (msg->msg_controllen) {
 		err = sock_cmsg_send(sk, msg, &sockc);
@@ -2731,53 +2908,9 @@ static int packet_snd(struct socket *sock, struct msghdr *msg, size_t len)
 	if (sock->type == SOCK_RAW)
 		reserve = dev->hard_header_len;
 	if (po->has_vnet_hdr) {
-		vnet_hdr_len = sizeof(vnet_hdr);
-
-		err = -EINVAL;
-		if (len < vnet_hdr_len)
+		err = packet_snd_vnet_parse(msg, &len, &vnet_hdr);
+		if (err)
 			goto out_unlock;
-
-		len -= vnet_hdr_len;
-
-		err = -EFAULT;
-		n = copy_from_iter(&vnet_hdr, vnet_hdr_len, &msg->msg_iter);
-		if (n != vnet_hdr_len)
-			goto out_unlock;
-
-		if ((vnet_hdr.flags & VIRTIO_NET_HDR_F_NEEDS_CSUM) &&
-		    (__virtio16_to_cpu(vio_le(), vnet_hdr.csum_start) +
-		     __virtio16_to_cpu(vio_le(), vnet_hdr.csum_offset) + 2 >
-		      __virtio16_to_cpu(vio_le(), vnet_hdr.hdr_len)))
-			vnet_hdr.hdr_len = __cpu_to_virtio16(vio_le(),
-				 __virtio16_to_cpu(vio_le(), vnet_hdr.csum_start) +
-				__virtio16_to_cpu(vio_le(), vnet_hdr.csum_offset) + 2);
-
-		err = -EINVAL;
-		if (__virtio16_to_cpu(vio_le(), vnet_hdr.hdr_len) > len)
-			goto out_unlock;
-
-		if (vnet_hdr.gso_type != VIRTIO_NET_HDR_GSO_NONE) {
-			switch (vnet_hdr.gso_type & ~VIRTIO_NET_HDR_GSO_ECN) {
-			case VIRTIO_NET_HDR_GSO_TCPV4:
-				gso_type = SKB_GSO_TCPV4;
-				break;
-			case VIRTIO_NET_HDR_GSO_TCPV6:
-				gso_type = SKB_GSO_TCPV6;
-				break;
-			case VIRTIO_NET_HDR_GSO_UDP:
-				gso_type = SKB_GSO_UDP;
-				break;
-			default:
-				goto out_unlock;
-			}
-
-			if (vnet_hdr.gso_type & VIRTIO_NET_HDR_GSO_ECN)
-				gso_type |= SKB_GSO_TCP_ECN;
-
-			if (vnet_hdr.gso_size == 0)
-				goto out_unlock;
-
-		}
 		has_vnet_hdr = true;
 	}
 
@@ -2790,7 +2923,8 @@ static int packet_snd(struct socket *sock, struct msghdr *msg, size_t len)
 	}
 
 	err = -EMSGSIZE;
-	if (!gso_type && (len > dev->mtu + reserve + VLAN_HLEN + extra_len))
+	if (!vnet_hdr.gso_type &&
+	    (len > dev->mtu + reserve + VLAN_HLEN + extra_len))
 		goto out_unlock;
 
 	err = -ENOBUFS;
@@ -2827,9 +2961,9 @@ static int packet_snd(struct socket *sock, struct msghdr *msg, size_t len)
 		goto out_free;
 	}
 
-	sock_tx_timestamp(sk, &skb_shinfo(skb)->tx_flags);
+	sock_tx_timestamp(sk, sockc.tsflags, &skb_shinfo(skb)->tx_flags);
 
-	if (!gso_type && (len > dev->mtu + reserve + extra_len) &&
+	if (!vnet_hdr.gso_type && (len > dev->mtu + reserve + extra_len) &&
 	    !packet_extra_vlan_len_allowed(dev, skb)) {
 		err = -EMSGSIZE;
 		goto out_free;
@@ -2843,24 +2977,10 @@ static int packet_snd(struct socket *sock, struct msghdr *msg, size_t len)
 	packet_pick_tx_queue(dev, skb);
 
 	if (has_vnet_hdr) {
-		if (vnet_hdr.flags & VIRTIO_NET_HDR_F_NEEDS_CSUM) {
-			u16 s = __virtio16_to_cpu(vio_le(), vnet_hdr.csum_start);
-			u16 o = __virtio16_to_cpu(vio_le(), vnet_hdr.csum_offset);
-			if (!skb_partial_csum_set(skb, s, o)) {
-				err = -EINVAL;
-				goto out_free;
-			}
-		}
-
-		skb_shinfo(skb)->gso_size =
-			__virtio16_to_cpu(vio_le(), vnet_hdr.gso_size);
-		skb_shinfo(skb)->gso_type = gso_type;
-
-		/* Header must be checked, and gso_segs computed. */
-		skb_shinfo(skb)->gso_type |= SKB_GSO_DODGY;
-		skb_shinfo(skb)->gso_segs = 0;
-
-		len += vnet_hdr_len;
+		err = packet_snd_vnet_gso(skb, &vnet_hdr);
+		if (err)
+			goto out_free;
+		len += sizeof(vnet_hdr);
 	}
 
 	skb_probe_transport_header(skb, reserve);
@@ -3150,6 +3270,7 @@ static int packet_create(struct net *net, struct socket *sock, int protocol,
 	sock_init_data(sock, sk);
 
 	po = pkt_sk(sk);
+	init_completion(&po->skb_completion);
 	sk->sk_family = PF_PACKET;
 	po->num = proto;
 	po->xmit = dev_queue_xmit;
@@ -3176,7 +3297,6 @@ static int packet_create(struct net *net, struct socket *sock, int protocol,
 		po->prot_hook.func = packet_rcv_spkt;
 
 	po->prot_hook.af_packet_priv = sk;
-	po->prot_hook.af_packet_net = sock_net(sk);
 
 	if (proto) {
 		po->prot_hook.type = proto;
@@ -3252,51 +3372,10 @@ static int packet_recvmsg(struct socket *sock, struct msghdr *msg, size_t len,
 		packet_rcv_has_room(pkt_sk(sk), NULL);
 
 	if (pkt_sk(sk)->has_vnet_hdr) {
-		struct virtio_net_hdr vnet_hdr = { 0 };
-
-		err = -EINVAL;
-		vnet_hdr_len = sizeof(vnet_hdr);
-		if (len < vnet_hdr_len)
+		err = packet_rcv_vnet(msg, skb, &len);
+		if (err)
 			goto out_free;
-
-		len -= vnet_hdr_len;
-
-		if (skb_is_gso(skb)) {
-			struct skb_shared_info *sinfo = skb_shinfo(skb);
-
-			/* This is a hint as to how much should be linear. */
-			vnet_hdr.hdr_len =
-				__cpu_to_virtio16(vio_le(), skb_headlen(skb));
-			vnet_hdr.gso_size =
-				__cpu_to_virtio16(vio_le(), sinfo->gso_size);
-			if (sinfo->gso_type & SKB_GSO_TCPV4)
-				vnet_hdr.gso_type = VIRTIO_NET_HDR_GSO_TCPV4;
-			else if (sinfo->gso_type & SKB_GSO_TCPV6)
-				vnet_hdr.gso_type = VIRTIO_NET_HDR_GSO_TCPV6;
-			else if (sinfo->gso_type & SKB_GSO_UDP)
-				vnet_hdr.gso_type = VIRTIO_NET_HDR_GSO_UDP;
-			else if (sinfo->gso_type & SKB_GSO_FCOE)
-				goto out_free;
-			else
-				BUG();
-			if (sinfo->gso_type & SKB_GSO_TCP_ECN)
-				vnet_hdr.gso_type |= VIRTIO_NET_HDR_GSO_ECN;
-		} else
-			vnet_hdr.gso_type = VIRTIO_NET_HDR_GSO_NONE;
-
-		if (skb->ip_summed == CHECKSUM_PARTIAL) {
-			vnet_hdr.flags = VIRTIO_NET_HDR_F_NEEDS_CSUM;
-			vnet_hdr.csum_start = __cpu_to_virtio16(vio_le(),
-					  skb_checksum_start_offset(skb));
-			vnet_hdr.csum_offset = __cpu_to_virtio16(vio_le(),
-							 skb->csum_offset);
-		} else if (skb->ip_summed == CHECKSUM_UNNECESSARY) {
-			vnet_hdr.flags = VIRTIO_NET_HDR_F_DATA_VALID;
-		} /* else everything is zero */
-
-		err = memcpy_to_msg(msg, (void *)&vnet_hdr, vnet_hdr_len);
-		if (err < 0)
-			goto out_free;
+		vnet_hdr_len = sizeof(struct virtio_net_hdr);
 	}
 
 	/* You lose any data beyond the buffer you gave. If it worries
@@ -3325,29 +3404,20 @@ static int packet_recvmsg(struct socket *sock, struct msghdr *msg, size_t len,
 	sock_recv_ts_and_drops(msg, sk, skb);
 
 	if (msg->msg_name) {
-		int copy_len;
-
 		/* If the address length field is there to be filled
 		 * in, we fill it in now.
 		 */
 		if (sock->type == SOCK_PACKET) {
 			__sockaddr_check_size(sizeof(struct sockaddr_pkt));
 			msg->msg_namelen = sizeof(struct sockaddr_pkt);
-			copy_len = msg->msg_namelen;
 		} else {
 			struct sockaddr_ll *sll = &PACKET_SKB_CB(skb)->sa.ll;
 
 			msg->msg_namelen = sll->sll_halen +
 				offsetof(struct sockaddr_ll, sll_addr);
-			copy_len = msg->msg_namelen;
-			if (msg->msg_namelen < sizeof(struct sockaddr_ll)) {
-				memset(msg->msg_name +
-				       offsetof(struct sockaddr_ll, sll_addr),
-				       0, sizeof(sll->sll_addr));
-				msg->msg_namelen = sizeof(struct sockaddr_ll);
-			}
 		}
-		memcpy(msg->msg_name, &PACKET_SKB_CB(skb)->sa, copy_len);
+		memcpy(msg->msg_name, &PACKET_SKB_CB(skb)->sa,
+		       msg->msg_namelen);
 	}
 
 	if (pkt_sk(sk)->auxdata) {
@@ -3639,15 +3709,11 @@ packet_setsockopt(struct socket *sock, int level, int optname, char __user *optv
 		if (optlen < len) {
 			ret = -EINVAL;
 		} else {
-			if (pkt_sk(sk)->has_vnet_hdr) {
-				ret = -EINVAL;
-			} else {
-				if (copy_from_user(&req_u.req, optval, len))
-					ret = -EFAULT;
-				else
-					ret = packet_set_ring(sk, &req_u, 0,
-							      optname == PACKET_TX_RING);
-			}
+			if (copy_from_user(&req_u.req, optval, len))
+				ret = -EFAULT;
+			else
+				ret = packet_set_ring(sk, &req_u, 0,
+						    optname == PACKET_TX_RING);
 		}
 		release_sock(sk);
 		return ret;
@@ -3959,6 +4025,27 @@ static int packet_getsockopt(struct socket *sock, int level, int optname,
 	return 0;
 }
 
+
+#ifdef CONFIG_COMPAT
+static int compat_packet_setsockopt(struct socket *sock, int level, int optname,
+				    char __user *optval, unsigned int optlen)
+{
+	struct packet_sock *po = pkt_sk(sock->sk);
+
+	if (level != SOL_PACKET)
+		return -ENOPROTOOPT;
+
+	if (optname == PACKET_FANOUT_DATA &&
+	    po->fanout && po->fanout->type == PACKET_FANOUT_CBPF) {
+		optval = (char __user *)get_compat_bpf_fprog(optval);
+		if (!optval)
+			return -EFAULT;
+		optlen = sizeof(struct sock_fprog);
+	}
+
+	return packet_setsockopt(sock, level, optname, optval, optlen);
+}
+#endif
 
 static int packet_notifier(struct notifier_block *this,
 			   unsigned long msg, void *ptr)
@@ -4438,6 +4525,9 @@ static const struct proto_ops packet_ops = {
 	.shutdown =	sock_no_shutdown,
 	.setsockopt =	packet_setsockopt,
 	.getsockopt =	packet_getsockopt,
+#ifdef CONFIG_COMPAT
+	.compat_setsockopt = compat_packet_setsockopt,
+#endif
 	.sendmsg =	packet_sendmsg,
 	.recvmsg =	packet_recvmsg,
 	.mmap =		packet_mmap,

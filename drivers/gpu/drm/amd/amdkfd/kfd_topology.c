@@ -675,7 +675,7 @@ static ssize_t node_show(struct kobject *kobj, struct attribute *attr,
 			dev->node_props.simd_count);
 
 	if (dev->mem_bank_count < dev->node_props.mem_banks_count) {
-		pr_warn("kfd: mem_banks_count truncated from %d to %d\n",
+		pr_info_once("kfd: mem_banks_count truncated from %d to %d\n",
 				dev->node_props.mem_banks_count,
 				dev->mem_bank_count);
 		sysfs_show_32bit_prop(buffer, "mem_banks_count",
@@ -841,10 +841,8 @@ static int kfd_build_sysfs_node_entry(struct kfd_topology_device *dev,
 
 	ret = kobject_init_and_add(dev->kobj_node, &node_type,
 			sys_props.kobj_nodes, "%d", id);
-	if (ret < 0) {
-		kobject_put(dev->kobj_node);
+	if (ret < 0)
 		return ret;
-	}
 
 	dev->kobj_mem = kobject_create_and_add("mem_banks", dev->kobj_node);
 	if (!dev->kobj_mem)
@@ -887,10 +885,8 @@ static int kfd_build_sysfs_node_entry(struct kfd_topology_device *dev,
 			return -ENOMEM;
 		ret = kobject_init_and_add(mem->kobj, &mem_type,
 				dev->kobj_mem, "%d", i);
-		if (ret < 0) {
-			kobject_put(mem->kobj);
+		if (ret < 0)
 			return ret;
-		}
 
 		mem->attr.name = "properties";
 		mem->attr.mode = KFD_SYSFS_FILE_MODE;
@@ -908,10 +904,8 @@ static int kfd_build_sysfs_node_entry(struct kfd_topology_device *dev,
 			return -ENOMEM;
 		ret = kobject_init_and_add(cache->kobj, &cache_type,
 				dev->kobj_cache, "%d", i);
-		if (ret < 0) {
-			kobject_put(cache->kobj);
+		if (ret < 0)
 			return ret;
-		}
 
 		cache->attr.name = "properties";
 		cache->attr.mode = KFD_SYSFS_FILE_MODE;
@@ -929,10 +923,8 @@ static int kfd_build_sysfs_node_entry(struct kfd_topology_device *dev,
 			return -ENOMEM;
 		ret = kobject_init_and_add(iolink->kobj, &iolink_type,
 				dev->kobj_iolink, "%d", i);
-		if (ret < 0) {
-			kobject_put(iolink->kobj);
+		if (ret < 0)
 			return ret;
-		}
 
 		iolink->attr.name = "properties";
 		iolink->attr.mode = KFD_SYSFS_FILE_MODE;
@@ -984,10 +976,8 @@ static int kfd_topology_update_sysfs(void)
 		ret = kobject_init_and_add(sys_props.kobj_topology,
 				&sysprops_type,  &kfd_device->kobj,
 				"topology");
-		if (ret < 0) {
-			kobject_put(sys_props.kobj_topology);
+		if (ret < 0)
 			return ret;
-		}
 
 		sys_props.kobj_nodes = kobject_create_and_add("nodes",
 				sys_props.kobj_topology);
@@ -1110,19 +1100,21 @@ static uint32_t kfd_generate_gpu_id(struct kfd_dev *gpu)
 {
 	uint32_t hashout;
 	uint32_t buf[7];
+	uint64_t local_mem_size;
 	int i;
 
 	if (!gpu)
 		return 0;
+
+	local_mem_size = gpu->kfd2kgd->get_vmem_size(gpu->kgd);
 
 	buf[0] = gpu->pdev->devfn;
 	buf[1] = gpu->pdev->subsystem_vendor;
 	buf[2] = gpu->pdev->subsystem_device;
 	buf[3] = gpu->pdev->device;
 	buf[4] = gpu->pdev->bus->number;
-	buf[5] = (uint32_t)(gpu->kfd2kgd->get_vmem_size(gpu->kgd)
-			& 0xffffffff);
-	buf[6] = (uint32_t)(gpu->kfd2kgd->get_vmem_size(gpu->kgd) >> 32);
+	buf[5] = lower_32_bits(local_mem_size);
+	buf[6] = upper_32_bits(local_mem_size);
 
 	for (i = 0, hashout = 0; i < 7; i++)
 		hashout ^= hash_32(buf[i], KFD_GPU_ID_HASH_WIDTH);

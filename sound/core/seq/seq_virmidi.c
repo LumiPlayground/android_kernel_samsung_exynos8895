@@ -95,7 +95,6 @@ static int snd_virmidi_dev_receive_event(struct snd_virmidi_dev *rdev,
 			if ((ev->flags & SNDRV_SEQ_EVENT_LENGTH_MASK) != SNDRV_SEQ_EVENT_LENGTH_VARIABLE)
 				continue;
 			snd_seq_dump_var_event(ev, (snd_seq_dump_func_t)snd_rawmidi_receive, vmidi->substream);
-			snd_midi_event_reset_decode(vmidi->parser);
 		} else {
 			len = snd_midi_event_decode(vmidi->parser, msg, sizeof(msg), ev);
 			if (len > 0)
@@ -500,7 +499,7 @@ static int snd_virmidi_dev_unregister(struct snd_rawmidi *rmidi)
 /*
  *
  */
-static struct snd_rawmidi_global_ops snd_virmidi_global_ops = {
+static const struct snd_rawmidi_global_ops snd_virmidi_global_ops = {
 	.dev_register = snd_virmidi_dev_register,
 	.dev_unregister = snd_virmidi_dev_unregister,
 };

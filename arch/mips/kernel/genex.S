@@ -130,7 +130,7 @@ LEAF(__r4k_wait)
 	/* end of rollback region (the region size must be power of two) */
 1:
 	jr	ra
-	nop
+	 nop
 	.set	pop
 	END(__r4k_wait)
 
@@ -171,7 +171,7 @@ NESTED(handle_int, PT_SIZE, sp)
 	mfc0	k0, CP0_EPC
 	.set	noreorder
 	j	k0
-	rfe
+	 rfe
 #else
 	and	k0, ST0_IE
 	bnez	k0, 1f
@@ -366,7 +366,7 @@ ejtag_return:
 	MFC0	k0, CP0_DESAVE
 	.set	mips32
 	deret
-	.set pop
+	.set	pop
 	END(ejtag_debug_handler)
 
 /*
@@ -403,10 +403,10 @@ NESTED(nmi_handler, PT_SIZE, sp)
 	 * Clear BEV - required for page fault exception handler to work
 	 */
 	mfc0	k0, CP0_STATUS
-	ori     k0, k0, ST0_EXL
+	ori	k0, k0, ST0_EXL
 	li	k1, ~(ST0_BEV | ST0_ERL)
-	and     k0, k0, k1
-	mtc0    k0, CP0_STATUS
+	and	k0, k0, k1
+	mtc0	k0, CP0_STATUS
 	_ehb
 	SAVE_ALL
 	move	a0, sp
@@ -429,20 +429,20 @@ NESTED(nmi_handler, PT_SIZE, sp)
 	.endm
 
 	.macro	__build_clear_fpe
-	CLI
-	TRACE_IRQS_OFF
 	.set	push
 	/* gas fails to assemble cfc1 for some archs (octeon).*/ \
 	.set	mips1
 	SET_HARDFLOAT
 	cfc1	a1, fcr31
 	.set	pop
+	CLI
+	TRACE_IRQS_OFF
 	.endm
 
 	.macro	__build_clear_msa_fpe
+	_cfcmsa	a1, MSA_CSR
 	CLI
 	TRACE_IRQS_OFF
-	_cfcmsa	a1, MSA_CSR
 	.endm
 
 	.macro	__build_clear_ade
@@ -470,7 +470,7 @@ NESTED(nmi_handler, PT_SIZE, sp)
 
 	.macro	__BUILD_count exception
 	LONG_L	t0,exception_count_\exception
-	LONG_ADDIU t0, 1
+	LONG_ADDIU	t0, 1
 	LONG_S	t0,exception_count_\exception
 	.comm	exception_count\exception, 8, 8
 	.endm
@@ -523,16 +523,16 @@ NESTED(nmi_handler, PT_SIZE, sp)
 	BUILD_HANDLER reserved reserved sti verbose	/* others */
 
 	.align	5
-	LEAF(handle_ri_rdhwr_vivt)
+	LEAF(handle_ri_rdhwr_tlbp)
 	.set	push
 	.set	noat
 	.set	noreorder
 	/* check if TLB contains a entry for EPC */
 	MFC0	k1, CP0_ENTRYHI
-	andi	k1, 0xff	/* ASID_MASK */
+	andi	k1, MIPS_ENTRYHI_ASID | MIPS_ENTRYHI_ASIDX
 	MFC0	k0, CP0_EPC
-	PTR_SRL k0, _PAGE_SHIFT + 1
-	PTR_SLL k0, _PAGE_SHIFT + 1
+	PTR_SRL	k0, _PAGE_SHIFT + 1
+	PTR_SLL	k0, _PAGE_SHIFT + 1
 	or	k1, k0
 	MTC0	k1, CP0_ENTRYHI
 	mtc0_tlbw_hazard
@@ -542,7 +542,7 @@ NESTED(nmi_handler, PT_SIZE, sp)
 	.set	pop
 	bltz	k1, handle_ri	/* slow path */
 	/* fall thru */
-	END(handle_ri_rdhwr_vivt)
+	END(handle_ri_rdhwr_tlbp)
 
 	LEAF(handle_ri_rdhwr)
 	.set	push
@@ -552,27 +552,27 @@ NESTED(nmi_handler, PT_SIZE, sp)
 	/* microMIPS: 0x007d6b3c: rdhwr v1,$29 */
 	MFC0	k1, CP0_EPC
 #if defined(CONFIG_CPU_MICROMIPS) || defined(CONFIG_CPU_MIPS32_R2) || defined(CONFIG_CPU_MIPS64_R2)
-	and     k0, k1, 1
-	beqz    k0, 1f
-	xor     k1, k0
-	lhu     k0, (k1)
-	lhu     k1, 2(k1)
-	ins     k1, k0, 16, 16
-	lui     k0, 0x007d
-	b       docheck
-	ori     k0, 0x6b3c
+	and	k0, k1, 1
+	beqz	k0, 1f
+	 xor	k1, k0
+	lhu	k0, (k1)
+	lhu	k1, 2(k1)
+	ins	k1, k0, 16, 16
+	lui	k0, 0x007d
+	b	docheck
+	 ori	k0, 0x6b3c
 1:
-	lui     k0, 0x7c03
-	lw      k1, (k1)
-	ori     k0, 0xe83b
+	lui	k0, 0x7c03
+	lw	k1, (k1)
+	ori	k0, 0xe83b
 #else
-	andi    k0, k1, 1
-	bnez    k0, handle_ri
-	lui     k0, 0x7c03
-	lw      k1, (k1)
-	ori     k0, 0xe83b
+	andi	k0, k1, 1
+	bnez	k0, handle_ri
+	 lui	k0, 0x7c03
+	lw	k1, (k1)
+	ori	k0, 0xe83b
 #endif
-	.set    reorder
+	.set	reorder
 docheck:
 	bne	k0, k1, handle_ri	/* if not ours */
 

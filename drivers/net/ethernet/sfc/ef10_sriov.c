@@ -232,6 +232,35 @@ fail:
 	return rc;
 }
 
+static int efx_ef10_vadaptor_alloc_set_features(struct efx_nic *efx)
+{
+	struct efx_ef10_nic_data *nic_data = efx->nic_data;
+	u32 port_flags;
+	int rc;
+
+	rc = efx_ef10_vadaptor_alloc(efx, nic_data->vport_id);
+	if (rc)
+		goto fail_vadaptor_alloc;
+
+	rc = efx_ef10_vadaptor_query(efx, nic_data->vport_id,
+				     &port_flags, NULL, NULL);
+	if (rc)
+		goto fail_vadaptor_query;
+
+	if (port_flags &
+	    (1 << MC_CMD_VPORT_ALLOC_IN_FLAG_VLAN_RESTRICT_LBN))
+		efx->fixed_features |= NETIF_F_HW_VLAN_CTAG_FILTER;
+	else
+		efx->fixed_features &= ~NETIF_F_HW_VLAN_CTAG_FILTER;
+
+	return 0;
+
+fail_vadaptor_query:
+	efx_ef10_vadaptor_free(efx, EVB_PORT_ID_ASSIGNED);
+fail_vadaptor_alloc:
+	return rc;
+}
+
 /* On top of the default firmware vswitch setup, create a VEB vswitch and
  * expansion vport for use by this function.
  */
@@ -243,7 +272,7 @@ int efx_ef10_vswitching_probe_pf(struct efx_nic *efx)
 
 	if (pci_sriov_get_totalvfs(efx->pci_dev) <= 0) {
 		/* vswitch not needed as we have no VFs */
-		efx_ef10_vadaptor_alloc(efx, nic_data->vport_id);
+		efx_ef10_vadaptor_alloc_set_features(efx);
 		return 0;
 	}
 
@@ -263,7 +292,7 @@ int efx_ef10_vswitching_probe_pf(struct efx_nic *efx)
 		goto fail3;
 	ether_addr_copy(nic_data->vport_mac, net_dev->dev_addr);
 
-	rc = efx_ef10_vadaptor_alloc(efx, nic_data->vport_id);
+	rc = efx_ef10_vadaptor_alloc_set_features(efx);
 	if (rc)
 		goto fail4;
 
@@ -282,9 +311,7 @@ fail1:
 
 int efx_ef10_vswitching_probe_vf(struct efx_nic *efx)
 {
-	struct efx_ef10_nic_data *nic_data = efx->nic_data;
-
-	return efx_ef10_vadaptor_alloc(efx, nic_data->vport_id);
+	return efx_ef10_vadaptor_alloc_set_features(efx);
 }
 
 int efx_ef10_vswitching_restore_pf(struct efx_nic *efx)
@@ -378,17 +405,12 @@ fail1:
 	return rc;
 }
 
-/* Disable SRIOV and remove VFs
- * If some VFs are attached to a guest (using Xen, only) nothing is
- * done if force=false, and vports are freed if force=true (for the non
- * attachedc ones, only) but SRIOV is not disabled and VFs are not
- * removed in either case.
- */
 static int efx_ef10_pci_sriov_disable(struct efx_nic *efx, bool force)
 {
 	struct pci_dev *dev = efx->pci_dev;
-	unsigned int vfs_assigned = pci_vfs_assigned(dev);
-	int rc = 0;
+	unsigned int vfs_assigned = 0;
+
+	vfs_assigned = pci_vfs_assigned(dev);
 
 	if (vfs_assigned && !force) {
 		netif_info(efx, drv, efx->net_dev, "VFs are assigned to guests; "
@@ -398,12 +420,10 @@ static int efx_ef10_pci_sriov_disable(struct efx_nic *efx, bool force)
 
 	if (!vfs_assigned)
 		pci_disable_sriov(dev);
-	else
-		rc = -EBUSY;
 
 	efx_ef10_sriov_free_vf_vswitching(efx);
 	efx->vf_count = 0;
-	return rc;
+	return 0;
 }
 
 int efx_ef10_sriov_configure(struct efx_nic *efx, int num_vfs)
@@ -422,6 +442,7 @@ int efx_ef10_sriov_init(struct efx_nic *efx)
 void efx_ef10_sriov_fini(struct efx_nic *efx)
 {
 	struct efx_ef10_nic_data *nic_data = efx->nic_data;
+	unsigned int i;
 	int rc;
 
 	if (!nic_data->vf) {
@@ -431,7 +452,14 @@ void efx_ef10_sriov_fini(struct efx_nic *efx)
 		return;
 	}
 
-	/* Disable SRIOV and remove any VFs in the host */
+	/* Remove any VFs in the host */
+	for (i = 0; i < efx->vf_count; ++i) {
+		struct efx_nic *vf_efx = nic_data->vf[i].efx;
+
+		if (vf_efx)
+			vf_efx->pci_dev->driver->remove(vf_efx->pci_dev);
+	}
+
 	rc = efx_ef10_pci_sriov_disable(efx, true);
 	if (rc)
 		netif_dbg(efx, drv, efx->net_dev,
@@ -553,6 +581,7 @@ int efx_ef10_sriov_set_vf_vlan(struct efx_nic *efx, int vf_i, u16 vlan,
 		efx_device_detach_sync(vf->efx);
 		efx_net_stop(vf->efx->net_dev);
 
+		mutex_lock(&vf->efx->mac_lock);
 		down_write(&vf->efx->filter_sem);
 		vf->efx->type->filter_table_remove(vf->efx);
 
@@ -629,6 +658,7 @@ restore_filters:
 			goto reset_nic_up_write;
 
 		up_write(&vf->efx->filter_sem);
+		mutex_unlock(&vf->efx->mac_lock);
 
 		up_write(&vf->efx->filter_sem);
 
@@ -641,9 +671,10 @@ restore_filters:
 	return rc;
 
 reset_nic_up_write:
-	if (vf->efx)
+	if (vf->efx) {
 		up_write(&vf->efx->filter_sem);
-
+		mutex_unlock(&vf->efx->mac_lock);
+	}
 reset_nic:
 	if (vf->efx) {
 		netif_err(efx, drv, efx->net_dev,

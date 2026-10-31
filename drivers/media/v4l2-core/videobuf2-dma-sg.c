@@ -107,9 +107,9 @@ static void *vb2_dma_sg_alloc(void *alloc_ctx, unsigned long size,
 	struct sg_table *sgt;
 	int ret;
 	int num_pages;
-	DEFINE_DMA_ATTRS(attrs);
+	unsigned long attrs = 0;
 
-	dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
+	attrs |= DMA_ATTR_SKIP_CPU_SYNC;
 
 	if (WARN_ON(alloc_ctx == NULL))
 		return NULL;
@@ -148,7 +148,7 @@ static void *vb2_dma_sg_alloc(void *alloc_ctx, unsigned long size,
 	 * prepare() memop is called.
 	 */
 	sgt->nents = dma_map_sg_attrs(buf->dev, sgt->sgl, sgt->orig_nents,
-				      buf->dma_dir, &attrs);
+				      buf->dma_dir, attrs);
 	if (!sgt->nents)
 		goto fail_map;
 
@@ -183,13 +183,13 @@ static void vb2_dma_sg_put(void *buf_priv)
 	int i = buf->num_pages;
 
 	if (atomic_dec_and_test(&buf->refcount)) {
-		DEFINE_DMA_ATTRS(attrs);
+		unsigned long attrs = 0;
 
-		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
+		attrs |= DMA_ATTR_SKIP_CPU_SYNC;
 		dprintk(1, "%s: Freeing buffer of %d pages\n", __func__,
 			buf->num_pages);
 		dma_unmap_sg_attrs(buf->dev, sgt->sgl, sgt->orig_nents,
-				   buf->dma_dir, &attrs);
+				   buf->dma_dir, attrs);
 		if (buf->vaddr)
 			vm_unmap_ram(buf->vaddr, buf->num_pages);
 		sg_free_table(buf->dma_sgt);
@@ -233,10 +233,10 @@ static void *vb2_dma_sg_get_userptr(void *alloc_ctx, unsigned long vaddr,
 	struct vb2_dma_sg_conf *conf = alloc_ctx;
 	struct vb2_dma_sg_buf *buf;
 	struct sg_table *sgt;
-	DEFINE_DMA_ATTRS(attrs);
+	unsigned long attrs = 0;
 	struct frame_vector *vec;
 
-	dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
+	attrs |= DMA_ATTR_SKIP_CPU_SYNC;
 	buf = kzalloc(sizeof *buf, GFP_KERNEL);
 	if (!buf)
 		return NULL;
@@ -267,7 +267,7 @@ static void *vb2_dma_sg_get_userptr(void *alloc_ctx, unsigned long vaddr,
 	 * prepare() memop is called.
 	 */
 	sgt->nents = dma_map_sg_attrs(buf->dev, sgt->sgl, sgt->orig_nents,
-				      buf->dma_dir, &attrs);
+				      buf->dma_dir, attrs);
 	if (!sgt->nents)
 		goto userptr_fail_map;
 
@@ -291,14 +291,14 @@ static void vb2_dma_sg_put_userptr(void *buf_priv)
 	struct vb2_dma_sg_buf *buf = buf_priv;
 	struct sg_table *sgt = &buf->sg_table;
 	int i = buf->num_pages;
-	DEFINE_DMA_ATTRS(attrs);
+	unsigned long attrs = 0;
 
-	dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
+	attrs |= DMA_ATTR_SKIP_CPU_SYNC;
 
 	dprintk(1, "%s: Releasing userspace buffer of %d pages\n",
 	       __func__, buf->num_pages);
 	dma_unmap_sg_attrs(buf->dev, sgt->sgl, sgt->orig_nents, buf->dma_dir,
-			   &attrs);
+			   attrs);
 	if (buf->vaddr)
 		vm_unmap_ram(buf->vaddr, buf->num_pages);
 	sg_free_table(buf->dma_sgt);

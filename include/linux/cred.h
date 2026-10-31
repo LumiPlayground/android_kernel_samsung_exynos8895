@@ -26,15 +26,10 @@ struct inode;
 /*
  * COW Supplementary groups list
  */
-#define NGROUPS_SMALL		32
-#define NGROUPS_PER_BLOCK	((unsigned int)(PAGE_SIZE / sizeof(kgid_t)))
-
 struct group_info {
 	atomic_t	usage;
 	int		ngroups;
-	int		nblocks;
-	kgid_t		small_block[NGROUPS_SMALL];
-	kgid_t		*blocks[0];
+	kgid_t		gid[0];
 };
 
 /**
@@ -88,10 +83,6 @@ extern void set_groups(struct cred *, struct group_info *);
 extern int groups_search(const struct group_info *, kgid_t);
 extern bool may_setgroups(void);
 extern void groups_sort(struct group_info *);
-
-/* access the groups "array" with this macro */
-#define GROUP_AT(gi, i) \
-	((gi)->blocks[(i) / NGROUPS_PER_BLOCK][(i) % NGROUPS_PER_BLOCK])
 
 /*
  * The security context of a task
@@ -243,7 +234,7 @@ static inline struct cred *get_new_cred(struct cred *cred)
  * @cred: The credentials to reference
  *
  * Get a reference on the specified set of credentials.  The caller must
- * release the reference.  If %NULL is passed, it is returned with no action.
+ * release the reference.
  *
  * This is used to deal with a committed set of credentials.  Although the
  * pointer is const, this will temporarily discard the const and increment the
@@ -254,8 +245,6 @@ static inline struct cred *get_new_cred(struct cred *cred)
 static inline const struct cred *get_cred(const struct cred *cred)
 {
 	struct cred *nonconst_cred = (struct cred *) cred;
-	if (!cred)
-		return cred;
 	validate_creds(cred);
 	nonconst_cred->non_rcu = 0;
 	return get_new_cred(nonconst_cred);
@@ -266,7 +255,7 @@ static inline const struct cred *get_cred(const struct cred *cred)
  * @cred: The credentials to release
  *
  * Release a reference to a set of credentials, deleting them when the last ref
- * is released.  If %NULL is passed, nothing is done.
+ * is released.
  *
  * This takes a const pointer to a set of credentials because the credentials
  * on task_struct are attached by const pointers to prevent accidental
@@ -276,11 +265,9 @@ static inline void put_cred(const struct cred *_cred)
 {
 	struct cred *cred = (struct cred *) _cred;
 
-	if (cred) {
-		validate_creds(cred);
-		if (atomic_dec_and_test(&(cred)->usage))
-			__put_cred(cred);
-	}
+	validate_creds(cred);
+	if (atomic_dec_and_test(&(cred)->usage))
+		__put_cred(cred);
 }
 
 /**

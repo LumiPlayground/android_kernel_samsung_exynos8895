@@ -7,6 +7,7 @@
 #include "auxtrace.h"
 #include "util.h"
 #include "debug.h"
+#include "vdso.h"
 
 char dso__symtab_origin(const struct dso *dso)
 {
@@ -18,7 +19,6 @@ char dso__symtab_origin(const struct dso *dso)
 		[DSO_BINARY_TYPE__BUILD_ID_CACHE]		= 'B',
 		[DSO_BINARY_TYPE__FEDORA_DEBUGINFO]		= 'f',
 		[DSO_BINARY_TYPE__UBUNTU_DEBUGINFO]		= 'u',
-		[DSO_BINARY_TYPE__MIXEDUP_UBUNTU_DEBUGINFO]	= 'x',
 		[DSO_BINARY_TYPE__OPENEMBEDDED_DEBUGINFO]	= 'o',
 		[DSO_BINARY_TYPE__BUILDID_DEBUGINFO]		= 'b',
 		[DSO_BINARY_TYPE__SYSTEM_PATH_DSO]		= 'd',
@@ -39,7 +39,7 @@ int dso__read_binary_type_filename(const struct dso *dso,
 				   enum dso_binary_type type,
 				   char *root_dir, char *filename, size_t size)
 {
-	char build_id_hex[BUILD_ID_SIZE * 2 + 1];
+	char build_id_hex[SBUILD_ID_SIZE];
 	int ret = 0;
 	size_t len;
 
@@ -53,14 +53,17 @@ int dso__read_binary_type_filename(const struct dso *dso,
 			debuglink--;
 		if (*debuglink == '/')
 			debuglink++;
+
+		ret = -1;
+		if (!is_regular_file(filename))
+			break;
+
 		ret = filename__read_debuglink(filename, debuglink,
 					       size - (debuglink - filename));
 		}
 		break;
 	case DSO_BINARY_TYPE__BUILD_ID_CACHE:
-		/* skip the locally configured cache if a symfs is given */
-		if (symbol_conf.symfs[0] ||
-		    (dso__build_id_filename(dso, filename, size) == NULL))
+		if (dso__build_id_filename(dso, filename, size) == NULL)
 			ret = -1;
 		break;
 
@@ -72,21 +75,6 @@ int dso__read_binary_type_filename(const struct dso *dso,
 	case DSO_BINARY_TYPE__UBUNTU_DEBUGINFO:
 		len = __symbol__join_symfs(filename, size, "/usr/lib/debug");
 		snprintf(filename + len, size - len, "%s", dso->long_name);
-		break;
-
-	case DSO_BINARY_TYPE__MIXEDUP_UBUNTU_DEBUGINFO:
-		/*
-		 * Ubuntu can mixup /usr/lib with /lib, putting debuginfo in
-		 * /usr/lib/debug/lib when it is expected to be in
-		 * /usr/lib/debug/usr/lib
-		 */
-		if (strlen(dso->long_name) < 9 ||
-		    strncmp(dso->long_name, "/usr/lib/", 9)) {
-			ret = -1;
-			break;
-		}
-		len = __symbol__join_symfs(filename, size, "/usr/lib/debug");
-		snprintf(filename + len, size - len, "%s", dso->long_name + 4);
 		break;
 
 	case DSO_BINARY_TYPE__OPENEMBEDDED_DEBUGINFO:
@@ -349,7 +337,7 @@ static int do_open(char *name)
 			return fd;
 
 		pr_debug("dso open failed: %s\n",
-			 strerror_r(errno, sbuf, sizeof(sbuf)));
+			 str_error_r(errno, sbuf, sizeof(sbuf)));
 		if (!dso__data_open_cnt || errno != EMFILE)
 			break;
 
@@ -376,6 +364,9 @@ static int __open_dso(struct dso *dso, struct machine *machine)
 		free(name);
 		return -EINVAL;
 	}
+
+	if (!is_regular_file(name))
+		return -EINVAL;
 
 	fd = do_open(name);
 	free(name);
@@ -456,17 +447,27 @@ static rlim_t get_fd_limit(void)
 	return limit;
 }
 
+static rlim_t fd_limit;
+
+/*
+ * Used only by tests/dso-data.c to reset the environment
+ * for tests. I dont expect we should change this during
+ * standard runtime.
+ */
+void reset_fd_limit(void)
+{
+	fd_limit = 0;
+}
+
 static bool may_cache_fd(void)
 {
-	static rlim_t limit;
+	if (!fd_limit)
+		fd_limit = get_fd_limit();
 
-	if (!limit)
-		limit = get_fd_limit();
-
-	if (limit == RLIM_INFINITY)
+	if (fd_limit == RLIM_INFINITY)
 		return true;
 
-	return limit > (rlim_t) dso__data_open_cnt;
+	return fd_limit > (rlim_t) dso__data_open_cnt;
 }
 
 /*
@@ -790,7 +791,7 @@ static int data_file_size(struct dso *dso, struct machine *machine)
 	if (fstat(dso->data.fd, &st) < 0) {
 		ret = -errno;
 		pr_err("dso cache fstat failed: %s\n",
-		       strerror_r(errno, sbuf, sizeof(sbuf)));
+		       str_error_r(errno, sbuf, sizeof(sbuf)));
 		dso->data.status = DSO_DATA_STATUS_ERROR;
 		goto out;
 	}
@@ -1182,7 +1183,7 @@ bool __dsos__read_build_ids(struct list_head *head, bool with_hits)
 	struct dso *pos;
 
 	list_for_each_entry(pos, head, node) {
-		if (with_hits && !pos->hit)
+		if (with_hits && !pos->hit && !dso__is_vdso(pos))
 			continue;
 		if (pos->has_build_id) {
 			have_build_id = true;
@@ -1261,6 +1262,8 @@ struct dso *__dsos__addnew(struct dsos *dsos, const char *name)
 	if (dso != NULL) {
 		__dsos__add(dsos, dso);
 		dso__set_basename(dso);
+		/* Put dso here because __dsos_add already got it */
+		dso__put(dso);
 	}
 	return dso;
 }
@@ -1312,7 +1315,7 @@ size_t __dsos__fprintf(struct list_head *head, FILE *fp)
 
 size_t dso__fprintf_buildid(struct dso *dso, FILE *fp)
 {
-	char sbuild_id[BUILD_ID_SIZE * 2 + 1];
+	char sbuild_id[SBUILD_ID_SIZE];
 
 	build_id__sprintf(dso->build_id, sizeof(dso->build_id), sbuild_id);
 	return fprintf(fp, "%s", sbuild_id);
@@ -1368,7 +1371,7 @@ int dso__strerror_load(struct dso *dso, char *buf, size_t buflen)
 	BUG_ON(buflen == 0);
 
 	if (errnum >= 0) {
-		const char *err = strerror_r(errnum, buf, buflen);
+		const char *err = str_error_r(errnum, buf, buflen);
 
 		if (err != buf)
 			scnprintf(buf, buflen, "%s", err);

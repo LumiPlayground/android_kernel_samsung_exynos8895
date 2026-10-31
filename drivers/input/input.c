@@ -157,8 +157,6 @@ static void input_pass_values(struct input_dev *dev,
 
 	rcu_read_unlock();
 
-	add_input_randomness(vals->type, vals->code, vals->value);
-
 	/* trigger auto repeat for key events */
 	if (test_bit(EV_REP, dev->evbit) && test_bit(EV_KEY, dev->evbit)) {
 		for (v = vals; v != vals + count; v++) {
@@ -375,9 +373,10 @@ static int input_get_disposition(struct input_dev *dev,
 static void input_handle_event(struct input_dev *dev,
 			       unsigned int type, unsigned int code, int value)
 {
-	int disposition;
+	int disposition = input_get_disposition(dev, type, code, &value);
 
-	disposition = input_get_disposition(dev, type, code, &value);
+	if (disposition != INPUT_IGNORE_EVENT && type != EV_SYN)
+		add_input_randomness(type, code, value);
 
 	if ((disposition & INPUT_PASS_TO_DEVICE) && dev->event)
 		dev->event(dev, type, code, value);
@@ -1334,18 +1333,16 @@ static int input_default_setkeycode(struct input_dev *dev,
 		}
 	}
 
-	if (*old_keycode <= KEY_MAX) {
-		__clear_bit(*old_keycode, dev->keybit);
-		for (i = 0; i < dev->keycodemax; i++) {
-			if (input_fetch_keycode(dev, i) == *old_keycode) {
-				__set_bit(*old_keycode, dev->keybit);
-				/* Setting the bit twice is useless, so break */
-				break;
-			}
+	__clear_bit(*old_keycode, dev->keybit);
+	__set_bit(ke->keycode, dev->keybit);
+
+	for (i = 0; i < dev->keycodemax; i++) {
+		if (input_fetch_keycode(dev, i) == *old_keycode) {
+			__set_bit(*old_keycode, dev->keybit);
+			break; /* Setting the bit twice is useless, so break */
 		}
 	}
 
-	__set_bit(ke->keycode, dev->keybit);
 	return 0;
 }
 
@@ -1401,13 +1398,9 @@ int input_set_keycode(struct input_dev *dev,
 	 * Simulate keyup event if keycode is not present
 	 * in the keymap anymore
 	 */
-	if (old_keycode > KEY_MAX) {
-		dev_warn(dev->dev.parent ?: &dev->dev,
-			 "%s: got too big old keycode %#x\n",
-			 __func__, old_keycode);
-	} else if (test_bit(EV_KEY, dev->evbit) &&
-		   !is_event_supported(old_keycode, dev->keybit, KEY_MAX) &&
-		   __test_and_clear_bit(old_keycode, dev->key)) {
+	if (test_bit(EV_KEY, dev->evbit) &&
+	    !is_event_supported(old_keycode, dev->keybit, KEY_MAX) &&
+	    __test_and_clear_bit(old_keycode, dev->key)) {
 		struct input_value vals[] =  {
 			{ EV_KEY, old_keycode, 0 },
 			input_value_sync
@@ -1504,7 +1497,7 @@ static int input_bits_to_string(char *buf, int buf_size,
 {
 	int len = 0;
 
-	if (INPUT_COMPAT_TEST) {
+	if (in_compat_syscall()) {
 		u32 dword = bits >> 32;
 		if (dword || !skip_empty)
 			len += snprintf(buf, buf_size, "%x ", dword);

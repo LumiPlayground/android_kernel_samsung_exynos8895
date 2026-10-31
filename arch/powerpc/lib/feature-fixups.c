@@ -13,16 +13,18 @@
  */
 
 #include <linux/types.h>
+#include <linux/jump_label.h>
 #include <linux/kernel.h>
 #include <linux/string.h>
 #include <linux/init.h>
-#include <linux/stop_machine.h>
 #include <asm/cputable.h>
 #include <asm/code-patching.h>
 #include <asm/page.h>
 #include <asm/sections.h>
 #include <asm/setup.h>
 #include <asm/security_features.h>
+#include <asm/firmware.h>
+#include <asm/setup.h>
 
 struct fixup_entry {
 	unsigned long	mask;
@@ -230,124 +232,6 @@ void do_stf_barrier_fixups(enum stf_barrier_type types)
 	do_stf_exit_barrier_fixups(types);
 }
 
-void do_uaccess_flush_fixups(enum l1d_flush_type types)
-{
-	unsigned int instrs[4], *dest;
-	long *start, *end;
-	int i;
-
-	start = PTRRELOC(&__start___uaccess_flush_fixup);
-	end = PTRRELOC(&__stop___uaccess_flush_fixup);
-
-	instrs[0] = 0x60000000; /* nop */
-	instrs[1] = 0x60000000; /* nop */
-	instrs[2] = 0x60000000; /* nop */
-	instrs[3] = 0x4e800020; /* blr */
-
-	i = 0;
-	if (types == L1D_FLUSH_FALLBACK) {
-		instrs[3] = 0x60000000; /* nop */
-		/* fallthrough to fallback flush */
-	}
-
-	if (types & L1D_FLUSH_ORI) {
-		instrs[i++] = 0x63ff0000; /* ori 31,31,0 speculation barrier */
-		instrs[i++] = 0x63de0000; /* ori 30,30,0 L1d flush*/
-	}
-
-	if (types & L1D_FLUSH_MTTRIG)
-		instrs[i++] = 0x7c12dba6; /* mtspr TRIG2,r0 (SPR #882) */
-
-	for (i = 0; start < end; start++, i++) {
-		dest = (void *)start + *start;
-
-		pr_devel("patching dest %lx\n", (unsigned long)dest);
-
-		patch_instruction(dest, instrs[0]);
-
-		patch_instruction((dest + 1), instrs[1]);
-		patch_instruction((dest + 2), instrs[2]);
-		patch_instruction((dest + 3), instrs[3]);
-	}
-
-	printk(KERN_DEBUG "uaccess-flush: patched %d locations (%s flush)\n", i,
-		(types == L1D_FLUSH_NONE)       ? "no" :
-		(types == L1D_FLUSH_FALLBACK)   ? "fallback displacement" :
-		(types &  L1D_FLUSH_ORI)        ? (types & L1D_FLUSH_MTTRIG)
-							? "ori+mttrig type"
-							: "ori type" :
-		(types &  L1D_FLUSH_MTTRIG)     ? "mttrig type"
-						: "unknown");
-}
-
-static int __do_entry_flush_fixups(void *data)
-{
-	enum l1d_flush_type types = *(enum l1d_flush_type *)data;
-	unsigned int instrs[3], *dest;
-	long *start, *end;
-	int i;
-
-	start = PTRRELOC(&__start___entry_flush_fixup);
-	end = PTRRELOC(&__stop___entry_flush_fixup);
-
-	instrs[0] = 0x60000000; /* nop */
-	instrs[1] = 0x60000000; /* nop */
-	instrs[2] = 0x60000000; /* nop */
-
-	i = 0;
-	if (types == L1D_FLUSH_FALLBACK) {
-		instrs[i++] = 0x7d4802a6; /* mflr r10		*/
-		instrs[i++] = 0x60000000; /* branch patched below */
-		instrs[i++] = 0x7d4803a6; /* mtlr r10		*/
-	}
-
-	if (types & L1D_FLUSH_ORI) {
-		instrs[i++] = 0x63ff0000; /* ori 31,31,0 speculation barrier */
-		instrs[i++] = 0x63de0000; /* ori 30,30,0 L1d flush*/
-	}
-
-	if (types & L1D_FLUSH_MTTRIG)
-		instrs[i++] = 0x7c12dba6; /* mtspr TRIG2,r0 (SPR #882) */
-
-	for (i = 0; start < end; start++, i++) {
-		dest = (void *)start + *start;
-
-		pr_devel("patching dest %lx\n", (unsigned long)dest);
-
-		patch_instruction(dest, instrs[0]);
-
-		if (types == L1D_FLUSH_FALLBACK)
-			patch_branch((dest + 1), (unsigned long)&entry_flush_fallback,
-				     BRANCH_SET_LINK);
-		else
-			patch_instruction((dest + 1), instrs[1]);
-
-		patch_instruction((dest + 2), instrs[2]);
-	}
-
-	printk(KERN_DEBUG "entry-flush: patched %d locations (%s flush)\n", i,
-		(types == L1D_FLUSH_NONE)       ? "no" :
-		(types == L1D_FLUSH_FALLBACK)   ? "fallback displacement" :
-		(types &  L1D_FLUSH_ORI)        ? (types & L1D_FLUSH_MTTRIG)
-							? "ori+mttrig type"
-							: "ori type" :
-		(types &  L1D_FLUSH_MTTRIG)     ? "mttrig type"
-						: "unknown");
-
-	return 0;
-}
-
-void do_entry_flush_fixups(enum l1d_flush_type types)
-{
-	/*
-	 * The call to the fallback flush can not be safely patched in/out while
-	 * other CPUs are executing it. So call __do_entry_flush_fixups() on one
-	 * CPU while all other CPUs spin in the stop machine core with interrupts
-	 * hard disabled.
-	 */
-	stop_machine(__do_entry_flush_fixups, &types, NULL);
-}
-
 void do_rfi_flush_fixups(enum l1d_flush_type types)
 {
 	unsigned int instrs[3], *dest;
@@ -505,7 +389,7 @@ void do_lwsync_fixups(unsigned long value, void *fixup_start, void *fixup_end)
 	}
 }
 
-void do_final_fixups(void)
+static void do_final_fixups(void)
 {
 #if defined(CONFIG_PPC64) && defined(CONFIG_RELOCATABLE)
 	int *src, *dest;
@@ -525,6 +409,70 @@ void do_final_fixups(void)
 	}
 #endif
 }
+
+static unsigned long __initdata saved_cpu_features;
+static unsigned int __initdata saved_mmu_features;
+#ifdef CONFIG_PPC64
+static unsigned long __initdata saved_firmware_features;
+#endif
+
+void __init apply_feature_fixups(void)
+{
+	struct cpu_spec *spec = PTRRELOC(*PTRRELOC(&cur_cpu_spec));
+
+	*PTRRELOC(&saved_cpu_features) = spec->cpu_features;
+	*PTRRELOC(&saved_mmu_features) = spec->mmu_features;
+
+	/*
+	 * Apply the CPU-specific and firmware specific fixups to kernel text
+	 * (nop out sections not relevant to this CPU or this firmware).
+	 */
+	do_feature_fixups(spec->cpu_features,
+			  PTRRELOC(&__start___ftr_fixup),
+			  PTRRELOC(&__stop___ftr_fixup));
+
+	do_feature_fixups(spec->mmu_features,
+			  PTRRELOC(&__start___mmu_ftr_fixup),
+			  PTRRELOC(&__stop___mmu_ftr_fixup));
+
+	do_lwsync_fixups(spec->cpu_features,
+			 PTRRELOC(&__start___lwsync_fixup),
+			 PTRRELOC(&__stop___lwsync_fixup));
+
+#ifdef CONFIG_PPC64
+	saved_firmware_features = powerpc_firmware_features;
+	do_feature_fixups(powerpc_firmware_features,
+			  &__start___fw_ftr_fixup, &__stop___fw_ftr_fixup);
+#endif
+	do_final_fixups();
+}
+
+void __init setup_feature_keys(void)
+{
+	/*
+	 * Initialise jump label. This causes all the cpu/mmu_has_feature()
+	 * checks to take on their correct polarity based on the current set of
+	 * CPU/MMU features.
+	 */
+	jump_label_init();
+	cpu_feature_keys_init();
+	mmu_feature_keys_init();
+}
+
+static int __init check_features(void)
+{
+	WARN(saved_cpu_features != cur_cpu_spec->cpu_features,
+	     "CPU features changed after feature patching!\n");
+	WARN(saved_mmu_features != cur_cpu_spec->mmu_features,
+	     "MMU features changed after feature patching!\n");
+#ifdef CONFIG_PPC64
+	WARN(saved_firmware_features != powerpc_firmware_features,
+	     "Firmware features changed after feature patching!\n");
+#endif
+
+	return 0;
+}
+late_initcall(check_features);
 
 #ifdef CONFIG_FTR_FIXUP_SELFTEST
 

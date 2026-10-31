@@ -123,7 +123,7 @@ static struct usb_device_descriptor device_desc = {
 	.bLength =		sizeof device_desc,
 	.bDescriptorType =	USB_DT_DEVICE,
 
-	.bcdUSB =		cpu_to_le16(0x200),
+	/* .bcdUSB = DYNAMIC */
 
 #ifdef CONFIG_GADGET_UAC1
 	.bDeviceClass =		USB_CLASS_PER_INTERFACE,
@@ -249,10 +249,8 @@ static int audio_bind(struct usb_composite_dev *cdev)
 		struct usb_descriptor_header *usb_desc;
 
 		usb_desc = usb_otg_descriptor_alloc(cdev->gadget);
-		if (!usb_desc) {
-			status = -ENOMEM;
+		if (!usb_desc)
 			goto fail;
-		}
 		usb_otg_descriptor_init(cdev->gadget, usb_desc);
 		otg_desc[0] = usb_desc;
 		otg_desc[1] = NULL;

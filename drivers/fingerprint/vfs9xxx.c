@@ -64,7 +64,7 @@
 #include <linux/amba/bus.h>
 #include <linux/amba/pl330.h>
 #if defined(CONFIG_SECURE_OS_BOOSTER_API)
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 #include <soc/samsung/secos_booster.h>
 #else
 #include <mach/secos_booster.h>
@@ -456,7 +456,7 @@ static int vfsspi_unprepare_sec_spi(struct sec_spi_info *spi_info,
 	return 0;
 }
 
-#if !defined(CONFIG_SOC_EXYNOS8890) && !defined(CONFIG_SOC_EXYNOS8895)
+#if !defined(CONFIG_SOC_EXYNOS8895)
 struct amba_device *adev_dma;
 static int vfsspi_prepare_sec_dma(struct sec_spi_info *spi_info)
 {
@@ -552,7 +552,7 @@ static int vfsspi_set_clk(struct vfsspi_device_data *vfsspi_device,
 			break;
 		default:
 			pr_debug("%s baud rate is %d.\n", __func__, clock);
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 			/* doesn't support to SPI clock rate 13MHz under */
 			vfsspi_device->current_spi_speed = MAX_BAUD_RATE;
 #else
@@ -578,7 +578,7 @@ static int vfsspi_set_clk(struct vfsspi_device_data *vfsspi_device,
 				else
 					pr_info("%s ENABLE_SPI_CLOCK %ld\n",
 							__func__, spi_info->speed);
-#if !defined(CONFIG_SOC_EXYNOS8890) && !defined(CONFIG_SOC_EXYNOS8895)
+#if !defined(CONFIG_SOC_EXYNOS8895)
 				ret_val = vfsspi_prepare_sec_dma(spi_info);
 				if (ret_val < 0)
 					pr_err("%s: Unable to enable spi dma\n",
@@ -614,7 +614,7 @@ static int vfsspi_disable_spi_clock(struct vfsspi_device_data
 		ret_val = vfsspi_unprepare_sec_spi(spi_info, spidev);
 		if (ret_val < 0)
 			pr_err("%s: couldn't disable spi clks\n", __func__);
-#if !defined(CONFIG_SOC_EXYNOS8890) && !defined(CONFIG_SOC_EXYNOS8895)
+#if !defined(CONFIG_SOC_EXYNOS8895)
 		ret_val = vfsspi_unprepare_sec_dma();
 		if (ret_val < 0)
 			pr_err("%s: couldn't disable spi dma\n", __func__);

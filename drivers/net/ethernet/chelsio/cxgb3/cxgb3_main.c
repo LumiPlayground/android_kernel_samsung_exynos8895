@@ -577,7 +577,7 @@ static void setup_rss(struct adapter *adap)
 	unsigned int nq0 = adap2pinfo(adap, 0)->nqsets;
 	unsigned int nq1 = adap->port[1] ? adap2pinfo(adap, 1)->nqsets : 1;
 	u8 cpus[SGE_QSETS + 1];
-	u16 rspq_map[RSS_TABLE_SIZE];
+	u16 rspq_map[RSS_TABLE_SIZE + 1];
 
 	for (i = 0; i < SGE_QSETS; ++i)
 		cpus[i] = i;
@@ -587,6 +587,7 @@ static void setup_rss(struct adapter *adap)
 		rspq_map[i] = i % nq0;
 		rspq_map[i + RSS_TABLE_SIZE / 2] = (i % nq1) + nq0;
 	}
+	rspq_map[RSS_TABLE_SIZE] = 0xffff; /* terminator */
 
 	t3_config_rss(adap, F_RQFEEDBACKENABLE | F_TNLLKPEN | F_TNLMAPEN |
 		      F_TNLPRTEN | F_TNL2TUPEN | F_TNL4TUPEN |
@@ -702,15 +703,16 @@ static ssize_t attr_store(struct device *d,
 			  ssize_t(*set) (struct net_device *, unsigned int),
 			  unsigned int min_val, unsigned int max_val)
 {
-	char *endp;
 	ssize_t ret;
 	unsigned int val;
 
 	if (!capable(CAP_NET_ADMIN))
 		return -EPERM;
 
-	val = simple_strtoul(buf, &endp, 0);
-	if (endp == buf || val < min_val || val > max_val)
+	ret = kstrtouint(buf, 0, &val);
+	if (ret)
+		return ret;
+	if (val < min_val || val > max_val)
 		return -EINVAL;
 
 	rtnl_lock();
@@ -830,14 +832,15 @@ static ssize_t tm_attr_store(struct device *d,
 	struct port_info *pi = netdev_priv(to_net_dev(d));
 	struct adapter *adap = pi->adapter;
 	unsigned int val;
-	char *endp;
 	ssize_t ret;
 
 	if (!capable(CAP_NET_ADMIN))
 		return -EPERM;
 
-	val = simple_strtoul(buf, &endp, 0);
-	if (endp == buf || val > 10000000)
+	ret = kstrtouint(buf, 0, &val);
+	if (ret)
+		return ret;
+	if (val > 10000000)
 		return -EINVAL;
 
 	rtnl_lock();
@@ -2437,8 +2440,6 @@ static int cxgb_extension_ioctl(struct net_device *dev, void __user *useraddr)
 
 		if (!is_offload(adapter))
 			return -EOPNOTSUPP;
-		if (!capable(CAP_NET_ADMIN))
-			return -EPERM;
 		if (!(adapter->flags & FULL_INIT_DONE))
 			return -EIO;	/* need the memory controllers */
 		if (copy_from_user(&t, useraddr, sizeof(t)))

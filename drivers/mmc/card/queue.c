@@ -18,11 +18,14 @@
 #include <linux/scatterlist.h>
 #include <linux/dma-mapping.h>
 #include <linux/version.h>
+#include <linux/backing-dev.h>
 
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
 #include <linux/sched/rt.h>
+
 #include "queue.h"
+#include "block.h"
 
 #define MMC_QUEUE_BOUNCESZ	65536
 
@@ -36,7 +39,8 @@ static int mmc_prep_request(struct request_queue *q, struct request *req)
 	/*
 	 * We only like normal block requests and discards.
 	 */
-	if (req->cmd_type != REQ_TYPE_FS && !(req->cmd_flags & REQ_DISCARD)) {
+	if (req->cmd_type != REQ_TYPE_FS && req_op(req) != REQ_OP_DISCARD &&
+	    req_op(req) != REQ_OP_SECURE_ERASE) {
 		blk_dump_rq_flags(req, "MMC bad request");
 		return BLKPREP_KILL;
 	}
@@ -55,17 +59,16 @@ static int mmc_queue_thread(void *d)
 	struct request_queue *q = mq->queue;
 	struct sched_param scheduler_params = {0};
 
-	if (mq->card->type != MMC_TYPE_SD) {
+	if (mq->card && (mq->card->type != MMC_TYPE_SD)) {
 		scheduler_params.sched_priority = 1;
 		sched_setscheduler(current, SCHED_FIFO, &scheduler_params);
 	}
-
+	
 	current->flags |= PF_MEMALLOC;
 
 	down(&mq->thread_sem);
 	do {
 		struct request *req = NULL;
-		unsigned int cmd_flags = 0;
 
 		spin_lock_irq(q->queue_lock);
 		set_current_state(TASK_INTERRUPTIBLE);
@@ -75,13 +78,15 @@ static int mmc_queue_thread(void *d)
 			req = NULL;
 		else
 			req = blk_fetch_request(q);
+
 		mq->mqrq_cur->req = req;
 		spin_unlock_irq(q->queue_lock);
 
 		if (req || mq->mqrq_prev->req) {
+			bool req_is_special = mmc_req_is_special(req);
+
 			set_current_state(TASK_RUNNING);
-			cmd_flags = req ? req->cmd_flags : 0;
-			mq->issue_fn(mq, req);
+			mmc_blk_issue_rq(mq, req);
 			cond_resched();
 			if (mq->flags & MMC_QUEUE_NEW_REQUEST) {
 				mq->flags &= ~MMC_QUEUE_NEW_REQUEST;
@@ -95,7 +100,7 @@ static int mmc_queue_thread(void *d)
 			 * has been finished. Do not assign it to previous
 			 * request.
 			 */
-			if (cmd_flags & MMC_REQ_SPECIAL_MASK)
+			if (req_is_special)
 				mq->mqrq_cur->req = NULL;
 
 			mq->mqrq_prev->brq.mrq.data = NULL;
@@ -187,7 +192,7 @@ static void mmc_queue_setup_discard(struct request_queue *q,
 	if (card->pref_erase > max_discard)
 		q->limits.discard_granularity = 0;
 	if (mmc_can_secure_erase_trim(card))
-		queue_flag_set_unlocked(QUEUE_FLAG_SECDISCARD, q);
+		queue_flag_set_unlocked(QUEUE_FLAG_SECERASE, q);
 }
 
 /**
@@ -306,25 +311,27 @@ int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card,
 		host->index, subname ? subname : "");
 
 	if (mmc_card_sd(card)) {
-		/* decrease max # of requests to 32. The goal of this tunning is
+		/* decrease max # of requests to 32. The goal of this tuning is
 		 * reducing the time for draining elevator when elevator_switch
 		 * function is called. It is effective for slow external sdcard.
 		 */
 		mq->queue->nr_requests = BLKDEV_MAX_RQ / 8;
 		if (mq->queue->nr_requests < 32)
 			mq->queue->nr_requests = 32;
+
 #ifdef CONFIG_LARGE_DIRTY_BUFFER
 		/* apply more throttle on external sdcard */
 		mq->queue->backing_dev_info.capabilities |= BDI_CAP_STRICTLIMIT;
-		bdi_set_min_ratio(&mq->queue->backing_dev_info, 20);
-		bdi_set_max_ratio(&mq->queue->backing_dev_info, 20);
+		bdi_set_min_ratio(&mq->queue->backing_dev_info, 30);
+		bdi_set_max_ratio(&mq->queue->backing_dev_info, 60);
 #endif
+
 		pr_info("Parameters for external-sdcard: min/max_ratio: %u/%u "
-				"strictlimit: on nr_requests: %lu read_ahead_kb: %lu\n",
-				mq->queue->backing_dev_info.min_ratio,
-				mq->queue->backing_dev_info.max_ratio,
-				mq->queue->nr_requests,
-				mq->queue->backing_dev_info.ra_pages * 4);
+			"strictlimit: on nr_requests: %lu read_ahead_kb: %lu\n",
+			mq->queue->backing_dev_info.min_ratio,
+			mq->queue->backing_dev_info.max_ratio,
+			mq->queue->nr_requests,
+			mq->queue->backing_dev_info.ra_pages * 4);
 	}
 
 	if (IS_ERR(mq->thread)) {
@@ -366,6 +373,12 @@ void mmc_cleanup_queue(struct mmc_queue *mq)
 
 	/* Then terminate our worker thread */
 	kthread_stop(mq->thread);
+
+#ifdef CONFIG_LARGE_DIRTY_BUFFER
+	/* Restore bdi min/max ratio before device removal */
+	bdi_set_min_ratio(&q->backing_dev_info, 0);
+	bdi_set_max_ratio(&q->backing_dev_info, 100);
+#endif
 
 	/* Empty the queue */
 	spin_lock_irqsave(q->queue_lock, flags);

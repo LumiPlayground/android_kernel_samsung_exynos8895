@@ -37,16 +37,17 @@ struct snd_usb_audio {
 	struct usb_interface *pm_intf;
 	u32 usb_id;
 	struct mutex mutex;
-	unsigned int system_suspend;
+	unsigned int autosuspended:1;
 	atomic_t active;
 	atomic_t shutdown;
 	atomic_t usage_count;
 	wait_queue_head_t shutdown_wait;
 	unsigned int txfr_quirk:1; /* Subframe boundaries on transfers */
 	unsigned int tx_length_quirk:1; /* Put length specifier in transfers */
-	
+
 	int num_interfaces;
 	int num_suspended_intf;
+	int sample_rate_read_error;
 
 	struct list_head pcm_list;	/* list of pcm streams */
 	struct list_head ep_list;	/* list of audio-related endpoints */
@@ -61,8 +62,6 @@ struct snd_usb_audio {
 
 	struct usb_host_interface *ctrl_intf;	/* the audio control interface */
 };
-
-#define USB_AUDIO_IFACE_UNUSED	((void *)-1L)
 
 #define usb_audio_err(chip, fmt, args...) \
 	dev_err(&(chip)->dev->dev, fmt, ##args)

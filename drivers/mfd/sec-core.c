@@ -110,13 +110,6 @@ static struct mfd_cell s2mpu03_devs[] = {
 	},
 };
 
-static struct mfd_cell s2mps16_devs[] = {
-	{
-		.name = "s2mps16-pmic",
-	}, {
-		.name = "s2m-rtc",
-	},
-};
 
 #ifdef CONFIG_OF
 static struct of_device_id sec_dt_match[] = {
@@ -135,9 +128,7 @@ static struct of_device_id sec_dt_match[] = {
 	{	.compatible = "samsung,s2mpu03-pmic",
 		.data = (void *)S2MPU03X,
 	},
-	{	.compatible = "samsung,s2mps16-pmic",
-		.data = (void *)S2MPS16X,
-	},
+
 	{},
 };
 #endif
@@ -653,10 +644,6 @@ static int sec_pmic_probe(struct i2c_client *i2c,
 		ret = mfd_add_devices(sec_pmic->dev, -1, s2mpu03_devs,
 				      ARRAY_SIZE(s2mpu03_devs), NULL, 0, NULL);
 		break;
-	case S2MPS16X:
-		ret = mfd_add_devices(sec_pmic->dev, -1, s2mps16_devs,
-				      ARRAY_SIZE(s2mps16_devs), NULL, 0, NULL);
-		break;
 	default:
 		/* If this happens the probe function is problem */
 		BUG();
@@ -707,8 +694,6 @@ static int sec_suspend(struct device *dev)
 	disable_irq(sec_pmic->irq);
 	if (sec_pmic->device_type == S2MPS15X && sec_pmic->adc_en)
 		sec_reg_write(sec_pmic, 0x5C, 0x00);
-	else if (sec_pmic->device_type == S2MPS16X && sec_pmic->adc_en)
-		sec_reg_write(sec_pmic, 0x6B, 0x00);
 	return 0;
 }
 
@@ -723,8 +708,6 @@ static int sec_resume(struct device *dev)
 	enable_irq(sec_pmic->irq);
 	if (sec_pmic->device_type == S2MPS15X && sec_pmic->adc_en)
 		sec_reg_write(sec_pmic, 0x5C, 0x80);
-	else if (sec_pmic->device_type == S2MPS16X && sec_pmic->adc_en)
-		sec_reg_write(sec_pmic, 0x6B, 0x80);
 	return 0;
 }
 #else

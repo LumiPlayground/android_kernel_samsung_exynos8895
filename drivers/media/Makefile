@@ -2,6 +2,10 @@
 # Makefile for the kernel multimedia device drivers.
 #
 
+ifeq ($(CONFIG_MEDIA_CEC_EDID),y)
+  obj-$(CONFIG_MEDIA_SUPPORT) += cec-edid.o
+endif
+
 media-objs	:= media-device.o media-devnode.o media-entity.o
 
 #
@@ -34,7 +38,7 @@ obj-y += rc/
 # Finally, merge the drivers that require the core
 #
 
-obj-y += common/ platform/ pci/ usb/ mmc/ firewire/
+obj-y += common/ platform/ pci/ usb/ mmc/ firewire/ spi/
 obj-$(CONFIG_VIDEO_DEV) += radio/
 obj-$(CONFIG_TDMB)  += tdmb/
 

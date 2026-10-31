@@ -23,6 +23,7 @@
 #include <linux/export.h>
 #include <linux/ioport.h>
 #include <linux/slab.h>
+#include <linux/irq.h>
 
 #ifdef CONFIG_X86
 #define valid_IRQ(i) (((i) != 0) && ((i) != 2))
@@ -348,6 +349,31 @@ unsigned long acpi_dev_irq_flags(u8 triggering, u8 polarity, u8 shareable)
 }
 EXPORT_SYMBOL_GPL(acpi_dev_irq_flags);
 
+/**
+ * acpi_dev_get_irq_type - Determine irq type.
+ * @triggering: Triggering type as provided by ACPI.
+ * @polarity: Interrupt polarity as provided by ACPI.
+ */
+unsigned int acpi_dev_get_irq_type(int triggering, int polarity)
+{
+	switch (polarity) {
+	case ACPI_ACTIVE_LOW:
+		return triggering == ACPI_EDGE_SENSITIVE ?
+		       IRQ_TYPE_EDGE_FALLING :
+		       IRQ_TYPE_LEVEL_LOW;
+	case ACPI_ACTIVE_HIGH:
+		return triggering == ACPI_EDGE_SENSITIVE ?
+		       IRQ_TYPE_EDGE_RISING :
+		       IRQ_TYPE_LEVEL_HIGH;
+	case ACPI_ACTIVE_BOTH:
+		if (triggering == ACPI_EDGE_SENSITIVE)
+			return IRQ_TYPE_EDGE_BOTH;
+	default:
+		return IRQ_TYPE_NONE;
+	}
+}
+EXPORT_SYMBOL_GPL(acpi_dev_get_irq_type);
+
 static void acpi_dev_irqresource_disabled(struct resource *res, u32 gsi)
 {
 	res->start = gsi;
@@ -506,7 +532,7 @@ static acpi_status acpi_dev_process_resource(struct acpi_resource *ares,
 		ret = c->preproc(ares, c->preproc_data);
 		if (ret < 0) {
 			c->error = ret;
-			return AE_ABORT_METHOD;
+			return AE_CTRL_TERMINATE;
 		} else if (ret > 0) {
 			return AE_OK;
 		}

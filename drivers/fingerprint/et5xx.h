@@ -34,7 +34,7 @@
 #include <linux/amba/bus.h>
 #include <linux/amba/pl330.h>
 #if defined(CONFIG_SECURE_OS_BOOSTER_API)
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS7870) \
+#if defined(CONFIG_SOC_EXYNOS7870) \
 	|| defined(CONFIG_SOC_EXYNOS7880) || defined(CONFIG_SOC_EXYNOS7570) \
 	|| defined(CONFIG_SOC_EXYNOS8895)
 #include <soc/samsung/secos_booster.h>
@@ -198,7 +198,7 @@ struct etspi_data {
 	unsigned int sleepPin;	/* Sleep GPIO pin number */
 	unsigned int ldo_pin;	/* Ldo GPIO pin number */
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 	/* set cs pin in fp driver, use only Exynos8890 */
 	/* for use auto cs mode with dualization fp sensor */
 	unsigned int cs_gpio;

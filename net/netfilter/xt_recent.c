@@ -110,7 +110,6 @@ static const struct file_operations recent_old_fops, recent_mt_fops;
 #endif
 
 static u_int32_t hash_rnd __read_mostly;
-static bool hash_rnd_inited __read_mostly;
 
 static inline unsigned int recent_entry_hash4(const union nf_inet_addr *addr)
 {
@@ -156,8 +155,7 @@ static void recent_entry_remove(struct recent_table *t, struct recent_entry *e)
 /*
  * Drop entries with timestamps older then 'time'.
  */
-static void recent_entry_reap(struct recent_table *t, unsigned long time,
-			      struct recent_entry *working, bool update)
+static void recent_entry_reap(struct recent_table *t, unsigned long time)
 {
 	struct recent_entry *e;
 
@@ -165,12 +163,6 @@ static void recent_entry_reap(struct recent_table *t, unsigned long time,
 	 * The head of the LRU list is always the oldest entry.
 	 */
 	e = list_entry(t->lru_list.next, struct recent_entry, lru_list);
-
-	/*
-	 * Do not reap the entry which are going to be updated.
-	 */
-	if (e == working && update)
-		return;
 
 	/*
 	 * The last time stamp is the most recent.
@@ -314,8 +306,7 @@ recent_mt(const struct sk_buff *skb, struct xt_action_param *par)
 
 		/* info->seconds must be non-zero */
 		if (info->check_set & XT_RECENT_REAP)
-			recent_entry_reap(t, time, e,
-				info->check_set & XT_RECENT_UPDATE && ret);
+			recent_entry_reap(t, time);
 	}
 
 	if (info->check_set & XT_RECENT_SET ||
@@ -348,10 +339,8 @@ static int recent_mt_check(const struct xt_mtchk_param *par,
 	int ret = -EINVAL;
 	size_t sz;
 
-	if (unlikely(!hash_rnd_inited)) {
-		get_random_bytes(&hash_rnd, sizeof(hash_rnd));
-		hash_rnd_inited = true;
-	}
+	net_get_random_once(&hash_rnd, sizeof(hash_rnd));
+
 	if (info->check_set & ~XT_RECENT_VALID_FLAGS) {
 		pr_info("Unsupported user space flags (%08x)\n",
 			info->check_set);

@@ -10,12 +10,24 @@
 #
 # Copyright (C) 1995-2001 by Russell King
 
+LDFLAGS_vmlinux	:=--no-undefined -X
 CPPFLAGS_vmlinux.lds = -DTEXT_OFFSET=$(TEXT_OFFSET)
-OBJCOPYFLAGS	:=-O binary -R .note -R .note.gnu.build-id -R .comment -S
 GZFLAGS		:=-9
 
 ifneq ($(CONFIG_RELOCATABLE)$(CONFIG_RELOCATABLE_KERNEL),)
-LDFLAGS_vmlinux		+= -pie -Bsymbolic
+# Pass --no-apply-dynamic-relocs to restore pre-binutils-2.27 behaviour
+# for relative relocs, since this leads to better Image compression
+# with the relocation offsets always being zero.
+LDFLAGS_vmlinux		+= -pie -shared -Bsymbolic \
+			$(call ld-option, --no-apply-dynamic-relocs)
+endif
+
+ifeq ($(CONFIG_ARM64_ERRATUM_843419),y)
+  ifeq ($(call ld-option, --fix-cortex-a53-843419),)
+$(warning ld does not support --fix-cortex-a53-843419; kernel may be susceptible to erratum)
+  else
+LDFLAGS_vmlinux	+= --fix-cortex-a53-843419
+  endif
 endif
 
 KBUILD_DEFCONFIG := defconfig
@@ -47,10 +59,12 @@ ifeq ($(CONFIG_CPU_BIG_ENDIAN), y)
 KBUILD_CPPFLAGS	+= -mbig-endian
 AS		+= -EB
 LD		+= -EB
+UTS_MACHINE	:= aarch64_be
 else
 KBUILD_CPPFLAGS	+= -mlittle-endian
 AS		+= -EL
 LD		+= -EL
+UTS_MACHINE	:= aarch64
 endif
 
 CHECKFLAGS	+= -D__aarch64__
@@ -68,7 +82,9 @@ head-y		:= arch/arm64/kernel/head.o
 
 # The byte offset of the kernel image in RAM from the start of RAM.
 ifeq ($(CONFIG_ARM64_RANDOMIZE_TEXT_OFFSET), y)
-TEXT_OFFSET := $(shell awk 'BEGIN {srand(); printf "0x%03x000\n", int(512 * rand())}')
+TEXT_OFFSET := $(shell awk "BEGIN {srand(); printf \"0x%06x\n\", \
+		 int(2 * 1024 * 1024 / (2 ^ $(CONFIG_ARM64_PAGE_SHIFT)) * \
+		 rand()) * (2 ^ $(CONFIG_ARM64_PAGE_SHIFT))}")
 else
 TEXT_OFFSET := 0x00080000
 endif
@@ -119,10 +135,10 @@ boot := arch/arm64/boot
 Image: vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
-Image.%: vmlinux
+Image.%: Image
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
-zinstall install: vmlinux
+zinstall install:
 	$(Q)$(MAKE) $(build)=$(boot) $@
 
 %.dtb: scripts

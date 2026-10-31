@@ -57,12 +57,10 @@ static void ichxrom_cleanup(struct ichxrom_window *window)
 {
 	struct ichxrom_map_info *map, *scratch;
 	u16 word;
-	int ret;
 
 	/* Disable writes through the rom window */
-	ret = pci_read_config_word(window->pdev, BIOS_CNTL, &word);
-	if (!ret)
-		pci_write_config_word(window->pdev, BIOS_CNTL, word & ~1);
+	pci_read_config_word(window->pdev, BIOS_CNTL, &word);
+	pci_write_config_word(window->pdev, BIOS_CNTL, word & ~1);
 	pci_dev_put(window->pdev);
 
 	/* Free all of the mtd devices */

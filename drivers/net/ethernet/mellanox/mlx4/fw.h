@@ -44,6 +44,7 @@ struct mlx4_mod_stat_cfg {
 };
 
 struct mlx4_port_cap {
+	u8  link_state;
 	u8  supported_port_types;
 	u8  suggested_type;
 	u8  default_sense;
@@ -52,6 +53,7 @@ struct mlx4_port_cap {
 	int ib_mtu;
 	int max_port_width;
 	int max_vl;
+	int max_tc_eth;
 	int max_gids;
 	int max_pkeys;
 	u64 def_mac;
@@ -78,9 +80,7 @@ struct mlx4_dev_cap {
 	int max_eqs;
 	int num_sys_eqs;
 	int reserved_mtts;
-	int max_mrw_sz;
 	int reserved_mrws;
-	int max_mtt_seg;
 	int max_requester_per_qp;
 	int max_responder_per_qp;
 	int max_rdma_global;
@@ -184,8 +184,8 @@ struct mlx4_init_hca_param {
 	u64 cmpt_base;
 	u64 mtt_base;
 	u64 global_caps;
-	u8 log_mc_entry_sz;
-	u8 log_mc_hash_sz;
+	u16 log_mc_entry_sz;
+	u16 log_mc_hash_sz;
 	u16 hca_core_clock; /* Internal Clock Frequency (in MHz) */
 	u8  log_num_qps;
 	u8  log_num_srqs;

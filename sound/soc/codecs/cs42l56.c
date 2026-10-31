@@ -56,7 +56,7 @@ struct  cs42l56_private {
 	u8 iface;
 	u8 iface_fmt;
 	u8 iface_inv;
-#if defined(CONFIG_INPUT) || defined(CONFIG_INPUT_MODULE)
+#if IS_ENABLED(CONFIG_INPUT)
 	struct input_dev *beep;
 	struct work_struct beep_work;
 	int beep_rate;
@@ -1121,13 +1121,14 @@ static const struct snd_soc_codec_driver soc_codec_dev_cs42l56 = {
 	.set_bias_level = cs42l56_set_bias_level,
 	.suspend_bias_off = true,
 
-	.dapm_widgets = cs42l56_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(cs42l56_dapm_widgets),
-	.dapm_routes = cs42l56_audio_map,
-	.num_dapm_routes = ARRAY_SIZE(cs42l56_audio_map),
-
-	.controls = cs42l56_snd_controls,
-	.num_controls = ARRAY_SIZE(cs42l56_snd_controls),
+	.component_driver = {
+		.controls		= cs42l56_snd_controls,
+		.num_controls		= ARRAY_SIZE(cs42l56_snd_controls),
+		.dapm_widgets		= cs42l56_dapm_widgets,
+		.num_dapm_widgets	= ARRAY_SIZE(cs42l56_dapm_widgets),
+		.dapm_routes		= cs42l56_audio_map,
+		.num_dapm_routes	= ARRAY_SIZE(cs42l56_audio_map),
+	},
 };
 
 static const struct regmap_config cs42l56_regmap = {
@@ -1269,7 +1270,6 @@ static int cs42l56_i2c_probe(struct i2c_client *i2c_client,
 		dev_err(&i2c_client->dev,
 			"CS42L56 Device ID (%X). Expected %X\n",
 			devid, CS42L56_DEVID);
-		ret = -EINVAL;
 		goto err_enable;
 	}
 	alpha_rev = reg & CS42L56_AREV_MASK;
@@ -1325,7 +1325,7 @@ static int cs42l56_i2c_probe(struct i2c_client *i2c_client,
 	ret =  snd_soc_register_codec(&i2c_client->dev,
 			&soc_codec_dev_cs42l56, &cs42l56_dai, 1);
 	if (ret < 0)
-		goto err_enable;
+		return ret;
 
 	return 0;
 

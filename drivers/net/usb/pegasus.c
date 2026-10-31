@@ -432,7 +432,7 @@ static int enable_net_traffic(struct net_device *dev, struct usb_device *usb)
 	int ret;
 
 	read_mii_word(pegasus, pegasus->phy, MII_LPA, &linkpart);
-	data[0] = 0xc9;
+	data[0] = 0xc8; /* TX & RX enable, append status, no CRC */
 	data[1] = 0;
 	if (linkpart & (ADVERTISE_100FULL | ADVERTISE_10FULL))
 		data[1] |= 0x20;	/* set full duplex */
@@ -494,7 +494,7 @@ static void read_bulk_callback(struct urb *urb)
 		goto goon;
 	}
 
-	if (!count || count < 4)
+	if (count < 4)
 		goto goon;
 
 	rx_status = buf[count - 2];
@@ -518,7 +518,7 @@ static void read_bulk_callback(struct urb *urb)
 		pkt_len = buf[count - 3] << 8;
 		pkt_len += buf[count - 4];
 		pkt_len &= 0xfff;
-		pkt_len -= 8;
+		pkt_len -= 4;
 	}
 
 	/*
@@ -549,7 +549,7 @@ static void read_bulk_callback(struct urb *urb)
 goon:
 	usb_fill_bulk_urb(pegasus->rx_urb, pegasus->usb,
 			  usb_rcvbulkpipe(pegasus->usb, 1),
-			  pegasus->rx_skb->data, PEGASUS_MTU + 8,
+			  pegasus->rx_skb->data, PEGASUS_MTU,
 			  read_bulk_callback, pegasus);
 	rx_status = usb_submit_urb(pegasus->rx_urb, GFP_ATOMIC);
 	if (rx_status == -ENODEV)
@@ -590,7 +590,7 @@ static void rx_fixup(unsigned long data)
 	}
 	usb_fill_bulk_urb(pegasus->rx_urb, pegasus->usb,
 			  usb_rcvbulkpipe(pegasus->usb, 1),
-			  pegasus->rx_skb->data, PEGASUS_MTU + 8,
+			  pegasus->rx_skb->data, PEGASUS_MTU,
 			  read_bulk_callback, pegasus);
 try_again:
 	status = usb_submit_urb(pegasus->rx_urb, GFP_ATOMIC);
@@ -636,7 +636,7 @@ static void write_bulk_callback(struct urb *urb)
 		break;
 	}
 
-	net->trans_start = jiffies; /* prevent tx timeout */
+	netif_trans_update(net); /* prevent tx timeout */
 	netif_wake_queue(net);
 }
 
@@ -755,16 +755,12 @@ static inline void disable_net_traffic(pegasus_t *pegasus)
 	set_registers(pegasus, EthCtrl0, sizeof(tmp), &tmp);
 }
 
-static inline int get_interrupt_interval(pegasus_t *pegasus)
+static inline void get_interrupt_interval(pegasus_t *pegasus)
 {
 	u16 data;
 	u8 interval;
-	int ret;
 
-	ret = read_eprom_word(pegasus, 4, &data);
-	if (ret < 0)
-		return ret;
-
+	read_eprom_word(pegasus, 4, &data);
 	interval = data >> 8;
 	if (pegasus->usb->speed != USB_SPEED_HIGH) {
 		if (interval < 0x80) {
@@ -779,8 +775,6 @@ static inline int get_interrupt_interval(pegasus_t *pegasus)
 		}
 	}
 	pegasus->intr_interval = interval;
-
-	return 0;
 }
 
 static void set_carrier(struct net_device *net)
@@ -850,7 +844,7 @@ static int pegasus_open(struct net_device *net)
 
 	usb_fill_bulk_urb(pegasus->rx_urb, pegasus->usb,
 			  usb_rcvbulkpipe(pegasus->usb, 1),
-			  pegasus->rx_skb->data, PEGASUS_MTU + 8,
+			  pegasus->rx_skb->data, PEGASUS_MTU,
 			  read_bulk_callback, pegasus);
 	if ((res = usb_submit_urb(pegasus->rx_urb, GFP_KERNEL))) {
 		if (res == -ENODEV)
@@ -1156,7 +1150,8 @@ static int pegasus_probe(struct usb_interface *intf,
 		return -ENODEV;
 
 	if (pegasus_count == 0) {
-		pegasus_workqueue = create_singlethread_workqueue("pegasus");
+		pegasus_workqueue = alloc_workqueue("pegasus", WQ_MEM_RECLAIM,
+						    0);
 		if (!pegasus_workqueue)
 			return -ENOMEM;
 	}
@@ -1196,9 +1191,7 @@ static int pegasus_probe(struct usb_interface *intf,
 				| NETIF_MSG_PROBE | NETIF_MSG_LINK);
 
 	pegasus->features = usb_dev_id[dev_index].private;
-	res = get_interrupt_interval(pegasus);
-	if (res)
-		goto out2;
+	get_interrupt_interval(pegasus);
 	if (reset_mac(pegasus)) {
 		dev_err(&intf->dev, "can't reset MAC\n");
 		res = -EIO;

@@ -109,7 +109,7 @@ static void __init of_ti_clockdomain_setup(struct device_node *node)
 	struct clk_hw *clk_hw;
 	const char *clkdm_name = node->name;
 	int i;
-	int num_clks;
+	unsigned int num_clks;
 
 	num_clks = of_clk_get_parent_count(node);
 
@@ -124,12 +124,10 @@ static void __init of_ti_clockdomain_setup(struct device_node *node)
 		if (clk_hw_get_flags(clk_hw) & CLK_IS_BASIC) {
 			pr_warn("can't setup clkdm for basic clk %s\n",
 				__clk_get_name(clk));
-			clk_put(clk);
 			continue;
 		}
 		to_clk_hw_omap(clk_hw)->clkdm_name = clkdm_name;
 		omap2_init_clk_clkdm(clk_hw);
-		clk_put(clk);
 	}
 }
 

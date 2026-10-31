@@ -486,9 +486,6 @@ struct s5p_mfc_dev {
 	struct pm_qos_request qos_req_cluster0;
 #endif
 	int qos_has_enc_ctx;
-#ifdef CONFIG_EXYNOS8890_BTS_OPTIMIZATION
-	int qos_extra;
-#endif
 #endif
 	int id;
 	atomic_t clk_ref;

@@ -68,7 +68,7 @@ MODULE_PARM_DESC(default_radio_region, "Region: 0=Europe/US, 1=Japan");
 /* RDS buffer blocks */
 static u32 default_rds_buf = 300;
 module_param(default_rds_buf, uint, 0444);
-MODULE_PARM_DESC(rds_buf, "RDS buffer entries");
+MODULE_PARM_DESC(default_rds_buf, "RDS buffer entries");
 
 /* Radio Nr */
 static u32 radio_nr = -1;
@@ -1278,9 +1278,8 @@ static int fm_download_firmware(struct fmdev *fmdev, const u8 *fw_name)
 
 		switch (action->type) {
 		case ACTION_SEND_COMMAND:	/* Send */
-			ret = fmc_send_cmd(fmdev, 0, 0, action->data,
-					   action->size, NULL, NULL);
-			if (ret)
+			if (fmc_send_cmd(fmdev, 0, 0, action->data,
+						action->size, NULL, NULL))
 				goto rel_fw;
 
 			cmd_cnt++;
@@ -1476,7 +1475,7 @@ static long fm_st_receive(void *arg, struct sk_buff *skb)
  * Called by ST layer to indicate protocol registration completion
  * status.
  */
-static void fm_st_reg_comp_cb(void *arg, char data)
+static void fm_st_reg_comp_cb(void *arg, int data)
 {
 	struct fmdev *fmdev;
 

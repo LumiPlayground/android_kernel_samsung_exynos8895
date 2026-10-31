@@ -22,7 +22,6 @@
 #include <linux/stacktrace.h>
 
 #include <asm/irq.h>
-#include <asm/stack_pointer.h>
 #include <asm/stacktrace.h>
 
 /*
@@ -44,6 +43,9 @@ int notrace unwind_frame(struct task_struct *tsk, struct stackframe *frame)
 	unsigned long fp = frame->fp;
 	unsigned long irq_stack_ptr;
 
+	if (!tsk)
+		tsk = current;
+
 	/*
 	 * Switching between stacks is valid when tracing current and in
 	 * non-preemptible context.
@@ -64,8 +66,56 @@ int notrace unwind_frame(struct task_struct *tsk, struct stackframe *frame)
 		return -EINVAL;
 
 	frame->sp = fp + 0x10;
-	frame->fp = *(unsigned long *)(fp);
-	frame->pc = *(unsigned long *)(fp + 8);
+	frame->fp = READ_ONCE_NOCHECK(*(unsigned long *)(fp));
+	frame->pc = READ_ONCE_NOCHECK(*(unsigned long *)(fp + 8));
+
+#ifdef CONFIG_FUNCTION_GRAPH_TRACER
+	if (tsk->ret_stack &&
+			(frame->pc == (unsigned long)return_to_handler)) {
+		if (WARN_ON_ONCE(frame->graph == -1))
+			return -EINVAL;
+		if (frame->graph < -1)
+			frame->graph += FTRACE_NOTRACE_DEPTH;
+
+		/*
+		 * This is a case where function graph tracer has
+		 * modified a return address (LR) in a stack frame
+		 * to hook a function return.
+		 * So replace it to an original value.
+		 */
+		frame->pc = tsk->ret_stack[frame->graph--].ret;
+	}
+#endif /* CONFIG_FUNCTION_GRAPH_TRACER */
+
+	/*
+	 * Check whether we are going to walk through from interrupt stack
+	 * to task stack.
+	 * If we reach the end of the stack - and its an interrupt stack,
+	 * unpack the dummy frame to find the original elr.
+	 *
+	 * Check the frame->fp we read from the bottom of the irq_stack,
+	 * and the original task stack pointer are both in current->stack.
+	 */
+	if (frame->sp == irq_stack_ptr) {
+		struct pt_regs *irq_args;
+		unsigned long orig_sp = IRQ_STACK_TO_TASK_STACK(irq_stack_ptr);
+
+		if (object_is_on_stack((void *)orig_sp) &&
+		   object_is_on_stack((void *)frame->fp)) {
+			frame->sp = orig_sp;
+
+			/* orig_sp is the saved pt_regs, find the elr */
+			irq_args = (struct pt_regs *)orig_sp;
+			frame->pc = irq_args->pc;
+		} else {
+			/*
+			 * This frame has a non-standard format, and we
+			 * didn't fix it, because the data looked wrong.
+			 * Refuse to output this frame.
+			 */
+			return -EINVAL;
+		}
+	}
 
 #ifdef CONFIG_FUNCTION_GRAPH_TRACER
 	if (tsk && tsk->ret_stack &&
@@ -155,6 +205,27 @@ static int save_trace(struct stackframe *frame, void *d)
 	trace->entries[trace->nr_entries++] = addr;
 
 	return trace->nr_entries >= trace->max_entries;
+}
+
+void save_stack_trace_regs(struct pt_regs *regs, struct stack_trace *trace)
+{
+	struct stack_trace_data data;
+	struct stackframe frame;
+
+	data.trace = trace;
+	data.skip = trace->skip;
+	data.no_sched_functions = 0;
+
+	frame.fp = regs->regs[29];
+	frame.sp = regs->sp;
+	frame.pc = regs->pc;
+#ifdef CONFIG_FUNCTION_GRAPH_TRACER
+	frame.graph = current->curr_ret_stack;
+#endif
+
+	walk_stackframe(current, &frame, save_trace, &data);
+	if (trace->nr_entries < trace->max_entries)
+		trace->entries[trace->nr_entries++] = ULONG_MAX;
 }
 
 void save_stack_trace_tsk(struct task_struct *tsk, struct stack_trace *trace)

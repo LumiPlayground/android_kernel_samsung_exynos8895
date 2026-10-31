@@ -166,6 +166,7 @@ static struct platform_driver tsi_eth_driver = {
 
 static void tsi108_timed_checker(unsigned long dev_ptr);
 
+#ifdef DEBUG
 static void dump_eth_one(struct net_device *dev)
 {
 	struct tsi108_prv_data *data = netdev_priv(dev);
@@ -190,6 +191,7 @@ static void dump_eth_one(struct net_device *dev)
 	       TSI_READ(TSI108_EC_RXESTAT),
 	       TSI_READ(TSI108_EC_RXERR), data->rxpending);
 }
+#endif
 
 /* Synchronization is needed between the thread and up/down events.
  * Note that the PHY is accessed through the same registers for both
@@ -379,10 +381,9 @@ tsi108_stat_carry_one(int carry, int carry_bit, int carry_shift,
 static void tsi108_stat_carry(struct net_device *dev)
 {
 	struct tsi108_prv_data *data = netdev_priv(dev);
-	unsigned long flags;
 	u32 carry1, carry2;
 
-	spin_lock_irqsave(&data->misclock, flags);
+	spin_lock_irq(&data->misclock);
 
 	carry1 = TSI_READ(TSI108_STAT_CARRY1);
 	carry2 = TSI_READ(TSI108_STAT_CARRY2);
@@ -450,7 +451,7 @@ static void tsi108_stat_carry(struct net_device *dev)
 			      TSI108_STAT_TXPAUSEDROP_CARRY,
 			      &data->tx_pause_drop);
 
-	spin_unlock_irqrestore(&data->misclock, flags);
+	spin_unlock_irq(&data->misclock);
 }
 
 /* Read a stat counter atomically with respect to carries.
@@ -1315,7 +1316,8 @@ static int tsi108_open(struct net_device *dev)
 	data->txring = dma_zalloc_coherent(NULL, txring_size, &data->txdma,
 					   GFP_KERNEL);
 	if (!data->txring) {
-		pci_free_consistent(0, rxring_size, data->rxring, data->rxdma);
+		pci_free_consistent(NULL, rxring_size, data->rxring,
+				    data->rxdma);
 		return -ENOMEM;
 	}
 

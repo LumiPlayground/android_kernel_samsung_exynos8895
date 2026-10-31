@@ -47,7 +47,7 @@ static struct kmem_cache *hashtable_entry_cachep;
 
 static unsigned int full_name_case_hash(const unsigned char *name, unsigned int len)
 {
-	unsigned long hash = init_name_hash();
+	unsigned long hash = init_name_hash(NULL);
 
 	while (len--)
 		hash = partial_name_hash(tolower(*name++), hash);
@@ -832,7 +832,6 @@ static struct configfs_subsystem sdcardfs_packages = {
 			.ci_namebuf = "sdcardfs",
 			.ci_type = &packages_type,
 		},
-		.default_groups = sd_default_groups,
 	},
 };
 
@@ -844,6 +843,8 @@ static int configfs_sdcardfs_init(void)
 	for (i = 0; sd_default_groups[i]; i++)
 		config_group_init(sd_default_groups[i]);
 	config_group_init(&subsys->su_group);
+	for (i = 0; sd_default_groups[i]; i++)
+		configfs_add_default_group(sd_default_groups[i], &subsys->su_group);
 	mutex_init(&subsys->su_mutex);
 	ret = configfs_register_subsystem(subsys);
 	if (ret) {

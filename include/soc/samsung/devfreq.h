@@ -72,8 +72,6 @@ void exynos7_int_notify_power_status(const char* pd_name, unsigned int turn_on);
 void exynos7_isp_notify_power_status(const char* pd_name, unsigned int turn_on);
 void exynos7_mif_notify_power_status(const char* pd_name, unsigned int turn_on);
 #define vpp_get_int_freq(a) do {} while (0)
-#elif defined(CONFIG_ARM_EXYNOS8890_BUS_DEVFREQ)
-#define vpp_get_int_freq(a) 0
 #endif
 
 #if defined(CONFIG_ARM_EXYNOS5433_BUS_DEVFREQ)

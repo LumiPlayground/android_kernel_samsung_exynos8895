@@ -80,6 +80,9 @@
 #define ESS_HEADER_TOTAL_SZ		(ESS_HEADER_SZ + ESS_MMU_REG_SZ + ESS_CORE_REG_SZ + ESS_SPARE_SZ)
 #define ESS_HEADER_ALLOC_SZ		SZ_2M
 
+static bool ess_log_prepared __initdata;
+static bool ess_early_log_enabled;
+
 /*  Length domain */
 #define ESS_LOG_STRING_LENGTH		SZ_128
 #define ESS_MMU_REG_OFFSET		SZ_512
@@ -1440,7 +1443,8 @@ static inline void exynos_ss_hook_logbuf(const char *buf, size_t size)
 {
 	struct exynos_ss_item *item = &ess_items[ess_desc.log_kernel_num];
 
-	if (likely(ess_base.enabled == true && item->entry.enabled == true)) {
+	if (likely((ess_base.enabled && item->entry.enabled) ||
+		   (ess_early_log_enabled && item->entry.enabled_init))) {
 		size_t last_buf;
 
 		if (exynos_ss_check_eob(item, size)) {
@@ -2227,6 +2231,8 @@ static size_t __init exynos_ss_remap(void)
 
 	page_size = ess_desc.vm.size / PAGE_SIZE;
 	pages = kzalloc(sizeof(struct page*) * page_size, GFP_KERNEL);
+	if (!pages)
+		return (size_t)-ENOMEM;
 	page = phys_to_page(ess_desc.vm.phys_addr);
 
 	for (i = 0; i < page_size; i++)
@@ -2235,7 +2241,8 @@ static size_t __init exynos_ss_remap(void)
 	ret = map_vm_area(&ess_desc.vm, prot, pages);
 	if (ret) {
 		pr_err("exynos-snapshot: failed to mapping between virt and phys for firmware");
-		return -ENOMEM;
+		kfree(pages);
+		return (size_t)ret;
 	}
 	kfree(pages);
 
@@ -2613,9 +2620,45 @@ static int __init exynos_ss_init_dt(void)
 	return init_fn(np);
 }
 
+static int __init exynos_ss_prepare_log(void)
+{
+	size_t mapping;
+
+	if (ess_log_prepared)
+		return 0;
+	if (!ess_base.vaddr || !ess_base.paddr || !ess_base.size)
+		return -ENODEV;
+	mapping = exynos_ss_remap();
+	if (IS_ERR_VALUE(mapping))
+		return (int)mapping;
+	if (!mapping)
+		return -ENODEV;
+	exynos_ss_fixmap();
+	ess_log_prepared = true;
+	return 0;
+}
+
+#ifdef CONFIG_EXYNOS_SNAPSHOT_EARLY_LOG
+void __init exynos_ss_early_log_init(void)
+{
+	int ret = exynos_ss_prepare_log();
+
+	if (ret) {
+		pr_err("ESS early boot: persistent log unavailable (%d)\n", ret);
+		return;
+	}
+	/* Enable only the kernel log; event tracing waits for its initcall. */
+	ess_early_log_enabled = true;
+	register_hook_logbuf(exynos_ss_hook_logbuf);
+	pr_notice("ESS early boot: persistent log ready before IRQ/timer setup\n");
+}
+#endif
+
 static int __init exynos_ss_init(void)
 {
-	if (ess_base.vaddr && ess_base.paddr && ess_base.size) {
+	int ret = exynos_ss_prepare_log();
+
+	if (!ret) {
 	/*
 	 *  for debugging when we don't know the virtual address of pointer,
 	 *  In just privous the debug buffer, It is added 16byte dummy data.
@@ -2623,13 +2666,13 @@ static int __init exynos_ss_init(void)
 	 *  --> @virtual_addr | @phy_addr | @buffer_size | @magic_key(0xDBDBDBDB)
 	 *  And then, the debug buffer is shown.
 	 */
-		exynos_ss_remap();
-		exynos_ss_fixmap();
 		exynos_ss_init_dt();
 		exynos_ss_scratch_reg(ESS_SIGN_SCRATCH);
 		exynos_ss_set_enable("base", true);
 
-		register_hook_logbuf(exynos_ss_hook_logbuf);
+		if (!ess_early_log_enabled)
+			register_hook_logbuf(exynos_ss_hook_logbuf);
+		ess_early_log_enabled = false;
 
 #ifdef CONFIG_EXYNOS_SNAPSHOT_HOOK_LOGGER
 		register_hook_logger(exynos_ss_hook_logger);
@@ -2642,7 +2685,7 @@ static int __init exynos_ss_init(void)
 	} else
 		pr_err("exynos-snapshot: %s failed\n", __func__);
 
-	return 0;
+	return ret;
 }
 early_initcall(exynos_ss_init);
 

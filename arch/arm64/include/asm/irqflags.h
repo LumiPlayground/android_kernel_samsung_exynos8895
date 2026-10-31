@@ -19,7 +19,12 @@
 #ifdef __KERNEL__
 
 #include <asm/ptrace.h>
-#include <linux/exynos-ss.h>
+#if defined(CONFIG_EXYNOS_SNAPSHOT) && defined(CONFIG_EXYNOS_SNAPSHOT_IRQ_DISABLED)
+extern void exynos_ss_irqs_disabled(unsigned long flags);
+#define arch_exynos_irq_trace(flags) exynos_ss_irqs_disabled(flags)
+#else
+#define arch_exynos_irq_trace(flags) do { } while (0)
+#endif
 
 /*
  * CPU interrupt mask handling.
@@ -33,13 +38,13 @@ static inline unsigned long arch_local_irq_save(void)
 		: "=r" (flags)
 		:
 		: "memory");
-	exynos_ss_irqs_disabled(0);
+	arch_exynos_irq_trace(0);
 	return flags;
 }
 
 static inline void arch_local_irq_enable(void)
 {
-	exynos_ss_irqs_disabled(1);
+	arch_exynos_irq_trace(1);
 	asm volatile(
 		"msr	daifclr, #2		// arch_local_irq_enable"
 		:
@@ -54,7 +59,7 @@ static inline void arch_local_irq_disable(void)
 		:
 		:
 		: "memory");
-	exynos_ss_irqs_disabled(0);
+	arch_exynos_irq_trace(0);
 }
 
 #define local_fiq_enable()	asm("msr	daifclr, #1" : : : "memory")
@@ -82,7 +87,7 @@ static inline unsigned long arch_local_save_flags(void)
  */
 static inline void arch_local_irq_restore(unsigned long flags)
 {
-	exynos_ss_irqs_disabled(flags & PSR_I_BIT);
+	arch_exynos_irq_trace(flags & PSR_I_BIT);
 	asm volatile(
 		"msr	daif, %0		// arch_local_irq_restore"
 	:
@@ -114,9 +119,6 @@ static inline int arch_irqs_disabled_flags(unsigned long flags)
 		"msr    daif, %0		// local_dbg_restore\n"	\
 		: : "r" (flags) : "memory");				\
 	} while (0)
-
-#define local_dbg_enable()	asm("msr	daifclr, #8" : : : "memory")
-#define local_dbg_disable()	asm("msr	daifset, #8" : : : "memory")
 
 #endif
 #endif

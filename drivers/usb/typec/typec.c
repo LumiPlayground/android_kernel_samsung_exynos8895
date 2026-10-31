@@ -15,6 +15,18 @@
 #include <linux/slab.h>
 #include <linux/usb/typec.h>
 
+/* Match sysfs input, including its optional trailing newline. */
+static int typec_match_string(const char * const *array, size_t count,
+                             const char *buf)
+{
+ size_t i;
+ for (i = 0; i < count && array[i]; i++)
+  if (sysfs_streq(array[i], buf))
+   return i;
+ return -EINVAL;
+}
+#define sysfs_match_string(array, buf) typec_match_string(array, ARRAY_SIZE(array), buf)
+
 struct typec_mode {
 	int				index;
 	u32				vdo;

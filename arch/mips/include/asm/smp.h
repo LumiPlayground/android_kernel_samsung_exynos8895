@@ -23,19 +23,9 @@
 extern int smp_num_siblings;
 extern cpumask_t cpu_sibling_map[];
 extern cpumask_t cpu_core_map[];
-extern cpumask_t cpu_foreign_map;
+extern cpumask_t cpu_foreign_map[];
 
-static inline int raw_smp_processor_id(void)
-{
-#if defined(__VDSO__)
-	extern int vdso_smp_processor_id(void)
-		__compiletime_error("VDSO should not call smp_processor_id()");
-	return vdso_smp_processor_id();
-#else
-	return current_thread_info()->cpu;
-#endif
-}
-#define raw_smp_processor_id raw_smp_processor_id
+#define raw_smp_processor_id() (current_thread_info()->cpu)
 
 /* Map from cpu id to sequential logical cpu number.  This will only
    not be idempotent when cpus failed to come on-line.	*/
@@ -94,6 +84,20 @@ static inline void __cpu_die(unsigned int cpu)
 
 extern void play_dead(void);
 #endif
+
+/*
+ * This function will set up the necessary IPIs for Linux to communicate
+ * with the CPUs in mask.
+ * Return 0 on success.
+ */
+int mips_smp_ipi_allocate(const struct cpumask *mask);
+
+/*
+ * This function will free up IPIs allocated with mips_smp_ipi_allocate to the
+ * CPUs in mask, which must be a subset of the IPIs that have been configured.
+ * Return 0 on success.
+ */
+int mips_smp_ipi_free(const struct cpumask *mask);
 
 static inline void arch_send_call_function_single_ipi(int cpu)
 {

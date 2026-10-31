@@ -822,11 +822,6 @@ static int qat_alg_aead_dec(struct aead_request *areq)
 	struct icp_qat_fw_la_bulk_req *msg;
 	int digst_size = crypto_aead_authsize(aead_tfm);
 	int ret, ctr = 0;
-	u32 cipher_len;
-
-	cipher_len = areq->cryptlen - digst_size;
-	if (cipher_len % AES_BLOCK_SIZE != 0)
-		return -EINVAL;
 
 	ret = qat_alg_sgl_to_bufl(ctx->inst, areq->src, areq->dst, qat_req);
 	if (unlikely(ret))
@@ -841,7 +836,7 @@ static int qat_alg_aead_dec(struct aead_request *areq)
 	qat_req->req.comn_mid.src_data_addr = qat_req->buf.blp;
 	qat_req->req.comn_mid.dest_data_addr = qat_req->buf.bloutp;
 	cipher_param = (void *)&qat_req->req.serv_specif_rqpars;
-	cipher_param->cipher_length = cipher_len;
+	cipher_param->cipher_length = areq->cryptlen - digst_size;
 	cipher_param->cipher_offset = areq->assoclen;
 	memcpy(cipher_param->u.cipher_IV_array, areq->iv, AES_BLOCK_SIZE);
 	auth_param = (void *)((uint8_t *)cipher_param + sizeof(*cipher_param));
@@ -869,9 +864,6 @@ static int qat_alg_aead_enc(struct aead_request *areq)
 	struct icp_qat_fw_la_bulk_req *msg;
 	uint8_t *iv = areq->iv;
 	int ret, ctr = 0;
-
-	if (areq->cryptlen % AES_BLOCK_SIZE != 0)
-		return -EINVAL;
 
 	ret = qat_alg_sgl_to_bufl(ctx->inst, areq->src, areq->dst, qat_req);
 	if (unlikely(ret))
@@ -955,13 +947,13 @@ static int qat_alg_ablkcipher_setkey(struct crypto_ablkcipher *tfm,
 	return 0;
 
 out_free_all:
-	memset(ctx->dec_cd, 0, sizeof(*ctx->enc_cd));
-	dma_free_coherent(dev, sizeof(*ctx->enc_cd),
+	memset(ctx->dec_cd, 0, sizeof(*ctx->dec_cd));
+	dma_free_coherent(dev, sizeof(*ctx->dec_cd),
 			  ctx->dec_cd, ctx->dec_cd_paddr);
 	ctx->dec_cd = NULL;
 out_free_enc:
-	memset(ctx->enc_cd, 0, sizeof(*ctx->dec_cd));
-	dma_free_coherent(dev, sizeof(*ctx->dec_cd),
+	memset(ctx->enc_cd, 0, sizeof(*ctx->enc_cd));
+	dma_free_coherent(dev, sizeof(*ctx->enc_cd),
 			  ctx->enc_cd, ctx->enc_cd_paddr);
 	ctx->enc_cd = NULL;
 	return -ENOMEM;
@@ -1072,8 +1064,7 @@ static int qat_alg_aead_init(struct crypto_aead *tfm,
 	if (IS_ERR(ctx->hash_tfm))
 		return PTR_ERR(ctx->hash_tfm);
 	ctx->qat_hash_alg = hash;
-	crypto_aead_set_reqsize(tfm, sizeof(struct aead_request) +
-				     sizeof(struct qat_crypto_request));
+	crypto_aead_set_reqsize(tfm, sizeof(struct qat_crypto_request));
 	return 0;
 }
 
@@ -1122,8 +1113,7 @@ static int qat_alg_ablkcipher_init(struct crypto_tfm *tfm)
 	struct qat_alg_ablkcipher_ctx *ctx = crypto_tfm_ctx(tfm);
 
 	spin_lock_init(&ctx->lock);
-	tfm->crt_ablkcipher.reqsize = sizeof(struct ablkcipher_request) +
-					sizeof(struct qat_crypto_request);
+	tfm->crt_ablkcipher.reqsize = sizeof(struct qat_crypto_request);
 	ctx->tfm = tfm;
 	return 0;
 }

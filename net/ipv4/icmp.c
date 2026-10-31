@@ -246,7 +246,7 @@ static struct {
 /**
  * icmp_global_allow - Are we allowed to send one more ICMP message ?
  *
- * Uses a token bucket to limit our ICMP messages to ~sysctl_icmp_msgs_per_sec.
+ * Uses a token bucket to limit our ICMP messages to sysctl_icmp_msgs_per_sec.
  * Returns false if we reached the limit and can not send another packet.
  * Note: called with BH disabled
  */
@@ -256,11 +256,10 @@ bool icmp_global_allow(void)
 	bool rc = false;
 
 	/* Check if token bucket is empty and cannot be refilled
-	 * without taking the spinlock. The READ_ONCE() are paired
-	 * with the following WRITE_ONCE() in this same function.
+	 * without taking the spinlock.
 	 */
-	if (!READ_ONCE(icmp_global.credit)) {
-		delta = min_t(u32, now - READ_ONCE(icmp_global.stamp), HZ);
+	if (!icmp_global.credit) {
+		delta = min_t(u32, now - icmp_global.stamp, HZ);
 		if (delta < HZ / 50)
 			return false;
 	}
@@ -270,17 +269,14 @@ bool icmp_global_allow(void)
 	if (delta >= HZ / 50) {
 		incr = sysctl_icmp_msgs_per_sec * delta / HZ ;
 		if (incr)
-			WRITE_ONCE(icmp_global.stamp, now);
+			icmp_global.stamp = now;
 	}
 	credit = min_t(u32, icmp_global.credit + incr, sysctl_icmp_msgs_burst);
 	if (credit) {
-		/* We want to use a credit of one in average, but need to randomize
-		 * it for security reasons.
-		 */
-		credit = max_t(int, credit - prandom_u32_max(3), 0);
+		credit--;
 		rc = true;
 	}
-	WRITE_ONCE(icmp_global.credit, credit);
+	icmp_global.credit = credit;
 	spin_unlock(&icmp_global.lock);
 	return rc;
 }
@@ -367,7 +363,7 @@ static void icmp_push_reply(struct icmp_bxm *icmp_param,
 			   icmp_param->data_len+icmp_param->head_len,
 			   icmp_param->head_len,
 			   ipc, rt, MSG_DONTWAIT) < 0) {
-		ICMP_INC_STATS_BH(sock_net(sk), ICMP_MIB_OUTERRORS);
+		__ICMP_INC_STATS(sock_net(sk), ICMP_MIB_OUTERRORS);
 		ip_flush_pending_frames(sk);
 	} else if ((skb = skb_peek(&sk->sk_write_queue)) != NULL) {
 		struct icmphdr *icmph = icmp_hdr(skb);
@@ -461,23 +457,6 @@ static int icmp_multipath_hash_skb(const struct sk_buff *skb)
 
 #endif
 
-/*
- * The device used for looking up which routing table to use for sending an ICMP
- * error is preferably the source whenever it is set, which should ensure the
- * icmp error can be sent to the source host, else lookup using the routing
- * table of the destination device, else use the main routing table (index 0).
- */
-static struct net_device *icmp_get_route_lookup_dev(struct sk_buff *skb)
-{
-	struct net_device *route_lookup_dev = NULL;
-
-	if (skb->dev)
-		route_lookup_dev = skb->dev;
-	else if (skb_dst(skb))
-		route_lookup_dev = skb_dst(skb)->dev;
-	return route_lookup_dev;
-}
-
 static struct rtable *icmp_route_lookup(struct net *net,
 					struct flowi4 *fl4,
 					struct sk_buff *skb_in,
@@ -486,7 +465,6 @@ static struct rtable *icmp_route_lookup(struct net *net,
 					int type, int code,
 					struct icmp_bxm *param)
 {
-	struct net_device *route_lookup_dev;
 	struct rtable *rt, *rt2;
 	struct flowi4 fl4_dec;
 	int err;
@@ -501,8 +479,7 @@ static struct rtable *icmp_route_lookup(struct net *net,
 	fl4->flowi4_proto = IPPROTO_ICMP;
 	fl4->fl4_icmp_type = type;
 	fl4->fl4_icmp_code = code;
-	route_lookup_dev = icmp_get_route_lookup_dev(skb_in);
-	fl4->flowi4_oif = l3mdev_master_ifindex(route_lookup_dev);
+	fl4->flowi4_oif = l3mdev_master_ifindex(skb_dst(skb_in)->dev);
 
 	security_skb_classify_flow(skb_in, flowi4_to_flowi(fl4));
 	rt = __ip_route_output_key_hash(net, fl4,
@@ -527,7 +504,7 @@ static struct rtable *icmp_route_lookup(struct net *net,
 	if (err)
 		goto relookup_failed;
 
-	if (inet_addr_type_dev_table(net, route_lookup_dev,
+	if (inet_addr_type_dev_table(net, skb_dst(skb_in)->dev,
 				     fl4_dec.saddr) == RTN_LOCAL) {
 		rt2 = __ip_route_output_key(net, &fl4_dec);
 		if (IS_ERR(rt2))
@@ -770,7 +747,7 @@ static void icmp_socket_deliver(struct sk_buff *skb, u32 info)
 	 * avoid additional coding at protocol handlers.
 	 */
 	if (!pskb_may_pull(skb, iph->ihl * 4 + 8)) {
-		ICMP_INC_STATS_BH(dev_net(skb->dev), ICMP_MIB_INERRORS);
+		__ICMP_INC_STATS(dev_net(skb->dev), ICMP_MIB_INERRORS);
 		return;
 	}
 
@@ -792,7 +769,7 @@ static bool icmp_tag_validation(int proto)
 }
 
 /*
- *	Handle ICMP_DEST_UNREACH, ICMP_TIME_EXCEED, ICMP_QUENCH, and
+ *	Handle ICMP_DEST_UNREACH, ICMP_TIME_EXCEEDED, ICMP_QUENCH, and
  *	ICMP_PARAMETERPROB.
  */
 
@@ -820,7 +797,8 @@ static bool icmp_unreach(struct sk_buff *skb)
 	if (iph->ihl < 5) /* Mangled header, drop. */
 		goto out_err;
 
-	if (icmph->type == ICMP_DEST_UNREACH) {
+	switch (icmph->type) {
+	case ICMP_DEST_UNREACH:
 		switch (icmph->code & 15) {
 		case ICMP_NET_UNREACH:
 		case ICMP_HOST_UNREACH:
@@ -856,8 +834,16 @@ static bool icmp_unreach(struct sk_buff *skb)
 		}
 		if (icmph->code > NR_ICMP_UNREACH)
 			goto out;
-	} else if (icmph->type == ICMP_PARAMETERPROB)
+		break;
+	case ICMP_PARAMETERPROB:
 		info = ntohl(icmph->un.gateway) >> 24;
+		break;
+	case ICMP_TIME_EXCEEDED:
+		__ICMP_INC_STATS(net, ICMP_MIB_INTIMEEXCDS);
+		if (icmph->code == ICMP_EXC_FRAGTIME)
+			goto out;
+		break;
+	}
 
 	/*
 	 *	Throw it at our lower layers
@@ -891,7 +877,7 @@ static bool icmp_unreach(struct sk_buff *skb)
 out:
 	return true;
 out_err:
-	ICMP_INC_STATS_BH(net, ICMP_MIB_INERRORS);
+	__ICMP_INC_STATS(net, ICMP_MIB_INERRORS);
 	return false;
 }
 
@@ -903,7 +889,7 @@ out_err:
 static bool icmp_redirect(struct sk_buff *skb)
 {
 	if (skb->len < sizeof(struct iphdr)) {
-		ICMP_INC_STATS_BH(dev_net(skb->dev), ICMP_MIB_INERRORS);
+		__ICMP_INC_STATS(dev_net(skb->dev), ICMP_MIB_INERRORS);
 		return false;
 	}
 
@@ -957,7 +943,6 @@ static bool icmp_echo(struct sk_buff *skb)
  */
 static bool icmp_timestamp(struct sk_buff *skb)
 {
-	struct timespec tv;
 	struct icmp_bxm icmp_param;
 	/*
 	 *	Too short.
@@ -968,9 +953,7 @@ static bool icmp_timestamp(struct sk_buff *skb)
 	/*
 	 *	Fill in the current time as ms since midnight UT:
 	 */
-	getnstimeofday(&tv);
-	icmp_param.data.times[1] = htonl((tv.tv_sec % 86400) * MSEC_PER_SEC +
-					 tv.tv_nsec / NSEC_PER_MSEC);
+	icmp_param.data.times[1] = inet_current_timestamp();
 	icmp_param.data.times[2] = icmp_param.data.times[1];
 	if (skb_copy_bits(skb, 0, &icmp_param.data.times[0], 4))
 		BUG();
@@ -985,7 +968,7 @@ static bool icmp_timestamp(struct sk_buff *skb)
 	return true;
 
 out_err:
-	ICMP_INC_STATS_BH(dev_net(skb_dst(skb)->dev), ICMP_MIB_INERRORS);
+	__ICMP_INC_STATS(dev_net(skb_dst(skb)->dev), ICMP_MIB_INERRORS);
 	return false;
 }
 
@@ -1025,7 +1008,7 @@ int icmp_rcv(struct sk_buff *skb)
 		skb_set_network_header(skb, nh);
 	}
 
-	ICMP_INC_STATS_BH(net, ICMP_MIB_INMSGS);
+	__ICMP_INC_STATS(net, ICMP_MIB_INMSGS);
 
 	if (skb_checksum_simple_validate(skb))
 		goto csum_error;
@@ -1035,7 +1018,7 @@ int icmp_rcv(struct sk_buff *skb)
 
 	icmph = icmp_hdr(skb);
 
-	ICMPMSGIN_INC_STATS_BH(net, icmph->type);
+	ICMPMSGIN_INC_STATS(net, icmph->type);
 	/*
 	 *	18 is the highest 'known' ICMP type. Anything else is a mystery
 	 *
@@ -1081,9 +1064,9 @@ drop:
 	kfree_skb(skb);
 	return 0;
 csum_error:
-	ICMP_INC_STATS_BH(net, ICMP_MIB_CSUMERRORS);
+	__ICMP_INC_STATS(net, ICMP_MIB_CSUMERRORS);
 error:
-	ICMP_INC_STATS_BH(net, ICMP_MIB_INERRORS);
+	__ICMP_INC_STATS(net, ICMP_MIB_INERRORS);
 	goto drop;
 }
 

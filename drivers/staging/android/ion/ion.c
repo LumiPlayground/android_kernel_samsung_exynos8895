@@ -1371,8 +1371,7 @@ static void ion_dma_buf_kunmap(struct dma_buf *dmabuf, unsigned long offset,
 {
 }
 
-static int ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf, size_t start,
-					size_t len,
+static int ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
 					enum dma_data_direction direction)
 {
 	struct ion_buffer *buffer = dmabuf->priv;
@@ -1390,8 +1389,7 @@ static int ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf, size_t start,
 	return PTR_ERR_OR_ZERO(vaddr);
 }
 
-static void ion_dma_buf_end_cpu_access(struct dma_buf *dmabuf, size_t start,
-				       size_t len,
+static int ion_dma_buf_end_cpu_access(struct dma_buf *dmabuf,
 				       enum dma_data_direction direction)
 {
 	struct ion_buffer *buffer = dmabuf->priv;
@@ -1399,6 +1397,7 @@ static void ion_dma_buf_end_cpu_access(struct dma_buf *dmabuf, size_t start,
 	mutex_lock(&buffer->lock);
 	ion_buffer_kmap_put(buffer);
 	mutex_unlock(&buffer->lock);
+	return 0;
 }
 
 static void ion_dma_buf_set_privflag(struct dma_buf *dmabuf)
@@ -1778,10 +1777,9 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				data.allocation.flags, PTR_ERR(handle));
 			return PTR_ERR(handle);
 		}
-		pass_to_user(handle);
 		data.allocation.handle = handle->id;
-
 		cleanup_handle = handle;
+		pass_to_user(handle);
 		break;
 	}
 	case ION_IOC_FREE:
@@ -1825,11 +1823,12 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		if (IS_ERR(handle)) {
 			ret = PTR_ERR(handle);
 		} else {
+			data.handle.handle = handle->id;
 			handle = pass_to_user(handle);
-			if (IS_ERR(handle))
+			if (IS_ERR(handle)) {
 				ret = PTR_ERR(handle);
-			else
-				data.handle.handle = handle->id;
+				data.handle.handle = 0;
+			}
 		}
 		break;
 	}

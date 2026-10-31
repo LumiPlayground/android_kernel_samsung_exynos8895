@@ -1824,7 +1824,7 @@ static int shmem_xmit_bin(struct link_device *ld, struct io_device *iod,
 	u32 size = 0;
 	u8 __iomem *mem_base;
 	int err;
-#if defined(CONFIG_LTE_MODEM_S5E7890) || defined(CONFIG_LTE_MODEM_S5E8890)
+#if defined(CONFIG_LTE_MODEM_S5E7890)
 	unsigned int modem_ver_offset;
 	char *info_addr;
 	int i;
@@ -1883,7 +1883,7 @@ static int shmem_xmit_bin(struct link_device *ld, struct io_device *iod,
 			err = -EFAULT;
 			goto exit;
 		}
-#if defined(CONFIG_LTE_MODEM_S5E7890) || defined(CONFIG_LTE_MODEM_S5E8890)
+#if defined(CONFIG_LTE_MODEM_S5E7890)
 		/* Save CP binary information */
 		if (*(unsigned int *)(modem->modem_base + MODEM_VER_ID_OFFSET)
 				== MODEM_VER_ID_VALUE) {

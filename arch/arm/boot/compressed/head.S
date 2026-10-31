@@ -12,6 +12,8 @@
 #include <asm/assembler.h>
 #include <asm/v7m.h>
 
+#include "efi-header.S"
+
  AR_CLASS(	.arch	armv7-a	)
  M_CLASS(	.arch	armv7-m	)
 
@@ -126,19 +128,23 @@
 start:
 		.type	start,#function
 		.rept	7
-		mov	r0, r0
+		__nop
 		.endr
-   ARM(		mov	r0, r0		)
-   ARM(		b	1f		)
- THUMB(		badr	r12, 1f		)
- THUMB(		bx	r12		)
+#ifndef CONFIG_THUMB2_KERNEL
+		mov	r0, r0
+#else
+ AR_CLASS(	sub	pc, pc, #3	)	@ A/R: switch to Thumb2 mode
+  M_CLASS(	nop.w			)	@ M: already in Thumb2 mode
+		.thumb
+#endif
+		W(b)	1f
 
 		.word	_magic_sig	@ Magic numbers to help the loader
 		.word	_magic_start	@ absolute load/run zImage address
 		.word	_magic_end	@ zImage end address
 		.word	0x04030201	@ endianness flag
 
- THUMB(		.thumb			)
+		__EFI_HEADER
 1:
  ARM_BE8(	setend	be		)	@ go BE8 if compiled for BE8
  AR_CLASS(	mrs	r9, cpsr	)
@@ -1076,9 +1082,9 @@ __armv4_mmu_cache_off:
 __armv7_mmu_cache_off:
 		mrc	p15, 0, r0, c1, c0
 #ifdef CONFIG_MMU
-		bic	r0, r0, #0x0005
+		bic	r0, r0, #0x000d
 #else
-		bic	r0, r0, #0x0004
+		bic	r0, r0, #0x000c
 #endif
 		mcr	p15, 0, r0, c1, c0	@ turn MMU and cache off
 		mov	r12, lr
@@ -1354,6 +1360,67 @@ __enter_kernel:
  THUMB(		bx	r4		)	@ entry point is always ARM for A/R classes
 
 reloc_code_end:
+
+#ifdef CONFIG_EFI_STUB
+		.align	2
+_start:		.long	start - .
+
+ENTRY(efi_stub_entry)
+		@ allocate space on stack for passing current zImage address
+		@ and for the EFI stub to return of new entry point of
+		@ zImage, as EFI stub may copy the kernel. Pointer address
+		@ is passed in r2. r0 and r1 are passed through from the
+		@ EFI firmware to efi_entry
+		adr	ip, _start
+		ldr	r3, [ip]
+		add	r3, r3, ip
+		stmfd	sp!, {r3, lr}
+		mov	r2, sp			@ pass zImage address in r2
+		bl	efi_entry
+
+		@ Check for error return from EFI stub. r0 has FDT address
+		@ or error code.
+		cmn	r0, #1
+		beq	efi_load_fail
+
+		@ Preserve return value of efi_entry() in r4
+		mov	r4, r0
+
+		@ our cache maintenance code relies on CP15 barrier instructions
+		@ but since we arrived here with the MMU and caches configured
+		@ by UEFI, we must check that the CP15BEN bit is set in SCTLR.
+		@ Note that this bit is RAO/WI on v6 and earlier, so the ISB in
+		@ the enable path will be executed on v7+ only.
+		mrc	p15, 0, r1, c1, c0, 0	@ read SCTLR
+		tst	r1, #(1 << 5)		@ CP15BEN bit set?
+		bne	0f
+		orr	r1, r1, #(1 << 5)	@ CP15 barrier instructions
+		mcr	p15, 0, r1, c1, c0, 0	@ write SCTLR
+ ARM(		.inst	0xf57ff06f		@ v7+ isb	)
+ THUMB(		isb						)
+
+0:		bl	cache_clean_flush
+		bl	cache_off
+
+		@ Set parameters for booting zImage according to boot protocol
+		@ put FDT address in r2, it was returned by efi_entry()
+		@ r1 is the machine type, and r0 needs to be 0
+		mov	r0, #0
+		mov	r1, #0xFFFFFFFF
+		mov	r2, r4
+
+		@ Branch to (possibly) relocated zImage that is in [sp]
+		ldr	lr, [sp]
+		ldr	ip, =start_offset
+		add	lr, lr, ip
+		mov	pc, lr				@ no mode switch
+
+efi_load_fail:
+		@ Return EFI_LOAD_ERROR to EFI firmware on error.
+		ldr	r0, =0x80000001
+		ldmfd	sp!, {ip, pc}
+ENDPROC(efi_stub_entry)
+#endif
 
 		.align
 		.section ".stack", "aw", %nobits

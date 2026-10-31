@@ -26,6 +26,7 @@
 #include <linux/kallsyms.h>
 #include <linux/random.h>
 #include <linux/prctl.h>
+#include <linux/nmi.h>
 
 #include <asm/asm.h>
 #include <asm/bootinfo.h>
@@ -404,7 +405,7 @@ static int get_frame_info(struct mips_frame_info *info)
 		return 0;
 	if (info->pc_offset < 0) /* leaf */
 		return 1;
-	/* prologue seems boggus... */
+	/* prologue seems bogus... */
 err:
 	return -1;
 }
@@ -637,29 +638,18 @@ unsigned long arch_align_stack(unsigned long sp)
 static DEFINE_PER_CPU(struct call_single_data, backtrace_csd);
 static struct cpumask backtrace_csd_busy;
 
-static void arch_dump_stack(void *info)
+static void handle_backtrace(void *info)
 {
-	struct pt_regs *regs;
-	static arch_spinlock_t lock = __ARCH_SPIN_LOCK_UNLOCKED;
-
-	arch_spin_lock(&lock);
-	regs = get_irq_regs();
-
-	if (regs)
-		show_regs(regs);
-	else
-		dump_stack();
-	arch_spin_unlock(&lock);
-
+	nmi_cpu_backtrace(get_irq_regs());
 	cpumask_clear_cpu(smp_processor_id(), &backtrace_csd_busy);
 }
 
-void arch_trigger_all_cpu_backtrace(bool include_self)
+static void raise_backtrace(cpumask_t *mask)
 {
 	struct call_single_data *csd;
 	int cpu;
 
-	for_each_cpu(cpu, cpu_online_mask) {
+	for_each_cpu(cpu, mask) {
 		/*
 		 * If we previously sent an IPI to the target CPU & it hasn't
 		 * cleared its bit in the busy cpumask then it didn't handle
@@ -673,9 +663,14 @@ void arch_trigger_all_cpu_backtrace(bool include_self)
 		}
 
 		csd = &per_cpu(backtrace_csd, cpu);
-		csd->func = arch_dump_stack;
+		csd->func = handle_backtrace;
 		smp_call_function_single_async(cpu, csd);
 	}
+}
+
+void arch_trigger_cpumask_backtrace(const cpumask_t *mask, bool exclude_self)
+{
+	nmi_trigger_cpumask_backtrace(mask, exclude_self, raise_backtrace);
 }
 
 int mips_get_process_fp_mode(struct task_struct *task)
@@ -690,11 +685,19 @@ int mips_get_process_fp_mode(struct task_struct *task)
 	return value;
 }
 
+static void prepare_for_fp_mode_switch(void *info)
+{
+	struct mm_struct *mm = info;
+
+	if (current->mm == mm)
+		lose_fpu(1);
+}
+
 int mips_set_process_fp_mode(struct task_struct *task, unsigned int value)
 {
 	const unsigned int known_bits = PR_FP_MODE_FR | PR_FP_MODE_FRE;
-	unsigned long switch_count;
 	struct task_struct *t;
+	int max_users;
 
 	/* If nothing to change, return right away, successfully.  */
 	if (value == mips_get_process_fp_mode(task))
@@ -739,31 +742,17 @@ int mips_set_process_fp_mode(struct task_struct *task, unsigned int value)
 	smp_mb__after_atomic();
 
 	/*
-	 * If there are multiple online CPUs then wait until all threads whose
-	 * FP mode is about to change have been context switched. This approach
-	 * allows us to only worry about whether an FP mode switch is in
-	 * progress when FP is first used in a tasks time slice. Pretty much all
-	 * of the mode switch overhead can thus be confined to cases where mode
-	 * switches are actually occurring. That is, to here. However for the
-	 * thread performing the mode switch it may take a while...
+	 * If there are multiple online CPUs then force any which are running
+	 * threads in this process to lose their FPU context, which they can't
+	 * regain until fp_mode_switching is cleared later.
 	 */
 	if (num_online_cpus() > 1) {
-		spin_lock_irq(&task->sighand->siglock);
+		/* No need to send an IPI for the local CPU */
+		max_users = (task->mm == current->mm) ? 1 : 0;
 
-		for_each_thread(task, t) {
-			if (t == current)
-				continue;
-
-			switch_count = t->nvcsw + t->nivcsw;
-
-			do {
-				spin_unlock_irq(&task->sighand->siglock);
-				cond_resched();
-				spin_lock_irq(&task->sighand->siglock);
-			} while ((t->nvcsw + t->nivcsw) == switch_count);
-		}
-
-		spin_unlock_irq(&task->sighand->siglock);
+		if (atomic_read(&current->mm->mm_users) > max_users)
+			smp_call_function(prepare_for_fp_mode_switch,
+					  (void *)current->mm, 1);
 	}
 
 	/*

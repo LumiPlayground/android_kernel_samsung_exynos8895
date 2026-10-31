@@ -1644,7 +1644,8 @@ static void imon_incoming_packet(struct imon_context *ictx,
 	spin_unlock_irqrestore(&ictx->kc_lock, flags);
 
 	/* send touchscreen events through input subsystem if touchpad data */
-	if (ictx->touch && len == 8 && buf[7] == 0x86) {
+	if (ictx->display_type == IMON_DISPLAY_TYPE_VGA && len == 8 &&
+	    buf[7] == 0x86) {
 		imon_touch_event(ictx, buf);
 		return;
 
@@ -2210,16 +2211,11 @@ static struct imon_context *imon_init_intf0(struct usb_interface *intf,
 		goto exit;
 	}
 	rx_urb = usb_alloc_urb(0, GFP_KERNEL);
-	if (!rx_urb) {
-		dev_err(dev, "%s: usb_alloc_urb failed for IR urb", __func__);
+	if (!rx_urb)
 		goto rx_urb_alloc_failed;
-	}
 	tx_urb = usb_alloc_urb(0, GFP_KERNEL);
-	if (!tx_urb) {
-		dev_err(dev, "%s: usb_alloc_urb failed for display urb",
-			__func__);
+	if (!tx_urb)
 		goto tx_urb_alloc_failed;
-	}
 
 	mutex_init(&ictx->lock);
 	spin_lock_init(&ictx->kc_lock);
@@ -2304,10 +2300,8 @@ static struct imon_context *imon_init_intf1(struct usb_interface *intf,
 	int ret = -ENOMEM;
 
 	rx_urb = usb_alloc_urb(0, GFP_KERNEL);
-	if (!rx_urb) {
-		pr_err("usb_alloc_urb failed for IR urb\n");
+	if (!rx_urb)
 		goto rx_urb_alloc_failed;
-	}
 
 	mutex_lock(&ictx->lock);
 

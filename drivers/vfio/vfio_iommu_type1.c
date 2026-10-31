@@ -138,7 +138,7 @@ static void vfio_unlink_dma(struct vfio_iommu *iommu, struct vfio_dma *old)
 
 static int vfio_lock_acct(long npage, bool *lock_cap)
 {
-	int ret = 0;
+	int ret;
 
 	if (!npage)
 		return 0;
@@ -146,22 +146,24 @@ static int vfio_lock_acct(long npage, bool *lock_cap)
 	if (!current->mm)
 		return -ESRCH; /* process exited */
 
-	down_write(&current->mm->mmap_sem);
-	if (npage > 0) {
-		if (lock_cap ? !*lock_cap : !capable(CAP_IPC_LOCK)) {
-			unsigned long limit;
+	ret = down_write_killable(&current->mm->mmap_sem);
+	if (!ret) {
+		if (npage > 0) {
+			if (lock_cap ? !*lock_cap : !capable(CAP_IPC_LOCK)) {
+				unsigned long limit;
 
-			limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
+				limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
 
-			if (current->mm->locked_vm + npage > limit)
-				ret = -ENOMEM;
+				if (current->mm->locked_vm + npage > limit)
+					ret = -ENOMEM;
+			}
 		}
+
+		if (!ret)
+			current->mm->locked_vm += npage;
+
+		up_write(&current->mm->mmap_sem);
 	}
-
-	if (!ret)
-		current->mm->locked_vm += npage;
-
-	up_write(&current->mm->mmap_sem);
 
 	return ret;
 }
@@ -227,8 +229,8 @@ static int vaddr_get_pfn(unsigned long vaddr, int prot, unsigned long *pfn)
 	vma = find_vma_intersection(current->mm, vaddr, vaddr + 1);
 
 	if (vma && vma->vm_flags & VM_PFNMAP) {
-		if (!follow_pfn(vma, vaddr, pfn) &&
-		    is_invalid_reserved_pfn(*pfn))
+		*pfn = ((vaddr - vma->vm_start) >> PAGE_SHIFT) + vma->vm_pgoff;
+		if (is_invalid_reserved_pfn(*pfn))
 			ret = 0;
 	}
 
@@ -398,7 +400,7 @@ static unsigned long vfio_pgsize_bitmap(struct vfio_iommu *iommu)
 
 	mutex_lock(&iommu->lock);
 	list_for_each_entry(domain, &iommu->domain_list, next)
-		bitmap &= domain->domain->ops->pgsize_bitmap;
+		bitmap &= domain->domain->pgsize_bitmap;
 	mutex_unlock(&iommu->lock);
 
 	/*
@@ -506,7 +508,7 @@ static int map_try_harder(struct vfio_domain *domain, dma_addr_t iova,
 			  unsigned long pfn, long npage, int prot)
 {
 	long i;
-	int ret;
+	int ret = 0;
 
 	for (i = 0; i < npage; i++, pfn++, iova += PAGE_SIZE) {
 		ret = iommu_map(domain->domain, iova,
@@ -993,7 +995,7 @@ static long vfio_iommu_type1_ioctl(void *iommu_data,
 		if (info.argsz < minsz)
 			return -EINVAL;
 
-		info.flags = 0;
+		info.flags = VFIO_IOMMU_INFO_PGSIZES;
 
 		info.iova_pgsizes = vfio_pgsize_bitmap(iommu);
 

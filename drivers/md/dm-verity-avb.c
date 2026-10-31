@@ -16,42 +16,24 @@
 static char avb_vbmeta_device[64];
 static char avb_invalidate_on_error[4];
 
-static void invalidate_vbmeta_endio(struct bio *bio)
-{
-	if (bio->bi_error)
-		DMERR("invalidate_vbmeta_endio: error %d", bio->bi_error);
-	complete(bio->bi_private);
-}
-
 static int invalidate_vbmeta_submit(struct bio *bio,
-				    struct block_device *bdev,
-				    int rw, int access_last_sector,
-				    struct page *page)
+                                    struct block_device *bdev,
+                                    int op, unsigned int op_flags,
+                                    int access_last_sector, struct page *page)
 {
-	DECLARE_COMPLETION_ONSTACK(wait);
+	unsigned int length = access_last_sector ? (1U << SECTOR_SHIFT) : PAGE_SIZE;
 
-	bio->bi_private = &wait;
-	bio->bi_end_io = invalidate_vbmeta_endio;
+	/* Each read/write reuses the bio; drop the previous vector and state. */
+	bio_reset(bio);
 	bio->bi_bdev = bdev;
-	bio->bi_rw = rw;
-
-	bio->bi_iter.bi_sector = 0;
-	if (access_last_sector) {
-		sector_t last_sector;
-
-		last_sector = (i_size_read(bdev->bd_inode)>>SECTOR_SHIFT) - 1;
-		bio->bi_iter.bi_sector = last_sector;
-	}
-	if (!bio_add_page(bio, page, PAGE_SIZE, 0)) {
-		DMERR("invalidate_vbmeta_submit: bio_add_page error");
+	bio_set_op_attrs(bio, op, op_flags);
+	if (access_last_sector)
+		bio->bi_iter.bi_sector = (i_size_read(bdev->bd_inode) >> SECTOR_SHIFT) - 1;
+	if (bio_add_page(bio, page, length, 0) != length)
 		return -EIO;
-	}
 
-	submit_bio(rw, bio);
-	/* Wait up to 2 seconds for completion or fail. */
-	if (!wait_for_completion_timeout(&wait, msecs_to_jiffies(2000)))
-		return -EIO;
-	return 0;
+	/* Completion must precede releasing the bio/page, including I/O errors. */
+	return submit_bio_wait(bio);
 }
 
 static int invalidate_vbmeta(dev_t vbmeta_devt)
@@ -94,7 +76,7 @@ static int invalidate_vbmeta(dev_t vbmeta_devt)
 	}
 
 	access_last_sector = 0;
-	ret = invalidate_vbmeta_submit(bio, bdev, rw, access_last_sector, page);
+	ret = invalidate_vbmeta_submit(bio, bdev, REQ_OP_READ, rw, access_last_sector, page);
 	if (ret) {
 		DMERR("invalidate_vbmeta: error reading");
 		goto failed_to_submit_read;
@@ -113,7 +95,7 @@ static int invalidate_vbmeta(dev_t vbmeta_devt)
 		size_t offset = (1<<SECTOR_SHIFT) - 64;
 
 		access_last_sector = 1;
-		ret = invalidate_vbmeta_submit(bio, bdev, rw,
+		ret = invalidate_vbmeta_submit(bio, bdev, REQ_OP_READ, rw,
 					       access_last_sector, page);
 		if (ret) {
 			DMERR("invalidate_vbmeta: error reading");
@@ -148,8 +130,7 @@ static int invalidate_vbmeta(dev_t vbmeta_devt)
 	 */
 	bio_reset(bio);
 
-	rw |= REQ_WRITE;
-	ret = invalidate_vbmeta_submit(bio, bdev, rw, access_last_sector, page);
+	ret = invalidate_vbmeta_submit(bio, bdev, REQ_OP_WRITE, rw, access_last_sector, page);
 	if (ret) {
 		DMERR("invalidate_vbmeta: error writing");
 		goto failed_to_submit_write;
@@ -160,11 +141,8 @@ static int invalidate_vbmeta(dev_t vbmeta_devt)
 failed_to_submit_write:
 failed_to_write:
 invalid_header:
-	__free_page(page);
 failed_to_submit_read:
-	/* Technically, we'll leak a page with the pending bio, but
-	 * we're about to reboot anyway.
-	 */
+	__free_page(page);
 failed_to_alloc_page:
 	bio_put(bio);
 failed_bio_alloc:

@@ -260,9 +260,10 @@ static void exynos_pd_genpd_init(struct exynos_pm_domain *pd, int state)
 	pd->genpd.power_on = exynos_pd_power_on;
 
 	/* pd power on/off latency is less than 1ms */
-	pd->genpd.power_on_latency_ns = 1000000;
-	pd->genpd.power_off_latency_ns = 1000000;
+	pd->genpd.states[0].power_on_latency_ns = 1000000;
+	pd->genpd.states[0].power_off_latency_ns = 1000000;
 
+	pd->genpd.state_count = 1;
 	pm_genpd_init(&pd->genpd, NULL, state ? false : true);
 }
 
@@ -341,7 +342,7 @@ static __init int exynos_pd_dt_parse(void)
 		mutex_init(&pd->access_lock);
 		platform_set_drvdata(pdev, pd);
 
-		__of_genpd_add_provider(np, __of_genpd_xlate_simple, &pd->genpd);
+		of_genpd_add_provider_simple(np, &pd->genpd);
 
 		exynos_pd_genpd_init(pd, initial_state);
 
@@ -380,7 +381,7 @@ static __init int exynos_pd_dt_parse(void)
 			mutex_init(&sub_pd->access_lock);
 			platform_set_drvdata(sub_pdev, sub_pd);
 
-			__of_genpd_add_provider(children, __of_genpd_xlate_simple, &sub_pd->genpd);
+			of_genpd_add_provider_simple(children, &sub_pd->genpd);
 			exynos_pd_genpd_init(sub_pd, initial_state);
 
 			if (pm_genpd_add_subdomain(&pd->genpd, &sub_pd->genpd))

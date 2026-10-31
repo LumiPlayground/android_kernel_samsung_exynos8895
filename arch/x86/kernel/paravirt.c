@@ -19,7 +19,8 @@
 */
 
 #include <linux/errno.h>
-#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/export.h>
 #include <linux/efi.h>
 #include <linux/bcd.h>
 #include <linux/highmem.h>
@@ -74,16 +75,6 @@ void __init default_banner(void)
 /* Undefined instruction for dealing with missing ops pointers. */
 static const unsigned char ud2a[] = { 0x0f, 0x0b };
 
-unsigned paravirt_patch_nop(void)
-{
-	return 0;
-}
-
-unsigned paravirt_patch_ignore(unsigned len)
-{
-	return len;
-}
-
 struct branch {
 	unsigned char opcode;
 	u32 delta;
@@ -99,7 +90,7 @@ unsigned paravirt_patch_call(void *insnbuf,
 
 	if (len < 5) {
 #ifdef CONFIG_RETPOLINE
-		WARN_ONCE("Failing to patch indirect CALL in %ps\n", (void *)addr);
+		WARN_ONCE(1, "Failing to patch indirect CALL in %ps\n", (void *)addr);
 #endif
 		return len;	/* call too long for patch site */
 	}
@@ -119,7 +110,7 @@ unsigned paravirt_patch_jmp(void *insnbuf, const void *target,
 
 	if (len < 5) {
 #ifdef CONFIG_RETPOLINE
-		WARN_ONCE("Failing to patch indirect JMP in %ps\n", (void *)addr);
+		WARN_ONCE(1, "Failing to patch indirect JMP in %ps\n", (void *)addr);
 #endif
 		return len;	/* call too long for patch site */
 	}
@@ -139,7 +130,6 @@ static void *get_call_destination(u8 type)
 		.pv_time_ops = pv_time_ops,
 		.pv_cpu_ops = pv_cpu_ops,
 		.pv_irq_ops = pv_irq_ops,
-		.pv_apic_ops = pv_apic_ops,
 		.pv_mmu_ops = pv_mmu_ops,
 #ifdef CONFIG_PARAVIRT_SPINLOCKS
 		.pv_lock_ops = pv_lock_ops,
@@ -158,8 +148,7 @@ unsigned paravirt_patch_default(u8 type, u16 clobbers, void *insnbuf,
 		/* If there's no function, patch it with a ud2a (BUG) */
 		ret = paravirt_patch_insns(insnbuf, len, ud2a, ud2a+sizeof(ud2a));
 	else if (opfunc == _paravirt_nop)
-		/* If the operation is a nop, then nop the callsite */
-		ret = paravirt_patch_nop();
+		ret = 0;
 
 	/* identity functions just return their single argument */
 	else if (opfunc == _paravirt_ident_32)
@@ -168,7 +157,6 @@ unsigned paravirt_patch_default(u8 type, u16 clobbers, void *insnbuf,
 		ret = paravirt_patch_ident_64(insnbuf, len);
 
 	else if (type == PARAVIRT_PATCH(pv_cpu_ops.iret) ||
-		 type == PARAVIRT_PATCH(pv_cpu_ops.usergs_sysret32) ||
 		 type == PARAVIRT_PATCH(pv_cpu_ops.usergs_sysret64))
 		/* If operation requires a jmp, then jmp */
 		ret = paravirt_patch_jmp(insnbuf, opfunc, addr, len);
@@ -223,7 +211,6 @@ static u64 native_steal_clock(int cpu)
 
 /* These are in entry.S */
 extern void native_iret(void);
-extern void native_usergs_sysret32(void);
 extern void native_usergs_sysret64(void);
 
 static struct resource reserve_ioports = {
@@ -314,7 +301,6 @@ enum paravirt_lazy_mode paravirt_get_lazy_mode(void)
 
 struct pv_info pv_info = {
 	.name = "bare hardware",
-	.paravirt_enabled = 0,
 	.kernel_rpl = 0,
 	.shared_kernel_pmd = 1,	/* Only used when CONFIG_X86_PAE is set */
 
@@ -352,15 +338,16 @@ __visible struct pv_cpu_ops pv_cpu_ops = {
 	.read_cr0 = native_read_cr0,
 	.write_cr0 = native_write_cr0,
 	.read_cr4 = native_read_cr4,
-	.read_cr4_safe = native_read_cr4_safe,
 	.write_cr4 = native_write_cr4,
 #ifdef CONFIG_X86_64
 	.read_cr8 = native_read_cr8,
 	.write_cr8 = native_write_cr8,
 #endif
 	.wbinvd = native_wbinvd,
-	.read_msr = native_read_msr_safe,
-	.write_msr = native_write_msr_safe,
+	.read_msr = native_read_msr,
+	.write_msr = native_write_msr,
+	.read_msr_safe = native_read_msr_safe,
+	.write_msr_safe = native_write_msr_safe,
 	.read_pmc = native_read_pmc,
 	.load_tr_desc = native_load_tr_desc,
 	.set_ldt = native_set_ldt,
@@ -382,9 +369,6 @@ __visible struct pv_cpu_ops pv_cpu_ops = {
 	.load_sp0 = native_load_sp0,
 
 #ifdef CONFIG_X86_64
-#ifdef CONFIG_IA32_EMULATION
-	.usergs_sysret32 = native_usergs_sysret32,
-#endif
 	.usergs_sysret64 = native_usergs_sysret64,
 #endif
 	.iret = native_iret,
@@ -402,12 +386,6 @@ NOKPROBE_SYMBOL(native_get_debugreg);
 NOKPROBE_SYMBOL(native_set_debugreg);
 NOKPROBE_SYMBOL(native_load_idt);
 
-struct pv_apic_ops pv_apic_ops = {
-#ifdef CONFIG_X86_LOCAL_APIC
-	.startup_ipi_hook = paravirt_nop,
-#endif
-};
-
 #if defined(CONFIG_X86_32) && !defined(CONFIG_X86_PAE)
 /* 32-bit pagetable entries */
 #define PTE_IDENT	__PV_IS_CALLEE_SAVE(_paravirt_ident_32)
@@ -416,7 +394,7 @@ struct pv_apic_ops pv_apic_ops = {
 #define PTE_IDENT	__PV_IS_CALLEE_SAVE(_paravirt_ident_64)
 #endif
 
-struct pv_mmu_ops pv_mmu_ops = {
+struct pv_mmu_ops pv_mmu_ops __ro_after_init = {
 
 	.read_cr2 = native_read_cr2,
 	.write_cr2 = native_write_cr2,
@@ -443,9 +421,6 @@ struct pv_mmu_ops pv_mmu_ops = {
 	.set_pmd = native_set_pmd,
 	.set_pmd_at = native_set_pmd_at,
 	.pte_update = paravirt_nop,
-	.pte_update_defer = paravirt_nop,
-	.pmd_update = paravirt_nop,
-	.pmd_update_defer = paravirt_nop,
 
 	.ptep_modify_prot_start = __ptep_modify_prot_start,
 	.ptep_modify_prot_commit = __ptep_modify_prot_commit,
@@ -491,6 +466,5 @@ struct pv_mmu_ops pv_mmu_ops = {
 EXPORT_SYMBOL_GPL(pv_time_ops);
 EXPORT_SYMBOL    (pv_cpu_ops);
 EXPORT_SYMBOL    (pv_mmu_ops);
-EXPORT_SYMBOL_GPL(pv_apic_ops);
 EXPORT_SYMBOL_GPL(pv_info);
 EXPORT_SYMBOL    (pv_irq_ops);

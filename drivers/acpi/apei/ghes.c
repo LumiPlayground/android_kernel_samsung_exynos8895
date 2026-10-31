@@ -26,7 +26,7 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/init.h>
 #include <linux/acpi.h>
 #include <linux/io.h>
@@ -79,6 +79,11 @@
 	((struct acpi_hest_generic_status *)				\
 	 ((struct ghes_estatus_node *)(estatus_node) + 1))
 
+/*
+ * This driver isn't really modular, however for the time being,
+ * continuing to use module_param is the easiest way to remain
+ * compatible with existing boot arg use cases.
+ */
 bool ghes_disable;
 module_param_named(disable, ghes_disable, bool, 0);
 
@@ -198,40 +203,40 @@ static int ghes_estatus_pool_init(void)
 	return 0;
 }
 
-static void ghes_estatus_pool_free_chunk(struct gen_pool *pool,
+static void ghes_estatus_pool_free_chunk_page(struct gen_pool *pool,
 					      struct gen_pool_chunk *chunk,
 					      void *data)
 {
-	vfree((void *)chunk->start_addr);
+	free_page(chunk->start_addr);
 }
 
 static void ghes_estatus_pool_exit(void)
 {
 	gen_pool_for_each_chunk(ghes_estatus_pool,
-				ghes_estatus_pool_free_chunk, NULL);
+				ghes_estatus_pool_free_chunk_page, NULL);
 	gen_pool_destroy(ghes_estatus_pool);
 }
 
 static int ghes_estatus_pool_expand(unsigned long len)
 {
-	unsigned long size, addr;
+	unsigned long i, pages, size, addr;
+	int ret;
 
 	ghes_estatus_pool_size_request += PAGE_ALIGN(len);
 	size = gen_pool_size(ghes_estatus_pool);
 	if (size >= ghes_estatus_pool_size_request)
 		return 0;
+	pages = (ghes_estatus_pool_size_request - size) / PAGE_SIZE;
+	for (i = 0; i < pages; i++) {
+		addr = __get_free_page(GFP_KERNEL);
+		if (!addr)
+			return -ENOMEM;
+		ret = gen_pool_add(ghes_estatus_pool, addr, PAGE_SIZE, -1);
+		if (ret)
+			return ret;
+	}
 
-	addr = (unsigned long)vmalloc(PAGE_ALIGN(len));
-	if (!addr)
-		return -ENOMEM;
-
-	/*
-	 * New allocation must be visible in all pgd before it can be found by
-	 * an NMI allocating from the pool.
-	 */
-	vmalloc_sync_mappings();
-
-	return gen_pool_add(ghes_estatus_pool, addr, PAGE_ALIGN(len), -1);
+	return 0;
 }
 
 static struct ghes *ghes_new(struct acpi_hest_generic *generic)
@@ -452,7 +457,7 @@ static void ghes_do_proc(struct ghes *ghes,
 
 				devfn = PCI_DEVFN(pcie_err->device_id.device,
 						  pcie_err->device_id.function);
-				aer_severity = cper_severity_to_aer(sev);
+				aer_severity = cper_severity_to_aer(gdata->error_severity);
 
 				/*
 				 * If firmware reset the component to contain
@@ -1150,18 +1155,4 @@ err_ioremap_exit:
 err:
 	return rc;
 }
-
-static void __exit ghes_exit(void)
-{
-	platform_driver_unregister(&ghes_platform_driver);
-	ghes_estatus_pool_exit();
-	ghes_ioremap_exit();
-}
-
-module_init(ghes_init);
-module_exit(ghes_exit);
-
-MODULE_AUTHOR("Huang Ying");
-MODULE_DESCRIPTION("APEI Generic Hardware Error Source support");
-MODULE_LICENSE("GPL");
-MODULE_ALIAS("platform:GHES");
+device_initcall(ghes_init);

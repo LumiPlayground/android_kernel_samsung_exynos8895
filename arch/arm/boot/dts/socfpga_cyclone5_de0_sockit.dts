@@ -88,7 +88,7 @@
 	status = "okay";
 	speed-mode = <0>;
 
-	adxl345: adxl345@53 {
+	adxl345: adxl345@0 {
 		compatible = "adi,adxl345";
 		reg = <0x53>;
 
@@ -100,6 +100,7 @@
 &mmc0 {
 	vmmc-supply = <&regulator_3_3v>;
 	vqmmc-supply = <&regulator_3_3v>;
+	status = "okay";
 };
 
 &uart0 {

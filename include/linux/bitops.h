@@ -3,8 +3,7 @@
 #include <asm/types.h>
 #include <linux/bits.h>
 
-#define BITS_PER_TYPE(type) (sizeof(type) * BITS_PER_BYTE)
-#define BITS_TO_LONGS(nr)	DIV_ROUND_UP(nr, BITS_PER_TYPE(long))
+#define BITS_TO_LONGS(nr)	DIV_ROUND_UP(nr, BITS_PER_BYTE * sizeof(long))
 
 extern unsigned int __sw_hweight8(unsigned int w);
 extern unsigned int __sw_hweight16(unsigned int w);
@@ -47,19 +46,9 @@ static inline int get_bitmask_order(unsigned int count)
 	return order;	/* We could be slightly more clever with -1 here... */
 }
 
-static inline int get_count_order(unsigned int count)
-{
-	int order;
-
-	order = fls(count) - 1;
-	if (count & (count - 1))
-		order++;
-	return order;
-}
-
 static __always_inline unsigned long hweight_long(unsigned long w)
 {
-	return sizeof(w) == 4 ? hweight32(w) : hweight64((__u64)w);
+	return sizeof(w) == 4 ? hweight32(w) : hweight64(w);
 }
 
 /**
@@ -173,6 +162,32 @@ static inline unsigned fls_long(unsigned long l)
 	return fls64(l);
 }
 
+static inline int get_count_order(unsigned int count)
+{
+	int order;
+
+	order = fls(count) - 1;
+	if (count & (count - 1))
+		order++;
+	return order;
+}
+
+/**
+ * get_count_order_long - get order after rounding @l up to power of 2
+ * @l: parameter
+ *
+ * it is same as get_count_order() but with long type parameter
+ */
+static inline int get_count_order_long(unsigned long l)
+{
+	if (l == 0UL)
+		return -1;
+	else if (l & (l - 1UL))
+		return (int)fls_long(l);
+	else
+		return (int)fls_long(l) - 1;
+}
+
 /**
  * __ffs64 - find first set bit in a 64 bit word
  * @word: The 64 bit word
@@ -206,6 +221,22 @@ static inline unsigned long __ffs64(u64 word)
 	} while (cmpxchg(ptr, old, new) != old);		\
 								\
 	new;							\
+})
+#endif
+
+#ifndef bit_clear_unless
+#define bit_clear_unless(ptr, _clear, _test)	\
+({								\
+	const typeof(*ptr) clear = (_clear), test = (_test);	\
+	typeof(*ptr) old, new;					\
+								\
+	do {							\
+		old = ACCESS_ONCE(*ptr);			\
+		new = old & ~clear;				\
+	} while (!(old & test) &&				\
+		 cmpxchg(ptr, old, new) != old);		\
+								\
+	!(old & test);						\
 })
 #endif
 

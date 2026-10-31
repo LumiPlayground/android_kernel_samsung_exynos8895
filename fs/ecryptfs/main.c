@@ -843,6 +843,7 @@ static struct dentry *ecryptfs_mount(struct file_system_type *fs_type, int flags
 	/* ->kill_sb() will take care of sbi after that point */
 	sbi = NULL;
 	s->s_d_op = &ecryptfs_dops;
+	s->s_xattr = ecryptfs_xattr_handlers;
 
 	err = "Reading sb failed";
 	rc = kern_path(dev_name, LOOKUP_FOLLOW | LOOKUP_DIRECTORY, &path);

@@ -187,7 +187,7 @@ static int acpi_battery_is_charged(struct acpi_battery *battery)
 		return 1;
 
 	/* fallback to using design values for broken batteries */
-	if (battery->design_capacity <= battery->capacity_now)
+	if (battery->design_capacity == battery->capacity_now)
 		return 1;
 
 	/* we don't do any sort of metric based on percentages */
@@ -733,15 +733,17 @@ static int acpi_battery_update(struct acpi_battery *battery, bool resume)
 			return result;
 		acpi_battery_init_alarm(battery);
 	}
+
+	result = acpi_battery_get_state(battery);
+	if (result)
+		return result;
+	acpi_battery_quirks(battery);
+
 	if (!battery->bat) {
 		result = sysfs_add_battery(battery);
 		if (result)
 			return result;
 	}
-	result = acpi_battery_get_state(battery);
-	if (result)
-		return result;
-	acpi_battery_quirks(battery);
 
 	/*
 	 * Wakeup the system if battery is critical low
@@ -1316,7 +1318,7 @@ static int __init acpi_battery_init(void)
 
 static void __exit acpi_battery_exit(void)
 {
-	async_synchronize_cookie(async_cookie);
+	async_synchronize_cookie(async_cookie + 1);
 	acpi_bus_unregister_driver(&acpi_battery_driver);
 #ifdef CONFIG_ACPI_PROCFS_POWER
 	acpi_unlock_battery_dir(acpi_battery_dir);

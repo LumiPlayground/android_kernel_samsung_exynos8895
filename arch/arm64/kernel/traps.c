@@ -595,6 +595,14 @@ asmlinkage long do_ni_syscall(struct pt_regs *regs)
 	}
 #endif
 
+	if (show_unhandled_signals_ratelimited()) {
+		pr_info("%s[%d]: syscall %d\n", current->comm,
+			task_pid_nr(current), (int)regs->syscallno);
+		dump_instr("", regs);
+		if (user_mode(regs))
+			__show_regs(regs);
+	}
+
 	return sys_ni_syscall();
 }
 
@@ -654,6 +662,7 @@ asmlinkage void bad_mode(struct pt_regs *regs, int reason, unsigned int esr)
 	pr_crit("Bad mode in %s handler detected, code 0x%08x -- %s\n",
 		handler[reason], esr, esr_get_class_string(esr));
 
+	die("Oops - bad mode", regs, 0);
 	local_irq_disable();
 	panic("bad mode");
 }
@@ -777,3 +786,57 @@ void __init trap_init(void)
 	register_break_hook(&bug_break_hook);
 }
 
+
+int cpu_enable_cache_maint_trap(void *__unused)
+{
+	config_sctlr_el1(SCTLR_EL1_UCI, 0);
+	return 0;
+}
+
+static void force_signal_inject(int signal, int code, struct pt_regs *regs,
+				unsigned long address)
+{
+	siginfo_t info;
+	void __user *pc = (void __user *)instruction_pointer(regs);
+	const char *desc;
+
+	switch (signal) {
+	case SIGILL:
+		desc = "undefined instruction";
+		break;
+	case SIGSEGV:
+		desc = "illegal memory access";
+		break;
+	default:
+		desc = "bad mode";
+		break;
+	}
+
+	if (unhandled_signal(current, signal) &&
+	    show_unhandled_signals_ratelimited()) {
+		pr_info("%s[%d]: %s: pc=%p\n",
+			current->comm, task_pid_nr(current), desc, pc);
+		dump_instr(KERN_INFO, regs);
+	}
+
+	info.si_signo = signal;
+	info.si_errno = 0;
+	info.si_code  = code;
+	info.si_addr  = pc;
+
+	arm64_notify_die(desc, regs, &info, 0);
+}
+
+void arm64_notify_segfault(struct pt_regs *regs, unsigned long addr)
+{
+	int code;
+
+	down_read(&current->mm->mmap_sem);
+	if (find_vma(current->mm, addr) == NULL)
+		code = SEGV_MAPERR;
+	else
+		code = SEGV_ACCERR;
+	up_read(&current->mm->mmap_sem);
+
+	force_signal_inject(SIGSEGV, code, regs, addr);
+}

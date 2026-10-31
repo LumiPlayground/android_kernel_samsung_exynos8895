@@ -213,7 +213,7 @@ static inline int cpuidle_enter_freeze(struct cpuidle_driver *drv,
 #endif
 
 /* kernel/sched/idle.c */
-extern void sched_idle_set_state(struct cpuidle_state *idle_state);
+extern void sched_idle_set_state(struct cpuidle_state *idle_state, int index);
 extern void default_idle_call(void);
 
 #ifdef CONFIG_ARCH_NEEDS_CPU_IDLE_COUPLED
@@ -257,5 +257,23 @@ static inline int cpuidle_register_governor(struct cpuidle_governor *gov)
 #else
 #define CPUIDLE_DRIVER_STATE_START	0
 #endif
+
+#define CPU_PM_CPU_IDLE_ENTER(low_level_idle_enter, idx)	\
+({								\
+	int __ret;						\
+								\
+	if (!idx) {						\
+		cpu_do_idle();					\
+		return idx;					\
+	}							\
+								\
+	__ret = cpu_pm_enter();					\
+	if (!__ret) {						\
+		__ret = low_level_idle_enter(idx);		\
+		cpu_pm_exit();					\
+	}							\
+								\
+	__ret ? -1 : idx;					\
+})
 
 #endif /* _LINUX_CPUIDLE_H */

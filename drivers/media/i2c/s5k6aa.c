@@ -28,7 +28,7 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
 #include <media/v4l2-mediabus.h>
-#include <media/s5k6aa.h>
+#include <media/i2c/s5k6aa.h>
 
 static int debug;
 module_param(debug, int, 0644);
@@ -181,7 +181,7 @@ static const char * const s5k6aa_supply_names[] = {
 
 enum s5k6aa_gpio_id {
 	STBY,
-	RSET,
+	RST,
 	GPIO_NUM,
 };
 
@@ -845,7 +845,7 @@ static int __s5k6aa_power_on(struct s5k6aa *s5k6aa)
 		ret = s5k6aa->s_power(1);
 	usleep_range(4000, 4000);
 
-	if (s5k6aa_gpio_deassert(s5k6aa, RSET))
+	if (s5k6aa_gpio_deassert(s5k6aa, RST))
 		msleep(20);
 
 	return ret;
@@ -855,7 +855,7 @@ static int __s5k6aa_power_off(struct s5k6aa *s5k6aa)
 {
 	int ret;
 
-	if (s5k6aa_gpio_assert(s5k6aa, RSET))
+	if (s5k6aa_gpio_assert(s5k6aa, RST))
 		usleep_range(100, 150);
 
 	if (s5k6aa->s_power) {
@@ -1514,7 +1514,7 @@ static int s5k6aa_configure_gpios(struct s5k6aa *s5k6aa,
 	int ret;
 
 	s5k6aa->gpio[STBY].gpio = -EINVAL;
-	s5k6aa->gpio[RSET].gpio  = -EINVAL;
+	s5k6aa->gpio[RST].gpio  = -EINVAL;
 
 	gpio = &pdata->gpio_stby;
 	if (gpio_is_valid(gpio->gpio)) {
@@ -1537,7 +1537,7 @@ static int s5k6aa_configure_gpios(struct s5k6aa *s5k6aa,
 		if (ret < 0)
 			return ret;
 
-		s5k6aa->gpio[RSET] = *gpio;
+		s5k6aa->gpio[RST] = *gpio;
 	}
 
 	return 0;
@@ -1582,8 +1582,8 @@ static int s5k6aa_probe(struct i2c_client *client,
 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 
 	s5k6aa->pad.flags = MEDIA_PAD_FL_SOURCE;
-	sd->entity.type = MEDIA_ENT_T_V4L2_SUBDEV_SENSOR;
-	ret = media_entity_init(&sd->entity, 1, &s5k6aa->pad, 0);
+	sd->entity.function = MEDIA_ENT_F_CAM_SENSOR;
+	ret = media_entity_pads_init(&sd->entity, 1, &s5k6aa->pad);
 	if (ret)
 		return ret;
 

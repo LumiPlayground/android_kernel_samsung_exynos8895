@@ -107,6 +107,10 @@
 #define __weak		__attribute__((weak))
 #define __alias(symbol)	__attribute__((alias(#symbol)))
 
+#ifdef RETPOLINE
+#define __noretpoline __attribute__((indirect_branch("keep")))
+#endif
+
 /*
  * it doesn't make sense on ARM (currently the only user of __naked)
  * to trace naked functions because then mcount is called without
@@ -145,12 +149,6 @@
 
 #if GCC_VERSION < 30200
 # error Sorry, your compiler is too old - please upgrade it.
-#elif defined(CONFIG_ARM64) && GCC_VERSION < 50100 && !defined(__clang__)
-/*
- * https://gcc.gnu.org/bugzilla/show_bug.cgi?id=63293
- * https://lore.kernel.org/r/20210107111841.GN1551@shell.armlinux.org.uk
- */
-# error Sorry, your version of GCC is too old - please use 5.1 or newer.
 #endif
 
 #if GCC_VERSION < 30300
@@ -167,6 +165,7 @@
 
 #if GCC_VERSION >= 30400
 #define __must_check		__attribute__((warn_unused_result))
+#define __malloc		__attribute__((__malloc__))
 #endif
 
 #if GCC_VERSION >= 40000
@@ -182,7 +181,7 @@
 #define __compiler_offsetof(a, b)					\
 	__builtin_offsetof(a, b)
 
-#if GCC_VERSION >= 40100 && GCC_VERSION < 40600
+#if GCC_VERSION >= 40100
 # define __compiletime_object_size(obj) __builtin_object_size(obj, 0)
 #endif
 
@@ -211,7 +210,29 @@
 #endif /* __CHECKER__ */
 #endif /* GCC_VERSION >= 40300 */
 
+#if GCC_VERSION >= 40400
+#define __optimize(level)	__attribute__((__optimize__(level)))
+#endif /* GCC_VERSION >= 40400 */
+
 #if GCC_VERSION >= 40500
+
+#ifndef __CHECKER__
+#ifdef LATENT_ENTROPY_PLUGIN
+#define __latent_entropy __attribute__((latent_entropy))
+#endif
+#endif
+
+#ifdef CONFIG_STACK_VALIDATION
+#define annotate_unreachable() ({					\
+	asm("1:\t\n"							\
+	    ".pushsection .discard.unreachable\t\n"			\
+	    ".long 1b\t\n"						\
+	    ".popsection\t\n");						\
+})
+#else
+#define annotate_unreachable()
+#endif
+
 /*
  * calling noreturn functions, __builtin_unreachable() and __builtin_trap()
  * confuse the stack allocation in gcc, leading to overly large stack
@@ -232,6 +253,7 @@
  */
 #define unreachable() \
 	do {					\
+		annotate_unreachable();		\
 		barrier_before_unreachable();	\
 		__builtin_unreachable();	\
 	} while (0)
@@ -279,15 +301,19 @@
  */
 #define asm_volatile_goto(x...)	do { asm goto(x); asm (""); } while (0)
 
-#ifdef CONFIG_ARCH_USE_BUILTIN_BSWAP
+/*
+ * sparse (__CHECKER__) pretends to be gcc, but can't do constant
+ * folding in __builtin_bswap*() (yet), so don't set these for it.
+ */
+#if defined(CONFIG_ARCH_USE_BUILTIN_BSWAP) && !defined(__CHECKER__)
 #if GCC_VERSION >= 40400
 #define __HAVE_BUILTIN_BSWAP32__
 #define __HAVE_BUILTIN_BSWAP64__
 #endif
-#if GCC_VERSION >= 40800 || (defined(__powerpc__) && GCC_VERSION >= 40600)
+#if GCC_VERSION >= 40800
 #define __HAVE_BUILTIN_BSWAP16__
 #endif
-#endif /* CONFIG_ARCH_USE_BUILTIN_BSWAP */
+#endif /* CONFIG_ARCH_USE_BUILTIN_BSWAP && !__CHECKER__ */
 
 #if GCC_VERSION >= 70000
 #define KASAN_ABI_VERSION 5

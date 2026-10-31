@@ -194,11 +194,10 @@ static struct dentry *__sdcardfs_interpose(struct dentry *dentry,
 		ret_dentry = ERR_CAST(inode);
 		goto out;
 	}
+	update_derived_permission_lock(dentry, inode);
 
 	ret_dentry = d_splice_alias(inode, dentry);
 	dentry = ret_dentry ?: dentry;
-	if (!IS_ERR(dentry))
-		update_derived_permission_lock(dentry);
 out:
 	return ret_dentry;
 }
@@ -361,10 +360,8 @@ put_name:
 	if (err && err != -ENOENT)
 		goto out;
 
-	mutex_lock(&lower_dir_dentry->d_inode->i_mutex);
-	lower_dentry = lookup_one_len(dentry->d_name.name, lower_dir_dentry,
-						dentry->d_name.len);
-	mutex_unlock(&lower_dir_dentry->d_inode->i_mutex);
+	lower_dentry = lookup_one_len_unlocked(dentry->d_name.name,
+			lower_dir_dentry, dentry->d_name.len);
 	if (unlikely(IS_ERR(lower_dentry))) {
 		err =  PTR_ERR(lower_dentry);
 		goto out;
@@ -394,7 +391,7 @@ out:
  * On fail (== error)
  * returns error ptr
  *
- * @dir : Parent inode. It is locked (dir->i_mutex)
+ * @dir : Parent inode.
  * @dentry : Target dentry to lookup. we should set each of fields.
  *	     (dentry->d_name is initialized already)
  * @nd : nameidata of parent inode
@@ -437,14 +434,9 @@ struct dentry *sdcardfs_lookup(struct inode *dir, struct dentry *dentry,
 		goto out;
 	if (ret)
 		dentry = ret;
-	if (d_inode(dentry)) {
-		fsstack_copy_attr_times(d_inode(dentry),
-					sdcardfs_lower_inode(d_inode(dentry)));
-		/* get derived permission */
-		get_derived_permission(parent, dentry);
-		fixup_tmp_permissions(d_inode(dentry));
+	if (d_inode(dentry))
 		fixup_lower_ownership(dentry, dentry->d_name.name);
-	}
+
 	/* update parent directory's atime */
 	fsstack_copy_attr_atime(d_inode(parent),
 				sdcardfs_lower_inode(d_inode(parent)));

@@ -38,6 +38,17 @@ int unregister_pm_notifier(struct notifier_block *nb)
 }
 EXPORT_SYMBOL_GPL(unregister_pm_notifier);
 
+bool is_pm_chain_notifier(struct notifier_block **notifier_block,
+		unsigned long val)
+{
+	if ((&pm_chain_head.head == notifier_block) &&
+			((val == PM_SUSPEND_PREPARE) || (val == PM_POST_SUSPEND)))
+		return true;
+
+	return false;
+}
+EXPORT_SYMBOL_GPL(is_pm_chain_notifier);
+
 int __pm_notifier_call_chain(unsigned long val, int nr_to_call, int *nr_calls)
 {
 	int ret;
@@ -287,13 +298,7 @@ static ssize_t pm_wakeup_irq_show(struct kobject *kobj,
 	return pm_wakeup_irq ? sprintf(buf, "%u\n", pm_wakeup_irq) : -ENODATA;
 }
 
-static ssize_t pm_wakeup_irq_store(struct kobject *kobj,
-					struct kobj_attribute *attr,
-					const char *buf, size_t n)
-{
-	return -EINVAL;
-}
-power_attr(pm_wakeup_irq);
+power_attr_ro(pm_wakeup_irq);
 
 #else /* !CONFIG_PM_SLEEP_DEBUG */
 static inline void pm_print_times_init(void) {}
@@ -571,14 +576,7 @@ static ssize_t pm_trace_dev_match_show(struct kobject *kobj,
 	return show_trace_dev_match(buf, PAGE_SIZE);
 }
 
-static ssize_t
-pm_trace_dev_match_store(struct kobject *kobj, struct kobj_attribute *attr,
-			 const char *buf, size_t n)
-{
-	return -EINVAL;
-}
-
-power_attr(pm_trace_dev_match);
+power_attr_ro(pm_trace_dev_match);
 
 #endif /* CONFIG_PM_TRACE */
 
@@ -605,32 +603,6 @@ static ssize_t pm_freeze_timeout_store(struct kobject *kobj,
 power_attr(pm_freeze_timeout);
 
 #endif	/* CONFIG_FREEZER*/
-
-#ifdef CONFIG_SW_SELF_DISCHARGING
-/* Support SW_SELF_DISCHARGING (SEC_PM) */
-static char selfdischg_usage_str[] =
-	"[START]\n"
-	"/sys/power/cpufreq_self_discharging 1\n"
-	"[STOP]\n"
-	"/sys/power/cpufreq_self_discharging 0\n"
-	"[END]\n";
-
-static ssize_t selfdischg_usage_show(struct kobject *kobj,
-					struct kobj_attribute *attr,
-					char *buf)
-{
-	pr_info("%s\n", __func__);
-	return sprintf(buf, "%s", selfdischg_usage_str);
-}
-
-static struct kobj_attribute selfdischg_usage_attr = {
-	.attr	= {
-		.name = __stringify(selfdischg_usage),
-		.mode = 0440,
-	},
-	.show	= selfdischg_usage_show,
-};
-#endif /* CONFIG_SW_SELF_DISCHARGING */
 
 static struct attribute * g[] = {
 	&state_attr.attr,
@@ -659,9 +631,6 @@ static struct attribute * g[] = {
 #ifdef CONFIG_FREEZER
 	&pm_freeze_timeout_attr.attr,
 #endif
-#ifdef CONFIG_SW_SELF_DISCHARGING
-	&selfdischg_usage_attr.attr,
-#endif
 	NULL,
 };
 
@@ -686,6 +655,7 @@ static int __init pm_init(void)
 		return error;
 	hibernate_image_size_init();
 	hibernate_reserved_size_init();
+	pm_states_init();
 	power_kobj = kobject_create_and_add("power", NULL);
 	if (!power_kobj)
 		return -ENOMEM;

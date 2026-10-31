@@ -12,6 +12,7 @@
 #include <asm/mpspec.h>
 #include <asm/msr.h>
 #include <asm/idle.h>
+#include <asm/hardirq.h>
 
 #define ARCH_APICTIMER_STOPS_ON_C3	1
 
@@ -21,6 +22,11 @@
 #define APIC_QUIET   0
 #define APIC_VERBOSE 1
 #define APIC_DEBUG   2
+
+/* Macros for apic_extnmi which controls external NMI masking */
+#define APIC_EXTNMI_BSP		0 /* Default */
+#define APIC_EXTNMI_ALL		1
+#define APIC_EXTNMI_NONE	2
 
 /*
  * Define the default level of output to be very little
@@ -130,6 +136,7 @@ extern void init_apic_mappings(void);
 void register_lapic_address(unsigned long address);
 extern void setup_boot_APIC_clock(void);
 extern void setup_secondary_APIC_clock(void);
+extern void lapic_update_tsc_freq(void);
 extern int APIC_init_uniprocessor(void);
 
 #ifdef CONFIG_X86_64
@@ -165,9 +172,20 @@ static inline void init_apic_mappings(void) { }
 static inline void disable_local_APIC(void) { }
 # define setup_boot_APIC_clock x86_init_noop
 # define setup_secondary_APIC_clock x86_init_noop
+static inline void lapic_update_tsc_freq(void) { }
 #endif /* !CONFIG_X86_LOCAL_APIC */
 
 #ifdef CONFIG_X86_X2APIC
+/*
+ * Make previous memory operations globally visible before
+ * sending the IPI through x2apic wrmsr. We need a serializing instruction or
+ * mfence for this.
+ */
+static inline void x2apic_wrmsr_fence(void)
+{
+	asm volatile("mfence" : : : "memory");
+}
+
 static inline void native_apic_msr_write(u32 reg, u32 v)
 {
 	if (reg == APIC_DFR || reg == APIC_ID || reg == APIC_LDR ||
@@ -224,10 +242,10 @@ extern void __init check_x2apic(void);
 extern void x2apic_setup(void);
 static inline int x2apic_enabled(void)
 {
-	return cpu_has_x2apic && apic_is_x2apic_enabled();
+	return boot_cpu_has(X86_FEATURE_X2APIC) && apic_is_x2apic_enabled();
 }
 
-#define x2apic_supported()	(cpu_has_x2apic)
+#define x2apic_supported()	(boot_cpu_has(X86_FEATURE_X2APIC))
 #else /* !CONFIG_X86_X2APIC */
 static inline void check_x2apic(void) { }
 static inline void x2apic_setup(void) { }
@@ -285,13 +303,13 @@ struct apic {
 
 	unsigned int (*get_apic_id)(unsigned long x);
 	unsigned long (*set_apic_id)(unsigned int id);
-	unsigned long apic_id_mask;
 
 	int (*cpu_mask_to_apicid_and)(const struct cpumask *cpumask,
 				      const struct cpumask *andmask,
 				      unsigned int *apicid);
 
 	/* ipi */
+	void (*send_IPI)(int cpu, int vector);
 	void (*send_IPI_mask)(const struct cpumask *mask, int vector);
 	void (*send_IPI_mask_allbutself)(const struct cpumask *mask,
 					 int vector);
@@ -616,6 +634,13 @@ extern int default_check_phys_apicid_present(int phys_apicid);
 #endif
 
 #endif /* CONFIG_X86_LOCAL_APIC */
+
+#ifdef CONFIG_SMP
+bool apic_id_is_primary_thread(unsigned int id);
+#else
+static inline bool apic_id_is_primary_thread(unsigned int id) { return false; }
+#endif
+
 extern void irq_enter(void);
 extern void irq_exit(void);
 
@@ -623,6 +648,7 @@ static inline void entering_irq(void)
 {
 	irq_enter();
 	exit_idle();
+	kvm_set_cpu_l1tf_flush_l1d();
 }
 
 static inline void entering_ack_irq(void)
@@ -633,8 +659,9 @@ static inline void entering_ack_irq(void)
 
 static inline void ipi_entering_ack_irq(void)
 {
-	ack_APIC_irq();
 	irq_enter();
+	ack_APIC_irq();
+	kvm_set_cpu_l1tf_flush_l1d();
 }
 
 static inline void exiting_irq(void)
@@ -644,9 +671,8 @@ static inline void exiting_irq(void)
 
 static inline void exiting_ack_irq(void)
 {
-	irq_exit();
-	/* Ack only at the end to avoid potential reentry */
 	ack_APIC_irq();
+	irq_exit();
 }
 
 extern void ioapic_zap_locks(void);

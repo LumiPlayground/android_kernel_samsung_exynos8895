@@ -37,7 +37,7 @@
 #include <linux/videodev2.h>
 
 #include <media/media-entity.h>
-#include <media/ov2659.h>
+#include <media/i2c/ov2659.h>
 #include <media/v4l2-common.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
@@ -419,14 +419,10 @@ static struct sensor_register ov2659_720p[] = {
 	{ REG_TIMING_YINC, 0x11 },
 	{ REG_TIMING_VERT_FORMAT, 0x80 },
 	{ REG_TIMING_HORIZ_FORMAT, 0x00 },
-	{ 0x370a, 0x12 },
 	{ 0x3a03, 0xe8 },
 	{ 0x3a09, 0x6f },
 	{ 0x3a0b, 0x5d },
 	{ 0x3a15, 0x9a },
-	{ REG_VFIFO_READ_START_H, 0x00 },
-	{ REG_VFIFO_READ_START_L, 0x80 },
-	{ REG_ISP_CTRL02, 0x00 },
 	{ REG_NULL, 0x00 },
 };
 
@@ -1137,7 +1133,7 @@ static int ov2659_set_fmt(struct v4l2_subdev *sd,
 		mf = v4l2_subdev_get_try_format(sd, cfg, fmt->pad);
 		*mf = fmt->format;
 #else
-		ret = -ENOTTY;
+		return -ENOTTY;
 #endif
 	} else {
 		s64 val;
@@ -1208,15 +1204,11 @@ static int ov2659_s_stream(struct v4l2_subdev *sd, int on)
 		goto unlock;
 	}
 
-	ret = ov2659_set_pixel_clock(ov2659);
-	if (!ret)
-		ret = ov2659_set_frame_size(ov2659);
-	if (!ret)
-		ret = ov2659_set_format(ov2659);
-	if (!ret) {
-		ov2659_set_streaming(ov2659, 1);
-		ov2659->streaming = on;
-	}
+	ov2659_set_pixel_clock(ov2659);
+	ov2659_set_frame_size(ov2659);
+	ov2659_set_format(ov2659);
+	ov2659_set_streaming(ov2659, 1);
+	ov2659->streaming = on;
 
 unlock:
 	mutex_unlock(&ov2659->lock);
@@ -1259,7 +1251,7 @@ static int ov2659_s_ctrl(struct v4l2_ctrl *ctrl)
 	return 0;
 }
 
-static struct v4l2_ctrl_ops ov2659_ctrl_ops = {
+static const struct v4l2_ctrl_ops ov2659_ctrl_ops = {
 	.s_ctrl = ov2659_s_ctrl,
 };
 
@@ -1331,10 +1323,6 @@ static int ov2659_detect(struct v4l2_subdev *sd)
 	}
 	usleep_range(1000, 2000);
 
-	ret = ov2659_init(sd, 0);
-	if (ret < 0)
-		return ret;
-
 	/* Check sensor revision */
 	ret = ov2659_read(client, REG_SC_CHIP_ID_H, &pid);
 	if (!ret)
@@ -1348,8 +1336,10 @@ static int ov2659_detect(struct v4l2_subdev *sd)
 			dev_err(&client->dev,
 				"Sensor detection failed (%04X, %d)\n",
 				id, ret);
-		else
+		else {
 			dev_info(&client->dev, "Found OV%04X sensor\n", id);
+			ret = ov2659_init(sd, 0);
+		}
 	}
 
 	return ret;
@@ -1455,8 +1445,8 @@ static int ov2659_probe(struct i2c_client *client,
 
 #if defined(CONFIG_MEDIA_CONTROLLER)
 	ov2659->pad.flags = MEDIA_PAD_FL_SOURCE;
-	sd->entity.type = MEDIA_ENT_T_V4L2_SUBDEV_SENSOR;
-	ret = media_entity_init(&sd->entity, 1, &ov2659->pad, 0);
+	sd->entity.function = MEDIA_ENT_F_CAM_SENSOR;
+	ret = media_entity_pads_init(&sd->entity, 1, &ov2659->pad);
 	if (ret < 0) {
 		v4l2_ctrl_handler_free(&ov2659->ctrls);
 		return ret;

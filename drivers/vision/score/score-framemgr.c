@@ -385,7 +385,7 @@ struct score_frame *score_frame_create(struct score_framemgr *framemgr)
 
 	frame->owner = framemgr;
 	frame->message = SCORE_FRAME_CREATE;
-	init_kthread_work(&frame->work, framemgr->func);
+	kthread_init_work(&frame->work, framemgr->func);
 	frame->frame = NULL;
 	frame->buffer.m.userptr = 0;
 
@@ -408,10 +408,10 @@ static int __score_frame_destroy(struct score_framemgr *framemgr, struct score_f
 	struct score_frame *twin_frame = frame->frame;
 
 	if (twin_frame) {
-		flush_kthread_work(&twin_frame->work);
+		kthread_flush_work(&twin_frame->work);
 		twin_frame->frame = NULL;
 	}
-	flush_kthread_work(&frame->work);
+	kthread_flush_work(&frame->work);
 
 	spin_lock_irqsave(&framemgr->slock, flags);
 	__score_frame_destroy_state(framemgr, frame);

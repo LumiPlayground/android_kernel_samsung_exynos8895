@@ -336,12 +336,6 @@
 
 #define KEY_MICMUTE		248	/* Mute / unmute the microphone */
 
-#define KEY_WAKEUP_UNLOCK	253	/* Wake-up to recent view, ex: AOP */
-#define KEY_RECENT   254
-
-#define KEY_INT_CANCEL		0x2be	/* for touch event skip */
-#define KEY_WINK            0x2bf    /* Intelligence Key */
-
 /* Code 255 is reserved for special needs of AT keyboard driver */
 
 #define BTN_MISC		0x100
@@ -401,7 +395,6 @@
 #define BTN_MODE		0x13c
 #define BTN_THUMBL		0x13d
 #define BTN_THUMBR		0x13e
-#define BTN_GAME		0x13f
 
 #define BTN_DIGI		0x140
 #define BTN_TOOL_PEN		0x140
@@ -523,11 +516,6 @@
 #define KEY_DEL_EOS		0x1c1
 #define KEY_INS_LINE		0x1c2
 #define KEY_DEL_LINE		0x1c3
-#define KEY_SIDE_GESTURE	0x1c6
-#define KEY_BLACK_UI_GESTURE	0x1c7
-
-#define KEY_SIDE_GESTURE_RIGHT	0x1ca
-#define KEY_SIDE_GESTURE_LEFT	0x1cb
 
 #define KEY_FN			0x1d0
 #define KEY_FN_ESC		0x1d1
@@ -604,7 +592,6 @@
 #define BTN_DPAD_RIGHT		0x223
 
 #define KEY_ALS_TOGGLE		0x230	/* Ambient light sensor */
-#define BTN_TOOL_SPEN_SCAN	0x230	/* Wacom full scan mode */
 
 #define KEY_BUTTONCONFIG		0x240	/* AL Button Configuration */
 #define KEY_TASKMANAGER		0x241	/* AL Task/Project Manager */
@@ -623,6 +610,37 @@
 #define KEY_KBDINPUTASSIST_NEXTGROUP		0x263
 #define KEY_KBDINPUTASSIST_ACCEPT		0x264
 #define KEY_KBDINPUTASSIST_CANCEL		0x265
+
+/* Diagonal movement keys */
+#define KEY_RIGHT_UP			0x266
+#define KEY_RIGHT_DOWN			0x267
+#define KEY_LEFT_UP			0x268
+#define KEY_LEFT_DOWN			0x269
+
+#define KEY_ROOT_MENU			0x26a /* Show Device's Root Menu */
+/* Show Top Menu of the Media (e.g. DVD) */
+#define KEY_MEDIA_TOP_MENU		0x26b
+#define KEY_NUMERIC_11			0x26c
+#define KEY_NUMERIC_12			0x26d
+/*
+ * Toggle Audio Description: refers to an audio service that helps blind and
+ * visually impaired consumers understand the action in a program. Note: in
+ * some countries this is referred to as "Video Description".
+ */
+#define KEY_AUDIO_DESC			0x26e
+#define KEY_3D_MODE			0x26f
+#define KEY_NEXT_FAVORITE		0x270
+#define KEY_STOP_RECORD			0x271
+#define KEY_PAUSE_RECORD		0x272
+#define KEY_VOD				0x273 /* Video on Demand */
+#define KEY_UNMUTE			0x274
+#define KEY_FASTREVERSE			0x275
+#define KEY_SLOWREVERSE			0x276
+/*
+ * Control a data application associated with the currently viewed channel,
+ * e.g. teletext or data broadcast application (MHEG, MHP, HbbTV, etc.)
+ */
+#define KEY_DATA			0x277
 
 #define BTN_TRIGGER_HAPPY		0x2c0
 #define BTN_TRIGGER_HAPPY1		0x2c0
@@ -746,8 +764,6 @@
 #define ABS_MT_TOOL_X		0x3c	/* Center X tool position */
 #define ABS_MT_TOOL_Y		0x3d	/* Center Y tool position */
 
-#define ABS_MT_CUSTOM		0x3e	/* custom event */
-#define ABS_MT_GRIP		0x3f	/* grip touch */
 
 #define ABS_MAX			0x3f
 #define ABS_CNT			(ABS_MAX+1)
@@ -773,10 +789,7 @@
 #define SW_ROTATE_LOCK		0x0c  /* set = rotate locked/disabled */
 #define SW_LINEIN_INSERT	0x0d  /* set = inserted */
 #define SW_MUTE_DEVICE		0x0e  /* set = device disabled */
-#define SW_GLOVE		0x0f	/* set = glove mode */
-#define SW_PEN_INSERT		0x13  /* set = pen insert, remove */
-#define SW_FLIP                 0x15    /* set = flip cover */
-#define SW_CERTIFYHALL          0x1b    /* set = certify_hall... */
+#define SW_PEN_INSERTED		0x0f  /* set = pen inserted */
 #define SW_MAX			0x20
 #define SW_CNT			(SW_MAX+1)
 
@@ -831,3 +844,21 @@
 #define SND_CNT			(SND_MAX+1)
 
 #endif
+
+/* Samsung input event extensions retained from sep-10.0. */
+#define KEY_WAKEUP_UNLOCK	253	/* Wake-up to recent view, ex: AOP */
+#define KEY_RECENT   254
+#define KEY_INT_CANCEL		0x2be	/* for touch event skip */
+#define KEY_WINK            0x2bf    /* Intelligence Key */
+#define BTN_GAME		0x13f
+#define KEY_SIDE_GESTURE	0x1c6
+#define KEY_BLACK_UI_GESTURE	0x1c7
+#define KEY_SIDE_GESTURE_RIGHT	0x1ca
+#define KEY_SIDE_GESTURE_LEFT	0x1cb
+#define BTN_TOOL_SPEN_SCAN	0x230	/* Wacom full scan mode */
+#define ABS_MT_CUSTOM		0x3e	/* custom event */
+#define ABS_MT_GRIP		0x3f	/* grip touch */
+#define SW_GLOVE		0x0f	/* set = glove mode */
+#define SW_PEN_INSERT		0x13  /* set = pen insert, remove */
+#define SW_FLIP                 0x15    /* set = flip cover */
+#define SW_CERTIFYHALL          0x1b    /* set = certify_hall... */

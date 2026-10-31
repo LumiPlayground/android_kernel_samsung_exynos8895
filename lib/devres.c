@@ -131,8 +131,7 @@ EXPORT_SYMBOL(devm_iounmap);
  *	if (IS_ERR(base))
  *		return PTR_ERR(base);
  */
-void __iomem *devm_ioremap_resource(struct device *dev,
-				    const struct resource *res)
+void __iomem *devm_ioremap_resource(struct device *dev, struct resource *res)
 {
 	resource_size_t size;
 	const char *name;
@@ -237,7 +236,7 @@ struct pcim_iomap_devres {
 
 static void pcim_iomap_release(struct device *gendev, void *res)
 {
-	struct pci_dev *dev = container_of(gendev, struct pci_dev, dev);
+	struct pci_dev *dev = to_pci_dev(gendev);
 	struct pcim_iomap_devres *this = res;
 	int i;
 

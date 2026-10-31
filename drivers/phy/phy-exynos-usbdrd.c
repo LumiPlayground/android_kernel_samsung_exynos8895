@@ -476,7 +476,7 @@ static void exynos_usbdrd_set_sstune(struct exynos_usbdrd_phy *phy_drd,
 	} else { /* USBPHY_MODE_HOST */
 		switch (phy_drd->drv_data->cpu_type) {
 		case TYPE_EXYNOS8895:
-			
+
 			break;
 		default:
 			break;
@@ -1046,28 +1046,10 @@ static const struct exynos_usbdrd_phy_drvdata exynos8895_usbdrd_phy = {
 	.ip_type		= TYPE_USB3DRD,
 };
 
-static const struct exynos_usbdrd_phy_drvdata exynos8890_usbdrd_phy = {
-	.phy_cfg		= phy_cfg_exynos,
-	.pmu_offset_usbdrd0_phy	= EXYNOS_USBDEV_PHY_CONTROL,
-	.cpu_type		= TYPE_EXYNOS8890,
-	.ip_type		= TYPE_USB3DRD,
-};
 
-static const struct exynos_usbdrd_phy_drvdata exynos8890_usbhost_phy = {
-	.phy_cfg		= phy_cfg_exynos,
-	.pmu_offset_usbdrd0_phy	= EXYNOS_USBDEV_PHY_CONTROL,
-	.cpu_type		= TYPE_EXYNOS8890,
-	.ip_type		= TYPE_USB2HOST,
-};
 
 static const struct of_device_id exynos_usbdrd_phy_of_match[] = {
 	{
-		.compatible = "samsung,exynos8890-usbdrd-phy",
-		.data = &exynos8890_usbdrd_phy
-	}, {
-		.compatible = "samsung,exynos8890-usbhost-phy",
-		.data = &exynos8890_usbhost_phy
-	}, {
 		.compatible = "samsung,exynos8895-usbdrd-phy",
 		.data = &exynos8895_usbdrd_phy
 	},

@@ -141,7 +141,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 #endif
 				iframe->message = SCORE_FRAME_FAIL;
 				score_frame_trans_pro_to_com(iframe);
-				queue_kthread_work(&interface->worker, &iframe->work);
+				kthread_queue_work(&interface->worker, &iframe->work);
 			} else {
 #ifdef ENABLE_TARGET_TIME
 				iframe->frame->ts[1] = time;
@@ -192,7 +192,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 			memcpy((void *)buffer->m.userptr, result_packet,
 					(result_packet->size.packet_size + 1) << 2);
 
-			queue_kthread_work(&interface->worker, &iframe->work);
+			kthread_queue_work(&interface->worker, &iframe->work);
 
 		} else {
 #ifdef ENABLE_TARGET_TIME
@@ -250,7 +250,7 @@ int score_interface_probe(struct score_interface *interface,
 		goto p_err_irq;
 	}
 
-	init_kthread_worker(&interface->worker);
+	kthread_init_worker(&interface->worker);
 	snprintf(name, sizeof(name), "score_interface");
 	interface->task_itf = kthread_run(kthread_worker_fn, &interface->worker, name);
 	if (IS_ERR_OR_NULL(interface->task_itf)) {

@@ -186,7 +186,7 @@ int ecryptfs_write(struct inode *ecryptfs_inode, char *data, loff_t offset,
 						ecryptfs_page,
 						start_offset_in_page,
 						data_offset);
-		page_cache_release(ecryptfs_page);
+		put_page(ecryptfs_page);
 		if (rc) {
 			printk(KERN_ERR "%s: Error encrypting "
 			       "page; rc = [%d]\n", __func__, rc);

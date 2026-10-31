@@ -540,7 +540,7 @@ static const struct clockgen_chipinfo chipinfo[] = {
 		.guts_compat = "fsl,qoriq-device-config-1.0",
 		.init_periph = p5020_init_periph,
 		.cmux_groups = {
-			&p5020_cmux_grp1, &p5020_cmux_grp2
+			&p2041_cmux_grp1, &p2041_cmux_grp2
 		},
 		.cmux_to_group = {
 			0, 1, -1
@@ -876,14 +876,15 @@ static void __init core_mux_init(struct device_node *np)
 	}
 }
 
-static struct clk *sysclk_from_fixed(struct device_node *node, const char *name)
+static struct clk __init
+*sysclk_from_fixed(struct device_node *node, const char *name)
 {
 	u32 rate;
 
 	if (of_property_read_u32(node, "clock-frequency", &rate))
 		return ERR_PTR(-ENODEV);
 
-	return clk_register_fixed_rate(NULL, name, NULL, CLK_IS_ROOT, rate);
+	return clk_register_fixed_rate(NULL, name, NULL, 0, rate);
 }
 
 static struct clk *sysclk_from_parent(const char *name)
@@ -1244,7 +1245,6 @@ static void __init clockgen_init(struct device_node *np)
 				pr_err("%s: Couldn't map %s regs\n", __func__,
 				       guts->full_name);
 			}
-			of_node_put(guts);
 		}
 
 	}

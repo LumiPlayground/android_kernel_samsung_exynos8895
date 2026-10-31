@@ -51,10 +51,34 @@
 static int safe_fault_in_progress = 0;
 static const char *fault_name(unsigned int esr);
 
+#ifdef CONFIG_KPROBES
+static inline int notify_page_fault(struct pt_regs *regs, unsigned int esr)
+{
+	int ret = 0;
+
+	/* kprobe_running() needs smp_processor_id() */
+	if (!user_mode(regs)) {
+		preempt_disable();
+		if (kprobe_running() && kprobe_fault_handler(regs, esr))
+			ret = 1;
+		preempt_enable();
+	}
+
+	return ret;
+}
+#else
+static inline int notify_page_fault(struct pt_regs *regs, unsigned int esr)
+{
+	return 0;
+}
+#endif
+
 /*
  * Dump out the page tables associated with 'addr' in mm 'mm'.
  */
-void show_pte(struct mm_struct *mm, unsigned long addr)
+#define TLB_RECOVERY_CNT_MAX 50
+
+static void show_pte_mm(struct mm_struct *mm, unsigned long addr)
 {
 	pgd_t *pgd;
 
@@ -141,6 +165,11 @@ int ptep_set_access_flags(struct vm_area_struct *vma,
 	return 1;
 }
 #endif
+void show_pte(unsigned long addr)
+{
+	show_pte_mm(addr < TASK_SIZE ? current->mm : &init_mm, addr);
+}
+
 static int __do_kernel_fault_safe(struct mm_struct *mm, unsigned long addr,
 		unsigned int esr, struct pt_regs *regs)
 {
@@ -199,7 +228,7 @@ static void __do_kernel_fault(struct mm_struct *mm, unsigned long addr,
 #ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
 	sec_debug_set_extra_info_fault(KERNEL_FAULT, addr, regs);
 #endif
-	show_pte(mm, addr);
+	show_pte_mm(mm, addr);
 	die("Oops", regs, esr);
 	bust_spinlocks(0);
 	do_exit(SIGKILL);
@@ -219,7 +248,7 @@ static void __do_user_fault(struct task_struct *tsk, unsigned long addr,
 		pr_info("%s[%d]: unhandled %s (%d) at 0x%08lx, esr 0x%03x\n",
 			tsk->comm, task_pid_nr(tsk), fault_name(esr), sig,
 			addr, esr);
-		show_pte(tsk->mm, addr);
+		show_pte_mm(tsk->mm, addr);
 		show_regs(regs);
 	}
 
@@ -279,7 +308,7 @@ good_area:
 		goto out;
 	}
 
-	return handle_mm_fault(mm, vma, addr & PAGE_MASK, mm_flags);
+	return handle_mm_fault(vma, addr & PAGE_MASK, mm_flags);
 
 check_stack:
 	if (vma->vm_flags & VM_GROWSDOWN && !expand_stack(vma, addr))
@@ -314,8 +343,11 @@ static int __kprobes do_page_fault(unsigned long addr, unsigned int esr,
 	struct task_struct *tsk;
 	struct mm_struct *mm;
 	int fault, sig, code;
-	unsigned long vm_flags = VM_READ | VM_WRITE | VM_EXEC;
+	unsigned long vm_flags = VM_READ | VM_WRITE;
 	unsigned int mm_flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
+
+	if (notify_page_fault(regs, esr))
+		return 0;
 
 	tsk = current;
 	mm  = tsk->mm;
@@ -742,6 +774,7 @@ asmlinkage int __exception do_debug_exception(unsigned long addr_if_watchpoint,
 
 	return rv;
 }
+NOKPROBE_SYMBOL(do_debug_exception);
 
 #ifdef CONFIG_ARM64_PAN
 int cpu_enable_pan(void *__unused)
@@ -771,3 +804,28 @@ int cpu_enable_uao(void *__unused)
 	return 0;
 }
 #endif /* CONFIG_ARM64_UAO */
+
+unsigned long __tlb_conflict_cnt;
+
+
+asmlinkage void __exception do_el0_ia_bp_hardening(unsigned long addr,
+						   unsigned int esr,
+						   struct pt_regs *regs)
+{
+	/*
+	 * We've taken an instruction abort from userspace and not yet
+	 * re-enabled IRQs. If the address is a kernel address, apply
+	 * BP hardening prior to enabling IRQs and pre-emption.
+	 */
+	if (addr > TASK_SIZE)
+		arm64_apply_bp_hardening();
+
+	local_irq_enable();
+	do_mem_abort(addr, esr, regs);
+}
+
+
+asmlinkage void __exception do_el0_irq_bp_hardening(void)
+{
+	arm64_apply_bp_hardening();
+}

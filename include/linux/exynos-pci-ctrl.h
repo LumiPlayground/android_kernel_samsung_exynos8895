@@ -21,7 +21,7 @@
 #define PCIE_L1SS_CTRL_SYSFS		(0x1 << 5)
 #define PCIE_L1SS_CTRL_WIFI		(0x1 << 7)
 
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 extern int exynos_pcie_l1ss_ctrl(int enable, int id);
 #endif
 

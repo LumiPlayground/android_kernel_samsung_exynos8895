@@ -112,14 +112,6 @@ static inline void set_fs(mm_segment_t fs)
 
 #define segment_eq(a, b)	((a) == (b))
 
-#define __addr_ok(addr) ({ \
-	unsigned long flag; \
-	__asm__("cmp %2, %0; movlo %0, #0" \
-		: "=&r" (flag) \
-		: "0" (current_thread_info()->addr_limit), "r" (addr) \
-		: "cc"); \
-	(flag == 0); })
-
 /* We use 33-bit arithmetic here... */
 #define __range_ok(addr, size) ({ \
 	unsigned long flag, roksum; \
@@ -387,13 +379,6 @@ do {									\
 #define __get_user_asm_byte(x, addr, err)			\
 	__get_user_asm(x, addr, err, ldrb)
 
-#if __LINUX_ARM_ARCH__ >= 6
-
-#define __get_user_asm_half(x, addr, err)			\
-	__get_user_asm(x, addr, err, ldrh)
-
-#else
-
 #ifndef __ARMEB__
 #define __get_user_asm_half(x, __gu_addr, err)			\
 ({								\
@@ -411,8 +396,6 @@ do {									\
 	(x) = (__b1 << 8) | __b2;				\
 })
 #endif
-
-#endif /* __LINUX_ARM_ARCH__ >= 6 */
 
 #define __get_user_asm_word(x, addr, err)			\
 	__get_user_asm(x, addr, err, ldr)
@@ -489,13 +472,6 @@ do {									\
 #define __put_user_asm_byte(x, __pu_addr, err)			\
 	__put_user_asm(x, __pu_addr, err, strb)
 
-#if __LINUX_ARM_ARCH__ >= 6
-
-#define __put_user_asm_half(x, __pu_addr, err)			\
-	__put_user_asm(x, __pu_addr, err, strh)
-
-#else
-
 #ifndef __ARMEB__
 #define __put_user_asm_half(x, __pu_addr, err)			\
 ({								\
@@ -511,8 +487,6 @@ do {									\
 	__put_user_asm_byte(__temp, __pu_addr + 1, err);	\
 })
 #endif
-
-#endif /* __LINUX_ARM_ARCH__ >= 6 */
 
 #define __put_user_asm_word(x, __pu_addr, err)			\
 	__put_user_asm(x, __pu_addr, err, str)
@@ -553,11 +527,10 @@ extern unsigned long __must_check
 arm_copy_from_user(void *to, const void __user *from, unsigned long n);
 
 static inline unsigned long __must_check
-__copy_from_user(void *to, const void __user *from, unsigned long n)
+__arch_copy_from_user(void *to, const void __user *from, unsigned long n)
 {
 	unsigned int __ua_flags;
 
-	check_object_size(to, n, false);
 	__ua_flags = uaccess_save_and_enable();
 	n = arm_copy_from_user(to, from, n);
 	uaccess_restore(__ua_flags);
@@ -570,12 +543,10 @@ extern unsigned long __must_check
 __copy_to_user_std(void __user *to, const void *from, unsigned long n);
 
 static inline unsigned long __must_check
-__copy_to_user(void __user *to, const void *from, unsigned long n)
+__arch_copy_to_user(void __user *to, const void *from, unsigned long n)
 {
 #ifndef CONFIG_UACCESS_WITH_MEMCPY
 	unsigned int __ua_flags;
-
-	check_object_size(from, n, true);
 	__ua_flags = uaccess_save_and_enable();
 	n = arm_copy_to_user(to, from, n);
 	uaccess_restore(__ua_flags);
@@ -601,24 +572,49 @@ __clear_user(void __user *addr, unsigned long n)
 }
 
 #else
-#define __copy_from_user(to, from, n)	(memcpy(to, (void __force *)from, n), 0)
-#define __copy_to_user(to, from, n)	(memcpy((void __force *)to, from, n), 0)
+#define __arch_copy_from_user(to, from, n)	\
+					(memcpy(to, (void __force *)from, n), 0)
+#define __arch_copy_to_user(to, from, n)	\
+					(memcpy((void __force *)to, from, n), 0)
 #define __clear_user(addr, n)		(memset((void __force *)addr, 0, n), 0)
 #endif
 
-static inline unsigned long __must_check copy_from_user(void *to, const void __user *from, unsigned long n)
+static inline unsigned long __must_check
+__copy_from_user(void *to, const void __user *from, unsigned long n)
 {
-	if (access_ok(VERIFY_READ, from, n))
-		n = __copy_from_user(to, from, n);
-	else /* security hole - plug it */
-		memset(to, 0, n);
-	return n;
+	check_object_size(to, n, false);
+	return __arch_copy_from_user(to, from, n);
 }
 
-static inline unsigned long __must_check copy_to_user(void __user *to, const void *from, unsigned long n)
+static inline unsigned long __must_check
+copy_from_user(void *to, const void __user *from, unsigned long n)
 {
+	unsigned long res = n;
+
+	check_object_size(to, n, false);
+
+	if (likely(access_ok(VERIFY_READ, from, n)))
+		res = __arch_copy_from_user(to, from, n);
+	if (unlikely(res))
+		memset(to + (n - res), 0, res);
+	return res;
+}
+
+static inline unsigned long __must_check
+__copy_to_user(void __user *to, const void *from, unsigned long n)
+{
+	check_object_size(from, n, true);
+
+	return __arch_copy_to_user(to, from, n);
+}
+
+static inline unsigned long __must_check
+copy_to_user(void __user *to, const void *from, unsigned long n)
+{
+	check_object_size(from, n, true);
+
 	if (access_ok(VERIFY_WRITE, to, n))
-		n = __copy_to_user(to, from, n);
+		n = __arch_copy_to_user(to, from, n);
 	return n;
 }
 

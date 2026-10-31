@@ -162,8 +162,12 @@ static irqreturn_t goldfish_tty_interrupt(int irq, void *dev_id)
 		return IRQ_NONE;
 
 	count = tty_prepare_flip_string(&qtty->port, &buf, count);
-	goldfish_tty_rw(qtty, buf, count, 0);
-
+	spin_lock_irqsave(&qtty->lock, irq_flags);
+	gf_write_ptr(buf, base + GOLDFISH_TTY_DATA_PTR,
+				base + GOLDFISH_TTY_DATA_PTR_HIGH);
+	writel(count, base + GOLDFISH_TTY_DATA_LEN);
+	writel(GOLDFISH_TTY_CMD_READ_BUFFER, base + GOLDFISH_TTY_CMD);
+	spin_unlock_irqrestore(&qtty->lock, irq_flags);
 	tty_schedule_flip(&qtty->port);
 	return IRQ_HANDLED;
 }
@@ -242,7 +246,7 @@ static int goldfish_tty_console_setup(struct console *co, char *options)
 	return 0;
 }
 
-static struct tty_port_operations goldfish_port_ops = {
+static const struct tty_port_operations goldfish_port_ops = {
 	.activate = goldfish_tty_activate,
 	.shutdown = goldfish_tty_shutdown
 };
@@ -342,12 +346,8 @@ static int goldfish_tty_probe(struct platform_device *pdev)
 	else
 		line = pdev->id;
 
-	if (line >= goldfish_tty_line_count) {
-		pr_err("goldfish_tty: Reached maximum tty number of %d.\n",
-		       goldfish_tty_current_line_count);
-		ret = -ENOMEM;
-		goto err_unlock;
-	}
+	if (line >= goldfish_tty_line_count)
+		goto err_create_driver_failed;
 
 	if (goldfish_tty_current_line_count == 0) {
 		ret = goldfish_tty_create_driver();
@@ -393,14 +393,13 @@ static int goldfish_tty_probe(struct platform_device *pdev)
 	writel(GOLDFISH_TTY_CMD_INT_DISABLE, base + GOLDFISH_TTY_REG_CMD);
 
 	ret = request_irq(irq, goldfish_tty_interrupt, IRQF_SHARED,
-			  "goldfish_tty", qtty);
-	if (ret) {
-		pr_err("goldfish_tty: No IRQ available!\n");
-		goto err_dec_line_count;
-	}
+						"goldfish_tty", qtty);
+	if (ret)
+		goto err_request_irq_failed;
+
 
 	ttydev = tty_port_register_device(&qtty->port, goldfish_tty_driver,
-					  line, &pdev->dev);
+							line, &pdev->dev);
 	if (IS_ERR(ttydev)) {
 		ret = PTR_ERR(ttydev);
 		goto err_tty_register_device_failed;
@@ -420,7 +419,7 @@ static int goldfish_tty_probe(struct platform_device *pdev)
 
 err_tty_register_device_failed:
 	free_irq(irq, qtty);
-err_dec_line_count:
+err_request_irq_failed:
 	goldfish_tty_current_line_count--;
 	if (goldfish_tty_current_line_count == 0)
 		goldfish_tty_delete_driver();
@@ -448,32 +447,6 @@ static int goldfish_tty_remove(struct platform_device *pdev)
 	mutex_unlock(&goldfish_tty_lock);
 	return 0;
 }
-
-#ifdef CONFIG_GOLDFISH_TTY_EARLY_CONSOLE
-static void gf_early_console_putchar(struct uart_port *port, int ch)
-{
-	__raw_writel(ch, port->membase);
-}
-
-static void gf_early_write(struct console *con, const char *s, unsigned int n)
-{
-	struct earlycon_device *dev = con->data;
-
-	uart_console_write(&dev->port, s, n, gf_early_console_putchar);
-}
-
-static int __init gf_earlycon_setup(struct earlycon_device *device,
-				    const char *opt)
-{
-	if (!device->port.membase)
-		return -ENODEV;
-
-	device->con->write = gf_early_write;
-	return 0;
-}
-
-OF_EARLYCON_DECLARE(early_gf_tty, "google,goldfish-tty", gf_earlycon_setup);
-#endif
 
 static const struct of_device_id goldfish_tty_of_match[] = {
 	{ .compatible = "google,goldfish-tty", },

@@ -22,21 +22,35 @@
 
 struct phy;
 
+enum phy_mode {
+	PHY_MODE_INVALID,
+	PHY_MODE_USB_HOST,
+	PHY_MODE_USB_DEVICE,
+	PHY_MODE_USB_OTG,
+};
+
 /**
  * struct phy_ops - set of function pointers for performing phy operations
  * @init: operation to be performed for initializing phy
  * @exit: operation to be performed while exiting
  * @power_on: powering on the phy
  * @power_off: powering off the phy
+ * @set_mode: set the mode of the phy
+ * @reset: resetting the phy
  * @owner: the module owner containing the ops
  */
 struct phy_ops {
 	int	(*init)(struct phy *phy);
 	int	(*exit)(struct phy *phy);
-	int	(*tune)(struct phy *phy, int phy_state);
-	int	(*set)(struct phy *phy, int option, void *info);
+	int     (*tune)(struct phy *phy, int phy_state);
+	int     (*vendor_set)(struct phy *phy, int is_enable, int is_cancel);
+	void     (*conn)(struct phy *phy, int is_conn);
+	int	(*ilbk)(struct phy *phy);
+	int     (*set)(struct phy *phy, int option, void *info);
 	int	(*power_on)(struct phy *phy);
 	int	(*power_off)(struct phy *phy);
+	int	(*set_mode)(struct phy *phy, enum phy_mode mode);
+	int	(*reset)(struct phy *phy);
 	struct module *owner;
 };
 
@@ -79,6 +93,7 @@ struct phy {
  */
 struct phy_provider {
 	struct device		*dev;
+	struct device_node	*children;
 	struct module		*owner;
 	struct list_head	list;
 	struct phy * (*of_xlate)(struct device *dev,
@@ -95,10 +110,16 @@ struct phy_lookup {
 #define	to_phy(a)	(container_of((a), struct phy, dev))
 
 #define	of_phy_provider_register(dev, xlate)	\
-	__of_phy_provider_register((dev), THIS_MODULE, (xlate))
+	__of_phy_provider_register((dev), NULL, THIS_MODULE, (xlate))
 
 #define	devm_of_phy_provider_register(dev, xlate)	\
-	__devm_of_phy_provider_register((dev), THIS_MODULE, (xlate))
+	__devm_of_phy_provider_register((dev), NULL, THIS_MODULE, (xlate))
+
+#define of_phy_provider_register_full(dev, children, xlate) \
+	__of_phy_provider_register(dev, children, THIS_MODULE, xlate)
+
+#define devm_of_phy_provider_register_full(dev, children, xlate) \
+	__devm_of_phy_provider_register(dev, children, THIS_MODULE, xlate)
 
 static inline void phy_set_drvdata(struct phy *phy, void *data)
 {
@@ -120,9 +141,14 @@ void phy_pm_runtime_forbid(struct phy *phy);
 int phy_init(struct phy *phy);
 int phy_exit(struct phy *phy);
 int phy_tune(struct phy *phy, int phy_state);
+int phy_vendor_set(struct phy *phy, int is_enable, int is_cancel);
+void phy_conn(struct phy *phy, int is_conn);
+int phy_ilbk(struct phy *phy);
 int phy_set(struct phy *phy, int option, void *info);
 int phy_power_on(struct phy *phy);
 int phy_power_off(struct phy *phy);
+int phy_set_mode(struct phy *phy, enum phy_mode mode);
+int phy_reset(struct phy *phy);
 static inline int phy_get_bus_width(struct phy *phy)
 {
 	return phy->attrs.bus_width;
@@ -151,11 +177,13 @@ struct phy *devm_phy_create(struct device *dev, struct device_node *node,
 void phy_destroy(struct phy *phy);
 void devm_phy_destroy(struct device *dev, struct phy *phy);
 struct phy_provider *__of_phy_provider_register(struct device *dev,
-	struct module *owner, struct phy * (*of_xlate)(struct device *dev,
-	struct of_phandle_args *args));
+	struct device_node *children, struct module *owner,
+	struct phy * (*of_xlate)(struct device *dev,
+				 struct of_phandle_args *args));
 struct phy_provider *__devm_of_phy_provider_register(struct device *dev,
-	struct module *owner, struct phy * (*of_xlate)(struct device *dev,
-	struct of_phandle_args *args));
+	struct device_node *children, struct module *owner,
+	struct phy * (*of_xlate)(struct device *dev,
+				 struct of_phandle_args *args));
 void of_phy_provider_unregister(struct phy_provider *phy_provider);
 void devm_of_phy_provider_unregister(struct device *dev,
 	struct phy_provider *phy_provider);
@@ -216,6 +244,27 @@ static inline int phy_exit(struct phy *phy)
 
 static inline int phy_tune(struct phy *phy, int phy_state)
 {
+       if (!phy)
+               return 0;
+       return -ENOSYS;
+}
+
+static inline int phy_vendor_set(struct phy *phy, int is_enable, int is_rewa)
+{
+       if (!phy)
+               return 0;
+       return -ENOSYS;
+}
+
+static inline int phy_conn(struct phy *phy, int is_conn)
+{
+       if (!phy)
+               return 0;
+       return -ENOSYS;
+}
+
+static inline int phy_ilbk(struct phy *phy)
+{
 	if (!phy)
 		return 0;
 	return -ENOSYS;
@@ -223,9 +272,9 @@ static inline int phy_tune(struct phy *phy, int phy_state)
 
 static inline int phy_set(struct phy *phy, int option, void *info)
 {
-	if (!phy)
-		return 0;
-	return -ENOSYS;
+       if (!phy)
+               return 0;
+       return -ENOSYS;
 }
 
 static inline int phy_power_on(struct phy *phy)
@@ -236,6 +285,20 @@ static inline int phy_power_on(struct phy *phy)
 }
 
 static inline int phy_power_off(struct phy *phy)
+{
+	if (!phy)
+		return 0;
+	return -ENOSYS;
+}
+
+static inline int phy_set_mode(struct phy *phy, enum phy_mode mode)
+{
+	if (!phy)
+		return 0;
+	return -ENOSYS;
+}
+
+static inline int phy_reset(struct phy *phy)
 {
 	if (!phy)
 		return 0;
@@ -330,15 +393,17 @@ static inline void devm_phy_destroy(struct device *dev, struct phy *phy)
 }
 
 static inline struct phy_provider *__of_phy_provider_register(
-	struct device *dev, struct module *owner, struct phy * (*of_xlate)(
-	struct device *dev, struct of_phandle_args *args))
+	struct device *dev, struct device_node *children, struct module *owner,
+	struct phy * (*of_xlate)(struct device *dev,
+				 struct of_phandle_args *args))
 {
 	return ERR_PTR(-ENOSYS);
 }
 
 static inline struct phy_provider *__devm_of_phy_provider_register(struct device
-	*dev, struct module *owner, struct phy * (*of_xlate)(struct device *dev,
-	struct of_phandle_args *args))
+	*dev, struct device_node *children, struct module *owner,
+	struct phy * (*of_xlate)(struct device *dev,
+				 struct of_phandle_args *args))
 {
 	return ERR_PTR(-ENOSYS);
 }

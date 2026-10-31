@@ -68,21 +68,23 @@ static ssize_t nilfs_##name##_attr_store(struct kobject *kobj, \
 static const struct sysfs_ops nilfs_##name##_attr_ops = { \
 	.show	= nilfs_##name##_attr_show, \
 	.store	= nilfs_##name##_attr_store, \
-};
+}
 
 #define NILFS_DEV_INT_GROUP_TYPE(name, parent_name) \
 static void nilfs_##name##_attr_release(struct kobject *kobj) \
 { \
-	struct nilfs_sysfs_##parent_name##_subgroups *subgroups = container_of(kobj, \
-						struct nilfs_sysfs_##parent_name##_subgroups, \
-						sg_##name##_kobj); \
+	struct nilfs_sysfs_##parent_name##_subgroups *subgroups; \
+	struct the_nilfs *nilfs = container_of(kobj->parent, \
+						struct the_nilfs, \
+						ns_##parent_name##_kobj); \
+	subgroups = nilfs->ns_##parent_name##_subgroups; \
 	complete(&subgroups->sg_##name##_kobj_unregister); \
 } \
 static struct kobj_type nilfs_##name##_ktype = { \
 	.default_attrs	= nilfs_##name##_attrs, \
 	.sysfs_ops	= &nilfs_##name##_attr_ops, \
 	.release	= nilfs_##name##_attr_release, \
-};
+}
 
 #define NILFS_DEV_INT_GROUP_FNS(name, parent_name) \
 static int nilfs_sysfs_create_##name##_group(struct the_nilfs *nilfs) \
@@ -101,12 +103,12 @@ static int nilfs_sysfs_create_##name##_group(struct the_nilfs *nilfs) \
 	err = kobject_init_and_add(kobj, &nilfs_##name##_ktype, parent, \
 				    #name); \
 	if (err) \
-		kobject_put(kobj); \
-	return err; \
+		return err; \
+	return 0; \
 } \
 static void nilfs_sysfs_delete_##name##_group(struct the_nilfs *nilfs) \
 { \
-	kobject_put(&nilfs->ns_##parent_name##_subgroups->sg_##name##_kobj); \
+	kobject_del(&nilfs->ns_##parent_name##_subgroups->sg_##name##_kobj); \
 }
 
 /************************************************************************
@@ -217,14 +219,14 @@ int nilfs_sysfs_create_snapshot_group(struct nilfs_root *root)
 	}
 
 	if (err)
-		kobject_put(&root->snapshot_kobj);
+		return err;
 
-	return err;
+	return 0;
 }
 
 void nilfs_sysfs_delete_snapshot_group(struct nilfs_root *root)
 {
-	kobject_put(&root->snapshot_kobj);
+	kobject_del(&root->snapshot_kobj);
 }
 
 /************************************************************************
@@ -270,8 +272,8 @@ nilfs_checkpoints_checkpoints_number_show(struct nilfs_checkpoints_attr *attr,
 	err = nilfs_cpfile_get_stat(nilfs->ns_cpfile, &cpstat);
 	up_read(&nilfs->ns_segctor_sem);
 	if (err < 0) {
-		printk(KERN_ERR "NILFS: unable to get checkpoint stat: err=%d\n",
-			err);
+		nilfs_msg(nilfs->ns_sb, KERN_ERR,
+			  "unable to get checkpoint stat: err=%d", err);
 		return err;
 	}
 
@@ -293,8 +295,8 @@ nilfs_checkpoints_snapshots_number_show(struct nilfs_checkpoints_attr *attr,
 	err = nilfs_cpfile_get_stat(nilfs->ns_cpfile, &cpstat);
 	up_read(&nilfs->ns_segctor_sem);
 	if (err < 0) {
-		printk(KERN_ERR "NILFS: unable to get checkpoint stat: err=%d\n",
-			err);
+		nilfs_msg(nilfs->ns_sb, KERN_ERR,
+			  "unable to get checkpoint stat: err=%d", err);
 		return err;
 	}
 
@@ -324,9 +326,9 @@ nilfs_checkpoints_next_checkpoint_show(struct nilfs_checkpoints_attr *attr,
 {
 	__u64 cno;
 
-	down_read(&nilfs->ns_sem);
+	down_read(&nilfs->ns_segctor_sem);
 	cno = nilfs->ns_cno;
-	up_read(&nilfs->ns_sem);
+	up_read(&nilfs->ns_segctor_sem);
 
 	return snprintf(buf, PAGE_SIZE, "%llu\n", cno);
 }
@@ -412,8 +414,8 @@ nilfs_segments_dirty_segments_show(struct nilfs_segments_attr *attr,
 	err = nilfs_sufile_get_stat(nilfs->ns_sufile, &sustat);
 	up_read(&nilfs->ns_segctor_sem);
 	if (err < 0) {
-		printk(KERN_ERR "NILFS: unable to get segment stat: err=%d\n",
-			err);
+		nilfs_msg(nilfs->ns_sb, KERN_ERR,
+			  "unable to get segment stat: err=%d", err);
 		return err;
 	}
 
@@ -509,9 +511,9 @@ nilfs_segctor_current_seg_sequence_show(struct nilfs_segctor_attr *attr,
 {
 	u64 seg_seq;
 
-	down_read(&nilfs->ns_sem);
+	down_read(&nilfs->ns_segctor_sem);
 	seg_seq = nilfs->ns_seg_seq;
-	up_read(&nilfs->ns_sem);
+	up_read(&nilfs->ns_segctor_sem);
 
 	return snprintf(buf, PAGE_SIZE, "%llu\n", seg_seq);
 }
@@ -523,9 +525,9 @@ nilfs_segctor_current_last_full_seg_show(struct nilfs_segctor_attr *attr,
 {
 	__u64 segnum;
 
-	down_read(&nilfs->ns_sem);
+	down_read(&nilfs->ns_segctor_sem);
 	segnum = nilfs->ns_segnum;
-	up_read(&nilfs->ns_sem);
+	up_read(&nilfs->ns_segctor_sem);
 
 	return snprintf(buf, PAGE_SIZE, "%llu\n", segnum);
 }
@@ -537,9 +539,9 @@ nilfs_segctor_next_full_seg_show(struct nilfs_segctor_attr *attr,
 {
 	__u64 nextnum;
 
-	down_read(&nilfs->ns_sem);
+	down_read(&nilfs->ns_segctor_sem);
 	nextnum = nilfs->ns_nextnum;
-	up_read(&nilfs->ns_sem);
+	up_read(&nilfs->ns_segctor_sem);
 
 	return snprintf(buf, PAGE_SIZE, "%llu\n", nextnum);
 }
@@ -551,9 +553,9 @@ nilfs_segctor_next_pseg_offset_show(struct nilfs_segctor_attr *attr,
 {
 	unsigned long pseg_offset;
 
-	down_read(&nilfs->ns_sem);
+	down_read(&nilfs->ns_segctor_sem);
 	pseg_offset = nilfs->ns_pseg_offset;
-	up_read(&nilfs->ns_sem);
+	up_read(&nilfs->ns_segctor_sem);
 
 	return snprintf(buf, PAGE_SIZE, "%lu\n", pseg_offset);
 }
@@ -565,9 +567,9 @@ nilfs_segctor_next_checkpoint_show(struct nilfs_segctor_attr *attr,
 {
 	__u64 cno;
 
-	down_read(&nilfs->ns_sem);
+	down_read(&nilfs->ns_segctor_sem);
 	cno = nilfs->ns_cno;
-	up_read(&nilfs->ns_sem);
+	up_read(&nilfs->ns_segctor_sem);
 
 	return snprintf(buf, PAGE_SIZE, "%llu\n", cno);
 }
@@ -579,9 +581,9 @@ nilfs_segctor_last_seg_write_time_show(struct nilfs_segctor_attr *attr,
 {
 	time_t ctime;
 
-	down_read(&nilfs->ns_sem);
+	down_read(&nilfs->ns_segctor_sem);
 	ctime = nilfs->ns_ctime;
-	up_read(&nilfs->ns_sem);
+	up_read(&nilfs->ns_segctor_sem);
 
 	return NILFS_SHOW_TIME(ctime, buf);
 }
@@ -593,9 +595,9 @@ nilfs_segctor_last_seg_write_time_secs_show(struct nilfs_segctor_attr *attr,
 {
 	time_t ctime;
 
-	down_read(&nilfs->ns_sem);
+	down_read(&nilfs->ns_segctor_sem);
 	ctime = nilfs->ns_ctime;
-	up_read(&nilfs->ns_sem);
+	up_read(&nilfs->ns_segctor_sem);
 
 	return snprintf(buf, PAGE_SIZE, "%llu\n", (unsigned long long)ctime);
 }
@@ -607,9 +609,9 @@ nilfs_segctor_last_nongc_write_time_show(struct nilfs_segctor_attr *attr,
 {
 	time_t nongc_ctime;
 
-	down_read(&nilfs->ns_sem);
+	down_read(&nilfs->ns_segctor_sem);
 	nongc_ctime = nilfs->ns_nongc_ctime;
-	up_read(&nilfs->ns_sem);
+	up_read(&nilfs->ns_segctor_sem);
 
 	return NILFS_SHOW_TIME(nongc_ctime, buf);
 }
@@ -621,9 +623,9 @@ nilfs_segctor_last_nongc_write_time_secs_show(struct nilfs_segctor_attr *attr,
 {
 	time_t nongc_ctime;
 
-	down_read(&nilfs->ns_sem);
+	down_read(&nilfs->ns_segctor_sem);
 	nongc_ctime = nilfs->ns_nongc_ctime;
-	up_read(&nilfs->ns_sem);
+	up_read(&nilfs->ns_segctor_sem);
 
 	return snprintf(buf, PAGE_SIZE, "%llu\n",
 			(unsigned long long)nongc_ctime);
@@ -636,9 +638,9 @@ nilfs_segctor_dirty_data_blocks_count_show(struct nilfs_segctor_attr *attr,
 {
 	u32 ndirtyblks;
 
-	down_read(&nilfs->ns_sem);
+	down_read(&nilfs->ns_segctor_sem);
 	ndirtyblks = atomic_read(&nilfs->ns_ndirtyblks);
-	up_read(&nilfs->ns_sem);
+	up_read(&nilfs->ns_segctor_sem);
 
 	return snprintf(buf, PAGE_SIZE, "%u\n", ndirtyblks);
 }
@@ -754,7 +756,7 @@ nilfs_superblock_sb_write_count_show(struct nilfs_superblock_attr *attr,
 				      struct the_nilfs *nilfs,
 				      char *buf)
 {
-	unsigned sbwcount;
+	unsigned int sbwcount;
 
 	down_read(&nilfs->ns_sem);
 	sbwcount = nilfs->ns_sbwcount;
@@ -768,7 +770,7 @@ nilfs_superblock_sb_update_frequency_show(struct nilfs_superblock_attr *attr,
 					    struct the_nilfs *nilfs,
 					    char *buf)
 {
-	unsigned sb_update_freq;
+	unsigned int sb_update_freq;
 
 	down_read(&nilfs->ns_sem);
 	sb_update_freq = nilfs->ns_sb_update_freq;
@@ -782,19 +784,20 @@ nilfs_superblock_sb_update_frequency_store(struct nilfs_superblock_attr *attr,
 					    struct the_nilfs *nilfs,
 					    const char *buf, size_t count)
 {
-	unsigned val;
+	unsigned int val;
 	int err;
 
 	err = kstrtouint(skip_spaces(buf), 0, &val);
 	if (err) {
-		printk(KERN_ERR "NILFS: unable to convert string: err=%d\n",
-			err);
+		nilfs_msg(nilfs->ns_sb, KERN_ERR,
+			  "unable to convert string: err=%d", err);
 		return err;
 	}
 
 	if (val < NILFS_SB_FREQ) {
 		val = NILFS_SB_FREQ;
-		printk(KERN_WARNING "NILFS: superblock update frequency cannot be lesser than 10 seconds\n");
+		nilfs_msg(nilfs->ns_sb, KERN_WARNING,
+			  "superblock update frequency cannot be lesser than 10 seconds");
 	}
 
 	down_write(&nilfs->ns_sem);
@@ -997,7 +1000,8 @@ int nilfs_sysfs_create_device_group(struct super_block *sb)
 	nilfs->ns_dev_subgroups = kzalloc(devgrp_size, GFP_KERNEL);
 	if (unlikely(!nilfs->ns_dev_subgroups)) {
 		err = -ENOMEM;
-		printk(KERN_ERR "NILFS: unable to allocate memory for device group\n");
+		nilfs_msg(sb, KERN_ERR,
+			  "unable to allocate memory for device group");
 		goto failed_create_device_group;
 	}
 
@@ -1006,7 +1010,7 @@ int nilfs_sysfs_create_device_group(struct super_block *sb)
 	err = kobject_init_and_add(&nilfs->ns_dev_kobj, &nilfs_dev_ktype, NULL,
 				    "%s", sb->s_id);
 	if (err)
-		goto cleanup_dev_kobject;
+		goto free_dev_subgroups;
 
 	err = nilfs_sysfs_create_mounted_snapshots_group(nilfs);
 	if (err)
@@ -1043,7 +1047,9 @@ delete_mounted_snapshots_group:
 	nilfs_sysfs_delete_mounted_snapshots_group(nilfs);
 
 cleanup_dev_kobject:
-	kobject_put(&nilfs->ns_dev_kobj);
+	kobject_del(&nilfs->ns_dev_kobj);
+
+free_dev_subgroups:
 	kfree(nilfs->ns_dev_subgroups);
 
 failed_create_device_group:
@@ -1058,7 +1064,6 @@ void nilfs_sysfs_delete_device_group(struct the_nilfs *nilfs)
 	nilfs_sysfs_delete_superblock_group(nilfs);
 	nilfs_sysfs_delete_segctor_group(nilfs);
 	kobject_del(&nilfs->ns_dev_kobj);
-	kobject_put(&nilfs->ns_dev_kobj);
 	kfree(nilfs->ns_dev_subgroups);
 }
 
@@ -1106,15 +1111,15 @@ int __init nilfs_sysfs_init(void)
 	nilfs_kset = kset_create_and_add(NILFS_ROOT_GROUP_NAME, NULL, fs_kobj);
 	if (!nilfs_kset) {
 		err = -ENOMEM;
-		printk(KERN_ERR "NILFS: unable to create sysfs entry: err %d\n",
-			err);
+		nilfs_msg(NULL, KERN_ERR,
+			  "unable to create sysfs entry: err=%d", err);
 		goto failed_sysfs_init;
 	}
 
 	err = sysfs_create_group(&nilfs_kset->kobj, &nilfs_feature_attr_group);
 	if (unlikely(err)) {
-		printk(KERN_ERR "NILFS: unable to create feature group: err %d\n",
-			err);
+		nilfs_msg(NULL, KERN_ERR,
+			  "unable to create feature group: err=%d", err);
 		goto cleanup_sysfs_init;
 	}
 

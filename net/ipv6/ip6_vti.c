@@ -50,14 +50,14 @@
 #include <net/net_namespace.h>
 #include <net/netns/generic.h>
 
-#define HASH_SIZE_SHIFT  5
-#define HASH_SIZE (1 << HASH_SIZE_SHIFT)
+#define IP6_VTI_HASH_SIZE_SHIFT  5
+#define IP6_VTI_HASH_SIZE (1 << IP6_VTI_HASH_SIZE_SHIFT)
 
 static u32 HASH(const struct in6_addr *addr1, const struct in6_addr *addr2)
 {
 	u32 hash = ipv6_addr_hash(addr1) ^ ipv6_addr_hash(addr2);
 
-	return hash_32(hash, HASH_SIZE_SHIFT);
+	return hash_32(hash, IP6_VTI_HASH_SIZE_SHIFT);
 }
 
 static int vti6_dev_init(struct net_device *dev);
@@ -69,7 +69,7 @@ struct vti6_net {
 	/* the vti6 tunnel fallback device */
 	struct net_device *fb_tnl_dev;
 	/* lists for storing tunnels in use */
-	struct ip6_tnl __rcu *tnls_r_l[HASH_SIZE];
+	struct ip6_tnl __rcu *tnls_r_l[IP6_VTI_HASH_SIZE];
 	struct ip6_tnl __rcu *tnls_wc[1];
 	struct ip6_tnl __rcu **tnls[2];
 };
@@ -196,6 +196,7 @@ static int vti6_tnl_create2(struct net_device *dev)
 
 	strcpy(t->parms.name, dev->name);
 
+	dev_hold(dev);
 	vti6_tnl_link(ip6n, t);
 
 	return 0;
@@ -314,9 +315,10 @@ static int vti6_rcv(struct sk_buff *skb)
 
 		if (!xfrm6_policy_check(NULL, XFRM_POLICY_IN, skb)) {
 			rcu_read_unlock();
-			goto discard;
+			return 0;
 		}
 
+		ipv6h = ipv6_hdr(skb);
 		if (!ip6_tnl_rcv_ctl(t, &ipv6h->daddr, &ipv6h->saddr)) {
 			t->dev->stats.rx_dropped++;
 			rcu_read_unlock();
@@ -340,6 +342,7 @@ static int vti6_rcv_cb(struct sk_buff *skb, int err)
 	struct net_device *dev;
 	struct pcpu_sw_netstats *tstats;
 	struct xfrm_state *x;
+	struct xfrm_mode *inner_mode;
 	struct ip6_tnl *t = XFRM_TUNNEL_SKB_CB(skb)->tunnel.ip6;
 	u32 orig_mark = skb->mark;
 	int ret;
@@ -357,7 +360,19 @@ static int vti6_rcv_cb(struct sk_buff *skb, int err)
 	}
 
 	x = xfrm_input_state(skb);
-	family = x->inner_mode->afinfo->family;
+
+	inner_mode = x->inner_mode;
+
+	if (x->sel.family == AF_UNSPEC) {
+		inner_mode = xfrm_ip2inner_mode(x, XFRM_MODE_SKB_CB(skb)->protocol);
+		if (inner_mode == NULL) {
+			XFRM_INC_STATS(dev_net(skb->dev),
+				       LINUX_MIB_XFRMINSTATEMODEERROR);
+			return -EINVAL;
+		}
+	}
+
+	family = inner_mode->afinfo->family;
 
 	skb->mark = be32_to_cpu(t->parms.i_key);
 	ret = xfrm_policy_check(NULL, XFRM_POLICY_IN, skb, family);
@@ -438,35 +453,8 @@ vti6_xmit(struct sk_buff *skb, struct net_device *dev, struct flowi *fl)
 	int err = -1;
 	int mtu;
 
-	if (!dst) {
-		switch (skb->protocol) {
-		case htons(ETH_P_IP): {
-			struct rtable *rt;
-
-			fl->u.ip4.flowi4_oif = dev->ifindex;
-			fl->u.ip4.flowi4_flags |= FLOWI_FLAG_ANYSRC;
-			rt = __ip_route_output_key(dev_net(dev), &fl->u.ip4);
-			if (IS_ERR(rt))
-				goto tx_err_link_failure;
-			dst = &rt->dst;
-			skb_dst_set(skb, dst);
-			break;
-		}
-		case htons(ETH_P_IPV6):
-			fl->u.ip6.flowi6_oif = dev->ifindex;
-			fl->u.ip6.flowi6_flags |= FLOWI_FLAG_ANYSRC;
-			dst = ip6_route_output(dev_net(dev), NULL, &fl->u.ip6);
-			if (dst->error) {
-				dst_release(dst);
-				dst = NULL;
-				goto tx_err_link_failure;
-			}
-			skb_dst_set(skb, dst);
-			break;
-		default:
-			goto tx_err_link_failure;
-		}
-	}
+	if (!dst)
+		goto tx_err_link_failure;
 
 	dst_hold(dst);
 	dst = xfrm_lookup(t->net, dst, fl, NULL, 0);
@@ -760,8 +748,6 @@ vti6_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	struct net *net = dev_net(dev);
 	struct vti6_net *ip6n = net_generic(net, vti6_net_id);
 
-	memset(&p1, 0, sizeof(p1));
-
 	switch (cmd) {
 	case SIOCGETTUNNEL:
 		if (dev == ip6n->fb_tnl_dev) {
@@ -902,7 +888,6 @@ static inline int vti6_dev_init_gen(struct net_device *dev)
 	dev->tstats = netdev_alloc_pcpu_stats(struct pcpu_sw_netstats);
 	if (!dev->tstats)
 		return -ENOMEM;
-	dev_hold(dev);
 	return 0;
 }
 
@@ -934,6 +919,7 @@ static int __net_init vti6_fb_tnl_dev_init(struct net_device *dev)
 	struct vti6_net *ip6n = net_generic(net, vti6_net_id);
 
 	t->parms.proto = IPPROTO_IPV6;
+	dev_hold(dev);
 
 	rcu_assign_pointer(ip6n->tnls_wc[0], t);
 	return 0;
@@ -1080,7 +1066,7 @@ static void __net_exit vti6_destroy_tunnels(struct vti6_net *ip6n)
 	struct ip6_tnl *t;
 	LIST_HEAD(list);
 
-	for (h = 0; h < HASH_SIZE; h++) {
+	for (h = 0; h < IP6_VTI_HASH_SIZE; h++) {
 		t = rtnl_dereference(ip6n->tnls_r_l[h]);
 		while (t) {
 			unregister_netdevice_queue(t->dev, &list);

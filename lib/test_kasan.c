@@ -26,6 +26,11 @@
  * reports.
  */
 
+/*
+ * Note: test functions are marked noinline so that their names appear in
+ * reports.
+ */
+
 static noinline void __init kmalloc_oob_right(void)
 {
 	char *ptr;
@@ -125,7 +130,6 @@ static noinline void __init kmalloc_oob_krealloc_more(void)
 	if (!ptr1 || !ptr2) {
 		pr_err("Allocation failed\n");
 		kfree(ptr1);
-		kfree(ptr2);
 		return;
 	}
 
@@ -357,7 +361,7 @@ static noinline void __init kasan_stack_oob(void)
 static noinline void __init ksize_unpoisons_memory(void)
 {
 	char *ptr;
-	size_t size = 123, real_size = size;
+	size_t size = 123, real_size;
 
 	pr_info("ksize() unpoisons the whole allocated chunk\n");
 	ptr = kmalloc(size, GFP_KERNEL);
@@ -473,9 +477,6 @@ static int __init kmalloc_tests_init(void)
 	ksize_unpoisons_memory();
 	copy_user_test();
 	use_after_scope_test();
-
-	kasan_restore_multi_shot(multishot);
-
 	return -EAGAIN;
 }
 

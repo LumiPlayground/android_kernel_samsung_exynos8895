@@ -43,15 +43,7 @@
 #define MICROCODE_VERSION	"2.01"
 
 static struct microcode_ops	*microcode_ops;
-
 static bool dis_ucode_ldr = true;
-
-static int __init disable_loader(char *str)
-{
-	dis_ucode_ldr = true;
-	return 1;
-}
-__setup("dis_ucode_ldr", disable_loader);
 
 /*
  * Synchronization.
@@ -68,7 +60,6 @@ __setup("dis_ucode_ldr", disable_loader);
 static DEFINE_MUTEX(microcode_mutex);
 
 struct ucode_cpu_info		ucode_cpu_info[NR_CPUS];
-EXPORT_SYMBOL_GPL(ucode_cpu_info);
 
 /*
  * Operations that are run on a target cpu:
@@ -81,16 +72,17 @@ struct cpu_info_ctx {
 
 static bool __init check_loader_disabled_bsp(void)
 {
+	static const char *__dis_opt_str = "dis_ucode_ldr";
 	u32 a, b, c, d;
+
 #ifdef CONFIG_X86_32
 	const char *cmdline = (const char *)__pa_nodebug(boot_command_line);
-	const char *opt	    = "dis_ucode_ldr";
-	const char *option  = (const char *)__pa_nodebug(opt);
+	const char *option  = (const char *)__pa_nodebug(__dis_opt_str);
 	bool *res = (bool *)__pa_nodebug(&dis_ucode_ldr);
 
 #else /* CONFIG_X86_64 */
 	const char *cmdline = boot_command_line;
-	const char *option  = "dis_ucode_ldr";
+	const char *option  = __dis_opt_str;
 	bool *res = &dis_ucode_ldr;
 #endif
 
@@ -140,8 +132,8 @@ void __init load_ucode_bsp(void)
 	if (!have_cpuid_p())
 		return;
 
-	vendor = x86_vendor();
-	family = x86_family();
+	vendor = x86_cpuid_vendor();
+	family = x86_cpuid_family();
 
 	switch (vendor) {
 	case X86_VENDOR_INTEL:
@@ -184,8 +176,8 @@ void load_ucode_ap(void)
 	if (check_loader_disabled_ap())
 		return;
 
-	vendor = x86_vendor();
-	family = x86_family();
+	vendor = x86_cpuid_vendor();
+	family = x86_cpuid_family();
 
 	switch (vendor) {
 	case X86_VENDOR_INTEL:
@@ -201,32 +193,32 @@ void load_ucode_ap(void)
 	}
 }
 
-int __init save_microcode_in_initrd(void)
+static int __init save_microcode_in_initrd(void)
 {
 	struct cpuinfo_x86 *c = &boot_cpu_data;
 
 	switch (c->x86_vendor) {
 	case X86_VENDOR_INTEL:
 		if (c->x86 >= 6)
-			save_microcode_in_initrd_intel();
+			return save_microcode_in_initrd_intel();
 		break;
 	case X86_VENDOR_AMD:
 		if (c->x86 >= 0x10)
-			save_microcode_in_initrd_amd();
+			return save_microcode_in_initrd_amd();
 		break;
 	default:
 		break;
 	}
 
-	return 0;
+	return -EINVAL;
 }
 
 void reload_early_microcode(void)
 {
 	int vendor, family;
 
-	vendor = x86_vendor();
-	family = x86_family();
+	vendor = x86_cpuid_vendor();
+	family = x86_cpuid_family();
 
 	switch (vendor) {
 	case X86_VENDOR_INTEL:
@@ -392,6 +384,24 @@ static void __exit microcode_dev_exit(void)
 /* fake device for request_firmware */
 static struct platform_device	*microcode_pdev;
 
+static int check_online_cpus(void)
+{
+	unsigned int cpu;
+
+	/*
+	 * Make sure all CPUs are online.  It's fine for SMT to be disabled if
+	 * all the primary threads are still online.
+	 */
+	for_each_present_cpu(cpu) {
+		if (topology_is_primary_thread(cpu) && !cpu_online(cpu)) {
+			pr_err("Not all CPUs online, aborting microcode update.\n");
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
 static int reload_for_cpu(int cpu)
 {
 	struct ucode_cpu_info *uci = ucode_cpu_info + cpu;
@@ -426,7 +436,13 @@ static ssize_t reload_store(struct device *dev,
 		return size;
 
 	get_online_cpus();
+
+	ret = check_online_cpus();
+	if (ret)
+		goto put;
+
 	mutex_lock(&microcode_mutex);
+
 	for_each_online_cpu(cpu) {
 		tmp_ret = reload_for_cpu(cpu);
 		if (tmp_ret != 0)
@@ -439,6 +455,8 @@ static ssize_t reload_store(struct device *dev,
 	if (!ret)
 		perf_check_microcode();
 	mutex_unlock(&microcode_mutex);
+
+put:
 	put_online_cpus();
 
 	if (!ret)
@@ -498,7 +516,7 @@ static enum ucode_state microcode_init_cpu(int cpu, bool refresh_fw)
 	enum ucode_state ustate;
 	struct ucode_cpu_info *uci = ucode_cpu_info + cpu;
 
-	if (uci && uci->valid)
+	if (uci->valid)
 		return UCODE_OK;
 
 	if (collect_cpu_info(cpu))
@@ -585,54 +603,35 @@ static struct syscore_ops mc_syscore_ops = {
 	.resume			= mc_bp_resume,
 };
 
-static int
-mc_cpu_callback(struct notifier_block *nb, unsigned long action, void *hcpu)
+static int mc_cpu_online(unsigned int cpu)
 {
-	unsigned int cpu = (unsigned long)hcpu;
 	struct device *dev;
 
 	dev = get_cpu_device(cpu);
+	microcode_update_cpu(cpu);
+	pr_debug("CPU%d added\n", cpu);
 
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_ONLINE:
-		microcode_update_cpu(cpu);
-		pr_debug("CPU%d added\n", cpu);
-		/*
-		 * "break" is missing on purpose here because we want to fall
-		 * through in order to create the sysfs group.
-		 */
+	if (sysfs_create_group(&dev->kobj, &mc_attr_group))
+		pr_err("Failed to create group for CPU%d\n", cpu);
+	return 0;
+}
 
-	case CPU_DOWN_FAILED:
-		if (sysfs_create_group(&dev->kobj, &mc_attr_group))
-			pr_err("Failed to create group for CPU%d\n", cpu);
-		break;
+static int mc_cpu_down_prep(unsigned int cpu)
+{
+	struct device *dev;
 
-	case CPU_DOWN_PREPARE:
-		/* Suspend is in progress, only remove the interface */
-		sysfs_remove_group(&dev->kobj, &mc_attr_group);
-		pr_debug("CPU%d removed\n", cpu);
-		break;
-
+	dev = get_cpu_device(cpu);
+	/* Suspend is in progress, only remove the interface */
+	sysfs_remove_group(&dev->kobj, &mc_attr_group);
+	pr_debug("CPU%d removed\n", cpu);
 	/*
-	 * case CPU_DEAD:
-	 *
 	 * When a CPU goes offline, don't free up or invalidate the copy of
 	 * the microcode in kernel memory, so that we can reuse it when the
 	 * CPU comes back online without unnecessarily requesting the userspace
 	 * for it again.
 	 */
-	}
-
-	/* The CPU refused to come up during a system resume */
-	if (action == CPU_UP_CANCELED_FROZEN)
-		microcode_fini_cpu(cpu);
-
-	return NOTIFY_OK;
+	return 0;
 }
-
-static struct notifier_block mc_cpu_notifier = {
-	.notifier_call	= mc_cpu_callback,
-};
 
 static struct attribute *cpu_root_microcode_attrs[] = {
 	&dev_attr_reload.attr,
@@ -649,7 +648,7 @@ int __init microcode_init(void)
 	struct cpuinfo_x86 *c = &boot_cpu_data;
 	int error;
 
-	if (paravirt_enabled() || dis_ucode_ldr)
+	if (dis_ucode_ldr)
 		return -EINVAL;
 
 	if (c->x86_vendor == X86_VENDOR_INTEL)
@@ -692,7 +691,8 @@ int __init microcode_init(void)
 		goto out_ucode_group;
 
 	register_syscore_ops(&mc_syscore_ops);
-	register_hotcpu_notifier(&mc_cpu_notifier);
+	cpuhp_setup_state_nocalls(CPUHP_AP_ONLINE_DYN, "x86/microcode:online",
+				  mc_cpu_online, mc_cpu_down_prep);
 
 	pr_info("Microcode Update Driver: v" MICROCODE_VERSION
 		" <tigran@aivazian.fsnet.co.uk>, Peter Oruba\n");
@@ -717,4 +717,5 @@ int __init microcode_init(void)
 	return error;
 
 }
+fs_initcall(save_microcode_in_initrd);
 late_initcall(microcode_init);

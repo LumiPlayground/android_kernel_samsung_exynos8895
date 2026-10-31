@@ -12,7 +12,6 @@
 #include <linux/fs.h>
 #include <linux/sched.h>
 #include <linux/blkdev.h>
-#include <linux/device.h>
 #include <linux/writeback.h>
 #include <linux/blk-cgroup.h>
 #include <linux/backing-dev-defs.h>
@@ -199,7 +198,7 @@ static inline int wb_congested(struct bdi_writeback *wb, int cong_bits)
 }
 
 long congestion_wait(int sync, long timeout);
-long wait_iff_congested(struct zone *zone, int sync, long timeout);
+long wait_iff_congested(struct pglist_data *pgdat, int sync, long timeout);
 int pdflush_proc_obsolete(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp, loff_t *ppos);
 
@@ -409,8 +408,7 @@ static inline void unlocked_inode_to_wb_end(struct inode *inode,
 					    struct wb_lock_cookie *cookie)
 {
 	if (unlikely(cookie->locked))
-		spin_unlock_irqrestore(&inode->i_mapping->tree_lock,
-				       cookie->flags);
+		spin_unlock_irqrestore(&inode->i_mapping->tree_lock, cookie->flags);
 
 	rcu_read_unlock();
 }
@@ -517,15 +515,6 @@ static inline int bdi_rw_congested(struct backing_dev_info *bdi)
 {
 	return bdi_congested(bdi, (1 << WB_sync_congested) |
 				  (1 << WB_async_congested));
-}
-
-extern const char *bdi_unknown_name;
-
-static inline const char *bdi_dev_name(struct backing_dev_info *bdi)
-{
-	if (!bdi || !bdi->dev)
-		return bdi_unknown_name;
-	return dev_name(bdi->dev);
 }
 
 #endif	/* _LINUX_BACKING_DEV_H */

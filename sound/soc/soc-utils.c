@@ -5,7 +5,7 @@
  *
  * Author: Mark Brown <broonie@opensource.wolfsonmicro.com>
  *         Liam Girdwood <lrg@slimlogic.co.uk>
- *
+ *         
  *
  *  This program is free software; you can redistribute  it and/or modify it
  *  under  the terms of  the GNU General  Public License as published by the
@@ -80,7 +80,7 @@ static int dummy_dma_open(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static struct snd_pcm_ops dummy_dma_ops = {
+static const struct snd_pcm_ops dummy_dma_ops = {
 	.open		= dummy_dma_open,
 	.ioctl		= snd_pcm_lib_ioctl,
 };
@@ -91,13 +91,15 @@ static struct snd_soc_platform_driver dummy_platform = {
 
 static struct snd_soc_codec_driver dummy_codec;
 
-#define STUB_RATES	SNDRV_PCM_RATE_CONTINUOUS
+#define STUB_RATES	SNDRV_PCM_RATE_8000_192000
 #define STUB_FORMATS	(SNDRV_PCM_FMTBIT_S8 | \
 			SNDRV_PCM_FMTBIT_U8 | \
 			SNDRV_PCM_FMTBIT_S16_LE | \
 			SNDRV_PCM_FMTBIT_U16_LE | \
 			SNDRV_PCM_FMTBIT_S24_LE | \
 			SNDRV_PCM_FMTBIT_U24_LE | \
+			SNDRV_PCM_FMTBIT_S20_3LE | \
+			SNDRV_PCM_FMTBIT_U20_3LE | \
 			SNDRV_PCM_FMTBIT_S32_LE | \
 			SNDRV_PCM_FMTBIT_U32_LE | \
 			SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_LE)

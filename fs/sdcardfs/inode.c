@@ -20,7 +20,6 @@
 
 #include "sdcardfs.h"
 #include <linux/fs_struct.h>
-#include <linux/ratelimit.h>
 
 const struct cred *override_fsids(struct sdcardfs_sb_info *sbi,
 		struct sdcardfs_inode_data *data)
@@ -392,7 +391,8 @@ out_eacces:
  * superblock-level name-space lock for renames and copy-ups.
  */
 static int sdcardfs_rename(struct inode *old_dir, struct dentry *old_dentry,
-			 struct inode *new_dir, struct dentry *new_dentry)
+			 struct inode *new_dir, struct dentry *new_dentry,
+			 unsigned int flags)
 {
 	int err = 0;
 	struct dentry *lower_old_dentry = NULL;
@@ -403,6 +403,9 @@ static int sdcardfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	struct dentry *trap = NULL;
 	struct path lower_old_path, lower_new_path;
 	const struct cred *saved_cred = NULL;
+
+	if (flags)
+		return -EINVAL;
 
 	if (!check_caller_access_to_name(old_dir, &old_dentry->d_name) ||
 		!check_caller_access_to_name(new_dir, &new_dentry->d_name)) {
@@ -554,11 +557,9 @@ static int sdcardfs_permission(struct vfsmount *mnt, struct inode *inode, int ma
 	struct inode tmp;
 	struct sdcardfs_inode_data *top = top_data_get(SDCARDFS_I(inode));
 
-	if (IS_ERR(mnt))
-		return PTR_ERR(mnt);
 	if (!top)
 		return -EINVAL;
-
+		
 	if (IS_ERR(mnt)) {
 		data_put(top);
 		return PTR_ERR(mnt);
@@ -605,7 +606,9 @@ static int sdcardfs_setattr(struct vfsmount *mnt, struct dentry *dentry, struct 
 	struct iattr lower_ia;
 	struct dentry *parent;
 	struct inode tmp;
+	struct dentry tmp_d;
 	struct sdcardfs_inode_data *top;
+
 	const struct cred *saved_cred = NULL;
 
 	inode = d_inode(dentry);
@@ -634,9 +637,10 @@ static int sdcardfs_setattr(struct vfsmount *mnt, struct dentry *dentry, struct 
 	tmp.i_size = i_size_read(inode);
 	data_put(top);
 	tmp.i_sb = inode->i_sb;
+	tmp_d.d_inode = &tmp;
 
 	/*
-	 * Check if user has permission to change inode.  We don't check if
+	 * Check if user has permission to change dentry.  We don't check if
 	 * this user can change the lower inode: that should happen when
 	 * calling notify_change on the lower inode.
 	 */
@@ -646,7 +650,7 @@ static int sdcardfs_setattr(struct vfsmount *mnt, struct dentry *dentry, struct 
 	 * we have write access. Changes to mode, owner, and group are ignored
 	 */
 	ia->ia_valid |= ATTR_FORCE;
-	err = inode_change_ok(&tmp, ia);
+	err = setattr_prepare(&tmp_d, ia);
 
 	if (!err) {
 		/* check the Android group ID */
@@ -704,10 +708,10 @@ static int sdcardfs_setattr(struct vfsmount *mnt, struct dentry *dentry, struct 
 	 * unlinked (no inode->i_sb and i_ino==0.  This happens if someone
 	 * tries to open(), unlink(), then ftruncate() a file.
 	 */
-	mutex_lock(&d_inode(lower_dentry)->i_mutex);
+	inode_lock(d_inode(lower_dentry));
 	err = notify_change2(lower_mnt, lower_dentry, &lower_ia, /* note: lower_ia */
 			NULL);
-	mutex_unlock(&d_inode(lower_dentry)->i_mutex);
+	inode_unlock(d_inode(lower_dentry));
 	if (err)
 		goto out;
 

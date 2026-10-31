@@ -389,7 +389,7 @@ static int of_channel_match_helper(struct device_node *np, const char *name,
 	*dma_instance = dma_node->name;
 	index = of_property_match_string(np, "ti,navigator-dma-names", name);
 	if (index < 0) {
-		dev_err(kdev->dev, "No 'ti,navigator-dma-names' propery\n");
+		dev_err(kdev->dev, "No 'ti,navigator-dma-names' property\n");
 		return -ENODEV;
 	}
 
@@ -752,9 +752,8 @@ static int knav_dma_probe(struct platform_device *pdev)
 	pm_runtime_enable(kdev->dev);
 	ret = pm_runtime_get_sync(kdev->dev);
 	if (ret < 0) {
-		pm_runtime_put_noidle(kdev->dev);
 		dev_err(kdev->dev, "unable to enable pktdma, err %d\n", ret);
-		goto err_pm_disable;
+		return ret;
 	}
 
 	/* Initialise all packet dmas */
@@ -768,19 +767,11 @@ static int knav_dma_probe(struct platform_device *pdev)
 
 	if (list_empty(&kdev->list)) {
 		dev_err(dev, "no valid dma instance\n");
-		ret = -ENODEV;
-		goto err_put_sync;
+		return -ENODEV;
 	}
 
 	debugfs_create_file("knav_dma", S_IFREG | S_IRUGO, NULL, NULL,
 			    &knav_dma_debug_ops);
-
-	return ret;
-
-err_put_sync:
-	pm_runtime_put_sync(kdev->dev);
-err_pm_disable:
-	pm_runtime_disable(kdev->dev);
 
 	return ret;
 }

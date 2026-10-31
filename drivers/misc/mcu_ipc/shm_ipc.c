@@ -124,7 +124,7 @@ static ssize_t memshare_read(struct file *filep, char __user *buf,
 
 	pr_debug("%s(%s): Read %d bytes from address %lx.", __func__,
 			pdata.name, copy_size, addr);
-	
+
 	vunmap(device_mem);
 
 	return copy_size;
@@ -599,7 +599,7 @@ static int shm_remove(struct platform_device *pdev)
 
 static const struct of_device_id exynos_shm_dt_match[] = {
 		{ .compatible = "samsung,exynos7580-shm_ipc", },
-		{ .compatible = "samsung,exynos8890-shm_ipc", },
+
 		{ .compatible = "samsung,exynos7870-shm_ipc", },
 		{ .compatible = "samsung,exynos-shm_ipc", },
 		{},

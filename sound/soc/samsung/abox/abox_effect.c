@@ -188,8 +188,10 @@ static struct regmap *abox_effect_get_regmap(struct device *dev)
 }
 
 static const struct snd_soc_codec_driver abox_effect = {
-	.controls		= abox_effect_controls,
-	.num_controls		= ARRAY_SIZE(abox_effect_controls),
+	.component_driver = {
+		.controls = abox_effect_controls,
+		.num_controls = ARRAY_SIZE(abox_effect_controls),
+	},
 	.get_regmap		= abox_effect_get_regmap,
 	.idle_bias_off		= true,
 	.suspend_bias_off	= true,

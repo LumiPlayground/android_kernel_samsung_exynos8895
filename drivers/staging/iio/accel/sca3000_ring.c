@@ -48,7 +48,7 @@ static int sca3000_read_data(struct sca3000_state *st,
 		}
 	};
 	*rx_p = kmalloc(len, GFP_KERNEL);
-	if (*rx_p == NULL) {
+	if (!*rx_p) {
 		ret = -ENOMEM;
 		goto error_ret;
 	}
@@ -56,7 +56,7 @@ static int sca3000_read_data(struct sca3000_state *st,
 	st->tx[0] = SCA3000_READ_REG(reg_address_high);
 	ret = spi_sync_transfer(st->us, xfer, ARRAY_SIZE(xfer));
 	if (ret) {
-		dev_err(&st->us->dev, "problem reading register");
+		dev_err(get_device(&st->us->dev), "problem reading register");
 		goto error_free_rx;
 	}
 
@@ -99,8 +99,7 @@ static int sca3000_read_first_n_hw_rb(struct iio_buffer *r,
 	ret = sca3000_read_data_short(st, SCA3000_REG_ADDR_BUF_COUNT, 1);
 	if (ret)
 		goto error_ret;
-	else
-		num_available = st->rx[0];
+	num_available = st->rx[0];
 	/*
 	 * num_available is the total number of samples available
 	 * i.e. number of time points * number of channels.

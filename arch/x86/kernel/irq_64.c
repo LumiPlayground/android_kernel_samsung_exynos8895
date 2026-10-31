@@ -10,8 +10,8 @@
 
 #include <linux/kernel_stat.h>
 #include <linux/interrupt.h>
+#include <linux/irq.h>
 #include <linux/seq_file.h>
-#include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/ftrace.h>
 #include <linux/uaccess.h>
@@ -50,8 +50,7 @@ static inline void stack_overflow_check(struct pt_regs *regs)
 	if (user_mode(regs))
 		return;
 
-	if (regs->sp >= curbase + sizeof(struct thread_info) +
-				  sizeof(struct pt_regs) + STACK_TOP_MARGIN &&
+	if (regs->sp >= curbase + sizeof(struct pt_regs) + STACK_TOP_MARGIN &&
 	    regs->sp <= curbase + THREAD_SIZE)
 		return;
 

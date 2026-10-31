@@ -69,8 +69,17 @@ void __init time_init(void)
 {
 	u32 arch_timer_rate;
 
+#ifdef CONFIG_EXYNOS_SNAPSHOT_EARLY_LOG
+	pr_notice("ESS early boot: before of_clk_init\n");
+#endif
 	of_clk_init(NULL);
+#ifdef CONFIG_EXYNOS_SNAPSHOT_EARLY_LOG
+	pr_notice("ESS early boot: after of_clk_init, before clocksource_probe\n");
+#endif
 	clocksource_probe();
+#ifdef CONFIG_EXYNOS_SNAPSHOT_EARLY_LOG
+	pr_notice("ESS early boot: after clocksource_probe\n");
+#endif
 
 	tick_setup_hrtimer_broadcast();
 

@@ -309,7 +309,7 @@ struct pid *alloc_pid(struct pid_namespace *ns)
 	pid->level = ns->level;
 	for (i = ns->level; i >= 0; i--) {
 		nr = alloc_pidmap(tmp);
-		if (IS_ERR_VALUE(nr)) {
+		if (nr < 0) {
 			retval = nr;
 			goto out_free;
 		}
@@ -585,7 +585,7 @@ void __init pidhash_init(void)
 
 void __init pidmap_init(void)
 {
-	/* Veryify no one has done anything silly */
+	/* Verify no one has done anything silly: */
 	BUILD_BUG_ON(PID_MAX_LIMIT >= PIDNS_HASH_ADDING);
 
 	/* bump default and minimum pid_max based on number of cpus */
@@ -601,5 +601,5 @@ void __init pidmap_init(void)
 	atomic_dec(&init_pid_ns.pidmap[0].nr_free);
 
 	init_pid_ns.pid_cachep = KMEM_CACHE(pid,
-			SLAB_HWCACHE_ALIGN | SLAB_PANIC);
+			SLAB_HWCACHE_ALIGN | SLAB_PANIC | SLAB_ACCOUNT);
 }

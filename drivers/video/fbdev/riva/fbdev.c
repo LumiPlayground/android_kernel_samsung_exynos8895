@@ -1088,9 +1088,6 @@ static int rivafb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 	int mode_valid = 0;
 	
 	NVTRACE_ENTER();
-	if (!var->pixclock)
-		return -EINVAL;
-
 	switch (var->bits_per_pixel) {
 	case 1 ... 8:
 		var->red.offset = var->green.offset = var->blue.offset = 0;
@@ -1768,6 +1765,7 @@ static int riva_get_EDID_i2c(struct fb_info *info)
 	int i;
 
 	NVTRACE_ENTER();
+	par->riva.LockUnlock(&par->riva, 0);
 	riva_create_i2c_busses(par);
 	for (i = 0; i < 3; i++) {
 		if (!par->chan[i].par)

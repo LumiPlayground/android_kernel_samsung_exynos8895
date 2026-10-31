@@ -2930,13 +2930,15 @@ static const struct snd_soc_codec_driver abox_codec = {
 	.remove			= abox_codec_remove,
 	.suspend		= abox_codec_suspend,
 	.resume			= abox_codec_resume,
-	.controls		= abox_codec_controls,
-	.num_controls		= ARRAY_SIZE(abox_codec_controls),
-	.dapm_widgets		= abox_codec_dapm_widgets,
-	.num_dapm_widgets	= ARRAY_SIZE(abox_codec_dapm_widgets),
-	.dapm_routes		= abox_codec_dapm_routes,
-	.num_dapm_routes	= ARRAY_SIZE(abox_codec_dapm_routes),
 	.get_regmap		= abox_codec_get_regmap,
+	.component_driver = {
+		.controls		= abox_codec_controls,
+		.num_controls		= ARRAY_SIZE(abox_codec_controls),
+		.dapm_widgets		= abox_codec_dapm_widgets,
+		.num_dapm_widgets	= ARRAY_SIZE(abox_codec_dapm_widgets),
+		.dapm_routes		= abox_codec_dapm_routes,
+		.num_dapm_routes	= ARRAY_SIZE(abox_codec_dapm_routes),
+	},
 };
 
 static bool abox_find_nrf(const char *name,
@@ -3000,7 +3002,7 @@ static bool abox_find_nrf(const char *name,
 }
 
 int abox_hw_params_fixup_helper(struct snd_soc_pcm_runtime *rtd,
-		struct snd_pcm_hw_params *params)
+		struct snd_pcm_hw_params *params, int stream)
 {
 	struct snd_soc_dai *dai = rtd->cpu_dai;
 	struct snd_soc_component *cmpnt = dai->component;
@@ -3010,21 +3012,10 @@ int abox_hw_params_fixup_helper(struct snd_soc_pcm_runtime *rtd,
 	struct snd_pcm_hw_params *fastest_hw_params = NULL;
 	struct snd_soc_dapm_widget *w;
 	LIST_HEAD(widget_list);
-	int stream;
 	enum ABOX_CONFIGMSG rate, format;
 
 	dev_dbg(dev, "%s[%s]\n", __func__, dai->name);
 
-	switch (rtd->dpcm[SNDRV_PCM_STREAM_PLAYBACK].state) {
-	case SND_SOC_DPCM_STATE_OPEN:
-	case SND_SOC_DPCM_STATE_HW_PARAMS:
-	case SND_SOC_DPCM_STATE_HW_FREE:
-		stream = SNDRV_PCM_STREAM_PLAYBACK;
-		break;
-	default:
-		stream = SNDRV_PCM_STREAM_CAPTURE;
-		break;
-	}
 
 	list_for_each_entry(dpcm, &rtd->dpcm[stream].fe_clients, list_fe) {
 		if (!fastest_hw_params || (params_rate(fastest_hw_params) <

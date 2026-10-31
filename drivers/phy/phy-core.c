@@ -141,7 +141,7 @@ static struct phy_provider *of_phy_provider_lookup(struct device_node *node)
 		if (phy_provider->dev->of_node == node)
 			return phy_provider;
 
-		for_each_child_of_node(phy_provider->dev->of_node, child)
+		for_each_child_of_node(phy_provider->children, child)
 			if (child == node)
 				return phy_provider;
 	}
@@ -273,6 +273,40 @@ out:
 }
 EXPORT_SYMBOL_GPL(phy_exit);
 
+int phy_vendor_set(struct phy *phy, int is_enable, int is_cancel)
+{
+	int ret;
+
+	if (!phy || !phy->ops->vendor_set)
+		return 0;
+
+	ret = phy->ops->vendor_set(phy, is_enable, is_cancel);
+	if (ret < 0) {
+		dev_err(&phy->dev, "phy vendor setting failed --> %d\n", ret);
+	} else {
+		ret = 0; /* Override possible ret == -ENOTSUPP */
+	}
+	return ret;
+}
+EXPORT_SYMBOL_GPL(phy_vendor_set);
+
+int phy_ilbk(struct phy *phy)
+{
+	int ret;
+
+	if (!phy || !phy->ops->ilbk)
+		return 0;
+
+	ret = phy->ops->ilbk(phy);
+	if (ret < 0)
+		dev_err(&phy->dev, "phy ilbk failed --> %d\n", ret);
+	else
+		ret = 0; /* Override possible ret == -ENOTSUPP */
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(phy_ilbk);
+
 int phy_tune(struct phy *phy, int phy_state)
 {
 	int ret;
@@ -289,6 +323,17 @@ int phy_tune(struct phy *phy, int phy_state)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(phy_tune);
+
+void phy_conn(struct phy *phy, int option)
+{
+	if (!phy || !phy->ops->conn)
+		return;
+
+	phy->ops->conn(phy, option);
+
+	return;
+}
+EXPORT_SYMBOL_GPL(phy_conn);
 
 int phy_set(struct phy *phy, int option, void *info)
 {
@@ -373,6 +418,36 @@ int phy_power_off(struct phy *phy)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(phy_power_off);
+
+int phy_set_mode(struct phy *phy, enum phy_mode mode)
+{
+	int ret;
+
+	if (!phy || !phy->ops->set_mode)
+		return 0;
+
+	mutex_lock(&phy->mutex);
+	ret = phy->ops->set_mode(phy, mode);
+	mutex_unlock(&phy->mutex);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(phy_set_mode);
+
+int phy_reset(struct phy *phy)
+{
+	int ret;
+
+	if (!phy || !phy->ops->reset)
+		return 0;
+
+	mutex_lock(&phy->mutex);
+	ret = phy->ops->reset(phy);
+	mutex_unlock(&phy->mutex);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(phy_reset);
 
 /**
  * _of_phy_get() - lookup and obtain a reference to a phy by phandle
@@ -847,24 +922,59 @@ EXPORT_SYMBOL_GPL(devm_phy_destroy);
 /**
  * __of_phy_provider_register() - create/register phy provider with the framework
  * @dev: struct device of the phy provider
+ * @children: device node containing children (if different from dev->of_node)
  * @owner: the module owner containing of_xlate
  * @of_xlate: function pointer to obtain phy instance from phy provider
  *
  * Creates struct phy_provider from dev and of_xlate function pointer.
  * This is used in the case of dt boot for finding the phy instance from
  * phy provider.
+ *
+ * If the PHY provider doesn't nest children directly but uses a separate
+ * child node to contain the individual children, the @children parameter
+ * can be used to override the default. If NULL, the default (dev->of_node)
+ * will be used. If non-NULL, the device node must be a child (or further
+ * descendant) of dev->of_node. Otherwise an ERR_PTR()-encoded -EINVAL
+ * error code is returned.
  */
 struct phy_provider *__of_phy_provider_register(struct device *dev,
-	struct module *owner, struct phy * (*of_xlate)(struct device *dev,
-	struct of_phandle_args *args))
+	struct device_node *children, struct module *owner,
+	struct phy * (*of_xlate)(struct device *dev,
+				 struct of_phandle_args *args))
 {
 	struct phy_provider *phy_provider;
+
+	/*
+	 * If specified, the device node containing the children must itself
+	 * be the provider's device node or a child (or further descendant)
+	 * thereof.
+	 */
+	if (children) {
+		struct device_node *parent = of_node_get(children), *next;
+
+		while (parent) {
+			if (parent == dev->of_node)
+				break;
+
+			next = of_get_parent(parent);
+			of_node_put(parent);
+			parent = next;
+		}
+
+		if (!parent)
+			return ERR_PTR(-EINVAL);
+
+		of_node_put(parent);
+	} else {
+		children = dev->of_node;
+	}
 
 	phy_provider = kzalloc(sizeof(*phy_provider), GFP_KERNEL);
 	if (!phy_provider)
 		return ERR_PTR(-ENOMEM);
 
 	phy_provider->dev = dev;
+	phy_provider->children = of_node_get(children);
 	phy_provider->owner = owner;
 	phy_provider->of_xlate = of_xlate;
 
@@ -890,8 +1000,9 @@ EXPORT_SYMBOL_GPL(__of_phy_provider_register);
  * on the devres data, then, devres data is freed.
  */
 struct phy_provider *__devm_of_phy_provider_register(struct device *dev,
-	struct module *owner, struct phy * (*of_xlate)(struct device *dev,
-	struct of_phandle_args *args))
+	struct device_node *children, struct module *owner,
+	struct phy * (*of_xlate)(struct device *dev,
+				 struct of_phandle_args *args))
 {
 	struct phy_provider **ptr, *phy_provider;
 
@@ -899,7 +1010,8 @@ struct phy_provider *__devm_of_phy_provider_register(struct device *dev,
 	if (!ptr)
 		return ERR_PTR(-ENOMEM);
 
-	phy_provider = __of_phy_provider_register(dev, owner, of_xlate);
+	phy_provider = __of_phy_provider_register(dev, children, owner,
+						  of_xlate);
 	if (!IS_ERR(phy_provider)) {
 		*ptr = phy_provider;
 		devres_add(dev, ptr);
@@ -924,6 +1036,7 @@ void of_phy_provider_unregister(struct phy_provider *phy_provider)
 
 	mutex_lock(&phy_provider_mutex);
 	list_del(&phy_provider->list);
+	of_node_put(phy_provider->children);
 	kfree(phy_provider);
 	mutex_unlock(&phy_provider_mutex);
 }

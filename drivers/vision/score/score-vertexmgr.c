@@ -121,7 +121,7 @@ int score_vertexmgr_queue(struct score_vertexmgr *vertexmgr, struct score_frame 
 		frame->message = SCORE_FRAME_FAIL;
 	} else {
 		frame->message = SCORE_FRAME_READY;
-		queue_kthread_work(&vertexmgr->worker, &frame->work);
+		kthread_queue_work(&vertexmgr->worker, &frame->work);
 	}
 	return ret;
 }
@@ -259,7 +259,7 @@ void score_vertexmgr_queue_pending_frame(struct score_vertexmgr *vertexmgr)
 		frame = iframe->frame;
 		if (iframe->state == SCORE_FRAME_STATE_PENDING) {
 			score_frame_trans_pend_to_rdy(iframe);
-			queue_kthread_work(&vertexmgr->worker, &frame->work);
+			kthread_queue_work(&vertexmgr->worker, &frame->work);
 			if (try++ > max_try) {
 				break;
 			}
@@ -408,7 +408,7 @@ int score_vertexmgr_probe(struct score_vertexmgr *vertexmgr)
 	char name[30];
 	struct sched_param param = { .sched_priority = MAX_RT_PRIO - 1 };
 
-	init_kthread_worker(&vertexmgr->worker);
+	kthread_init_worker(&vertexmgr->worker);
 	snprintf(name, sizeof(name), "score_vertex");
 	vertexmgr->task_vertex =
 		kthread_run(kthread_worker_fn, &vertexmgr->worker, name);

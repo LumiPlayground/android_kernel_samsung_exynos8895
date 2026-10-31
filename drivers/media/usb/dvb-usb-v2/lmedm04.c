@@ -357,7 +357,8 @@ static void lme2510_int_response(struct urb *lme_urb)
 						ibuf[5]);
 
 			deb_info(1, "INT Key = 0x%08x", key);
-			rc_keydown(adap_to_d(adap)->rc_dev, RC_TYPE_NEC, key, 0);
+			rc_keydown(adap_to_d(adap)->rc_dev, RC_TYPE_NEC32, key,
+									0);
 			break;
 		case 0xbb:
 			switch (st->tuner_config) {
@@ -445,7 +446,7 @@ static int lme2510_int_read(struct dvb_usb_adapter *adap)
 	ep = usb_pipe_endpoint(d->udev, lme_int->lme_urb->pipe);
 
 	if (usb_endpoint_type(&ep->desc) == USB_ENDPOINT_XFER_BULK)
-		lme_int->lme_urb->pipe = usb_rcvbulkpipe(d->udev, 0xa);
+		lme_int->lme_urb->pipe = usb_rcvbulkpipe(d->udev, 0xa),
 
 	lme_int->lme_urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
 
@@ -1251,7 +1252,7 @@ static int lme2510_get_stream_config(struct dvb_frontend *fe, u8 *ts_type,
 static int lme2510_get_rc_config(struct dvb_usb_device *d,
 	struct dvb_usb_rc *rc)
 {
-	rc->allowed_protos = RC_BIT_NEC;
+	rc->allowed_protos = RC_BIT_NEC32;
 	return 0;
 }
 

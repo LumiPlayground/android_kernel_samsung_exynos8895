@@ -37,12 +37,10 @@ static int diag8_noresponse(int cmdlen)
 
 static int diag8_response(int cmdlen, char *response, int *rlen)
 {
-	unsigned long _cmdlen = cmdlen | 0x40000000L;
-	unsigned long _rlen = *rlen;
 	register unsigned long reg2 asm ("2") = (addr_t) cpcmd_buf;
 	register unsigned long reg3 asm ("3") = (addr_t) response;
-	register unsigned long reg4 asm ("4") = _cmdlen;
-	register unsigned long reg5 asm ("5") = _rlen;
+	register unsigned long reg4 asm ("4") = cmdlen | 0x40000000L;
+	register unsigned long reg5 asm ("5") = *rlen;
 
 	asm volatile(
 		"	sam31\n"
@@ -98,8 +96,7 @@ int cpcmd(const char *cmd, char *response, int rlen, int *response_code)
 			(((unsigned long)response + rlen) >> 31)) {
 		lowbuf = kmalloc(rlen, GFP_KERNEL | GFP_DMA);
 		if (!lowbuf) {
-			pr_warning("The cpcmd kernel function failed to "
-				   "allocate a response buffer\n");
+			pr_warn("The cpcmd kernel function failed to allocate a response buffer\n");
 			return -ENOMEM;
 		}
 		spin_lock_irqsave(&cpcmd_lock, flags);

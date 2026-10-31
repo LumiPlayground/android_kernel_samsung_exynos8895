@@ -438,6 +438,7 @@ qcaspi_qca7k_sync(struct qcaspi *qca, int event)
 	u16 signature = 0;
 	u16 spi_config;
 	u16 wrbuf_space = 0;
+	static u16 reset_count;
 
 	if (event == QCASPI_EVENT_CPUON) {
 		/* Read signature twice, if not valid
@@ -490,13 +491,13 @@ qcaspi_qca7k_sync(struct qcaspi *qca, int event)
 
 		qca->sync = QCASPI_SYNC_RESET;
 		qca->stats.trig_reset++;
-		qca->reset_count = 0;
+		reset_count = 0;
 		break;
 	case QCASPI_SYNC_RESET:
-		qca->reset_count++;
+		reset_count++;
 		netdev_dbg(qca->net_dev, "sync: waiting for CPU on, count %u.\n",
-			   qca->reset_count);
-		if (qca->reset_count >= QCASPI_RESET_TIMEOUT) {
+			   reset_count);
+		if (reset_count >= QCASPI_RESET_TIMEOUT) {
 			/* reset did not seem to take place, try again */
 			qca->sync = QCASPI_SYNC_UNKNOWN;
 			qca->stats.reset_timeout++;
@@ -719,7 +720,7 @@ qcaspi_netdev_xmit(struct sk_buff *skb, struct net_device *dev)
 		qca->stats.ring_full++;
 	}
 
-	dev->trans_start = jiffies;
+	netif_trans_update(dev);
 
 	if (qca->spi_thread &&
 	    qca->spi_thread->state != TASK_RUNNING)
@@ -734,7 +735,7 @@ qcaspi_netdev_tx_timeout(struct net_device *dev)
 	struct qcaspi *qca = netdev_priv(dev);
 
 	netdev_info(qca->net_dev, "Transmit timeout at %ld, latency %ld\n",
-		    jiffies, jiffies - dev->trans_start);
+		    jiffies, jiffies - dev_trans_start(dev));
 	qca->net_dev->stats.tx_errors++;
 	/* Trigger tx queue flush and QCA7000 reset */
 	qca->sync = QCASPI_SYNC_UNKNOWN;

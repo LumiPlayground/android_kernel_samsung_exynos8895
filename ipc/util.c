@@ -414,17 +414,12 @@ void *ipc_alloc(int size)
 /**
  * ipc_free - free ipc space
  * @ptr: pointer returned by ipc_alloc
- * @size: size of block
  *
- * Free a block created with ipc_alloc(). The caller must know the size
- * used in the allocation call.
+ * Free a block created with ipc_alloc().
  */
-void ipc_free(void *ptr, int size)
+void ipc_free(void *ptr)
 {
-	if (size > PAGE_SIZE)
-		vfree(ptr);
-	else
-		kfree(ptr);
+	kvfree(ptr);
 }
 
 /**
@@ -756,21 +751,21 @@ static struct kern_ipc_perm *sysvipc_find_ipc(struct ipc_ids *ids, loff_t pos,
 			total++;
 	}
 
-	ipc = NULL;
 	if (total >= ids->in_use)
-		goto out;
+		return NULL;
 
 	for (; pos < IPCMNI; pos++) {
 		ipc = idr_find(&ids->ipcs_idr, pos);
 		if (ipc != NULL) {
+			*new_pos = pos + 1;
 			rcu_read_lock();
 			ipc_lock_object(ipc);
-			break;
+			return ipc;
 		}
 	}
-out:
-	*new_pos = pos + 1;
-	return ipc;
+
+	/* Out of range - return NULL to terminate iteration */
+	return NULL;
 }
 
 static void *sysvipc_proc_next(struct seq_file *s, void *it, loff_t *pos)

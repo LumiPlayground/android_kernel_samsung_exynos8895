@@ -2406,12 +2406,12 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 			break;
 	} while (1);
 
-	/*  
-	* Our endpoint might get disabled by another thread during  
-	* dwc3_gadget_giveback(). If that happens, we're just gonna return 1  
-	* early on so DWC3_EP_BUSY flag gets cleared  
-	*/  
-	if (!dep->endpoint.desc)  
+	/*
+	* Our endpoint might get disabled by another thread during
+	* dwc3_gadget_giveback(). If that happens, we're just gonna return 1
+	* early on so DWC3_EP_BUSY flag gets cleared
+	*/
+	if (!dep->endpoint.desc)
 		return 1;
 
 	if (usb_endpoint_xfer_isoc(dep->endpoint.desc) &&
@@ -2861,7 +2861,7 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 		 * STAR#9000483510: RTL: SS : USB3 reset event may
 		 * not be generated always when the link enters poll
 		 */
-		
+
 		dwc3_update_ram_clk_sel(dwc, speed);
 
 		if (dwc->revision < DWC3_REVISION_190A)
@@ -3076,7 +3076,7 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
 		if (dwc->gadget.state == USB_STATE_CONFIGURED) {
 			dwc->vbus_curernt = USB_CURRENT_UNCONFIGURED;
 			schedule_work(&dwc->set_vbus_current_work);
-		}	
+		}
 	case DWC3_LINK_STATE_U2:
 		dwc3_suspend_gadget(dwc);
 		break;
@@ -3145,7 +3145,7 @@ static void dwc3_gadget_interrupt(struct dwc3 *dwc,
 						(void *)"USB_STATE=RESET:FULL", NULL);
 		else if (dwc->gadget.speed == USB_SPEED_HIGH)
 			store_usblog_notify(NOTIFY_USBSTATE,
-						(void *)"USB_STATE=RESET:HIGH", NULL);		
+						(void *)"USB_STATE=RESET:HIGH", NULL);
 		else if (dwc->gadget.speed == USB_SPEED_SUPER)
 			store_usblog_notify(NOTIFY_USBSTATE,
 						(void *)"USB_STATE=RESET:SUPER", NULL);
@@ -3576,3 +3576,28 @@ void dwc3_gadget_disconnect_proc(struct dwc3 *dwc)
 
 	complete(&dwc->disconnect);
 }
+
+int dwc3_gadget_get_cmply_link_state(struct usb_gadget *g)
+{
+	struct dwc3 *dwc = gadget_to_dwc(g);
+	u32		reg = 0;
+	int		ret = -ENODEV;
+
+	if (!dwc)
+		return ret;
+
+	if (dwc->pullups_connected) {
+		reg= dwc3_gadget_get_link_state(dwc);
+
+		dev_info(dwc->dev, "%s: link state = %d\n", __func__, reg);
+		if ((reg == DWC3_LINK_STATE_CMPLY) || (reg == DWC3_LINK_STATE_LPBK))
+			ret = 1;
+		else
+			ret = 0;
+	} else
+		dev_info(dwc->dev, "%s: udc not enabled \n", __func__);
+
+	return ret;
+}
+
+EXPORT_SYMBOL(dwc3_gadget_get_cmply_link_state);

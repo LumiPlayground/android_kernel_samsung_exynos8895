@@ -8,6 +8,7 @@ struct netns_frags {
 	long			high_thresh;
 	long			low_thresh;
 	int			timeout;
+	int			max_dist;
 	struct inet_frags	*f;
 
 	struct rhashtable       rhashtable ____cacheline_aligned_in_smp;
@@ -75,8 +76,8 @@ struct inet_frag_queue {
 	struct timer_list	timer;
 	spinlock_t		lock;
 	atomic_t		refcnt;
-	struct sk_buff		*fragments;  /* Used in IPv6. */
-	struct rb_root		rb_fragments; /* Used in IPv4. */
+	struct sk_buff		*fragments;  /* used in 6lopwpan IPv6. */
+	struct rb_root		rb_fragments; /* Used in IPv4/IPv6. */
 	struct sk_buff		*fragments_tail;
 	struct sk_buff		*last_run_head;
 	ktime_t			stamp;
@@ -94,7 +95,6 @@ struct inet_frags {
 	void			(*constructor)(struct inet_frag_queue *q,
 					       const void *arg);
 	void			(*destructor)(struct inet_frag_queue *);
-	void			(*skb_free)(struct sk_buff *);
 	void			(*frag_expire)(unsigned long data);
 	struct kmem_cache	*frags_cachep;
 	const char		*frags_cache_name;
@@ -151,5 +151,17 @@ static inline void add_frag_mem_limit(struct netns_frags *nf, long val)
 #define	IPFRAG_ECN_CE		0x08 /* one frag had ECN_CE */
 
 extern const u8 ip_frag_ecn_table[16];
+
+/* Return values of inet_frag_queue_insert() */
+#define IPFRAG_OK	0
+#define IPFRAG_DUP	1
+#define IPFRAG_OVERLAP	2
+int inet_frag_queue_insert(struct inet_frag_queue *q, struct sk_buff *skb,
+			   int offset, int end);
+void *inet_frag_reasm_prepare(struct inet_frag_queue *q, struct sk_buff *skb,
+			      struct sk_buff *parent);
+void inet_frag_reasm_finish(struct inet_frag_queue *q, struct sk_buff *head,
+			    void *reasm_data);
+struct sk_buff *inet_frag_pull_head(struct inet_frag_queue *q);
 
 #endif

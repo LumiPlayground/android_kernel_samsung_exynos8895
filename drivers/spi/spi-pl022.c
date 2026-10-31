@@ -346,13 +346,6 @@ struct vendor_data {
  * @clk: outgoing clock "SPICLK" for the SPI bus
  * @master: SPI framework hookup
  * @master_info: controller-specific data from machine setup
- * @kworker: thread struct for message pump
- * @kworker_task: pointer to task for message pump kworker thread
- * @pump_messages: work struct for scheduling work to the message pump
- * @queue_lock: spinlock to syncronise access to message queue
- * @queue: message queue
- * @busy: message pump is busy
- * @running: message pump is running
  * @pump_transfers: Tasklet used in Interrupt Transfer mode
  * @cur_msg: Pointer to current spi_message being processed
  * @cur_transfer: Pointer to current spi_transfer
@@ -1710,13 +1703,12 @@ static int verify_controller_parameters(struct pl022 *pl022,
 				return -EINVAL;
 			}
 		} else {
-			if (chip_info->duplex != SSP_MICROWIRE_CHANNEL_FULL_DUPLEX) {
+			if (chip_info->duplex != SSP_MICROWIRE_CHANNEL_FULL_DUPLEX)
 				dev_err(&pl022->adev->dev,
 					"Microwire half duplex mode requested,"
 					" but this is only available in the"
 					" ST version of PL022\n");
-				return -EINVAL;
-			}
+			return -EINVAL;
 		}
 	}
 	return 0;

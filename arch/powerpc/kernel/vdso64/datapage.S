@@ -37,7 +37,6 @@ data_page_branch:
 	mtlr	r0
 	addi	r3, r3, __kernel_datapage_offset-data_page_branch
 	lwz	r0,0(r3)
-  .cfi_restore lr
 	add	r3,r0,r3
 	blr
   .cfi_endproc
@@ -63,7 +62,7 @@ V_FUNCTION_BEGIN(__kernel_get_syscall_map)
 	cmpldi	cr0,r4,0
 	crclr	cr0*4+so
 	beqlr
-	li	r0,__NR_syscalls
+	li	r0,NR_syscalls
 	stw	r0,0(r4)
 	blr
   .cfi_endproc

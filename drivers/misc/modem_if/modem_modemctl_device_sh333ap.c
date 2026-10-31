@@ -374,17 +374,10 @@ static int sh333ap_on(struct modem_ctl *mc)
 	int cp_status = mbox_get_value(mc->mbx_cp_status);
 	int ret;
 	int i;
-#if defined(CONFIG_LTE_MODEM_S5E7890) || defined(CONFIG_LTE_MODEM_S5E8890)
+#if defined(CONFIG_LTE_MODEM_S5E7890)
 	struct modem_data *modem = mc->mdm_data;
 #endif
 
-#ifdef CONFIG_SOC_EXYNOS8890
-	u32 __maybe_unused et_dac_cal;
-	register u64 reg0 __asm__("x0");
-	register u64 reg1 __asm__("x1");
-	register u64 reg2 __asm__("x2");
-	register u64 reg3 __asm__("x3");
-#endif
 
 	mif_info("+++\n");
 	mif_info("cp_active:%d cp_status:%d\n", cp_active, cp_status);
@@ -404,7 +397,7 @@ static int sh333ap_on(struct modem_ctl *mc)
 	mbox_set_value(mc->mbx_sys_rev, get_hw_rev(np));
 	mif_err("System Revision %d\n", mbox_get_value(mc->mbx_sys_rev));
 
-#if defined(CONFIG_LTE_MODEM_S5E7890) || defined(CONFIG_LTE_MODEM_S5E8890)
+#if defined(CONFIG_LTE_MODEM_S5E7890)
 	/* copy memory cal value from ap to cp */
 	memmove(modem->ipc_base + 0x1000, mc->sysram_alive, 0x800);
 
@@ -413,24 +406,6 @@ static int sh333ap_on(struct modem_ctl *mc)
 	mif_err("CP carrior info : %s\n", mc->info_cp_carr);
 #endif
 
-#ifdef CONFIG_SOC_EXYNOS8890
-	/* Transfer ET_DAC_CAL tuning bit to CP */
-	reg0 = 0;
-	reg1 = 0;
-	reg2 = 0;
-	reg3 = 0;
-
-	/* SMC_ID = 0x82001014, CMD_ID = 0x2002, read_idx=0x1C */
-	ret = exynos_smc(0x82001014, 0, 0x2002, 0x1C);
-	__asm__ volatile(
-			"\t"
-			: "+r"(reg0), "+r"(reg1), "+r"(reg2), "+r"(reg3)
-			);
-	et_dac_cal = (uint32_t)((0x00000000FFFF0000 & reg2) >> 16);
-
-	mif_err("ret = 0x%x, et_cac_cal value = 0x%x\n", ret, et_dac_cal);
-	mbox_set_value(mc->mbx_et_dac_cal,(u32)et_dac_cal);
-#endif
 
 	mbox_set_value(mc->mbx_pda_active, 1);
 

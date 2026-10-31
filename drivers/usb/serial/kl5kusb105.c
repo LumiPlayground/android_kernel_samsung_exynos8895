@@ -293,12 +293,12 @@ static int  klsi_105_open(struct tty_struct *tty, struct usb_serial_port *port)
 	priv->cfg.unknown2 = cfg->unknown2;
 	spin_unlock_irqrestore(&priv->lock, flags);
 
-	kfree(cfg);
-
 	/* READ_ON and urb submission */
 	rc = usb_serial_generic_open(tty, port);
-	if (rc)
-		return rc;
+	if (rc) {
+		retval = rc;
+		goto err_free_cfg;
+	}
 
 	rc = usb_control_msg(port->serial->dev,
 			     usb_sndctrlpipe(port->serial->dev, 0),
@@ -341,6 +341,8 @@ err_disable_read:
 			     KLSI_TIMEOUT);
 err_generic_close:
 	usb_serial_generic_close(port);
+err_free_cfg:
+	kfree(cfg);
 
 	return retval;
 }
@@ -488,7 +490,6 @@ static void klsi_105_set_termios(struct tty_struct *tty,
 		/* maybe this should be simulated by sending read
 		 * disable and read enable messages?
 		 */
-		;
 #if 0
 		priv->control_state &= ~(TIOCM_DTR | TIOCM_RTS);
 		mct_u232_set_modem_ctrl(serial, priv->control_state);
@@ -543,7 +544,6 @@ static void klsi_105_set_termios(struct tty_struct *tty,
 
 		mct_u232_set_line_ctrl(serial, priv->last_lcr);
 #endif
-		;
 	}
 	/*
 	 * Set flow control: well, I do not really now how to handle DTR/RTS.
@@ -562,7 +562,6 @@ static void klsi_105_set_termios(struct tty_struct *tty,
 			priv->control_state &= ~(TIOCM_DTR | TIOCM_RTS);
 		mct_u232_set_modem_ctrl(serial, priv->control_state);
 #endif
-		;
 	}
 	memcpy(cfg, &priv->cfg, sizeof(*cfg));
 	spin_unlock_irqrestore(&priv->lock, flags);

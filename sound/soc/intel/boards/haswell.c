@@ -156,7 +156,7 @@ static struct snd_soc_dai_link haswell_rt5640_dais[] = {
 	{
 		/* SSP0 - Codec */
 		.name = "Codec",
-		.be_id = 0,
+		.id = 0,
 		.cpu_dai_name = "snd-soc-dummy-dai",
 		.platform_name = "snd-soc-dummy",
 		.no_pcm = 1,
@@ -197,7 +197,6 @@ static struct platform_driver haswell_audio = {
 	.probe = haswell_audio_probe,
 	.driver = {
 		.name = "haswell-audio",
-		.pm = &snd_soc_pm_ops,
 	},
 };
 

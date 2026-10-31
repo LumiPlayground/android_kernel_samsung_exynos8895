@@ -159,12 +159,12 @@ void __init kasan_init(void)
 	 */
 	memcpy(tmp_pg_dir, swapper_pg_dir, sizeof(tmp_pg_dir));
 	dsb(ishst);
-	cpu_replace_ttbr1(lm_alias(tmp_pg_dir));
+	cpu_replace_ttbr1(tmp_pg_dir);
 
 	clear_pgds(KASAN_SHADOW_START, KASAN_SHADOW_END);
 
 	vmemmap_populate(kimg_shadow_start, kimg_shadow_end,
-			 pfn_to_nid(virt_to_pfn(_text)));
+			 pfn_to_nid(virt_to_pfn(lm_alias(_text))));
 
 	/*
 	 * vmemmap_populate() has populated the shadow region that covers the
@@ -210,10 +210,10 @@ void __init kasan_init(void)
 	 */
 	for (i = 0; i < PTRS_PER_PTE; i++)
 		set_pte(&kasan_zero_pte[i],
-			pfn_pte(sym_to_pfn(kasan_zero_page), PAGE_KERNEL_RO));
+			pfn_pte(virt_to_pfn(kasan_zero_page), PAGE_KERNEL_RO));
 
 	memset(kasan_zero_page, 0, PAGE_SIZE);
-	cpu_replace_ttbr1(lm_alias(swapper_pg_dir));
+	cpu_replace_ttbr1(swapper_pg_dir);
 
 	/* At this point kasan is fully initialized. Enable error messages */
 	init_task.kasan_depth = 0;

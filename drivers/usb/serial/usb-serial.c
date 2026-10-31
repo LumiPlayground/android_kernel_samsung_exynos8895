@@ -96,7 +96,8 @@ static int allocate_minors(struct usb_serial *serial, int num_ports)
 	mutex_lock(&table_lock);
 	for (i = 0; i < num_ports; ++i) {
 		port = serial->port[i];
-		minor = idr_alloc(&serial_minors, port, 0, 0, GFP_KERNEL);
+		minor = idr_alloc(&serial_minors, port, 0,
+					USB_SERIAL_TTY_MINORS, GFP_KERNEL);
 		if (minor < 0)
 			goto error;
 		port->minor = minor;
@@ -254,7 +255,7 @@ static int serial_open(struct tty_struct *tty, struct file *filp)
  *
  * Shut down a USB serial port. Serialized against activate by the
  * tport mutex and kept to matching open/close pairs
- * of calls by the ASYNCB_INITIALIZED flag.
+ * of calls by the initialized flag.
  *
  * Not called if tty is console.
  */
@@ -314,7 +315,10 @@ static void serial_cleanup(struct tty_struct *tty)
 	serial = port->serial;
 	owner = serial->type->driver.owner;
 
-	usb_autopm_put_interface(serial->interface);
+	mutex_lock(&serial->disc_mutex);
+	if (!serial->disconnected)
+		usb_autopm_put_interface(serial->interface);
+	mutex_unlock(&serial->disc_mutex);
 
 	usb_serial_put(serial);
 	module_put(owner);
@@ -812,7 +816,7 @@ static int usb_serial_probe(struct usb_interface *interface,
 		}
 	}
 
-#if defined(CONFIG_USB_SERIAL_PL2303) || defined(CONFIG_USB_SERIAL_PL2303_MODULE)
+#if IS_ENABLED(CONFIG_USB_SERIAL_PL2303)
 	/* BEGIN HORRIBLE HACK FOR PL2303 */
 	/* this is needed due to the looney way its endpoints are set up */
 	if (((le16_to_cpu(dev->descriptor.idVendor) == PL2303_VENDOR_ID) &&
@@ -1349,9 +1353,6 @@ static int usb_serial_register(struct usb_serial_driver *driver)
 				driver->description);
 		return -EINVAL;
 	}
-
-	/* Prevent individual ports from being unbound. */
-	driver->driver.suppress_bind_attrs = true;
 
 	usb_serial_operations_init(driver);
 

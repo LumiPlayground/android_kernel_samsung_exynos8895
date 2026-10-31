@@ -66,3 +66,5 @@ obj-$(CONFIG_USB_F_CONN_GADGET) += usb_f_conn_gadget.o
 
 obj-$(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE)	+= multi_config.o
 
+usb_f_tcm-y			:= f_tcm.o
+obj-$(CONFIG_USB_F_TCM)		+= usb_f_tcm.o

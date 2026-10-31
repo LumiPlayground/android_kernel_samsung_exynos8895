@@ -329,7 +329,7 @@ static void vibrator_enable( struct timed_output_dev *dev, int value)
 		container_of(dev, struct drv2624_data, to_dev);
 	pr_info("[VIB] %s %dms\n", __func__, value);
 
-	flush_kthread_worker(&pDrv2624data->kworker);
+	kthread_flush_worker(&pDrv2624data->kworker);
 	hrtimer_cancel(&pDrv2624data->timer);
 
 	mutex_lock(&pDrv2624data->lock);
@@ -406,7 +406,7 @@ static enum hrtimer_restart vibrator_timer_func(struct hrtimer *timer)
 	pr_info("[VIB] %s\n", __func__);
 	pDrv2624data->mnWorkMode |= WORK_VIBRATOR;
 //	schedule_work(&pDrv2624data->vibrator_work);
-	queue_kthread_work(&pDrv2624data->kworker, &pDrv2624data->vibrator_work);
+	kthread_queue_work(&pDrv2624data->kworker, &pDrv2624data->vibrator_work);
 
 	return HRTIMER_NORESTART;
 }
@@ -1037,13 +1037,13 @@ static int Haptics_init(struct drv2624_data *pDrv2624data)
 	hrtimer_init(&pDrv2624data->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	pDrv2624data->timer.function = vibrator_timer_func;
 	//INIT_WORK(&pDrv2624data->vibrator_work, vibrator_work_routine);
-	init_kthread_worker(&pDrv2624data->kworker);
+	kthread_init_worker(&pDrv2624data->kworker);
 	kworker_task = kthread_run(kthread_worker_fn,
 			&pDrv2624data->kworker, "drv2624_haptic");
 	if (IS_ERR(kworker_task)) {
 		pr_err("Failed to create message pump task\n");
 	}
-	init_kthread_work(&pDrv2624data->vibrator_work, vibrator_work_routine);
+	kthread_init_work(&pDrv2624data->vibrator_work, vibrator_work_routine);
 
 	wake_lock_init(&pDrv2624data->wklock, WAKE_LOCK_SUSPEND, "vibrator");
 	mutex_init(&pDrv2624data->lock);
@@ -1132,7 +1132,7 @@ static irqreturn_t drv2624_irq_handler(int irq, void *dev_id)
 	if(pDrv2624data->mnIntStatus & INT_MASK){
 		pDrv2624data->mnWorkMode |= WORK_IRQ;
 //		schedule_work(&pDrv2624data->vibrator_work);
-		queue_kthread_work(&pDrv2624data->kworker, &pDrv2624data->vibrator_work);
+		kthread_queue_work(&pDrv2624data->kworker, &pDrv2624data->vibrator_work);
 	}
 	return IRQ_HANDLED;
 }

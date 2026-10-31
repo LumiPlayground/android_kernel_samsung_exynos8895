@@ -19,9 +19,8 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-
-/* HC should halt within 16 ms, but use 32 ms as some hosts take longer */
-#define XHCI_MAX_HALT_USEC	(32 * 1000)
+/* Up to 16 ms to halt an HC */
+#define XHCI_MAX_HALT_USEC	(16*1000)
 /* HC not running - set to 1 when run/stop bit is cleared. */
 #define XHCI_STS_HALT		(1<<0)
 
@@ -153,5 +152,34 @@ static inline int xhci_find_ext_cap_by_id(void __iomem *base, int ext_offset, in
 	}
 	if (limit > 0)
 		return ext_offset;
+	return 0;
+}
+
+static inline int xhci_find_next_ext_cap(void __iomem *base, u32 start, int id)
+{
+	u32 val;
+	u32 next;
+	u32 offset;
+
+	offset = start;
+	if (!start || start == XHCI_HCC_PARAMS_OFFSET) {
+		val = readl(base + XHCI_HCC_PARAMS_OFFSET);
+		if (val == ~0)
+			return 0;
+		offset = XHCI_HCC_EXT_CAPS(val) << 2;
+		if (!offset)
+			return 0;
+	};
+	do {
+		val = readl(base + offset);
+		if (val == ~0)
+			return 0;
+		if (XHCI_EXT_CAPS_ID(val) == id && offset != start)
+			return offset;
+
+		next = XHCI_EXT_CAPS_NEXT(val);
+		offset += next << 2;
+	} while (next);
+
 	return 0;
 }

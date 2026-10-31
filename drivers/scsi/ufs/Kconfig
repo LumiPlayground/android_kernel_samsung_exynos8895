@@ -35,6 +35,9 @@
 config SCSI_UFSHCD
 	tristate "Universal Flash Storage Controller Driver Core"
 	depends on SCSI && SCSI_DMA
+	select PM_DEVFREQ
+	select DEVFREQ_GOV_SIMPLE_ONDEMAND
+	select NLS
 	---help---
 	This selects the support for UFS devices in Linux, say Y and make
 	  sure that you know the name of your UFS host adapter (the card
@@ -63,6 +66,14 @@ config SCSI_UFSHCD_PCI
 	you have UFS Host Controller with PCI Interface.
 
 	  If you have a controller with this interface, say Y or M here.
+
+	  If unsure, say N.
+
+config SCSI_UFS_DWC_TC_PCI
+	tristate "DesignWare pci support using a G210 Test Chip"
+	depends on SCSI_UFSHCD_PCI
+	---help---
+	  Synopsys Test Chip is a PHY for prototyping purposes.
 
 	  If unsure, say N.
 
@@ -105,6 +116,14 @@ config SCSI_UFS_CMD_LOGGING
 	  various data logs for debugging purpose.
 
 	  If you want to enable this feature, say Y or M here.
+
+	  If unsure, say N.
+
+config SCSI_UFS_DWC_TC_PLATFORM
+	tristate "DesignWare platform support using a G210 Test Chip"
+	depends on SCSI_UFSHCD_PLATFORM
+	---help---
+	  Synopsys Test Chip is a PHY for prototyping purposes.
 
 	  If unsure, say N.
 

@@ -1,7 +1,7 @@
 #include "perf.h"
 #include "util/util.h"
 #include "util/debug.h"
-#include "util/parse-options.h"
+#include <subcmd/parse-options.h>
 #include "util/parse-regs-options.h"
 
 int
@@ -40,7 +40,7 @@ parse_regs(const struct option *opt, const char *str, int unset)
 				}
 				fputc('\n', stderr);
 				/* just printing available regs */
-				goto error;
+				return -1;
 			}
 			for (r = sample_reg_masks; r->name; r++) {
 				if (!strcasecmp(s, r->name))

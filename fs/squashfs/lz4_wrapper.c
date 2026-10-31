@@ -104,7 +104,21 @@ static int lz4_uncompress(struct squashfs_sb_info *msblk, void *strm,
 					stream->output, &dest_len);
 	if (res)
 		return -EIO;
-	squashfs_buf_to_actor(stream->output, output, dest_len);
+
+	bytes = dest_len;
+	data = squashfs_first_page(output);
+	buff = stream->output;
+	while (data) {
+		if (bytes <= PAGE_SIZE) {
+			memcpy(data, buff, bytes);
+			break;
+		}
+		memcpy(data, buff, PAGE_SIZE);
+		buff += PAGE_SIZE;
+		bytes -= PAGE_SIZE;
+		data = squashfs_next_page(output);
+	}
+	squashfs_finish_page(output);
 
 	return dest_len;
 }

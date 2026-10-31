@@ -132,8 +132,6 @@ static irqreturn_t sunxi_ir_irq(int irqno, void *dev_id)
 	} else if (status & REG_RXINT_RPEI_EN) {
 		ir_raw_event_set_idle(ir->rc, true);
 		ir_raw_event_handle(ir->rc);
-	} else {
-		ir_raw_event_handle(ir->rc);
 	}
 
 	spin_unlock(&ir->ir_lock);
@@ -328,6 +326,7 @@ static const struct of_device_id sunxi_ir_match[] = {
 	{ .compatible = "allwinner,sun5i-a13-ir", },
 	{},
 };
+MODULE_DEVICE_TABLE(of, sunxi_ir_match);
 
 static struct platform_driver sunxi_ir_driver = {
 	.probe          = sunxi_ir_probe,

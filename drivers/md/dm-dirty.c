@@ -282,7 +282,7 @@ static int dirty_map(struct dm_target *ti, struct bio *bio)
 process_bio:
 	/* Submit bio now */
 	bio->bi_bdev = v->data_dev->bdev;
-	submit_bio(bio->bi_rw, bio);
+	submit_bio(bio);
 
 	return DM_MAPIO_SUBMITTED;
 }

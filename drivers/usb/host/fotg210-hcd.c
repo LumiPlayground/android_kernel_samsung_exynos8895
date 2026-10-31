@@ -2271,7 +2271,7 @@ static unsigned qh_completions(struct fotg210_hcd *fotg210,
 		struct fotg210_qh *qh)
 {
 	struct fotg210_qtd *last, *end = qh->dummy;
-	struct list_head *entry, *tmp;
+	struct fotg210_qtd *qtd, *tmp;
 	int last_status;
 	int stopped;
 	unsigned count = 0;
@@ -2305,12 +2305,10 @@ rescan:
 	 * then let the queue advance.
 	 * if queue is stopped, handles unlinks.
 	 */
-	list_for_each_safe(entry, tmp, &qh->qtd_list) {
-		struct fotg210_qtd *qtd;
+	list_for_each_entry_safe(qtd, tmp, &qh->qtd_list, qtd_list) {
 		struct urb *urb;
 		u32 token = 0;
 
-		qtd = list_entry(entry, struct fotg210_qtd, qtd_list);
 		urb = qtd->urb;
 
 		/* clean up any state from previous QTD ...*/
@@ -2548,14 +2546,11 @@ retry_xacterr:
  * used for cleanup after errors, before HC sees an URB's TDs.
  */
 static void qtd_list_free(struct fotg210_hcd *fotg210, struct urb *urb,
-		struct list_head *qtd_list)
+		struct list_head *head)
 {
-	struct list_head *entry, *temp;
+	struct fotg210_qtd *qtd, *temp;
 
-	list_for_each_safe(entry, temp, qtd_list) {
-		struct fotg210_qtd *qtd;
-
-		qtd = list_entry(entry, struct fotg210_qtd, qtd_list);
+	list_for_each_entry_safe(qtd, temp, head, qtd_list) {
 		list_del(&qtd->qtd_list);
 		fotg210_qtd_free(fotg210, qtd);
 	}
@@ -4495,12 +4490,13 @@ static bool itd_complete(struct fotg210_hcd *fotg210, struct fotg210_itd *itd)
 
 			/* HC need not update length with this error */
 			if (!(t & FOTG210_ISOC_BABBLE)) {
-				desc->actual_length = FOTG210_ITD_LENGTH(t);
+				desc->actual_length =
+					fotg210_itdlen(urb, desc, t);
 				urb->actual_length += desc->actual_length;
 			}
 		} else if (likely((t & FOTG210_ISOC_ACTIVE) == 0)) {
 			desc->status = 0;
-			desc->actual_length = FOTG210_ITD_LENGTH(t);
+			desc->actual_length = fotg210_itdlen(urb, desc, t);
 			urb->actual_length += desc->actual_length;
 		} else {
 			/* URB was too late */
@@ -4803,14 +4799,8 @@ static DEVICE_ATTR(uframe_periodic_max, 0644, show_uframe_periodic_max,
 static inline int create_sysfs_files(struct fotg210_hcd *fotg210)
 {
 	struct device *controller = fotg210_to_hcd(fotg210)->self.controller;
-	int i = 0;
 
-	if (i)
-		goto out;
-
-	i = device_create_file(controller, &dev_attr_uframe_periodic_max);
-out:
-	return i;
+	return device_create_file(controller, &dev_attr_uframe_periodic_max);
 }
 
 static inline void remove_sysfs_files(struct fotg210_hcd *fotg210)
@@ -5609,7 +5599,7 @@ static int fotg210_hcd_probe(struct platform_device *pdev)
 	struct usb_hcd *hcd;
 	struct resource *res;
 	int irq;
-	int retval;
+	int retval = -ENODEV;
 	struct fotg210_hcd *fotg210;
 
 	if (usb_disabled())
@@ -5629,7 +5619,7 @@ static int fotg210_hcd_probe(struct platform_device *pdev)
 	hcd = usb_create_hcd(&fotg210_fotg210_hc_driver, dev,
 			dev_name(dev));
 	if (!hcd) {
-		dev_err(dev, "failed to create hcd\n");
+		dev_err(dev, "failed to create hcd with err %d\n", retval);
 		retval = -ENOMEM;
 		goto fail_create_hcd;
 	}

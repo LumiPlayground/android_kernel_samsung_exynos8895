@@ -6,12 +6,6 @@ OUTPUT_ARCH(ELF_ARCH)
 ENTRY(_start)
 jiffies = jiffies_64;
 
-VERSION {
-  {
-    local: *;
-  };
-}
-
 SECTIONS
 {
   PROVIDE (__executable_start = START);
@@ -74,6 +68,7 @@ SECTIONS
     _stext = .;
     TEXT_TEXT
     SCHED_TEXT
+    CPUIDLE_TEXT
     LOCK_TEXT
     *(.fixup)
     *(.stub .text.* .gnu.linkonce.t.*)

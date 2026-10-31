@@ -70,12 +70,9 @@
 
 
 static const struct usb_device_id id_table[] = {
-	{ USB_DEVICE(0x1a86, 0x5512) },
-	{ USB_DEVICE(0x1a86, 0x5523) },
-	{ USB_DEVICE(0x1a86, 0x7522) },
-	{ USB_DEVICE(0x1a86, 0x7523) },
 	{ USB_DEVICE(0x4348, 0x5523) },
-	{ USB_DEVICE(0x9986, 0x7523) },
+	{ USB_DEVICE(0x1a86, 0x7523) },
+	{ USB_DEVICE(0x1a86, 0x5523) },
 	{ },
 };
 MODULE_DEVICE_TABLE(usb, id_table);
@@ -388,7 +385,7 @@ static void ch341_set_termios(struct tty_struct *tty,
 static void ch341_break_ctl(struct tty_struct *tty, int break_state)
 {
 	const uint16_t ch341_break_reg =
-		CH341_REG_BREAK1 | ((uint16_t) CH341_REG_BREAK2 << 8);
+			((uint16_t) CH341_REG_BREAK2 << 8) | CH341_REG_BREAK1;
 	struct usb_serial_port *port = tty->driver_data;
 	int r;
 	uint16_t reg_contents;
@@ -558,17 +555,13 @@ static int ch341_tiocmget(struct tty_struct *tty)
 static int ch341_reset_resume(struct usb_serial *serial)
 {
 	struct usb_serial_port *port = serial->port[0];
-	struct ch341_private *priv;
+	struct ch341_private *priv = usb_get_serial_port_data(port);
 	int ret;
-
-	priv = usb_get_serial_port_data(port);
-	if (!priv)
-		return 0;
 
 	/* reconfigure ch341 serial port after bus-reset */
 	ch341_configure(serial->dev, priv);
 
-	if (test_bit(ASYNCB_INITIALIZED, &port->port.flags)) {
+	if (tty_port_initialized(&port->port)) {
 		ret = usb_submit_urb(port->interrupt_in_urb, GFP_NOIO);
 		if (ret) {
 			dev_err(&port->dev, "failed to submit interrupt urb: %d\n",

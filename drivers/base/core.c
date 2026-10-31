@@ -10,7 +10,6 @@
  *
  */
 
-#include <linux/cpufreq.h>
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/fwnode.h>
@@ -724,7 +723,6 @@ void device_initialize(struct device *dev)
 	device_pm_init(dev);
 	set_dev_node(dev, -1);
 #ifdef CONFIG_GENERIC_MSI_IRQ
-	raw_spin_lock_init(&dev->msi_lock);
 	INIT_LIST_HEAD(&dev->msi_list);
 #endif
 }
@@ -873,63 +871,12 @@ static inline struct kobject *get_glue_dir(struct device *dev)
  */
 static void cleanup_glue_dir(struct device *dev, struct kobject *glue_dir)
 {
-	unsigned int ref;
-
 	/* see if we live in a "glue" directory */
 	if (!live_in_glue_dir(glue_dir, dev))
 		return;
 
 	mutex_lock(&gdp_mutex);
-	/**
-	 * There is a race condition between removing glue directory
-	 * and adding a new device under the glue directory.
-	 *
-	 * CPU1:                                         CPU2:
-	 *
-	 * device_add()
-	 *   get_device_parent()
-	 *     class_dir_create_and_add()
-	 *       kobject_add_internal()
-	 *         create_dir()    // create glue_dir
-	 *
-	 *                                               device_add()
-	 *                                                 get_device_parent()
-	 *                                                   kobject_get() // get glue_dir
-	 *
-	 * device_del()
-	 *   cleanup_glue_dir()
-	 *     kobject_del(glue_dir)
-	 *
-	 *                                               kobject_add()
-	 *                                                 kobject_add_internal()
-	 *                                                   create_dir() // in glue_dir
-	 *                                                     sysfs_create_dir_ns()
-	 *                                                       kernfs_create_dir_ns(sd)
-	 *
-	 *       sysfs_remove_dir() // glue_dir->sd=NULL
-	 *       sysfs_put()        // free glue_dir->sd
-	 *
-	 *                                                         // sd is freed
-	 *                                                         kernfs_new_node(sd)
-	 *                                                           kernfs_get(glue_dir)
-	 *                                                           kernfs_add_one()
-	 *                                                           kernfs_put()
-	 *
-	 * Before CPU1 remove last child device under glue dir, if CPU2 add
-	 * a new device under glue dir, the glue_dir kobject reference count
-	 * will be increase to 2 in kobject_get(k). And CPU2 has been called
-	 * kernfs_create_dir_ns(). Meanwhile, CPU1 call sysfs_remove_dir()
-	 * and sysfs_put(). This result in glue_dir->sd is freed.
-	 *
-	 * Then the CPU2 will see a stale "empty" but still potentially used
-	 * glue dir around in kernfs_new_node().
-	 *
-	 * In order to avoid this happening, we also should make sure that
-	 * kernfs_node for glue_dir is released in CPU1 only when refcount
-	 * for glue_dir kobj is 1.
-	 */
-	ref = atomic_read(&glue_dir->kref.refcount);
-	if (!kobject_has_children(glue_dir) && !--ref)
+	if (!kobject_has_children(glue_dir))
 		kobject_del(glue_dir);
 	kobject_put(glue_dir);
 	mutex_unlock(&gdp_mutex);
@@ -1358,6 +1305,7 @@ void device_del(struct device *dev)
 	bus_remove_device(dev);
 	device_pm_remove(dev);
 	driver_deferred_probe_del(dev);
+	device_remove_properties(dev);
 
 	/* Notify the platform of the removal, in case they
 	 * need to do anything...
@@ -2157,7 +2105,8 @@ void device_shutdown(void)
 {
 	struct device *dev, *parent;
 
-	cpufreq_suspend();
+	wait_for_device_probe();
+	device_block_probing();
 
 	spin_lock(&devices_kset->list_lock);
 	/*
@@ -2376,23 +2325,20 @@ static inline bool fwnode_is_primary(struct fwnode_handle *fwnode)
  */
 void set_primary_fwnode(struct device *dev, struct fwnode_handle *fwnode)
 {
-	struct device *parent = dev->parent;
-	struct fwnode_handle *fn = dev->fwnode;
-
 	if (fwnode) {
+		struct fwnode_handle *fn = dev->fwnode;
+
 		if (fwnode_is_primary(fn))
 			fn = fn->secondary;
 
-		fwnode->secondary = fn;
+		if (fn) {
+			WARN_ON(fwnode->secondary);
+			fwnode->secondary = fn;
+		}
 		dev->fwnode = fwnode;
 	} else {
-		if (fwnode_is_primary(fn)) {
-			dev->fwnode = fn->secondary;
-			if (!(parent && fn == parent->fwnode))
-				fn->secondary = NULL;
-		} else {
-			dev->fwnode = NULL;
-		}
+		dev->fwnode = fwnode_is_primary(dev->fwnode) ?
+			dev->fwnode->secondary : NULL;
 	}
 }
 EXPORT_SYMBOL_GPL(set_primary_fwnode);

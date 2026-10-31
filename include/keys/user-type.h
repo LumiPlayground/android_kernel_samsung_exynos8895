@@ -48,9 +48,20 @@ extern void user_describe(const struct key *user, struct seq_file *m);
 extern long user_read(const struct key *key,
 		      char __user *buffer, size_t buflen);
 
-static inline const struct user_key_payload *user_key_payload(const struct key *key)
+static inline const struct user_key_payload *user_key_payload_rcu(const struct key *key)
+{
+	return (struct user_key_payload *)rcu_dereference((key)->payload.rcu_data0);
+}
+
+static inline struct user_key_payload *user_key_payload_locked(const struct key *key)
 {
 	return (struct user_key_payload *)rcu_dereference_key(key);
+}
+
+/* Legacy callers hold key->sem, as required by the original helper. */
+static inline const struct user_key_payload *user_key_payload(const struct key *key)
+{
+	return user_key_payload_locked(key);
 }
 
 #endif /* CONFIG_KEYS */

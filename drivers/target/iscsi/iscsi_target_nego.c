@@ -269,6 +269,7 @@ int iscsi_target_check_login_request(
 
 	return 0;
 }
+EXPORT_SYMBOL(iscsi_target_check_login_request);
 
 static int iscsi_target_check_first_request(
 	struct iscsi_conn *conn,
@@ -547,11 +548,12 @@ static bool iscsi_target_sk_check_and_clear(struct iscsi_conn *conn, unsigned in
 
 static void iscsi_target_login_drop(struct iscsi_conn *conn, struct iscsi_login *login)
 {
+	struct iscsi_np *np = login->np;
 	bool zero_tsih = login->zero_tsih;
 
 	iscsi_remove_failed_auth_entry(conn);
 	iscsi_target_nego_release(conn);
-	iscsi_target_login_sess_out(conn, zero_tsih, true);
+	iscsi_target_login_sess_out(conn, np, zero_tsih, true);
 }
 
 static void iscsi_target_login_timeout(unsigned long data)

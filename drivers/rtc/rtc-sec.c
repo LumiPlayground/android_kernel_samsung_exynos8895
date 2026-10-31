@@ -28,7 +28,6 @@
 #include <linux/mfd/samsung/s2mps11.h>
 #include <linux/mfd/samsung/s2mps13.h>
 #include <linux/mfd/samsung/s2mps15.h>
-#include <linux/mfd/samsung/s2mps16.h>
 #include <linux/mfd/samsung/s2mpu03.h>
 #include <soc/samsung/cpufreq.h>
 
@@ -66,17 +65,7 @@ static const unsigned int s2mps15_buck_coeffs[11][2] = { {15625, 17857}, {46875,
 
 static const unsigned int s2mps15_ldo_coeff = 4688;
 
-static const unsigned int s2mps16_buck_coeffs[12] = {S2MPS16_BS, S2MPS16_BT, S2MPS16_BS,
-	S2MPS16_BS, S2MPS16_BS, S2MPS16_BT, S2MPS16_BS, S2MPS16_BV, S2MPS16_BV,
-	S2MPS16_BS, S2MPS16_BS, S2MPS16_BB};
 
-static const unsigned int s2mps16_ldo_coeffs[38] = {S2MPS16_L600, S2MPS16_L300, S2MPS16_L450,
-	S2MPS16_L450, S2MPS16_L150, S2MPS16_L150, S2MPS16_L300, S2MPS16_L150, S2MPS16_L150,
-	S2MPS16_L150, S2MPS16_L300, S2MPS16_L150, S2MPS16_L450, S2MPS16_L150, S2MPS16_L150,
-	S2MPS16_L150, S2MPS16_L150, S2MPS16_L150, S2MPS16_L150, S2MPS16_L300, S2MPS16_L150,
-	S2MPS16_L300, S2MPS16_L150, S2MPS16_L150, S2MPS16_L150, S2MPS16_L150, S2MPS16_L600,
-	S2MPS16_L300, S2MPS16_L450, S2MPS16_L450, S2MPS16_L300, S2MPS16_L150, S2MPS16_L300,
-	S2MPS16_L300, S2MPS16_L300, S2MPS16_L300, S2MPS16_L150, S2MPS16_L450};
 
 static struct wakeup_source *rtc_ws;
 
@@ -143,7 +132,7 @@ static int s2m_rtc_update(struct s2m_rtc_info *info,
 	case S2M_RTC_WRITE_ALARM:
 		if (info->iodev->device_type == S2MPS15X && SEC_PMIC_REV(info->iodev))
 			data = info->audr_mask;
-		else if (info->iodev->device_type == S2MPU03X || info->iodev->device_type == S2MPS16X)
+		else if (info->iodev->device_type == S2MPU03X)
 			data = info->audr_mask;
 		else if (info->udr_updated)
 			data = info->audr_mask | info->wudr_mask;
@@ -341,9 +330,6 @@ static int s2m_rtc_read_alarm(struct device *dev, struct rtc_wkalrm *alrm)
 	case S2MPU03X:
 		reg = S2MPU03_REG_ST2;
 		break;
-	case S2MPS16X:
-		reg = S2MPS16_REG_ST2;
-		break;
 	default:
 		/* If this happens the core funtion has a problem */
 		BUG();
@@ -495,12 +481,6 @@ static void exynos_smpl_warn_work(struct work_struct *work)
 		} while (state);
 		break;
 	/* smpl_warn interrupt is active low */
-	case S2MPS16X:
-		do {
-			state = (gpio_get_value(info->smpl_warn_info) & 0x1);
-			msleep(100);
-		} while (!state);
-		break;
 	}
 	exynos_cpufreq_smpl_warn_notify_call_chain();
 }
@@ -512,10 +492,6 @@ static void s2m_adc_read_data(struct s2m_rtc_info *info)
 	case S2MPS15X:
 		sec_reg_write(info->iodev, S2MPS15_REG_ADC_CTRL2, 0x93);
 		sec_bulk_read(info->iodev, S2MPS15_REG_ADC_DATA, S2MPS15_MAX_ADC_CHANNEL, info->adc_val);
-		break;
-	case S2MPS16X:
-		sec_reg_write(info->iodev, S2MPS16_REG_ADC_CTRL2, 0xCF);
-		sec_bulk_read(info->iodev, S2MPS16_REG_ADC_DATA, S2MPS16_MAX_ADC_CHANNEL, info->adc_val);
 		break;
 	}
 }
@@ -542,18 +518,6 @@ static unsigned int get_coeff(struct device *dev, u8 adc_reg_num)
 		/* if the regulator is BUCK */
 		else if (adc_reg_num >= S2MPS15_BUCK_START && adc_reg_num <= S2MPS15_BUCK_END)
 			coeff = is_evt2 ? s2mps15_buck_coeffs[adc_reg_num - 1][1] : s2mps15_buck_coeffs[adc_reg_num - 1][0];
-		else {
-			dev_err(info->dev, "%s: invalid adc regulator number(%d)\n", __func__, adc_reg_num);
-			coeff = 0;
-		}
-		break;
-	case S2MPS16X:
-		/* if the regulator is LDO */
-		if (adc_reg_num >= S2MPS16_LDO_START && adc_reg_num <= S2MPS16_LDO_END)
-			coeff = s2mps16_ldo_coeffs[adc_reg_num - 0x41];
-		/* if the regulator is BUCK */
-		else if (adc_reg_num >= S2MPS16_BUCK_START && adc_reg_num <= S2MPS16_BUCK_END)
-			coeff = s2mps16_buck_coeffs[adc_reg_num - 1];
 		else {
 			dev_err(info->dev, "%s: invalid adc regulator number(%d)\n", __func__, adc_reg_num);
 			coeff = 0;
@@ -631,16 +595,6 @@ static ssize_t adc_val_all_show(struct device *dev, struct device_attribute *att
 			info->adc_reg[1], info->adc_val[1] * get_coeff(dev, info->adc_reg[1]), info->adc_val[1],
 			info->adc_reg[2], info->adc_val[2] * get_coeff(dev, info->adc_reg[2]), info->adc_val[2],
 			info->adc_reg[3], info->adc_val[3] * get_coeff(dev, info->adc_reg[3]), info->adc_val[3]);
-	case S2MPS16X:
-		return snprintf(buf, PAGE_SIZE, "CH1[%x]:%d uA (%d), CH2[%x]:%d uA (%d), CH3[%x]:%d uA (%d), CH4[%x]:%d uA (%d)\nCH4[%x]:%d uA (%d), CH5[%x]:%d uA (%d), CH6[%x]:%d uA (%d), CH7[%x]:%d uA (%d)\n",
-			info->adc_reg[0], info->adc_val[0] * get_coeff(dev, info->adc_reg[0]), info->adc_val[0],
-			info->adc_reg[1], info->adc_val[1] * get_coeff(dev, info->adc_reg[1]), info->adc_val[1],
-			info->adc_reg[2], info->adc_val[2] * get_coeff(dev, info->adc_reg[2]), info->adc_val[2],
-			info->adc_reg[3], info->adc_val[3] * get_coeff(dev, info->adc_reg[3]), info->adc_val[3],
-			info->adc_reg[4], info->adc_val[4] * get_coeff(dev, info->adc_reg[4]), info->adc_val[4],
-			info->adc_reg[5], info->adc_val[5] * get_coeff(dev, info->adc_reg[5]), info->adc_val[5],
-			info->adc_reg[6], info->adc_val[6] * get_coeff(dev, info->adc_reg[6]), info->adc_val[6],
-			info->adc_reg[7], info->adc_val[7] * get_coeff(dev, info->adc_reg[7]), info->adc_val[7]);
 	default:
 		return 0;
 	}
@@ -702,9 +656,6 @@ static ssize_t adc_ctrl2_show(struct device *dev, struct device_attribute *attr,
 	case S2MPS15X:
 		sec_reg_read(info->iodev, S2MPS15_REG_ADC_CTRL2, &adc_ctrl2);
 		break;
-	case S2MPS16X:
-		sec_reg_read(info->iodev, S2MPS16_REG_ADC_CTRL2, &adc_ctrl2);
-		break;
 	default:
 		adc_ctrl2 = 0;
 		break;
@@ -723,10 +674,6 @@ static u8 buf_to_adc_reg(const char *buf, int device_type)
 	case S2MPS15X:
 		if ((adc_reg_num >= S2MPS15_BUCK_START && adc_reg_num <= S2MPS15_BUCK_END) ||
 			(adc_reg_num >= S2MPS15_LDO_START && adc_reg_num <= S2MPS15_LDO_END))
-		return adc_reg_num;
-	case S2MPS16X:
-		if ((adc_reg_num >= S2MPS16_BUCK_START && adc_reg_num <= S2MPS16_BUCK_END) ||
-			(adc_reg_num >= S2MPS16_LDO_START && adc_reg_num <= S2MPS16_LDO_END))
 		return adc_reg_num;
 	default:
 		return 0;
@@ -749,18 +696,6 @@ static void adc_reg_update(struct device *dev)
 		/* ADC Continuous ON */
 		sec_reg_write(info->iodev, S2MPS15_REG_ADC_CTRL2, S2MPS15_ADCEN_MASK);
 		break;
-	case S2MPS16X:
-		/* ADC temporarily off */
-		sec_reg_write(info->iodev, S2MPS16_REG_ADC_CTRL2, 0);
-
-		/* mux program enable, auto increase enable */
-		sec_reg_write(info->iodev, S2MPS16_REG_ADC_CTRL2, 0x50);
-		sec_bulk_write(info->iodev, S2MPS16_REG_ADC_DATA, S2MPS16_MAX_ADC_CHANNEL, info->adc_reg);
-
-		/* ADC Continuous ON */
-		sec_reg_write(info->iodev, S2MPS16_REG_ADC_CTRL2, S2MPS16_ADCEN_MASK);
-		break;
-
 	}
 }
 static void adc_ctrl1_update(struct device *dev)
@@ -777,15 +712,6 @@ static void adc_ctrl1_update(struct device *dev)
 
 		/* ADC Continuous ON */
 		sec_reg_write(info->iodev, S2MPS15_REG_ADC_CTRL2, S2MPS15_ADCEN_MASK);
-	case S2MPS16X:
-		/* ADC temporarily off */
-		sec_reg_write(info->iodev, S2MPS16_REG_ADC_CTRL2, 0);
-
-		/* update ADC_CTRL1 register */
-		sec_reg_write(info->iodev, S2MPS16_REG_ADC_CTRL1, info->adc_ctrl1);
-
-		/* ADC Continuous ON */
-		sec_reg_write(info->iodev, S2MPS16_REG_ADC_CTRL2, S2MPS16_ADCEN_MASK);
 	}
 }
 
@@ -998,84 +924,6 @@ static void adc_init(struct s2m_rtc_info *info)
 		if (ret)
 			goto remove_adc_reg_3;
 		break;
-	case S2MPS16X:
-		info->adc_val = kzalloc(sizeof(u8)*S2MPS16_MAX_ADC_CHANNEL, GFP_KERNEL);
-		info->adc_reg = kzalloc(sizeof(u8)*S2MPS16_MAX_ADC_CHANNEL, GFP_KERNEL);
-		/* initial regulators : BUCK 1,2,3,4,5,6,7,8 */
-		info->adc_reg[0] = 0x1;
-		info->adc_reg[1] = 0x2;
-		info->adc_reg[2] = 0x3;
-		info->adc_reg[3] = 0x4;
-		info->adc_reg[4] = 0x5;
-		info->adc_reg[5] = 0x6;
-		info->adc_reg[6] = 0x7;
-		info->adc_reg[7] = 0x8;
-		info->adc_ctrl1 = 0x88;
-		/* mux program enable, auto increase enable */
-		sec_reg_write(info->iodev, S2MPS16_REG_ADC_CTRL2, 0x50);
-		sec_bulk_write(info->iodev, S2MPS16_REG_ADC_DATA, S2MPS16_MAX_ADC_CHANNEL, info->adc_reg);
-		/* ADC Continuous ON */
-		sec_reg_write(info->iodev, S2MPS16_REG_ADC_CTRL2, S2MPS16_ADCEN_MASK);
-		/* create sysfs entries */
-		ret = device_create_file(info->dev, &dev_attr_adc_val_0);
-		if (ret)
-			goto err_adc_val_0;
-		ret = device_create_file(info->dev, &dev_attr_adc_val_1);
-		if (ret)
-			goto remove_adc_val_0;
-		ret = device_create_file(info->dev, &dev_attr_adc_val_2);
-		if (ret)
-			goto remove_adc_val_1;
-		ret = device_create_file(info->dev, &dev_attr_adc_val_3);
-		if (ret)
-			goto remove_adc_val_2;
-		ret = device_create_file(info->dev, &dev_attr_adc_ctrl2);
-		if (ret)
-			goto remove_adc_val_3;
-		ret = device_create_file(info->dev, &dev_attr_adc_val_all);
-		if (ret)
-			goto remove_adc_ctrl2;
-		ret = device_create_file(info->dev, &dev_attr_adc_reg_0);
-		if (ret)
-			goto remove_adc_val_all;
-		ret = device_create_file(info->dev, &dev_attr_adc_reg_1);
-		if (ret)
-			goto remove_adc_reg_0;
-		ret = device_create_file(info->dev, &dev_attr_adc_reg_2);
-		if (ret)
-			goto remove_adc_reg_1;
-		ret = device_create_file(info->dev, &dev_attr_adc_reg_3);
-		if (ret)
-			goto remove_adc_reg_2;
-		ret = device_create_file(info->dev, &dev_attr_adc_ctrl1);
-		if (ret)
-			goto remove_adc_reg_3;
-		/* add channel */
-		ret = device_create_file(info->dev, &dev_attr_adc_val_4);
-		if (ret)
-			goto remove_adc_val_4;
-		ret = device_create_file(info->dev, &dev_attr_adc_val_5);
-		if (ret)
-			goto remove_adc_val_5;
-		ret = device_create_file(info->dev, &dev_attr_adc_val_6);
-		if (ret)
-			goto remove_adc_val_6;
-		ret = device_create_file(info->dev, &dev_attr_adc_val_7);
-		if (ret)
-			goto remove_adc_val_7;
-		ret = device_create_file(info->dev, &dev_attr_adc_reg_4);
-		if (ret)
-			goto remove_adc_reg_4;
-		ret = device_create_file(info->dev, &dev_attr_adc_reg_5);
-		if (ret)
-			goto remove_adc_reg_5;
-		ret = device_create_file(info->dev, &dev_attr_adc_reg_6);
-		if (ret)
-			goto remove_adc_reg_6;
-		ret = device_create_file(info->dev, &dev_attr_adc_reg_7);
-		if (ret)
-			goto remove_adc_reg_7;
-		break;
 	default:
 		break;
 	}
@@ -1142,32 +990,6 @@ static void adc_deinit(struct s2m_rtc_info *info)
 		kfree(info->adc_val);
 		kfree(info->adc_reg);
 		break;
-	case S2MPS16X:
-		/* remove sysfs entries */
-		device_remove_file(info->dev, &dev_attr_adc_val_0);
-		device_remove_file(info->dev, &dev_attr_adc_val_1);
-		device_remove_file(info->dev, &dev_attr_adc_val_2);
-		device_remove_file(info->dev, &dev_attr_adc_val_3);
-		device_remove_file(info->dev, &dev_attr_adc_ctrl2);
-		device_remove_file(info->dev, &dev_attr_adc_val_all);
-		device_remove_file(info->dev, &dev_attr_adc_reg_0);
-		device_remove_file(info->dev, &dev_attr_adc_reg_1);
-		device_remove_file(info->dev, &dev_attr_adc_reg_2);
-		device_remove_file(info->dev, &dev_attr_adc_reg_3);
-		device_remove_file(info->dev, &dev_attr_adc_ctrl1);
-		device_remove_file(info->dev, &dev_attr_adc_val_4);
-		device_remove_file(info->dev, &dev_attr_adc_val_5);
-		device_remove_file(info->dev, &dev_attr_adc_val_6);
-		device_remove_file(info->dev, &dev_attr_adc_val_7);
-		device_remove_file(info->dev, &dev_attr_adc_reg_4);
-		device_remove_file(info->dev, &dev_attr_adc_reg_5);
-		device_remove_file(info->dev, &dev_attr_adc_reg_6);
-		device_remove_file(info->dev, &dev_attr_adc_reg_7);
-		/* ADC turned off */
-		sec_reg_write(info->iodev, S2MPS16_REG_ADC_CTRL2, 0);
-		kfree(info->adc_val);
-		kfree(info->adc_reg);
-		break;
 	default:
 		break;
 	}
@@ -1201,10 +1023,6 @@ static bool s2m_is_jigonb_low(struct s2m_rtc_info *info)
 		break;
 	case S2MPU03X:
 		reg = S2MPU03_REG_ST1;
-		mask = BIT(1);
-		break;
-	case S2MPS16X:
-		reg = S2MPS16_REG_ST1;
 		mask = BIT(1);
 		break;
 	default:
@@ -1366,31 +1184,6 @@ static int s2m_rtc_probe(struct platform_device *pdev)
 	info->audr_mask = RTC_AUDR_MASK;
 
 	switch (iodev->device_type) {
-	case S2MPS16X:
-		info->irq = irq_base + S2MPS16_IRQ_RTCA0;
-		info->alarm_check = true;
-		info->wudr_mask = RTC_WUDR_MASK_REV;
-		info->audr_mask = RTC_AUDR_MASK_REV;
-		if (pdata->smpl_warn_en) {
-			if (!gpio_is_valid(pdata->smpl_warn)) {
-				dev_err(&pdev->dev, "smpl_warn GPIO NOT VALID\n");
-				goto err_smpl_warn;
-			}
-			info->smpl_irq = gpio_to_irq(pdata->smpl_warn);
-			ret = devm_request_threaded_irq(&pdev->dev, info->smpl_irq,
-				NULL, s2m_smpl_warn_irq, IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-				"SMPL WARN", info);
-			if (ret < 0) {
-				dev_err(&pdev->dev, "Failed to request smpl warn IRQ: %d: %d\n",
-					info->smpl_irq, ret);
-				goto err_smpl_warn;
-			}
-			info->smpl_warn_info = pdata->smpl_warn;
-			INIT_WORK(&info->irq_work, exynos_smpl_warn_work);
-		}
-		if (pdata->adc_en)
-			adc_init(info);
-		break;
 	case S2MPU03X:
 		info->irq = irq_base + S2MPU03_IRQ_RTCA0;
 		info->alarm_check = true;

@@ -83,7 +83,7 @@ static int sr_init_command(struct scsi_cmnd *SCpnt);
 static int sr_done(struct scsi_cmnd *);
 static int sr_runtime_suspend(struct device *dev);
 
-static struct dev_pm_ops sr_pm_ops = {
+static const struct dev_pm_ops sr_pm_ops = {
 	.runtime_suspend	= sr_runtime_suspend,
 };
 
@@ -215,8 +215,6 @@ static unsigned int sr_get_events(struct scsi_device *sdev)
 	if (med->media_event_code == 1)
 		return DISK_EVENT_EJECT_REQUEST;
 	else if (med->media_event_code == 2)
-		return DISK_EVENT_MEDIA_CHANGE;
-	else if (med->media_event_code == 3)
 		return DISK_EVENT_MEDIA_CHANGE;
 	return 0;
 }
@@ -741,14 +739,13 @@ static int sr_probe(struct device *dev)
 	get_capabilities(cd);
 	sr_vendor_init(cd);
 
-	disk->driverfs_dev = &sdev->sdev_gendev;
 	set_capacity(disk, cd->capacity);
 	disk->private_data = &cd->driver;
 	disk->queue = sdev->request_queue;
 	cd->cdi.disk = disk;
 
 	if (register_cdrom(&cd->cdi))
-		goto fail_minor;
+		goto fail_put;
 
 	/*
 	 * Initialize block layer runtime PM stuffs before the
@@ -758,7 +755,7 @@ static int sr_probe(struct device *dev)
 
 	dev_set_drvdata(dev, cd);
 	disk->flags |= GENHD_FL_REMOVABLE;
-	add_disk(disk);
+	device_add_disk(&sdev->sdev_gendev, disk);
 
 	sdev_printk(KERN_DEBUG, sdev,
 		    "Attached scsi CD-ROM %s\n", cd->cdi.name);
@@ -766,10 +763,6 @@ static int sr_probe(struct device *dev)
 
 	return 0;
 
-fail_minor:
-	spin_lock(&sr_index_lock);
-	clear_bit(minor, sr_index_bits);
-	spin_unlock(&sr_index_lock);
 fail_put:
 	put_disk(disk);
 fail_free:
@@ -883,7 +876,7 @@ static void get_capabilities(struct scsi_cd *cd)
 
 
 	/* allocate transfer buffer */
-	buffer = kmalloc(512, GFP_KERNEL);
+	buffer = kmalloc(512, GFP_KERNEL | GFP_DMA);
 	if (!buffer) {
 		sr_printk(KERN_ERR, cd, "out of memory.\n");
 		return;

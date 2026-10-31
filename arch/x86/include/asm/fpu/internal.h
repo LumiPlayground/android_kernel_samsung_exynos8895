@@ -18,6 +18,7 @@
 #include <asm/fpu/api.h>
 #include <asm/fpu/xstate.h>
 #include <asm/cpufeature.h>
+#include <asm/trace/fpu.h>
 
 /*
  * High level FPU state handling functions:
@@ -25,6 +26,8 @@
 extern void fpu__activate_curr(struct fpu *fpu);
 extern void fpu__activate_fpstate_read(struct fpu *fpu);
 extern void fpu__activate_fpstate_write(struct fpu *fpu);
+extern void fpu__current_fpstate_write_begin(void);
+extern void fpu__current_fpstate_write_end(void);
 extern void fpu__save(struct fpu *fpu);
 extern void fpu__restore(struct fpu *fpu);
 extern int  fpu__restore_sig(void __user *buf, int ia32_frame);
@@ -132,9 +135,9 @@ static inline int copy_fregs_to_user(struct fregs_state __user *fx)
 
 static inline int copy_fxregs_to_user(struct fxregs_state __user *fx)
 {
-	if (config_enabled(CONFIG_X86_32))
+	if (IS_ENABLED(CONFIG_X86_32))
 		return user_insn(fxsave %[fx], [fx] "=m" (*fx), "m" (*fx));
-	else if (config_enabled(CONFIG_AS_FXSAVEQ))
+	else if (IS_ENABLED(CONFIG_AS_FXSAVEQ))
 		return user_insn(fxsaveq %[fx], [fx] "=m" (*fx), "m" (*fx));
 
 	/* See comment in copy_fxregs_to_kernel() below. */
@@ -145,10 +148,10 @@ static inline void copy_kernel_to_fxregs(struct fxregs_state *fx)
 {
 	int err;
 
-	if (config_enabled(CONFIG_X86_32)) {
+	if (IS_ENABLED(CONFIG_X86_32)) {
 		err = check_insn(fxrstor %[fx], "=m" (*fx), [fx] "m" (*fx));
 	} else {
-		if (config_enabled(CONFIG_AS_FXSAVEQ)) {
+		if (IS_ENABLED(CONFIG_AS_FXSAVEQ)) {
 			err = check_insn(fxrstorq %[fx], "=m" (*fx), [fx] "m" (*fx));
 		} else {
 			/* See comment in copy_fxregs_to_kernel() below. */
@@ -161,9 +164,9 @@ static inline void copy_kernel_to_fxregs(struct fxregs_state *fx)
 
 static inline int copy_user_to_fxregs(struct fxregs_state __user *fx)
 {
-	if (config_enabled(CONFIG_X86_32))
+	if (IS_ENABLED(CONFIG_X86_32))
 		return user_insn(fxrstor %[fx], "=m" (*fx), [fx] "m" (*fx));
-	else if (config_enabled(CONFIG_AS_FXSAVEQ))
+	else if (IS_ENABLED(CONFIG_AS_FXSAVEQ))
 		return user_insn(fxrstorq %[fx], "=m" (*fx), [fx] "m" (*fx));
 
 	/* See comment in copy_fxregs_to_kernel() below. */
@@ -185,9 +188,9 @@ static inline int copy_user_to_fregs(struct fregs_state __user *fx)
 
 static inline void copy_fxregs_to_kernel(struct fpu *fpu)
 {
-	if (config_enabled(CONFIG_X86_32))
+	if (IS_ENABLED(CONFIG_X86_32))
 		asm volatile( "fxsave %[fx]" : [fx] "=m" (fpu->state.fxsave));
-	else if (config_enabled(CONFIG_AS_FXSAVEQ))
+	else if (IS_ENABLED(CONFIG_AS_FXSAVEQ))
 		asm volatile("fxsaveq %[fx]" : [fx] "=m" (fpu->state.fxsave));
 	else {
 		/* Using "rex64; fxsave %0" is broken because, if the memory
@@ -215,14 +218,6 @@ static inline void copy_fxregs_to_kernel(struct fpu *fpu)
 			     : "=m" (fpu->state.fxsave)
 			     : [fx] "R" (&fpu->state.fxsave));
 	}
-}
-
-static inline void fxsave(struct fxregs_state *fx)
-{
-	if (IS_ENABLED(CONFIG_X86_32))
-		asm volatile( "fxsave %[fx]" : [fx] "=m" (*fx));
-	else
-		asm volatile("fxsaveq %[fx]" : [fx] "=m" (*fx));
 }
 
 /* These macros all use (%edi)/(%rdi) as the single memory argument. */
@@ -293,6 +288,28 @@ static inline void fxsave(struct fxregs_state *fx)
 		     : [err] "=r" (err)					\
 		     : "D" (st), "m" (*st), "a" (lmask), "d" (hmask)	\
 		     : "memory")
+
+/*
+ * This function is called only during boot time when x86 caps are not set
+ * up and alternative can not be used yet.
+ */
+static inline void copy_xregs_to_kernel_booting(struct xregs_state *xstate)
+{
+	u64 mask = -1;
+	u32 lmask = mask;
+	u32 hmask = mask >> 32;
+	int err;
+
+	WARN_ON(system_state != SYSTEM_BOOTING);
+
+	if (static_cpu_has(X86_FEATURE_XSAVES))
+		XSTATE_OP(XSAVES, xstate, lmask, hmask, err);
+	else
+		XSTATE_OP(XSAVE, xstate, lmask, hmask, err);
+
+	/* We should never fault when copying to a kernel buffer: */
+	WARN_ON_FPU(err);
+}
 
 /*
  * This function is called only during boot time when x86 caps are not set
@@ -488,6 +505,7 @@ static inline void __fpregs_deactivate(struct fpu *fpu)
 
 	fpu->fpregs_active = 0;
 	this_cpu_write(fpu_fpregs_owner_ctx, NULL);
+	trace_x86_fpu_regs_deactivated(fpu);
 }
 
 static inline void __fpregs_activate(struct fpu *fpu)
@@ -496,6 +514,7 @@ static inline void __fpregs_activate(struct fpu *fpu)
 
 	fpu->fpregs_active = 1;
 	this_cpu_write(fpu_fpregs_owner_ctx, fpu);
+	trace_x86_fpu_regs_activated(fpu);
 }
 
 /*
@@ -561,10 +580,12 @@ switch_fpu_prepare(struct fpu *old_fpu, struct fpu *new_fpu, int cpu)
 
 		/* But leave fpu_fpregs_owner_ctx! */
 		old_fpu->fpregs_active = 0;
+		trace_x86_fpu_regs_deactivated(old_fpu);
 
 		/* Don't change CR0.TS if we just switch! */
 		if (fpu.preload) {
 			__fpregs_activate(new_fpu);
+			trace_x86_fpu_regs_activated(new_fpu);
 			prefetch(&new_fpu->state);
 		}
 	} else {

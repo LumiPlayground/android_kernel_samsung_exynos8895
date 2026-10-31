@@ -26,18 +26,6 @@ struct dw_mci_rockchip_priv_data {
 	int			default_sample_phase;
 };
 
-static void dw_mci_rockchip_prepare_command(struct dw_mci *host, u32 *cmdr)
-{
-	*cmdr |= SDMMC_CMD_USE_HOLD_REG;
-}
-
-static int dw_mci_rk3288_setup_clock(struct dw_mci *host)
-{
-	host->bus_hz /= RK3288_CLKGEN_DIV;
-
-	return 0;
-}
-
 static void dw_mci_rk3288_set_ios(struct dw_mci *host, struct mmc_ios *ios)
 {
 	struct dw_mci_rockchip_priv_data *priv = host->priv;
@@ -297,31 +285,30 @@ static int dw_mci_rockchip_init(struct dw_mci *host)
 	/* It is slot 8 on Rockchip SoCs */
 	host->sdio_id0 = 8;
 
-	/* It needs this quirk on all Rockchip SoCs */
-	host->pdata->quirks |= DW_MCI_QUIRK_BROKEN_DTO;
+	if (of_device_is_compatible(host->dev->of_node,
+				    "rockchip,rk3288-dw-mshc"))
+		host->bus_hz /= RK3288_CLKGEN_DIV;
 
 	return 0;
 }
 
 /* Common capabilities of RK3288 SoC */
 static unsigned long dw_mci_rk3288_dwmmc_caps[4] = {
-	MMC_CAP_RUNTIME_RESUME, /* emmc */
-	MMC_CAP_RUNTIME_RESUME, /* sdmmc */
-	MMC_CAP_RUNTIME_RESUME, /* sdio0 */
-	MMC_CAP_RUNTIME_RESUME, /* sdio1 */
+	MMC_CAP_CMD23,
+	MMC_CAP_CMD23,
+	MMC_CAP_CMD23,
+	MMC_CAP_CMD23,
 };
+
 static const struct dw_mci_drv_data rk2928_drv_data = {
-	.prepare_command        = dw_mci_rockchip_prepare_command,
 	.init			= dw_mci_rockchip_init,
 };
 
 static const struct dw_mci_drv_data rk3288_drv_data = {
 	.caps			= dw_mci_rk3288_dwmmc_caps,
-	.prepare_command        = dw_mci_rockchip_prepare_command,
 	.set_ios		= dw_mci_rk3288_set_ios,
 	.execute_tuning		= dw_mci_rk3288_execute_tuning,
 	.parse_dt		= dw_mci_rk3288_parse_dt,
-	.setup_clock    = dw_mci_rk3288_setup_clock,
 	.init			= dw_mci_rockchip_init,
 };
 
@@ -348,33 +335,13 @@ static int dw_mci_rockchip_probe(struct platform_device *pdev)
 	return dw_mci_pltfm_register(pdev, drv_data);
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int dw_mci_rockchip_suspend(struct device *dev)
-{
-	struct dw_mci *host = dev_get_drvdata(dev);
-
-	return dw_mci_suspend(host);
-}
-
-static int dw_mci_rockchip_resume(struct device *dev)
-{
-	struct dw_mci *host = dev_get_drvdata(dev);
-
-	return dw_mci_resume(host);
-}
-#endif /* CONFIG_PM_SLEEP */
-
-static SIMPLE_DEV_PM_OPS(dw_mci_rockchip_pmops,
-			 dw_mci_rockchip_suspend,
-			 dw_mci_rockchip_resume);
-
 static struct platform_driver dw_mci_rockchip_pltfm_driver = {
 	.probe		= dw_mci_rockchip_probe,
 	.remove		= dw_mci_pltfm_remove,
 	.driver		= {
 		.name		= "dwmmc_rockchip",
 		.of_match_table	= dw_mci_rockchip_match,
-		.pm		= &dw_mci_rockchip_pmops,
+		.pm		= &dw_mci_pltfm_pmops,
 	},
 };
 

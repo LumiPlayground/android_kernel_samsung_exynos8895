@@ -278,16 +278,6 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 	axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET,
 			  cr | XAXIDMA_CR_RUNSTOP_MASK);
 
-	/* Wait for PhyRstCmplt bit to be set, indicating the PHY reset has finished */
-	ret = read_poll_timeout(axienet_ior, value,
-				value & XAE_INT_PHYRSTCMPLT_MASK,
-				DELAY_OF_ONE_MILLISEC, 50000, false, lp,
-				XAE_IS_OFFSET);
-	if (ret) {
-		dev_err(lp->dev, "%s: timeout waiting for PhyRstCmplt\n", __func__);
-		return ret;
-	}
-
 	return 0;
 out:
 	axienet_dma_bd_release(ndev);
@@ -441,8 +431,7 @@ static void axienet_setoptions(struct net_device *ndev, u32 options)
 	lp->options |= options;
 }
 
-static void __axienet_device_reset(struct axienet_local *lp,
-				   struct device *dev, off_t offset)
+static void __axienet_device_reset(struct axienet_local *lp, off_t offset)
 {
 	u32 timeout;
 	/* Reset Axi DMA. This would reset Axi Ethernet core as well. The reset
@@ -478,8 +467,8 @@ static void axienet_device_reset(struct net_device *ndev)
 	u32 axienet_status;
 	struct axienet_local *lp = netdev_priv(ndev);
 
-	__axienet_device_reset(lp, &ndev->dev, XAXIDMA_TX_CR_OFFSET);
-	__axienet_device_reset(lp, &ndev->dev, XAXIDMA_RX_CR_OFFSET);
+	__axienet_device_reset(lp, XAXIDMA_TX_CR_OFFSET);
+	__axienet_device_reset(lp, XAXIDMA_RX_CR_OFFSET);
 
 	lp->max_frm_size = XAE_MAX_VLAN_FRAME_SIZE;
 	lp->options |= XAE_OPTION_VLAN;
@@ -518,7 +507,7 @@ static void axienet_device_reset(struct net_device *ndev)
 	axienet_set_multicast_list(ndev);
 	axienet_setoptions(ndev, lp->options);
 
-	ndev->trans_start = jiffies;
+	netif_trans_update(ndev);
 }
 
 /**
@@ -535,7 +524,7 @@ static void axienet_adjust_link(struct net_device *ndev)
 	u32 link_state;
 	u32 setspeed = 1;
 	struct axienet_local *lp = netdev_priv(ndev);
-	struct phy_device *phy = lp->phy_dev;
+	struct phy_device *phy = ndev->phydev;
 
 	link_state = phy->speed | (phy->duplex << 1) | phy->link;
 	if (lp->last_link != link_state) {
@@ -666,8 +655,7 @@ static inline int axienet_check_tx_bd_space(struct axienet_local *lp,
  * start the transmission. Additionally if checksum offloading is supported,
  * it populates AXI Stream Control fields with appropriate values.
  */
-static netdev_tx_t
-axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
+static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
 	u32 ii;
 	u32 num_frag;
@@ -681,7 +669,7 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	num_frag = skb_shinfo(skb)->nr_frags;
 	cur_p = &lp->tx_bd_v[lp->tx_bd_tail];
 
-	if (axienet_check_tx_bd_space(lp, num_frag + 1)) {
+	if (axienet_check_tx_bd_space(lp, num_frag)) {
 		if (netif_queue_stopped(ndev))
 			return NETDEV_TX_BUSY;
 
@@ -691,7 +679,7 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		smp_mb();
 
 		/* Space might have just been freed - check again */
-		if (axienet_check_tx_bd_space(lp, num_frag + 1))
+		if (axienet_check_tx_bd_space(lp, num_frag))
 			return NETDEV_TX_BUSY;
 
 		netif_wake_queue(ndev);
@@ -843,7 +831,7 @@ static irqreturn_t axienet_tx_irq(int irq, void *_ndev)
 		goto out;
 	}
 	if (!(status & XAXIDMA_IRQ_ALL_MASK))
-		dev_err(&ndev->dev, "No interrupts asserted in Tx path");
+		dev_err(&ndev->dev, "No interrupts asserted in Tx path\n");
 	if (status & XAXIDMA_IRQ_ERROR_MASK) {
 		dev_err(&ndev->dev, "DMA Tx error 0x%x\n", status);
 		dev_err(&ndev->dev, "Current BD is at: 0x%x\n",
@@ -892,7 +880,7 @@ static irqreturn_t axienet_rx_irq(int irq, void *_ndev)
 		goto out;
 	}
 	if (!(status & XAXIDMA_IRQ_ALL_MASK))
-		dev_err(&ndev->dev, "No interrupts asserted in Rx path");
+		dev_err(&ndev->dev, "No interrupts asserted in Rx path\n");
 	if (status & XAXIDMA_IRQ_ERROR_MASK) {
 		dev_err(&ndev->dev, "DMA Rx error 0x%x\n", status);
 		dev_err(&ndev->dev, "Current BD is at: 0x%x\n",
@@ -936,6 +924,7 @@ static int axienet_open(struct net_device *ndev)
 {
 	int ret, mdio_mcreg;
 	struct axienet_local *lp = netdev_priv(ndev);
+	struct phy_device *phydev = NULL;
 
 	dev_dbg(&ndev->dev, "axienet_open()\n");
 
@@ -959,19 +948,19 @@ static int axienet_open(struct net_device *ndev)
 
 	if (lp->phy_node) {
 		if (lp->phy_type == XAE_PHY_TYPE_GMII) {
-			lp->phy_dev = of_phy_connect(lp->ndev, lp->phy_node,
-					     axienet_adjust_link, 0,
-					     PHY_INTERFACE_MODE_GMII);
+			phydev = of_phy_connect(lp->ndev, lp->phy_node,
+						axienet_adjust_link, 0,
+						PHY_INTERFACE_MODE_GMII);
 		} else if (lp->phy_type == XAE_PHY_TYPE_RGMII_2_0) {
-			lp->phy_dev = of_phy_connect(lp->ndev, lp->phy_node,
-					     axienet_adjust_link, 0,
-					     PHY_INTERFACE_MODE_RGMII_ID);
+			phydev = of_phy_connect(lp->ndev, lp->phy_node,
+						axienet_adjust_link, 0,
+						PHY_INTERFACE_MODE_RGMII_ID);
 		}
 
-		if (!lp->phy_dev)
+		if (!phydev)
 			dev_err(lp->dev, "of_phy_connect() failed\n");
 		else
-			phy_start(lp->phy_dev);
+			phy_start(phydev);
 	}
 
 	/* Enable tasklets for Axi DMA error handling */
@@ -992,9 +981,8 @@ static int axienet_open(struct net_device *ndev)
 err_rx_irq:
 	free_irq(lp->tx_irq, ndev);
 err_tx_irq:
-	if (lp->phy_dev)
-		phy_disconnect(lp->phy_dev);
-	lp->phy_dev = NULL;
+	if (phydev)
+		phy_disconnect(phydev);
 	tasklet_kill(&lp->dma_err_tasklet);
 	dev_err(lp->dev, "request_irq() failed\n");
 	return ret;
@@ -1031,9 +1019,8 @@ static int axienet_stop(struct net_device *ndev)
 	free_irq(lp->tx_irq, ndev);
 	free_irq(lp->rx_irq, ndev);
 
-	if (lp->phy_dev)
-		phy_disconnect(lp->phy_dev);
-	lp->phy_dev = NULL;
+	if (ndev->phydev)
+		phy_disconnect(ndev->phydev);
 
 	axienet_dma_bd_release(ndev);
 	return 0;
@@ -1101,51 +1088,6 @@ static const struct net_device_ops axienet_netdev_ops = {
 	.ndo_poll_controller = axienet_poll_controller,
 #endif
 };
-
-/**
- * axienet_ethtools_get_settings - Get Axi Ethernet settings related to PHY.
- * @ndev:	Pointer to net_device structure
- * @ecmd:	Pointer to ethtool_cmd structure
- *
- * This implements ethtool command for getting PHY settings. If PHY could
- * not be found, the function returns -ENODEV. This function calls the
- * relevant PHY ethtool API to get the PHY settings.
- * Issue "ethtool ethX" under linux prompt to execute this function.
- *
- * Return: 0 on success, -ENODEV if PHY doesn't exist
- */
-static int axienet_ethtools_get_settings(struct net_device *ndev,
-					 struct ethtool_cmd *ecmd)
-{
-	struct axienet_local *lp = netdev_priv(ndev);
-	struct phy_device *phydev = lp->phy_dev;
-	if (!phydev)
-		return -ENODEV;
-	return phy_ethtool_gset(phydev, ecmd);
-}
-
-/**
- * axienet_ethtools_set_settings - Set PHY settings as passed in the argument.
- * @ndev:	Pointer to net_device structure
- * @ecmd:	Pointer to ethtool_cmd structure
- *
- * This implements ethtool command for setting various PHY settings. If PHY
- * could not be found, the function returns -ENODEV. This function calls the
- * relevant PHY ethtool API to set the PHY.
- * Issue e.g. "ethtool -s ethX speed 1000" under linux prompt to execute this
- * function.
- *
- * Return: 0 on success, -ENODEV if PHY doesn't exist
- */
-static int axienet_ethtools_set_settings(struct net_device *ndev,
-					 struct ethtool_cmd *ecmd)
-{
-	struct axienet_local *lp = netdev_priv(ndev);
-	struct phy_device *phydev = lp->phy_dev;
-	if (!phydev)
-		return -ENODEV;
-	return phy_ethtool_sset(phydev, ecmd);
-}
 
 /**
  * axienet_ethtools_get_drvinfo - Get various Axi Ethernet driver information.
@@ -1368,9 +1310,7 @@ static int axienet_ethtools_set_coalesce(struct net_device *ndev,
 	return 0;
 }
 
-static struct ethtool_ops axienet_ethtool_ops = {
-	.get_settings   = axienet_ethtools_get_settings,
-	.set_settings   = axienet_ethtools_set_settings,
+static const struct ethtool_ops axienet_ethtool_ops = {
 	.get_drvinfo    = axienet_ethtools_get_drvinfo,
 	.get_regs_len   = axienet_ethtools_get_regs_len,
 	.get_regs       = axienet_ethtools_get_regs,
@@ -1379,6 +1319,8 @@ static struct ethtool_ops axienet_ethtool_ops = {
 	.set_pauseparam = axienet_ethtools_set_pauseparam,
 	.get_coalesce   = axienet_ethtools_get_coalesce,
 	.set_coalesce   = axienet_ethtools_set_coalesce,
+	.get_link_ksettings = phy_ethtool_get_link_ksettings,
+	.set_link_ksettings = phy_ethtool_set_link_ksettings,
 };
 
 /**
@@ -1409,8 +1351,8 @@ static void axienet_dma_err_handler(unsigned long data)
 	axienet_iow(lp, XAE_MDIO_MC_OFFSET, (mdio_mcreg &
 		    ~XAE_MDIO_MC_MDIOEN_MASK));
 
-	__axienet_device_reset(lp, &ndev->dev, XAXIDMA_TX_CR_OFFSET);
-	__axienet_device_reset(lp, &ndev->dev, XAXIDMA_RX_CR_OFFSET);
+	__axienet_device_reset(lp, XAXIDMA_TX_CR_OFFSET);
+	__axienet_device_reset(lp, XAXIDMA_RX_CR_OFFSET);
 
 	axienet_iow(lp, XAE_MDIO_MC_OFFSET, mdio_mcreg);
 	axienet_mdio_wait_until_ready(lp);

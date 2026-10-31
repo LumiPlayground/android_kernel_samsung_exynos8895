@@ -42,7 +42,7 @@ DEFINE_PER_CPU_SHARED_ALIGNED(struct rds_ib_statistics, rds_ib_stats);
 static const char *const rds_ib_stat_names[] = {
 	"ib_connect_raced",
 	"ib_listen_closed_stale",
-	"ib_evt_handler_call",
+	"s_ib_evt_handler_call",
 	"ib_tasklet_call",
 	"ib_tx_cq_event",
 	"ib_tx_ring_full",
@@ -73,6 +73,8 @@ static const char *const rds_ib_stat_names[] = {
 	"ib_rdma_mr_1m_pool_flush",
 	"ib_rdma_mr_1m_pool_wait",
 	"ib_rdma_mr_1m_pool_depleted",
+	"ib_rdma_mr_8k_reused",
+	"ib_rdma_mr_1m_reused",
 	"ib_atomic_cswp",
 	"ib_atomic_fadd",
 };

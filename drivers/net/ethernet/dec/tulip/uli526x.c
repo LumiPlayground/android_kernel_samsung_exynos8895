@@ -444,7 +444,7 @@ static void uli526x_remove_one(struct pci_dev *pdev)
 	pci_iounmap(pdev, db->ioaddr);
 	pci_free_consistent(db->pdev, sizeof(struct tx_desc) *
 				DESC_ALL_CNT + 0x20, db->desc_pool_ptr,
- 				db->desc_pool_dma_ptr);
+				db->desc_pool_dma_ptr);
 	pci_free_consistent(db->pdev, TX_BUF_ALLOC * TX_DESC_CNT + 4,
 				db->buf_pool_ptr, db->buf_pool_dma_ptr);
 	pci_release_regions(pdev);
@@ -636,7 +636,7 @@ static netdev_tx_t uli526x_start_xmit(struct sk_buff *skb,
 		txptr->tdes0 = cpu_to_le32(0x80000000);	/* Set owner bit */
 		db->tx_packet_cnt++;			/* Ready to send */
 		uw32(DCR1, 0x1);			/* Issue Tx polling */
-		dev->trans_start = jiffies;		/* saved time stamp */
+		netif_trans_update(dev);		/* saved time stamp */
 	}
 
 	/* Tx resource check */
@@ -795,7 +795,7 @@ static void uli526x_free_tx_pkt(struct net_device *dev,
 			}
 		}
 
-    		txptr = txptr->next_tx_desc;
+		txptr = txptr->next_tx_desc;
 	}/* End of while */
 
 	/* Update TX remove pointer to next */
@@ -930,18 +930,18 @@ static void
 ULi_ethtool_gset(struct uli526x_board_info *db, struct ethtool_cmd *ecmd)
 {
 	ecmd->supported = (SUPPORTED_10baseT_Half |
-	                   SUPPORTED_10baseT_Full |
-	                   SUPPORTED_100baseT_Half |
-	                   SUPPORTED_100baseT_Full |
-	                   SUPPORTED_Autoneg |
-	                   SUPPORTED_MII);
+			   SUPPORTED_10baseT_Full |
+			   SUPPORTED_100baseT_Half |
+			   SUPPORTED_100baseT_Full |
+			   SUPPORTED_Autoneg |
+			   SUPPORTED_MII);
 
 	ecmd->advertising = (ADVERTISED_10baseT_Half |
-	                   ADVERTISED_10baseT_Full |
-	                   ADVERTISED_100baseT_Half |
-	                   ADVERTISED_100baseT_Full |
-	                   ADVERTISED_Autoneg |
-	                   ADVERTISED_MII);
+			   ADVERTISED_10baseT_Full |
+			   ADVERTISED_100baseT_Half |
+			   ADVERTISED_100baseT_Full |
+			   ADVERTISED_Autoneg |
+			   ADVERTISED_MII);
 
 
 	ecmd->port = PORT_MII;
@@ -1023,7 +1023,7 @@ static void uli526x_timer(unsigned long data)
 	struct uli526x_board_info *db = netdev_priv(dev);
 	struct uli_phy_ops *phy = &db->phy;
 	void __iomem *ioaddr = db->ioaddr;
- 	unsigned long flags;
+	unsigned long flags;
 	u8 tmp_cr12 = 0;
 	u32 tmp_cr8;
 
@@ -1431,7 +1431,7 @@ static void send_filter_frame(struct net_device *dev, int mc_cnt)
 		update_cr6(db->cr6_data | 0x2000, ioaddr);
 		uw32(DCR1, 0x1);	/* Issue Tx polling */
 		update_cr6(db->cr6_data, ioaddr);
-		dev->trans_start = jiffies;
+		netif_trans_update(dev);
 	} else
 		netdev_err(dev, "No Tx resource - Send_filter_frame!\n");
 }
@@ -1579,14 +1579,14 @@ static void uli526x_set_phyxcer(struct uli526x_board_info *db)
 
 	}
 
-  	/* Write new capability to Phyxcer Reg4 */
+	/* Write new capability to Phyxcer Reg4 */
 	if ( !(phy_reg & 0x01e0)) {
 		phy_reg|=db->PHY_reg4;
 		db->media_mode|=ULI526X_AUTO;
 	}
 	phy->write(db, db->phy_addr, 4, phy_reg);
 
- 	/* Restart Auto-Negotiation */
+	/* Restart Auto-Negotiation */
 	phy->write(db, db->phy_addr, 0, 0x1200);
 	udelay(50);
 }
@@ -1594,7 +1594,7 @@ static void uli526x_set_phyxcer(struct uli526x_board_info *db)
 
 /*
  *	Process op-mode
- 	AUTO mode : PHY controller in Auto-negotiation Mode
+	AUTO mode : PHY controller in Auto-negotiation Mode
  *	Force mode: PHY controller in force mode with HUB
  *			N-way force capability with SWITCH
  */

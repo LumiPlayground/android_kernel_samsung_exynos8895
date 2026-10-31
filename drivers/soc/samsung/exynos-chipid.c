@@ -23,7 +23,7 @@ struct exynos_chipid_info exynos_soc_info;
 EXPORT_SYMBOL(exynos_soc_info);
 
 static const char *soc_ap_id;
-	
+
 static const char * __init product_id_to_name(unsigned int product_id)
 {
 	const char *soc_name;
@@ -71,12 +71,6 @@ static const char * __init product_id_to_name(unsigned int product_id)
 	}
 	return soc_name;
 }
-static const struct exynos_chipid_variant drv_data_exynos8890 = {
-	.unique_id_reg	= 0x14,
-	.rev_reg	= 0x0,
-	.main_rev_bit	= 0,
-	.sub_rev_bit	= 4,
-};
 
 static const struct exynos_chipid_variant drv_data_exynos8895 = {
 	.unique_id_reg	= 0x04,
@@ -86,10 +80,7 @@ static const struct exynos_chipid_variant drv_data_exynos8895 = {
 };
 
 static const struct of_device_id of_exynos_chipid_ids[] = {
-	{
-		.compatible	= "samsung,exynos8890-chipid",
-		.data		= &drv_data_exynos8890,
-	},
+
 	{
 		.compatible	= "samsung,exynos8895-chipid",
 		.data		= &drv_data_exynos8895,

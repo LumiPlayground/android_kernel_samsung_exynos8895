@@ -960,7 +960,7 @@ static void fimc_is_group_start_trigger(struct fimc_is_groupmgr *groupmgr,
 	}
 #endif
 
-	queue_kthread_work(&gtask->worker, &frame->work);
+	kthread_queue_work(&gtask->worker, &frame->work);
 }
 
 static int fimc_is_group_task_probe(struct fimc_is_group_task *gtask,
@@ -993,7 +993,7 @@ static int fimc_is_group_task_start(struct fimc_is_groupmgr *groupmgr,
 	if (test_bit(FIMC_IS_GTASK_START, &gtask->state))
 		goto p_work;
 
-	init_kthread_worker(&gtask->worker);
+	kthread_init_worker(&gtask->worker);
 	snprintf(name, sizeof(name), "fimc_is_gw%d", gtask->id);
 	gtask->task = kthread_run(kthread_worker_fn, &gtask->worker, name);
 	if (IS_ERR(gtask->task)) {
@@ -1071,7 +1071,7 @@ static int fimc_is_group_task_stop(struct fimc_is_groupmgr *groupmgr,
 	 * flush kthread wait until all work is complete
 	 * it's dangerous if all is not finished
 	 * so it's commented currently
-	 * flush_kthread_worker(&groupmgr->group_worker[slot]);
+	 * kthread_flush_worker(&groupmgr->group_worker[slot]);
 	 */
 	kthread_stop(gtask->task);
 

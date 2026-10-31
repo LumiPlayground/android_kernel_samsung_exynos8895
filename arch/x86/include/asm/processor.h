@@ -104,8 +104,7 @@ struct cpuinfo_x86 {
 	__u8			x86_phys_bits;
 	/* CPUID returned core id bits: */
 	__u8			x86_coreid_bits;
-
-	__u8			x86_cache_bits;
+	__u8			cu_id;
 	/* Max extended CPUID function supported: */
 	__u32			extended_cpuid_level;
 	/* Maximum supported CPUID level, -1=no CPUID: */
@@ -130,13 +129,15 @@ struct cpuinfo_x86 {
 	u16			booted_cores;
 	/* Physical processor id: */
 	u16			phys_proc_id;
+	/* Logical processor id: */
+	u16			logical_proc_id;
 	/* Core id: */
 	u16			cpu_core_id;
-	/* Compute unit id */
-	u8			compute_unit_id;
 	/* Index into per_cpu list: */
 	u16			cpu_index;
 	u32			microcode;
+	/* Address space bits used by the cache internally */
+	u8			x86_cache_bits;
 };
 
 #define X86_VENDOR_INTEL	0
@@ -211,24 +212,6 @@ static inline void native_cpuid(unsigned int *eax, unsigned int *ebx,
 	    : "0" (*eax), "2" (*ecx)
 	    : "memory");
 }
-
-#define native_cpuid_reg(reg)					\
-static inline unsigned int native_cpuid_##reg(unsigned int op)	\
-{								\
-	unsigned int eax = op, ebx, ecx = 0, edx;		\
-								\
-	native_cpuid(&eax, &ebx, &ecx, &edx);			\
-								\
-	return reg;						\
-}
-
-/*
- * Native CPUID functions returning a single datum.
- */
-native_cpuid_reg(eax)
-native_cpuid_reg(ebx)
-native_cpuid_reg(ecx)
-native_cpuid_reg(edx)
 
 static inline void load_cr3(pgd_t *pgdir)
 {
@@ -322,10 +305,13 @@ struct tss_struct {
 	 */
 	unsigned long		io_bitmap[IO_BITMAP_LONGS + 1];
 
+#ifdef CONFIG_X86_32
 	/*
-	 * Space for the temporary SYSENTER stack:
+	 * Space for the temporary SYSENTER stack.
 	 */
+	unsigned long		SYSENTER_stack_canary;
 	unsigned long		SYSENTER_stack[64];
+#endif
 
 } ____cacheline_aligned;
 
@@ -389,9 +375,14 @@ DECLARE_PER_CPU(struct irq_stack *, hardirq_stack);
 DECLARE_PER_CPU(struct irq_stack *, softirq_stack);
 #endif	/* X86_64 */
 
-extern unsigned int xstate_size;
+extern unsigned int fpu_kernel_xstate_size;
+extern unsigned int fpu_user_xstate_size;
 
 struct perf_event;
+
+typedef struct {
+	unsigned long		seg;
+} mm_segment_t;
 
 struct thread_struct {
 	/* Cached TLS descriptors: */
@@ -406,13 +397,18 @@ struct thread_struct {
 	unsigned short		fsindex;
 	unsigned short		gsindex;
 #endif
-#ifdef CONFIG_X86_32
-	unsigned long		ip;
-#endif
+
 #ifdef CONFIG_X86_64
-	unsigned long		fs;
+	unsigned long		fsbase;
+	unsigned long		gsbase;
+#else
+	/*
+	 * XXX: this could presumably be unsigned short.  Alternatively,
+	 * 32-bit kernels could be taught to use fsindex instead.
+	 */
+	unsigned long fs;
+	unsigned long gs;
 #endif
-	unsigned long		gs;
 
 	/* Save middle states of ptrace breakpoints */
 	struct perf_event	*ptrace_bps[HBP_NUM];
@@ -434,6 +430,11 @@ struct thread_struct {
 	/* Max allowed port in the bitmap, in bytes: */
 	unsigned		io_bitmap_max;
 
+	mm_segment_t		addr_limit;
+
+	unsigned int		sig_on_uaccess_err:1;
+	unsigned int		uaccess_err:1;	/* uaccess failed */
+
 	/* Floating point and extended processor state */
 	struct fpu		fpu;
 	/*
@@ -441,6 +442,15 @@ struct thread_struct {
 	 * the end.
 	 */
 };
+
+/*
+ * Thread-synchronous status.
+ *
+ * This is different from the flags in that nobody else
+ * ever touches our thread-synchronous status, so we don't
+ * have to worry about atomic accesses.
+ */
+#define TS_COMPAT		0x0002	/* 32bit syscall active (64BIT)*/
 
 /*
  * Set IOPL bits in EFLAGS from given mask
@@ -495,8 +505,6 @@ static inline unsigned long current_top_of_stack(void)
 #include <asm/paravirt.h>
 #else
 #define __cpuid			native_cpuid
-#define paravirt_enabled()	0
-#define paravirt_has(x) 	0
 
 static inline void load_sp0(struct tss_struct *tss,
 			    struct thread_struct *thread)
@@ -506,11 +514,6 @@ static inline void load_sp0(struct tss_struct *tss,
 
 #define set_iopl_mask native_set_iopl_mask
 #endif /* CONFIG_PARAVIRT */
-
-typedef struct {
-	unsigned long		seg;
-} mm_segment_t;
-
 
 /* Free all resources held by a thread. */
 extern void release_thread(struct task_struct *);
@@ -733,9 +736,8 @@ static inline void spin_lock_prefetch(const void *x)
 	.sp0			= TOP_OF_INIT_STACK,			  \
 	.sysenter_cs		= __KERNEL_CS,				  \
 	.io_bitmap_ptr		= NULL,					  \
+	.addr_limit		= KERNEL_DS,				  \
 }
-
-extern unsigned long thread_saved_pc(struct task_struct *tsk);
 
 /*
  * TOP_OF_KERNEL_STACK_PADDING reserves 8 bytes on top of the ring0 stack.
@@ -782,20 +784,17 @@ extern unsigned long thread_saved_pc(struct task_struct *tsk);
 #define STACK_TOP		TASK_SIZE
 #define STACK_TOP_MAX		TASK_SIZE_MAX
 
-#define INIT_THREAD  { \
-	.sp0 = TOP_OF_INIT_STACK \
+#define INIT_THREAD  {						\
+	.sp0			= TOP_OF_INIT_STACK,		\
+	.addr_limit		= KERNEL_DS,			\
 }
-
-/*
- * Return saved PC of a blocked thread.
- * What is this good for? it will be always the scheduler or ret_from_fork.
- */
-#define thread_saved_pc(t)	(*(unsigned long *)((t)->thread.sp - 8))
 
 #define task_pt_regs(tsk)	((struct pt_regs *)(tsk)->thread.sp0 - 1)
 extern unsigned long KSTK_ESP(struct task_struct *task);
 
 #endif /* CONFIG_X86_64 */
+
+extern unsigned long thread_saved_pc(struct task_struct *tsk);
 
 extern void start_thread(struct pt_regs *regs, unsigned long new_ip,
 					       unsigned long new_sp);
@@ -864,17 +863,21 @@ bool xen_set_default_idle(void);
 void stop_this_cpu(void *dummy);
 void df_debug(struct pt_regs *regs, long error_code);
 
+enum l1tf_mitigations {
+	L1TF_MITIGATION_OFF,
+	L1TF_MITIGATION_FLUSH_NOWARN,
+	L1TF_MITIGATION_FLUSH,
+	L1TF_MITIGATION_FLUSH_NOSMT,
+	L1TF_MITIGATION_FULL,
+	L1TF_MITIGATION_FULL_FORCE
+};
+
+extern enum l1tf_mitigations l1tf_mitigation;
+
 enum mds_mitigations {
 	MDS_MITIGATION_OFF,
 	MDS_MITIGATION_FULL,
 	MDS_MITIGATION_VMWERV,
-};
-
-enum taa_mitigations {
-	TAA_MITIGATION_OFF,
-	TAA_MITIGATION_UCODE_NEEDED,
-	TAA_MITIGATION_VERW,
-	TAA_MITIGATION_TSX_DISABLED,
 };
 
 #endif /* _ASM_X86_PROCESSOR_H */

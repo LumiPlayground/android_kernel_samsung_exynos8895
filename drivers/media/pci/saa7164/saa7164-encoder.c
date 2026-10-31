@@ -1022,8 +1022,7 @@ int saa7164_encoder_register(struct saa7164_port *port)
 
 	dprintk(DBGLVL_ENC, "%s()\n", __func__);
 
-	if (port->type != SAA7164_MPEG_ENCODER)
-		BUG();
+	BUG_ON(port->type != SAA7164_MPEG_ENCODER);
 
 	/* Sanity check that the PCI configuration space is active */
 	if (port->hwcfg.BARLocation == 0) {
@@ -1031,7 +1030,7 @@ int saa7164_encoder_register(struct saa7164_port *port)
 		       "(errno = %d), NO PCI configuration\n",
 			__func__, result);
 		result = -ENOMEM;
-		goto fail_pci;
+		goto failed;
 	}
 
 	/* Establish encoder defaults here */
@@ -1085,7 +1084,7 @@ int saa7164_encoder_register(struct saa7164_port *port)
 			  100000, ENCODER_DEF_BITRATE);
 	if (hdl->error) {
 		result = hdl->error;
-		goto fail_hdl;
+		goto failed;
 	}
 
 	port->std = V4L2_STD_NTSC_M;
@@ -1103,7 +1102,7 @@ int saa7164_encoder_register(struct saa7164_port *port)
 		printk(KERN_INFO "%s: can't allocate mpeg device\n",
 			dev->name);
 		result = -ENOMEM;
-		goto fail_hdl;
+		goto failed;
 	}
 
 	port->v4l_device->ctrl_handler = hdl;
@@ -1114,7 +1113,10 @@ int saa7164_encoder_register(struct saa7164_port *port)
 	if (result < 0) {
 		printk(KERN_INFO "%s: can't register mpeg device\n",
 			dev->name);
-		goto fail_reg;
+		/* TODO: We're going to leak here if we don't dealloc
+		 The buffers above. The unreg function can't deal wit it.
+		*/
+		goto failed;
 	}
 
 	printk(KERN_INFO "%s: registered device video%d [mpeg]\n",
@@ -1136,14 +1138,9 @@ int saa7164_encoder_register(struct saa7164_port *port)
 
 	saa7164_api_set_encoder(port);
 	saa7164_api_get_encoder(port);
-	return 0;
 
-fail_reg:
-	video_device_release(port->v4l_device);
-	port->v4l_device = NULL;
-fail_hdl:
-	v4l2_ctrl_handler_free(hdl);
-fail_pci:
+	result = 0;
+failed:
 	return result;
 }
 
@@ -1153,8 +1150,7 @@ void saa7164_encoder_unregister(struct saa7164_port *port)
 
 	dprintk(DBGLVL_ENC, "%s(port=%d)\n", __func__, port->nr);
 
-	if (port->type != SAA7164_MPEG_ENCODER)
-		BUG();
+	BUG_ON(port->type != SAA7164_MPEG_ENCODER);
 
 	if (port->v4l_device) {
 		if (port->v4l_device->minor != -1)

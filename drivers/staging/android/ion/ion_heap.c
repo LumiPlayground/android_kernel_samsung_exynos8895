@@ -94,7 +94,7 @@ int ion_heap_map_user(struct ion_heap *heap, struct ion_buffer *buffer,
 		}
 		len = min(len, remainder);
 		ret = remap_pfn_range(vma, addr, page_to_pfn(page), len,
-				vma->vm_page_prot);
+				      vma->vm_page_prot);
 		if (ret)
 			return ret;
 		addr += len;
@@ -106,18 +106,18 @@ int ion_heap_map_user(struct ion_heap *heap, struct ion_buffer *buffer,
 
 static int ion_heap_clear_pages(struct page **pages, int num, pgprot_t pgprot)
 {
-	void *addr = vmap(pages, num, VM_MAP, pgprot);
+	void *addr = vm_map_ram(pages, num, -1, pgprot);
 
 	if (!addr)
 		return -ENOMEM;
 	memset(addr, 0, PAGE_SIZE * num);
-	vunmap(addr);
+	vm_unmap_ram(addr, num);
 
 	return 0;
 }
 
 static int ion_heap_sglist_zero(struct scatterlist *sgl, unsigned int nents,
-						pgprot_t pgprot)
+				pgprot_t pgprot)
 {
 	int p = 0;
 	int ret = 0;
@@ -141,7 +141,7 @@ static int ion_heap_sglist_zero(struct scatterlist *sgl, unsigned int nents,
 		if (!va)
 			break;
 		clear_page(va);
-		if (pgprot == pgprot_writecombine(PAGE_KERNEL))
+		if (pgprot_val(pgprot) == pgprot_val(pgprot_writecombine(PAGE_KERNEL)))
 			__flush_dcache_area(va, PAGE_SIZE);
 		kunmap(pages[p]);
 	}
@@ -195,7 +195,7 @@ size_t ion_heap_freelist_size(struct ion_heap *heap)
 }
 
 static size_t _ion_heap_freelist_drain(struct ion_heap *heap, size_t size,
-				bool skip_pools)
+				       bool skip_pools)
 {
 	struct ion_buffer *buffer;
 	size_t total_drained = 0;
@@ -280,7 +280,7 @@ int ion_heap_init_deferred_free(struct ion_heap *heap)
 }
 
 static unsigned long ion_heap_shrink_count(struct shrinker *shrinker,
-						struct shrink_control *sc)
+					   struct shrink_control *sc)
 {
 	struct ion_heap *heap = container_of(shrinker, struct ion_heap,
 					     shrinker);
@@ -293,7 +293,7 @@ static unsigned long ion_heap_shrink_count(struct shrinker *shrinker,
 }
 
 static unsigned long ion_heap_shrink_scan(struct shrinker *shrinker,
-						struct shrink_control *sc)
+					  struct shrink_control *sc)
 {
 	struct ion_heap *heap = container_of(shrinker, struct ion_heap,
 					     shrinker);

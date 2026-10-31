@@ -660,7 +660,6 @@ struct bcm_sysport_priv {
 	int			wol_irq;
 
 	/* Transmit rings */
-	spinlock_t		desc_lock;
 	struct bcm_sysport_tx_ring tx_rings[TDMA_NUM_RINGS];
 
 	/* Receive queue */
@@ -672,7 +671,6 @@ struct bcm_sysport_priv {
 
 	/* PHY device */
 	struct device_node	*phy_dn;
-	struct phy_device	*phydev;
 	phy_interface_t		phy_interface;
 	int			old_pause;
 	int			old_link;

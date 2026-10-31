@@ -71,6 +71,34 @@ struct power_table {
 	u32 power;
 };
 
+/**
+ * struct cpufreq_cooling_device - data for cooling device with cpufreq
+ * @id: unique integer value corresponding to each cpufreq_cooling_device
+ *	registered.
+ * @cool_dev: thermal_cooling_device pointer to keep track of the
+ *	registered cooling device.
+ * @cpufreq_state: integer value representing the current state of cpufreq
+ *	cooling	devices.
+ * @clipped_freq: integer value representing the absolute value of the clipped
+ *	frequency.
+ * @max_level: maximum cooling level. One less than total number of valid
+ *	cpufreq frequencies.
+ * @allowed_cpus: all the cpus involved for this cpufreq_cooling_device.
+ * @node: list_head to link all cpufreq_cooling_device together.
+ * @last_load: load measured by the latest call to cpufreq_get_requested_power()
+ * @time_in_idle: previous reading of the absolute time that this cpu was idle
+ * @time_in_idle_timestamp: wall time of the last invocation of
+ *	get_cpu_idle_time_us()
+ * @dyn_power_table: array of struct power_table for frequency to power
+ *	conversion, sorted in ascending order.
+ * @dyn_power_table_entries: number of entries in the @dyn_power_table array
+ * @cpu_dev: the first cpu_device from @allowed_cpus that has OPPs registered
+ * @plat_get_static_power: callback to calculate the static power
+ *
+ * This structure is required for keeping information of each registered
+ * cpufreq_cooling_device.
+ */
+
 static DEFINE_IDR(cpufreq_idr);
 static DEFINE_MUTEX(cooling_cpufreq_lock);
 
@@ -732,7 +760,7 @@ static int cpufreq_get_requested_power(struct thermal_cooling_device *cdev,
 			load = 0;
 
 		total_load += load;
-		if (load_cpu)
+		if (trace_thermal_power_cpu_limit_enabled() && load_cpu)
 			load_cpu[i] = load;
 
 		i++;
@@ -895,10 +923,20 @@ static int cpufreq_set_cur_temp(struct thermal_cooling_device *cdev,
 }
 
 /* Bind cpufreq callbacks to thermal cooling device ops */
+
 static struct thermal_cooling_device_ops cpufreq_cooling_ops = {
 	.get_max_state = cpufreq_get_max_state,
 	.get_cur_state = cpufreq_get_cur_state,
 	.set_cur_state = cpufreq_set_cur_state,
+};
+
+static struct thermal_cooling_device_ops cpufreq_power_cooling_ops = {
+	.get_max_state		= cpufreq_get_max_state,
+	.get_cur_state		= cpufreq_get_cur_state,
+	.set_cur_state		= cpufreq_set_cur_state,
+	.get_requested_power	= cpufreq_get_requested_power,
+	.state2power		= cpufreq_state2power,
+	.power2state		= cpufreq_power2state,
 };
 
 /* Notifier for cpufreq policy change */
@@ -947,22 +985,35 @@ __cpufreq_cooling_register(struct device_node *np,
 			const struct cpumask *clip_cpus, u32 capacitance,
 			get_static_t plat_static_func)
 {
+	struct cpufreq_policy *policy;
 	struct thermal_cooling_device *cool_dev;
 	struct cpufreq_cooling_device *cpufreq_dev;
 	char dev_name[THERMAL_NAME_LENGTH];
 	struct cpufreq_frequency_table *pos, *table;
+	struct cpumask temp_mask;
 	unsigned int freq, i, num_cpus;
 	int ret;
+	struct thermal_cooling_device_ops *cooling_ops;
 
-	table = cpufreq_frequency_get_table(cpumask_first(clip_cpus));
-	if (!table) {
-		pr_debug("%s: CPUFreq table not found\n", __func__);
+	cpumask_and(&temp_mask, clip_cpus, cpu_online_mask);
+	policy = cpufreq_cpu_get(cpumask_first(&temp_mask));
+	if (!policy) {
+		pr_debug("%s: CPUFreq policy not found\n", __func__);
 		return ERR_PTR(-EPROBE_DEFER);
 	}
 
+	table = policy->freq_table;
+	if (!table) {
+		pr_debug("%s: CPUFreq table not found\n", __func__);
+		cool_dev = ERR_PTR(-ENODEV);
+		goto put_policy;
+	}
+
 	cpufreq_dev = kzalloc(sizeof(*cpufreq_dev), GFP_KERNEL);
-	if (!cpufreq_dev)
-		return ERR_PTR(-ENOMEM);
+	if (!cpufreq_dev) {
+		cool_dev = ERR_PTR(-ENOMEM);
+		goto put_policy;
+	}
 
 	num_cpus = cpumask_weight(clip_cpus);
 	cpufreq_dev->time_in_idle = kcalloc(num_cpus,
@@ -999,10 +1050,7 @@ __cpufreq_cooling_register(struct device_node *np,
 	cpumask_copy(&cpufreq_dev->target_cpus, clip_cpus);
 
 	if (capacitance) {
-		cpufreq_cooling_ops.get_requested_power =
-			cpufreq_get_requested_power;
-		cpufreq_cooling_ops.state2power = cpufreq_state2power;
-		cpufreq_cooling_ops.power2state = cpufreq_power2state;
+		cpufreq_dev->plat_get_static_power = plat_static_func;
 
 		ret = build_dyn_power_table(cpufreq_dev, capacitance);
 		if (ret) {
@@ -1013,8 +1061,11 @@ __cpufreq_cooling_register(struct device_node *np,
 		ret = build_static_power_table(cpufreq_dev);
 		if (ret) {
 			cool_dev = ERR_PTR(ret);
-			goto free_table;
+			goto free_power_table;
 		}
+		cooling_ops = &cpufreq_power_cooling_ops;
+	} else {
+		cooling_ops = &cpufreq_cooling_ops;
 	}
 
 	ret = get_idr(&cpufreq_idr, &cpufreq_dev->id);
@@ -1035,14 +1086,16 @@ __cpufreq_cooling_register(struct device_node *np,
 			pr_debug("%s: freq:%u KHz\n", __func__, freq);
 	}
 
-	if (cpufreq_dev->id == 0)
+	if (cpufreq_dev->id == 0) {
 		cpufreq_cooling_ops.set_cur_temp = cpufreq_set_cur_temp;
+		cpufreq_power_cooling_ops.set_cur_temp = cpufreq_set_cur_temp;
+	}
 
 	snprintf(dev_name, sizeof(dev_name), "thermal-cpufreq-%d",
 		 cpufreq_dev->id);
 
 	cool_dev = thermal_of_cooling_device_register(np, dev_name, cpufreq_dev,
-						      &cpufreq_cooling_ops);
+						      cooling_ops);
 	if (IS_ERR(cool_dev))
 		goto remove_idr;
 
@@ -1061,7 +1114,7 @@ __cpufreq_cooling_register(struct device_node *np,
 					  CPUFREQ_POLICY_NOTIFIER);
 	mutex_unlock(&cooling_cpufreq_lock);
 
-	return cool_dev;
+	goto put_policy;
 
 remove_idr:
 	release_idr(&cpufreq_idr, cpufreq_dev->id);
@@ -1075,6 +1128,8 @@ free_time_in_idle:
 	kfree(cpufreq_dev->time_in_idle);
 free_cdev:
 	kfree(cpufreq_dev);
+put_policy:
+	cpufreq_cpu_put(policy);
 
 	return cool_dev;
 }

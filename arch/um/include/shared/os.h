@@ -146,6 +146,8 @@ extern int os_read_file(int fd, void *buf, int len);
 extern int os_write_file(int fd, const void *buf, int count);
 extern int os_sync_file(int fd);
 extern int os_file_size(const char *file, unsigned long long *size_out);
+extern int os_pread_file(int fd, void *buf, int len, unsigned long long offset);
+extern int os_pwrite_file(int fd, const void *buf, int count, unsigned long long offset);
 extern int os_file_modtime(const char *file, unsigned long *modtime);
 extern int os_pipe(int *fd, int stream, int close_on_exec);
 extern int os_set_fd_async(int fd);
@@ -272,7 +274,7 @@ extern int protect(struct mm_id * mm_idp, unsigned long addr,
 extern int is_skas_winch(int pid, int fd, void *data);
 extern int start_userspace(unsigned long stub_stack);
 extern int copy_context_skas0(unsigned long stack, int pid);
-extern void userspace(struct uml_pt_regs *regs);
+extern void userspace(struct uml_pt_regs *regs, unsigned long *aux_fp_regs);
 extern int map_stub_pages(int fd, unsigned long code, unsigned long data,
 			  unsigned long stack);
 extern void new_thread(void *stack, jmp_buf *buf, void (*handler)(void));
@@ -282,7 +284,6 @@ extern void initial_thread_cb_skas(void (*proc)(void *),
 				 void *arg);
 extern void halt_skas(void);
 extern void reboot_skas(void);
-extern int get_syscall(struct uml_pt_regs *regs);
 
 /* irq.c */
 extern int os_waiting_for_events(struct irq_fd *active_fds);

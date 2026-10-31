@@ -63,7 +63,7 @@
 #include <linux/amba/bus.h>
 #include <linux/amba/pl330.h>
 #if defined(CONFIG_SECURE_OS_BOOSTER_API)
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895) \
+#if defined(CONFIG_SOC_EXYNOS8895) \
 	|| defined(CONFIG_SOC_EXYNOS7870)
 #include <soc/samsung/secos_booster.h>
 #else
@@ -150,7 +150,7 @@ struct vfsspi_device_data {
 	unsigned int ldo_pin; /* Ldo 3.3V GPIO pin number */
 	unsigned int ldo_pin2; /* Ldo 1.8V GPIO pin number */
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 	/* set cs pin in fp driver, use Exynos8890, 8895 */
 	/* for use auto cs mode with dualization fp sensor */
 	unsigned int cs_gpio;
@@ -616,7 +616,7 @@ static int vfsspi_sec_spi_unprepare(struct sec_spi_info *spi_info,
 	return 0;
 }
 
-#if !defined(CONFIG_SOC_EXYNOS8890) &&  !defined(CONFIG_SOC_EXYNOS8895) \
+#if !defined(CONFIG_SOC_EXYNOS8895) \
 	&& !defined(CONFIG_SOC_EXYNOS7870)
 struct amba_device *adev_dma;
 static int vfsspi_sec_dma_prepare(struct sec_spi_info *spi_info)
@@ -715,7 +715,7 @@ static int vfsspi_set_clk(struct vfsspi_device_data *vfsspi_device,
 			break;
 		default:
 			pr_debug("%s baud rate is %d.\n", __func__, clock);
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 			/* exynos8890 evt0 board don't support to SPI clock rate 13MHz under */
 			vfsspi_device->current_spi_speed = MAX_BAUD_RATE;
 #else
@@ -741,7 +741,7 @@ static int vfsspi_set_clk(struct vfsspi_device_data *vfsspi_device,
 				else
 					pr_info("%s ENABLE_SPI_CLOCK %ld\n",
 							__func__, spi_info->speed);
-#if !defined(CONFIG_SOC_EXYNOS8890) && !defined(CONFIG_SOC_EXYNOS8895) \
+#if !defined(CONFIG_SOC_EXYNOS8895) \
 	&& !defined(CONFIG_SOC_EXYNOS7870)
 				ret_val = vfsspi_sec_dma_prepare(spi_info);
 				if (ret_val < 0)
@@ -778,7 +778,7 @@ static int vfsspi_ioctl_disable_spi_clock(struct vfsspi_device_data
 		ret_val = vfsspi_sec_spi_unprepare(spi_info, spidev);
 		if (ret_val < 0)
 			pr_err("%s: couldn't disable spi clks\n", __func__);
-#if !defined(CONFIG_SOC_EXYNOS8890) && !defined(CONFIG_SOC_EXYNOS8895) \
+#if !defined(CONFIG_SOC_EXYNOS8895) \
 	&& !defined(CONFIG_SOC_EXYNOS7870)
 		ret_val = vfsspi_sec_dma_unprepare();
 		if (ret_val < 0)
@@ -1404,7 +1404,7 @@ static void vfsspi_platformUninit(struct vfsspi_device_data *vfsspi_device)
 			gpio_free(vfsspi_device->ocp_en);
 
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 		if (vfsspi_device->cs_gpio)
 			gpio_free(vfsspi_device->cs_gpio);
 #endif
@@ -1424,7 +1424,7 @@ static int vfsspi_parse_dt(struct device *dev, struct vfsspi_device_data *data)
 	int gpio;
 
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 	gpio = of_get_named_gpio(np, "vfsspi-csgpio", 0);
 	if (gpio < 0) {
 		errorno = gpio;
@@ -1801,7 +1801,7 @@ static int vfsspi_wakeup_daemon(struct vfsspi_device_data *vfsspi_device)
 #endif
 
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 static int vfsspi_set_cs_gpio(struct vfsspi_device_data *vfsspi_device,
 			      struct s3c64xx_spi_csinfo *cs)
 {
@@ -1834,7 +1834,7 @@ static int vfsspi_probe(struct spi_device *spi)
 	int status = 0;
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
 	int retry = 0;
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 	struct s3c64xx_spi_csinfo *cs;
 #endif
 #endif
@@ -1907,7 +1907,7 @@ static int vfsspi_probe(struct spi_device *spi)
 	fpsensor_goto_suspend = 0;
 #endif
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 	/* set cs pin in fp driver, use only Exynos8890 */
 	/* for use auto cs mode with dualization fp sensor */
 	cs = spi->controller_data;

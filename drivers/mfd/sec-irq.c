@@ -19,7 +19,6 @@
 #include <linux/mfd/samsung/core.h>
 #include <linux/mfd/samsung/irq.h>
 #include <linux/mfd/samsung/s2mpu03.h>
-#include <linux/mfd/samsung/s2mps16.h>
 #include <linux/mfd/samsung/s2mps15.h>
 #include <linux/mfd/samsung/s2mps13.h>
 #include <linux/mfd/samsung/s2mps11.h>
@@ -125,116 +124,6 @@ static struct regmap_irq s2mps15_irqs[] = {
 	},
 };
 
-static struct regmap_irq s2mps16_irqs[] = {
-	[S2MPS16_IRQ_PWRONF] = {
-		.reg_offset = 0,
-		.mask = S2MPS16_IRQ_PWRONF_MASK,
-	},
-	[S2MPS16_IRQ_PWRONR] = {
-		.reg_offset = 0,
-		.mask = S2MPS16_IRQ_PWRONR_MASK,
-	},
-	[S2MPS16_IRQ_JIGONBF] = {
-		.reg_offset = 0,
-		.mask = S2MPS16_IRQ_JIGONBF_MASK,
-	},
-	[S2MPS16_IRQ_JIGONBR] = {
-		.reg_offset = 0,
-		.mask = S2MPS16_IRQ_JIGONBR_MASK,
-	},
-	[S2MPS16_IRQ_ACOKBF] = {
-		.reg_offset = 0,
-		.mask = S2MPS16_IRQ_ACOKBF_MASK,
-	},
-	[S2MPS16_IRQ_ACOKBR] = {
-		.reg_offset = 0,
-		.mask = S2MPS16_IRQ_ACOKBR_MASK,
-	},
-	[S2MPS16_IRQ_PWRON1S] = {
-		.reg_offset = 0,
-		.mask = S2MPS16_IRQ_PWRON1S_MASK,
-	},
-	[S2MPS16_IRQ_MRB] = {
-		.reg_offset = 0,
-		.mask = S2MPS16_IRQ_MRB_MASK,
-	},
-	[S2MPS16_IRQ_RTC60S] = {
-		.reg_offset = 1,
-		.mask = S2MPS16_IRQ_RTC60S_MASK,
-	},
-	[S2MPS16_IRQ_RTCA1] = {
-		.reg_offset = 1,
-		.mask = S2MPS16_IRQ_RTCA1_MASK,
-	},
-	[S2MPS16_IRQ_RTCA0] = {
-		.reg_offset = 1,
-		.mask = S2MPS16_IRQ_RTCA0_MASK,
-	},
-	[S2MPS16_IRQ_SMPL] = {
-		.reg_offset = 1,
-		.mask = S2MPS16_IRQ_SMPL_MASK,
-	},
-	[S2MPS16_IRQ_RTC1S] = {
-		.reg_offset = 1,
-		.mask = S2MPS16_IRQ_RTC1S_MASK,
-	},
-	[S2MPS16_IRQ_WTSR] = {
-		.reg_offset = 1,
-		.mask = S2MPS16_IRQ_WTSR_MASK,
-	},
-	[S2MPS16_IRQ_WRSTB] = {
-		.reg_offset = 1,
-		.mask = S2MPS16_IRQ_WRSTB_MASK,
-	},
-	[S2MPS16_IRQ_INT120C] = {
-		.reg_offset = 2,
-		.mask = S2MPS16_IRQ_INT120C_MASK,
-	},
-	[S2MPS16_IRQ_INT140C] = {
-		.reg_offset = 2,
-		.mask = S2MPS16_IRQ_INT140C_MASK,
-	},
-	[S2MPS16_IRQ_TSD] = {
-		.reg_offset = 2,
-		.mask = S2MPS16_IRQ_TSD_MASK,
-	},
-	[S2MPS16_IRQ_ADCDONE] = {
-		.reg_offset = 2,
-		.mask = S2MPS16_IRQ_ADCDONE_MASK,
-	},
-	[S2MPS16_IRQ_OC0] = {
-		.reg_offset = 3,
-		.mask = S2MPS16_IRQ_OC0_MASK,
-	},
-	[S2MPS16_IRQ_OC1] = {
-		.reg_offset = 3,
-		.mask = S2MPS16_IRQ_OC1_MASK,
-	},
-	[S2MPS16_IRQ_OC2] = {
-		.reg_offset = 3,
-		.mask = S2MPS16_IRQ_OC2_MASK,
-	},
-	[S2MPS16_IRQ_OC3] = {
-		.reg_offset = 3,
-		.mask = S2MPS16_IRQ_OC3_MASK,
-	},
-	[S2MPS16_IRQ_OC4] = {
-		.reg_offset = 3,
-		.mask = S2MPS16_IRQ_OC4_MASK,
-	},
-	[S2MPS16_IRQ_OC5] = {
-		.reg_offset = 3,
-		.mask = S2MPS16_IRQ_OC5_MASK,
-	},
-	[S2MPS16_IRQ_OC6] = {
-		.reg_offset = 3,
-		.mask = S2MPS16_IRQ_OC6_MASK,
-	},
-	[S2MPS16_IRQ_OC7] = {
-		.reg_offset = 3,
-		.mask = S2MPS16_IRQ_OC7_MASK,
-	},
-};
 
 #ifndef CONFIG_EXYNOS_MBOX
 static struct regmap_irq s2mpu03_irqs[] = {
@@ -601,8 +490,6 @@ irq_to_sec_pmic_irq(struct sec_pmic_dev *sec_pmic, int irq)
 	switch (sec_pmic->device_type) {
 	case S2MPS15X:
 		return &s2mps15_irqs[irq - sec_pmic->irq_base];
-	case S2MPS16X:
-		return &s2mps16_irqs[irq - sec_pmic->irq_base];
 	default:
 		return NULL;
 	}
@@ -624,9 +511,6 @@ static void sec_pmic_irq_sync_unlock(struct irq_data *data)
 	switch (sec_pmic->device_type) {
 	case S2MPS15X:
 		reg_int1m = S2MPS15_REG_INT1M;
-		break;
-	case S2MPS16X:
-		reg_int1m = S2MPS16_REG_INT1M;
 		break;
 	default:
 		dev_err(sec_pmic->dev,
@@ -692,9 +576,6 @@ static irqreturn_t sec_pmic_irq_thread(int irq, void *data)
 	case S2MPS15X:
 		reg_int1 = S2MPS15_REG_INT1;
 		break;
-	case S2MPS16X:
-		reg_int1 = S2MPS16_REG_INT1;
-		break;
 	default:
 		dev_err(sec_pmic->dev,
 			"Unknown device type %d\n",
@@ -717,12 +598,6 @@ static irqreturn_t sec_pmic_irq_thread(int irq, void *data)
 	case S2MPS15X:
 		for (i = 0; i < S2MPS15_IRQ_NR; i++) {
 			if (irq_reg[s2mps15_irqs[i].reg_offset] & s2mps15_irqs[i].mask)
-				handle_nested_irq(sec_pmic->irq_base + i);
-		}
-		break;
-	case S2MPS16X:
-		for (i = 0; i < S2MPS16_IRQ_NR; i++) {
-			if (irq_reg[s2mps16_irqs[i].reg_offset] & s2mps16_irqs[i].mask)
 				handle_nested_irq(sec_pmic->irq_base + i);
 		}
 		break;
@@ -769,10 +644,6 @@ int sec_irq_init(struct sec_pmic_dev *sec_pmic)
 	case S2MPS15X:
 		reg_int1m = S2MPS15_REG_INT1M;
 		reg_irq_nr = S2MPS15_IRQ_NR;
-		break;
-	case S2MPS16X:
-		reg_int1m = S2MPS16_REG_INT1M;
-		reg_irq_nr = S2MPS16_IRQ_NR;
 		break;
 	default:
 		dev_err(sec_pmic->dev,
@@ -835,15 +706,6 @@ void sec_irq_exit(struct sec_pmic_dev *sec_pmic)
 
 #else /* CONFIG_EXYNOS_MBOX */
 
-static struct regmap_irq_chip s2mps16_irq_chip = {
-	.name = "s2mps16",
-	.irqs = s2mps16_irqs,
-	.num_irqs = ARRAY_SIZE(s2mps16_irqs),
-	.num_regs = 4,
-	.status_base = S2MPS16_REG_INT1,
-	.mask_base = S2MPS16_REG_INT1M,
-	.ack_base = S2MPS16_REG_INT1,
-};
 
 static struct regmap_irq_chip s2mpu03_irq_chip = {
 	.name = "s2mpu03",
@@ -952,12 +814,6 @@ int sec_irq_init(struct sec_pmic_dev *sec_pmic)
 		ret = regmap_add_irq_chip(sec_pmic->regmap, sec_pmic->irq,
 				  IRQF_TRIGGER_LOW | IRQF_ONESHOT,
 				  sec_pmic->irq_base, &s2mpu03_irq_chip,
-				  &sec_pmic->irq_data);
-		break;
-	case S2MPS16X:
-		ret = regmap_add_irq_chip(sec_pmic->regmap, sec_pmic->irq,
-				  IRQF_TRIGGER_LOW | IRQF_ONESHOT,
-				  sec_pmic->irq_base, &s2mps16_irq_chip,
 				  &sec_pmic->irq_data);
 		break;
 	default:

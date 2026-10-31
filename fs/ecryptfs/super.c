@@ -232,7 +232,7 @@ static int ecryptfs_show_options(struct seq_file *m, struct dentry *root)
 	else if (propagate_stat->propagate_type == TYPE_E_WRITE)
 		seq_printf(m, ",type=write");
 	seq_printf(m, ",label=%s", propagate_stat->label);
-	
+
 	return 0;
 }
 

@@ -206,7 +206,7 @@ static int __init init_inodecache(void)
 	ext2_inode_cachep = kmem_cache_create("ext2_inode_cache",
 					     sizeof(struct ext2_inode_info),
 					     0, (SLAB_RECLAIM_ACCOUNT|
-						SLAB_MEM_SPREAD),
+						SLAB_MEM_SPREAD|SLAB_ACCOUNT),
 					     init_once);
 	if (ext2_inode_cachep == NULL)
 		return -ENOMEM;
@@ -780,7 +780,7 @@ static unsigned long descriptor_loc(struct super_block *sb,
 	struct ext2_sb_info *sbi = EXT2_SB(sb);
 	unsigned long bg, first_meta_bg;
 	int has_super = 0;
-	
+
 	first_meta_bg = le32_to_cpu(sbi->s_es->s_first_meta_bg);
 
 	if (!EXT2_HAS_INCOMPAT_FEATURE(sb, EXT2_FEATURE_INCOMPAT_META_BG) ||
@@ -842,7 +842,7 @@ static int ext2_fill_super(struct super_block *sb, void *data, int silent)
 
 	/*
 	 * If the superblock doesn't start on a hardware sector boundary,
-	 * calculate the offset.  
+	 * calculate the offset.
 	 */
 	if (blocksize != BLOCK_SIZE) {
 		logic_sb_block = (sb_block*BLOCK_SIZE) / blocksize;
@@ -882,7 +882,7 @@ static int ext2_fill_super(struct super_block *sb, void *data, int silent)
 	if (def_mount_opts & EXT2_DEFM_ACL)
 		set_opt(sbi->s_mount_opt, POSIX_ACL);
 #endif
-	
+
 	if (le16_to_cpu(sbi->s_es->s_errors) == EXT2_ERRORS_PANIC)
 		set_opt(sbi->s_mount_opt, ERRORS_PANIC);
 	else if (le16_to_cpu(sbi->s_es->s_errors) == EXT2_ERRORS_CONTINUE)
@@ -892,7 +892,7 @@ static int ext2_fill_super(struct super_block *sb, void *data, int silent)
 
 	sbi->s_resuid = make_kuid(&init_user_ns, le16_to_cpu(es->s_def_resuid));
 	sbi->s_resgid = make_kgid(&init_user_ns, le16_to_cpu(es->s_def_resgid));
-	
+
 	set_opt(sbi->s_mount_opt, RESERVATION);
 
 	if (!parse_options((char *) data, sb))
@@ -933,16 +933,9 @@ static int ext2_fill_super(struct super_block *sb, void *data, int silent)
 	blocksize = BLOCK_SIZE << le32_to_cpu(sbi->s_es->s_log_block_size);
 
 	if (sbi->s_mount_opt & EXT2_MOUNT_DAX) {
-		if (blocksize != PAGE_SIZE) {
-			ext2_msg(sb, KERN_ERR,
-					"error: unsupported blocksize for dax");
+		err = bdev_dax_supported(sb, blocksize);
+		if (err)
 			goto failed_mount;
-		}
-		if (!sb->s_bdev->bd_disk->fops->direct_access) {
-			ext2_msg(sb, KERN_ERR,
-					"error: device does not support dax");
-			goto failed_mount;
-		}
 	}
 
 	/* If the blocksize doesn't match, re-read the thing.. */
@@ -1561,7 +1554,7 @@ out:
 	if (inode->i_size < off+len-towrite)
 		i_size_write(inode, off+len-towrite);
 	inode->i_version++;
-	inode->i_mtime = inode->i_ctime = CURRENT_TIME;
+	inode->i_mtime = inode->i_ctime = current_time(inode);
 	mark_inode_dirty(inode);
 	return len - towrite;
 }

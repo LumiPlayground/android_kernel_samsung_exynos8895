@@ -25,7 +25,6 @@
 #include "lvb_table.h"
 #include "user.h"
 #include "ast.h"
-#include "config.h"
 
 static const char name_prefix[] = "dlm";
 static const struct file_operations device_fops;
@@ -403,7 +402,7 @@ static int device_create_lockspace(struct dlm_lspace_params *params)
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
-	error = dlm_new_lockspace(params->name, dlm_config.ci_cluster_name, params->flags,
+	error = dlm_new_lockspace(params->name, NULL, params->flags,
 				  DLM_USER_LVB_LEN, NULL, NULL, NULL,
 				  &lockspace);
 	if (error)
@@ -520,14 +519,9 @@ static ssize_t device_write(struct file *file, const char __user *buf,
 	if (count > sizeof(struct dlm_write_request) + DLM_RESNAME_MAXLEN)
 		return -EINVAL;
 
-	kbuf = kzalloc(count + 1, GFP_NOFS);
-	if (!kbuf)
-		return -ENOMEM;
-
-	if (copy_from_user(kbuf, buf, count)) {
-		error = -EFAULT;
-		goto out_free;
-	}
+	kbuf = memdup_user_nul(buf, count);
+	if (IS_ERR(kbuf))
+		return PTR_ERR(kbuf);
 
 	if (check_version(kbuf)) {
 		error = -EBADE;
@@ -706,7 +700,7 @@ static int copy_result_to_user(struct dlm_user_args *ua, int compat,
 	result.version[0] = DLM_DEVICE_VERSION_MAJOR;
 	result.version[1] = DLM_DEVICE_VERSION_MINOR;
 	result.version[2] = DLM_DEVICE_VERSION_PATCH;
-	memcpy(&result.lksb, &ua->lksb, offsetof(struct dlm_lksb, sb_lvbptr));
+	memcpy(&result.lksb, &ua->lksb, sizeof(struct dlm_lksb));
 	result.user_lksb = ua->user_lksb;
 
 	/* FIXME: dlm1 provides for the user's bastparam/addr to not be updated

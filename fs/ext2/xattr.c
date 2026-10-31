@@ -77,10 +77,8 @@
 		printk("\n"); \
 	} while (0)
 # define ea_bdebug(bh, f...) do { \
-		char b[BDEVNAME_SIZE]; \
-		printk(KERN_DEBUG "block %s:%lu: ", \
-			bdevname(bh->b_bdev, b), \
-			(unsigned long) bh->b_blocknr); \
+		printk(KERN_DEBUG "block %pg:%lu: ", \
+			bh->b_bdev, (unsigned long) bh->b_blocknr); \
 		printk(f); \
 		printk("\n"); \
 	} while (0)
@@ -292,16 +290,21 @@ bad_block:	ext2_error(inode->i_sb, "ext2_xattr_list",
 		const struct xattr_handler *handler =
 			ext2_xattr_handler(entry->e_name_index);
 
-		if (handler) {
-			size_t size = handler->list(handler, dentry, buffer,
-						    rest, entry->e_name,
-						    entry->e_name_len);
+		if (handler && (!handler->list || handler->list(dentry))) {
+			const char *prefix = handler->prefix ?: handler->name;
+			size_t prefix_len = strlen(prefix);
+			size_t size = prefix_len + entry->e_name_len + 1;
+
 			if (buffer) {
 				if (size > rest) {
 					error = -ERANGE;
 					goto cleanup;
 				}
-				buffer += size;
+				memcpy(buffer, prefix, prefix_len);
+				buffer += prefix_len;
+				memcpy(buffer, entry->e_name, entry->e_name_len);
+				buffer += entry->e_name_len;
+				*buffer++ = 0;
 			}
 			rest -= size;
 		}
@@ -688,7 +691,7 @@ ext2_xattr_set2(struct inode *inode, struct buffer_head *old_bh,
 
 	/* Update the inode. */
 	EXT2_I(inode)->i_file_acl = new_bh ? new_bh->b_blocknr : 0;
-	inode->i_ctime = CURRENT_TIME_SEC;
+	inode->i_ctime = current_time(inode);
 	if (IS_SYNC(inode)) {
 		error = sync_inode_metadata(inode, 1);
 		/* In case sync failed due to ENOSPC the inode was actually
@@ -756,10 +759,19 @@ void
 ext2_xattr_delete_inode(struct inode *inode)
 {
 	struct buffer_head *bh = NULL;
+	struct ext2_sb_info *sbi = EXT2_SB(inode->i_sb);
 
 	down_write(&EXT2_I(inode)->xattr_sem);
 	if (!EXT2_I(inode)->i_file_acl)
 		goto cleanup;
+
+	if (!ext2_data_block_valid(sbi, EXT2_I(inode)->i_file_acl, 0)) {
+		ext2_error(inode->i_sb, "ext2_xattr_delete_inode",
+			"inode %ld: xattr block %d is out of data blocks range",
+			inode->i_ino, EXT2_I(inode)->i_file_acl);
+		goto cleanup;
+	}
+
 	bh = sb_bread(inode->i_sb, EXT2_I(inode)->i_file_acl);
 	if (!bh) {
 		ext2_error(inode->i_sb, "ext2_xattr_delete_inode",
@@ -823,7 +835,8 @@ ext2_xattr_cache_insert(struct mb_cache *cache, struct buffer_head *bh)
 	error = mb_cache_entry_create(cache, GFP_NOFS, hash, bh->b_blocknr, 1);
 	if (error) {
 		if (error == -EBUSY) {
-			ea_bdebug(bh, "already in cache");
+			ea_bdebug(bh, "already in cache (%d cache entries)",
+				atomic_read(&ext2_xattr_cache->c_entry_count));
 			error = 0;
 		}
 	} else

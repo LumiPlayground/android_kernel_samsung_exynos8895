@@ -199,8 +199,9 @@ skip_phy:
 	hcd->rsrc_len = resource_size(res);
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		err = irq;
+	if (!irq) {
+		dev_err(&pdev->dev, "Failed to get IRQ\n");
+		err = -ENODEV;
 		goto fail_io;
 	}
 
@@ -322,7 +323,7 @@ static struct platform_driver exynos_ehci_driver = {
 		.of_match_table = of_match_ptr(exynos_ehci_match),
 	}
 };
-static const struct ehci_driver_overrides exynos_overrides __initdata = {
+static const struct ehci_driver_overrides exynos_overrides __initconst = {
 	.extra_priv_size = sizeof(struct exynos_ehci_hcd),
 };
 

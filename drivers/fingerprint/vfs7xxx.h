@@ -16,7 +16,7 @@
 #ifndef VFS7XXX_H_
 #define VFS7XXX_H_
 
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 /* exynos8890 evt0 board don't support to SPI clock rate 13MHz under */
 #define SLOW_BAUD_RATE      13000000
 #define MAX_BAUD_RATE       13000000

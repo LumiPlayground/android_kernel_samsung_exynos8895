@@ -258,15 +258,15 @@ time with the option "mds=". The valid arguments for this option are:
 
 		It does not automatically disable SMT.
 
+  full,nosmt	The same as mds=full, with SMT disabled on vulnerable
+		CPUs.  This is the complete mitigation.
+
   off		Disables MDS mitigations completely.
 
   ============  =============================================================
 
-Not specifying this option is equivalent to "mds=full". For processors
-that are affected by both TAA (TSX Asynchronous Abort) and MDS,
-specifying just "mds=off" without an accompanying "tsx_async_abort=off"
-will have no effect as the same mitigation is used for both
-vulnerabilities.
+Not specifying this option is equivalent to "mds=full".
+
 
 Mitigation selection guide
 --------------------------

@@ -19,6 +19,7 @@
 
 #include <linux/pagemap.h>
 #include <linux/crypto.h>
+#include <crypto/skcipher.h>
 #include <asm/unaligned.h>
 
 #include <sdp/fs_handler.h>
@@ -46,7 +47,7 @@ static int ecryptfs_set_key(struct ecryptfs_crypt_stat *crypt_stat) {
 
 	mutex_lock(&crypt_stat->cs_tfm_mutex);
 	if (!(crypt_stat->flags & ECRYPTFS_KEY_SET)) {
-		rc = crypto_ablkcipher_setkey(crypt_stat->tfm, crypt_stat->key,
+		rc = crypto_skcipher_setkey(crypt_stat->tfm, crypt_stat->key,
 				crypt_stat->key_size);
 		if (rc) {
 			ecryptfs_printk(KERN_ERR,
@@ -92,7 +93,7 @@ void ecryptfs_clean_sdp_dek(struct ecryptfs_crypt_stat *crypt_stat)
 
 	if(crypt_stat->tfm) {
 	    mutex_lock(&crypt_stat->cs_tfm_mutex);
-	    rc = crypto_ablkcipher_setkey(crypt_stat->tfm, pseudo_key,
+	    rc = crypto_skcipher_setkey(crypt_stat->tfm, pseudo_key,
 	            PSEUDO_KEY_LEN);
         if (rc) {
             ecryptfs_printk(KERN_ERR,

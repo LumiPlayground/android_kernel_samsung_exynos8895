@@ -110,17 +110,14 @@ static void ns_giga_speed_fallback(struct phy_device *phydev, int mode)
 
 static void ns_10_base_t_hdx_loopack(struct phy_device *phydev, int disable)
 {
-	u16 lb_dis = BIT(1);
-
 	if (disable)
-		ns_exp_write(phydev, 0x1c0,
-			     ns_exp_read(phydev, 0x1c0) | lb_dis);
+		ns_exp_write(phydev, 0x1c0, ns_exp_read(phydev, 0x1c0) | 1);
 	else
 		ns_exp_write(phydev, 0x1c0,
-			     ns_exp_read(phydev, 0x1c0) & ~lb_dis);
+			     ns_exp_read(phydev, 0x1c0) & 0xfffe);
 
 	pr_debug("10BASE-T HDX loopback %s\n",
-		 (ns_exp_read(phydev, 0x1c0) & lb_dis) ? "off" : "on");
+		 (ns_exp_read(phydev, 0x1c0) & 0x0001) ? "off" : "on");
 }
 
 static int ns_config_init(struct phy_device *phydev)
@@ -143,7 +140,6 @@ static struct phy_driver dp83865_driver[] = { {
 	.read_status = genphy_read_status,
 	.ack_interrupt = ns_ack_interrupt,
 	.config_intr = ns_config_intr,
-	.driver = {.owner = THIS_MODULE,}
 } };
 
 module_phy_driver(dp83865_driver);

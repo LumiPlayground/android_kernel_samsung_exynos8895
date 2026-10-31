@@ -174,7 +174,7 @@ static int ibmveth_alloc_buffer_pool(struct ibmveth_buff_pool *pool)
 	if (!pool->free_map)
 		return -1;
 
-	pool->dma_addr = kmalloc(sizeof(dma_addr_t) * pool->size, GFP_KERNEL);
+	pool->dma_addr = kcalloc(pool->size, sizeof(dma_addr_t), GFP_KERNEL);
 	if (!pool->dma_addr) {
 		kfree(pool->free_map);
 		pool->free_map = NULL;
@@ -191,8 +191,6 @@ static int ibmveth_alloc_buffer_pool(struct ibmveth_buff_pool *pool)
 		pool->free_map = NULL;
 		return -1;
 	}
-
-	memset(pool->dma_addr, 0, sizeof(dma_addr_t) * pool->size);
 
 	for (i = 0; i < pool->size; ++i)
 		pool->free_map[i] = i;
@@ -768,7 +766,7 @@ static netdev_features_t ibmveth_fix_features(struct net_device *dev,
 	 */
 
 	if (!(features & NETIF_F_RXCSUM))
-		features &= ~NETIF_F_ALL_CSUM;
+		features &= ~NETIF_F_CSUM_MASK;
 
 	return features;
 }
@@ -933,7 +931,8 @@ static int ibmveth_set_features(struct net_device *dev,
 		rc1 = ibmveth_set_csum_offload(dev, rx_csum);
 		if (rc1 && !adapter->rx_csum)
 			dev->features =
-				features & ~(NETIF_F_ALL_CSUM | NETIF_F_RXCSUM);
+				features & ~(NETIF_F_CSUM_MASK |
+					     NETIF_F_RXCSUM);
 	}
 
 	if (large_send != adapter->large_send) {
@@ -1176,7 +1175,10 @@ map_failed:
 	if (!firmware_has_feature(FW_FEATURE_CMO))
 		netdev_err(netdev, "tx: unable to map xmit buffer\n");
 	adapter->tx_map_failed++;
-	skb_linearize(skb);
+	if (skb_linearize(skb)) {
+		netdev->stats.tx_dropped++;
+		goto out;
+	}
 	force_bounce = 1;
 	goto retry_bounce;
 }
@@ -1254,7 +1256,6 @@ static int ibmveth_poll(struct napi_struct *napi, int budget)
 			int offset = ibmveth_rxq_frame_offset(adapter);
 			int csum_good = ibmveth_rxq_csum_good(adapter);
 			int lrg_pkt = ibmveth_rxq_large_packet(adapter);
-			__sum16 iph_check = 0;
 
 			skb = ibmveth_rxq_get_buffer(adapter);
 
@@ -1306,17 +1307,7 @@ static int ibmveth_poll(struct napi_struct *napi, int budget)
 				}
 			}
 
-			/* PHYP without PLSO support places a -1 in the ip
-			 * checksum for large send frames.
-			 */
-			if (skb->protocol == cpu_to_be16(ETH_P_IP)) {
-				struct iphdr *iph = (struct iphdr *)skb->data;
-
-				iph_check = iph->check;
-			}
-
-			if ((length > netdev->mtu + ETH_HLEN) ||
-			    lrg_pkt || iph_check == 0xffff) {
+			if (length > netdev->mtu + ETH_HLEN) {
 				ibmveth_rx_mss_helper(skb, mss, lrg_pkt);
 				adapter->rx_large_packets++;
 			}
@@ -1566,7 +1557,7 @@ static int ibmveth_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	struct net_device *netdev;
 	struct ibmveth_adapter *adapter;
 	unsigned char *mac_addr_p;
-	__be32 *mcastFilterSize_p;
+	unsigned int *mcastFilterSize_p;
 	long ret;
 	unsigned long ret_attr;
 
@@ -1588,9 +1579,8 @@ static int ibmveth_probe(struct vio_dev *dev, const struct vio_device_id *id)
 		return -EINVAL;
 	}
 
-	mcastFilterSize_p = (__be32 *)vio_get_attribute(dev,
-							VETH_MCAST_FILTER_SIZE,
-							NULL);
+	mcastFilterSize_p = (unsigned int *)vio_get_attribute(dev,
+						VETH_MCAST_FILTER_SIZE, NULL);
 	if (!mcastFilterSize_p) {
 		dev_err(&dev->dev, "Can't find VETH_MCAST_FILTER_SIZE "
 			"attribute\n");
@@ -1607,7 +1597,7 @@ static int ibmveth_probe(struct vio_dev *dev, const struct vio_device_id *id)
 
 	adapter->vdev = dev;
 	adapter->netdev = netdev;
-	adapter->mcastFilterSize = be32_to_cpu(*mcastFilterSize_p);
+	adapter->mcastFilterSize = *mcastFilterSize_p;
 	adapter->pool_config = 0;
 
 	netif_napi_add(netdev, &adapter->napi, ibmveth_poll, 16);

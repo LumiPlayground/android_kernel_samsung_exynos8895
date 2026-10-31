@@ -62,15 +62,6 @@ static void adf_service_add(struct service_hndl *service)
 	mutex_unlock(&service_lock);
 }
 
-/**
- * adf_service_register() - Register acceleration service in the accel framework
- * @service:    Pointer to the service
- *
- * Function adds the acceleration service to the acceleration framework.
- * To be used by QAT device specific drivers.
- *
- * Return: 0 on success, error code otherwise.
- */
 int adf_service_register(struct service_hndl *service)
 {
 	service->init_status = 0;
@@ -78,7 +69,6 @@ int adf_service_register(struct service_hndl *service)
 	adf_service_add(service);
 	return 0;
 }
-EXPORT_SYMBOL_GPL(adf_service_register);
 
 static void adf_service_remove(struct service_hndl *service)
 {
@@ -87,15 +77,6 @@ static void adf_service_remove(struct service_hndl *service)
 	mutex_unlock(&service_lock);
 }
 
-/**
- * adf_service_unregister() - Unregister acceleration service from the framework
- * @service:    Pointer to the service
- *
- * Function remove the acceleration service from the acceleration framework.
- * To be used by QAT device specific drivers.
- *
- * Return: 0 on success, error code otherwise.
- */
 int adf_service_unregister(struct service_hndl *service)
 {
 	if (service->init_status || service->start_status) {
@@ -105,7 +86,6 @@ int adf_service_unregister(struct service_hndl *service)
 	adf_service_remove(service);
 	return 0;
 }
-EXPORT_SYMBOL_GPL(adf_service_unregister);
 
 /**
  * adf_dev_init() - Init data structures and services for the given accel device
@@ -121,7 +101,6 @@ int adf_dev_init(struct adf_accel_dev *accel_dev)
 	struct service_hndl *service;
 	struct list_head *list_itr;
 	struct adf_hw_device_data *hw_data = accel_dev->hw_device;
-	int ret;
 
 	if (!hw_data) {
 		dev_err(&GET_DEV(accel_dev),
@@ -188,9 +167,9 @@ int adf_dev_init(struct adf_accel_dev *accel_dev)
 	}
 
 	hw_data->enable_error_correction(accel_dev);
-	ret = hw_data->enable_vf2pf_comms(accel_dev);
+	hw_data->enable_vf2pf_comms(accel_dev);
 
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(adf_dev_init);
 
@@ -257,9 +236,9 @@ EXPORT_SYMBOL_GPL(adf_dev_start);
  * is shuting down.
  * To be used by QAT device specific drivers.
  *
- * Return: 0 on success, error code otherwise.
+ * Return: void
  */
-int adf_dev_stop(struct adf_accel_dev *accel_dev)
+void adf_dev_stop(struct adf_accel_dev *accel_dev)
 {
 	struct service_hndl *service;
 	struct list_head *list_itr;
@@ -267,9 +246,9 @@ int adf_dev_stop(struct adf_accel_dev *accel_dev)
 	int ret;
 
 	if (!adf_dev_started(accel_dev) &&
-	    !test_bit(ADF_STATUS_STARTING, &accel_dev->status)) {
-		return 0;
-	}
+	    !test_bit(ADF_STATUS_STARTING, &accel_dev->status))
+		return;
+
 	clear_bit(ADF_STATUS_STARTING, &accel_dev->status);
 	clear_bit(ADF_STATUS_STARTED, &accel_dev->status);
 
@@ -300,8 +279,6 @@ int adf_dev_stop(struct adf_accel_dev *accel_dev)
 		else
 			clear_bit(ADF_STATUS_AE_STARTED, &accel_dev->status);
 	}
-
-	return 0;
 }
 EXPORT_SYMBOL_GPL(adf_dev_stop);
 
@@ -350,6 +327,8 @@ void adf_dev_shutdown(struct adf_accel_dev *accel_dev)
 			clear_bit(accel_dev->accel_id, &service->init_status);
 	}
 
+	hw_data->disable_iov(accel_dev);
+
 	if (test_bit(ADF_STATUS_IRQ_ALLOCATED, &accel_dev->status)) {
 		hw_data->free_irq(accel_dev);
 		clear_bit(ADF_STATUS_IRQ_ALLOCATED, &accel_dev->status);
@@ -365,8 +344,8 @@ void adf_dev_shutdown(struct adf_accel_dev *accel_dev)
 	if (hw_data->exit_admin_comms)
 		hw_data->exit_admin_comms(accel_dev);
 
-	hw_data->disable_iov(accel_dev);
 	adf_cleanup_etr_data(accel_dev);
+	adf_dev_restore(accel_dev);
 }
 EXPORT_SYMBOL_GPL(adf_dev_shutdown);
 

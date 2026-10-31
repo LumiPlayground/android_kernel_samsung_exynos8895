@@ -105,9 +105,7 @@ unsigned int bts_calc_bw(enum bts_bw_type type, void *data);
 #define bts_calc_bw(a, b) do {} while(0)
 #endif
 
-#if defined(CONFIG_EXYNOS5422_BTS) || defined(CONFIG_EXYNOS5433_BTS)	\
-	|| defined(CONFIG_EXYNOS7420_BTS) || defined(CONFIG_EXYNOS7890_BTS) \
-	|| defined(CONFIG_EXYNOS8890_BTS)
+#if defined(CONFIG_EXYNOS5422_BTS) || defined(CONFIG_EXYNOS5433_BTS)	 || defined(CONFIG_EXYNOS7420_BTS) || defined(CONFIG_EXYNOS7890_BTS)
 enum bts_scen_type {
 	TYPE_MFC_UD_ENCODING = 0,
 	TYPE_MFC_UD_DECODING,
@@ -124,99 +122,8 @@ void bts_scen_update(enum bts_scen_type type, unsigned int val);
 #define bts_scen_update(a, b) do {} while(0)
 #endif
 
-#ifdef CONFIG_EXYNOS8890_BTS_OPTIMIZATION
-#define MULTI_FACTOR		(1 << 10)
-#define MIF_UTIL		70
-#define INT_UTIL		70
-#define BUS_WIDTH		16
 
-#define RGB_FACTOR		40
-#define RGB16_FACTOR		20
-#define YUV_FACTOR		15
-#define PIXEL_BUFFER		28000
-#define RGBBUF_FACTOR		20
-#define RGB16BUF_FACTOR		28
-#define YUVBUF_FACTOR		36
-#define PEAK_FACTOR		12
-#define FPS			60
-#define VBI_FACTOR		16000
-#define ROT_FACTOR		1
-
-enum bts_media_type {
-	TYPE_VPP0 = 0,
-	TYPE_VPP1,
-	TYPE_VPP2,
-	TYPE_VPP3,
-	TYPE_VPP4,
-	TYPE_VPP5,
-	TYPE_VPP6,
-	TYPE_VPP7,
-	TYPE_VPP8,
-	TYPE_CAM,
-	TYPE_MFC,
-	TYPE_G3D,
-};
-
-enum bts_ip_type {
-	IP_VPP = 0,
-	IP_CAM,
-	IP_MFC,
-	IP_NUM,
-};
-
-struct bts_hw {
-	enum bts_media_type *ip_type;
-};
-
-struct bts_vpp_info {
-	struct bts_hw	hw;
-	unsigned int	src_h;
-	unsigned int	src_w;
-	unsigned int	dst_h;
-	unsigned int	dst_w;
-	unsigned int	bpp;
-	bool		is_rotation;
-	unsigned int	mic;
-	unsigned int	pix_per_clk;
-	unsigned int	vclk;
-
-	u64		cur_bw;
-	u64		peak_bw;
-	u64		shw_cur_bw;
-	u64		shw_peak_bw;
-};
-
-#define to_bts_vpp(_hw)	container_of(_hw, struct bts_vpp_info, hw)
-
-#if defined(CONFIG_EXYNOS8890_BTS)
-void exynos_update_bw(enum bts_media_type ip_type,
-		unsigned int sum_bw, unsigned int peak_bw);
-void bts_ext_scenario_set(enum bts_media_type ip_type,
-				enum bts_scen_type scen_type, bool on);
-struct bts_vpp_info *exynos_bw_calc(enum bts_media_type ip_type, struct bts_hw *bw);
-int bts_update_gpu_mif(unsigned int freq);
-int bts_update_winlayer(unsigned int layers);
-#else
-#define exynos_update_bw(a, b, c) do {} while (0)
-#define bts_ext_scenario_set(a, b, c) do {} while (0)
-#define exynos_bw_calc(a, b) do {} while (0)
-#define bts_update_gpu_mif(a) do {} while (0)
-#define bts_update_winlayer(a) do {} while (0)
-#endif
-
-#else /* BTS_OPTIMIZATION */
-
-#if defined(CONFIG_EXYNOS8890_BTS)
-#define CAM_FACTOR		3
-#define MIF_UTIL		50
-#define MIF_UTIL2		55
-#define MIF_DECODING		828000	// TBD
-#define MIF_ENCODING		1068000	// TBD
-#define INT_UTIL		70
-#define BUS_WIDTH		16
-#define SIZE_FACTOR(a)		a = ((a) * 16 / 10)
-#define FULLHD_SRC		1920 * 1080
-#elif defined(CONFIG_EXYNOS7420_BTS) || defined(CONFIG_EXYNOS7890_BTS)
+#if   defined(CONFIG_EXYNOS7420_BTS) || defined(CONFIG_EXYNOS7890_BTS)
 #define DECON_NOCNT		10
 #define VPP_ROT			4
 #define CAM_FACTOR		3
@@ -259,22 +166,11 @@ enum vpp_bw_type {
 	BW_FULLHD_ROT,
 };
 
-#if defined(CONFIG_EXYNOS8890_BTS)
-void exynos_update_media_scenario(enum bts_media_type media_type,
-		unsigned int bw, int bw_type);
-int bts_update_gpu_mif(unsigned int freq);
-#else
 #define exynos_update_media_scenario(a, b, c) do {} while (0)
 #define bts_update_gpu_mif(a) do {} while (0)
-#endif
 
-#endif /* BTS_OPTIMIZATION */
 
-#if defined(CONFIG_EXYNOS8890_BTS)
-void exynos_bts_scitoken_setting(bool on);
-#else
 #define exynos_bts_scitoken_setting(a) do {} while (0)
-#endif
 
 #if defined(CONFIG_EXYNOS7420_BTS) || defined(CONFIG_EXYNOS7890_BTS)
 void exynos7_update_media_scenario(enum bts_media_type media_type,
@@ -289,9 +185,7 @@ int exynos7_bts_unregister_notifier(struct notifier_block *nb);
 #define exynos7_bts_unregister_notifier(a) do {} while (0)
 #endif
 
-#if defined(CONFIG_EXYNOS5430_BTS) || defined(CONFIG_EXYNOS5422_BTS)	\
-	|| defined(CONFIG_EXYNOS5433_BTS)|| defined(CONFIG_EXYNOS7420_BTS) \
-	|| defined(CONFIG_EXYNOS7890_BTS) || defined(CONFIG_EXYNOS8890_BTS)
+#if defined(CONFIG_EXYNOS5430_BTS) || defined(CONFIG_EXYNOS5422_BTS)	 || defined(CONFIG_EXYNOS5433_BTS)|| defined(CONFIG_EXYNOS7420_BTS)  || defined(CONFIG_EXYNOS7890_BTS)
 void bts_initialize(const char *pd_name, bool on);
 #else
 #define bts_initialize(a, b) do {} while (0)
@@ -313,6 +207,11 @@ void exynos5_bts_show_mo_status(void);
 void bts_otf_initialize(unsigned int id, bool on);
 #else
 #define bts_otf_initialize(a, b) do {} while (0)
+#endif
+
+/* Keep the original Exynos8895 BTS ID usable by the unchanged Mali driver. */
+#if defined(CONFIG_SOC_EXYNOS8895)
+#define BS_G3D_PERFORMANCE BS_G3D_PEFORMANCE
 #endif
 
 #endif

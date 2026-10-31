@@ -38,7 +38,7 @@ locations.
 Larger installations usually partition the system using cpusets into
 sections of nodes. Paul Jackson has equipped cpusets with the ability to
 move pages when a task is moved to another cpuset (See
-Documentation/cgroups/cpusets.txt).
+Documentation/cgroup-v1/cpusets.txt).
 Cpusets allows the automation of process locality. If a task is moved to
 a new cpuset then also all its pages are moved with it so that the
 performance of the process does not sink dramatically. Also the pages
@@ -181,11 +181,12 @@ After isolation, VM calls migratepage of driver with isolated page.
 The function of migratepage is to move content of the old page to new page
 and set up fields of struct page newpage. Keep in mind that you should
 indicate to the VM the oldpage is no longer movable via __ClearPageMovable()
-under page_lock if you migrated the oldpage successfully and returns 0.
-If driver cannot migrate the page at the moment, driver can return -EAGAIN.
-On -EAGAIN, VM will retry page migration in a short time because VM interprets
--EAGAIN as "temporal migration failure". On returning any error except -EAGAIN,
-VM will give up the page migration without retrying in this time.
+under page_lock if you migrated the oldpage successfully and returns
+MIGRATEPAGE_SUCCESS. If driver cannot migrate the page at the moment, driver
+can return -EAGAIN. On -EAGAIN, VM will retry page migration in a short time
+because VM interprets -EAGAIN as "temporal migration failure". On returning
+any error except -EAGAIN, VM will give up the page migration without retrying
+in this time.
 
 Driver shouldn't touch page.lru field VM using in the functions.
 

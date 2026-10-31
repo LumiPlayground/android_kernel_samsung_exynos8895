@@ -191,7 +191,8 @@ static inline struct tcf_proto __rcu **dsmark_find_tcf(struct Qdisc *sch,
 
 /* --------------------------- Qdisc operations ---------------------------- */
 
-static int dsmark_enqueue(struct sk_buff *skb, struct Qdisc *sch)
+static int dsmark_enqueue(struct sk_buff *skb, struct Qdisc *sch,
+			  struct sk_buff **to_free)
 {
 	struct dsmark_qdisc_data *p = qdisc_priv(sch);
 	int err;
@@ -240,7 +241,7 @@ static int dsmark_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 #ifdef CONFIG_NET_CLS_ACT
 		case TC_ACT_QUEUED:
 		case TC_ACT_STOLEN:
-			kfree_skb(skb);
+			__qdisc_drop(skb, to_free);
 			return NET_XMIT_SUCCESS | __NET_XMIT_STOLEN;
 
 		case TC_ACT_SHOT:
@@ -257,7 +258,7 @@ static int dsmark_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 		}
 	}
 
-	err = qdisc_enqueue(skb, p->q);
+	err = qdisc_enqueue(skb, p->q, to_free);
 	if (err != NET_XMIT_SUCCESS) {
 		if (net_xmit_drop_count(err))
 			qdisc_qstats_drop(sch);
@@ -270,7 +271,7 @@ static int dsmark_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 	return NET_XMIT_SUCCESS;
 
 drop:
-	qdisc_drop(skb, sch);
+	qdisc_drop(skb, sch, to_free);
 	return NET_XMIT_SUCCESS | __NET_XMIT_BYPASS;
 }
 
@@ -282,7 +283,7 @@ static struct sk_buff *dsmark_dequeue(struct Qdisc *sch)
 
 	pr_debug("%s(sch %p,[qdisc %p])\n", __func__, sch, p);
 
-	skb = p->q->ops->dequeue(p->q);
+	skb = qdisc_dequeue_peeked(p->q);
 	if (skb == NULL)
 		return NULL;
 
@@ -326,23 +327,6 @@ static struct sk_buff *dsmark_peek(struct Qdisc *sch)
 	return p->q->ops->peek(p->q);
 }
 
-static unsigned int dsmark_drop(struct Qdisc *sch)
-{
-	struct dsmark_qdisc_data *p = qdisc_priv(sch);
-	unsigned int len;
-
-	pr_debug("%s(sch %p,[qdisc %p])\n", __func__, sch, p);
-
-	if (p->q->ops->drop == NULL)
-		return 0;
-
-	len = p->q->ops->drop(p->q);
-	if (len)
-		sch->q.qlen--;
-
-	return len;
-}
-
 static int dsmark_init(struct Qdisc *sch, struct nlattr *opt)
 {
 	struct dsmark_qdisc_data *p = qdisc_priv(sch);
@@ -362,8 +346,6 @@ static int dsmark_init(struct Qdisc *sch, struct nlattr *opt)
 		goto errout;
 
 	err = -EINVAL;
-	if (!tb[TCA_DSMARK_INDICES])
-		goto errout;
 	indices = nla_get_u16(tb[TCA_DSMARK_INDICES]);
 
 	if (hweight32(indices) != 1)
@@ -404,8 +386,7 @@ static void dsmark_reset(struct Qdisc *sch)
 	struct dsmark_qdisc_data *p = qdisc_priv(sch);
 
 	pr_debug("%s(sch %p,[qdisc %p])\n", __func__, sch, p);
-	if (p->q)
-		qdisc_reset(p->q);
+	qdisc_reset(p->q);
 	sch->qstats.backlog = 0;
 	sch->q.qlen = 0;
 }
@@ -498,7 +479,6 @@ static struct Qdisc_ops dsmark_qdisc_ops __read_mostly = {
 	.enqueue	=	dsmark_enqueue,
 	.dequeue	=	dsmark_dequeue,
 	.peek		=	dsmark_peek,
-	.drop		=	dsmark_drop,
 	.init		=	dsmark_init,
 	.reset		=	dsmark_reset,
 	.destroy	=	dsmark_destroy,

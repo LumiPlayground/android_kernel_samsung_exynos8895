@@ -25,23 +25,11 @@
 
 #include <asm/asm-offsets.h>
 #include <asm/cpufeature.h>
+#include <asm/cputype.h>
 #include <asm/page.h>
 #include <asm/pgtable-hwdef.h>
-#include <asm/cputype.h>
 #include <asm/ptrace.h>
 #include <asm/thread_info.h>
-
-/*
- * Stack pushing/popping (register pairs only). Equivalent to store decrement
- * before, load increment after.
- */
-	.macro	push, xreg1, xreg2
-	stp	\xreg1, \xreg2, [sp, #-16]!
-	.endm
-
-	.macro	pop, xreg1, xreg2
-	ldp	\xreg1, \xreg2, [sp], #16
-	.endm
 
 /*
  * Enable and disable interrupts.
@@ -118,6 +106,24 @@
  */
 	.macro	smp_dmb, opt
 	dmb	\opt
+	.endm
+
+/*
+ * Value prediction barrier
+ */
+	.macro	csdb
+	hint	#20
+	.endm
+
+/*
+ * Sanitise a 64-bit bounded index wrt speculation, returning zero if out
+ * of bounds.
+ */
+	.macro	mask_nospec64, idx, limit, tmp
+	sub	\tmp, \idx, \limit
+	bic	\tmp, \tmp, \idx
+	and	\idx, \idx, \tmp, asr #63
+	csdb
 	.endm
 
 /*
@@ -260,7 +266,11 @@ lr	.req	x30		// link register
 	 */
 	.macro adr_this_cpu, dst, sym, tmp
 	adr_l	\dst, \sym
+alternative_if_not ARM64_HAS_VIRT_HOST_EXTN
 	mrs	\tmp, tpidr_el1
+alternative_else
+	mrs	\tmp, tpidr_el2
+alternative_endif
 	add	\dst, \dst, \tmp
 	.endm
 
@@ -271,7 +281,11 @@ lr	.req	x30		// link register
 	 */
 	.macro ldr_this_cpu dst, sym, tmp
 	adr_l	\dst, \sym
+alternative_if_not ARM64_HAS_VIRT_HOST_EXTN
 	mrs	\tmp, tpidr_el1
+alternative_else
+	mrs	\tmp, tpidr_el2
+alternative_endif
 	ldr	\dst, [\dst, \tmp]
 	.endm
 
@@ -288,11 +302,26 @@ lr	.req	x30		// link register
 	.macro	mmid, rd, rn
 	ldr	\rd, [\rn, #MM_CONTEXT_ID]
 	.endm
+/*
+ * read_ctr - read CTR_EL0. If the system has mismatched
+ * cache line sizes, provide the system wide safe value
+ * from arm64_ftr_reg_ctrel0.sys_val
+ */
+	.macro	read_ctr, reg
+alternative_if_not ARM64_MISMATCHED_CACHE_LINE_SIZE
+	mrs	\reg, ctr_el0			// read CTR
+	nop
+alternative_else
+	ldr_l	\reg, arm64_ftr_reg_ctrel0 + ARM64_FTR_SYSVAL
+alternative_endif
+	.endm
+
 
 /*
- * dcache_line_size - get the minimum D-cache line size from the CTR register.
+ * raw_dcache_line_size - get the minimum D-cache line size on this CPU
+ * from the CTR register.
  */
-	.macro	dcache_line_size, reg, tmp
+	.macro	raw_dcache_line_size, reg, tmp
 	mrs	\tmp, ctr_el0			// read CTR
 	ubfm	\tmp, \tmp, #16, #19		// cache line size encoding
 	mov	\reg, #4			// bytes per word
@@ -300,13 +329,34 @@ lr	.req	x30		// link register
 	.endm
 
 /*
- * icache_line_size - get the minimum I-cache line size from the CTR register.
+ * dcache_line_size - get the safe D-cache line size across all CPUs
  */
-	.macro	icache_line_size, reg, tmp
+	.macro	dcache_line_size, reg, tmp
+	read_ctr	\tmp
+	ubfm		\tmp, \tmp, #16, #19	// cache line size encoding
+	mov		\reg, #4		// bytes per word
+	lsl		\reg, \reg, \tmp	// actual cache line size
+	.endm
+
+/*
+ * raw_icache_line_size - get the minimum I-cache line size on this CPU
+ * from the CTR register.
+ */
+	.macro	raw_icache_line_size, reg, tmp
 	mrs	\tmp, ctr_el0			// read CTR
 	and	\tmp, \tmp, #0xf		// cache line size encoding
 	mov	\reg, #4			// bytes per word
 	lsl	\reg, \reg, \tmp		// actual cache line size
+	.endm
+
+/*
+ * icache_line_size - get the safe I-cache line size across all CPUs
+ */
+	.macro	icache_line_size, reg, tmp
+	read_ctr	\tmp
+	and		\tmp, \tmp, #0xf	// cache line size encoding
+	mov		\reg, #4		// bytes per word
+	lsl		\reg, \reg, \tmp	// actual cache line size
 	.endm
 
 /*
@@ -422,18 +472,15 @@ alternative_endif
 	movk	\reg, :abs_g0_nc:\val
 	.endm
 
-/*
- * Return the current thread_info.
- */
-	.macro	get_thread_info, rd
-	mrs	\rd, sp_el0
+	.macro	pte_to_phys, phys, pte
+	and	\phys, \pte, #(((1 << (48 - PAGE_SHIFT)) - 1) << PAGE_SHIFT)
 	.endm
 
 /*
  * Check the MIDR_EL1 of the current CPU for a given model and a range of
  * variant/revision. See asm/cputype.h for the macros used below.
  *
- *	model:		MIDR_CPU_PART of CPU
+ *	model:		MIDR_CPU_MODEL of CPU
  *	rv_min:		Minimum of MIDR_CPU_VAR_REV()
  *	rv_max:		Maximum of MIDR_CPU_VAR_REV()
  *	res:		Result register.
@@ -445,7 +492,7 @@ alternative_endif
 	.macro	cpu_midr_match model, rv_min, rv_max, res, tmp1, tmp2, tmp3
 	mrs		\res, midr_el1
 	mov_q		\tmp1, (MIDR_REVISION_MASK | MIDR_VARIANT_MASK)
-	mov_q		\tmp2, MIDR_CPU_PART_MASK
+	mov_q		\tmp2, MIDR_CPU_MODEL_MASK
 	and		\tmp3, \res, \tmp2	// Extract model
 	and		\tmp1, \res, \tmp1	// rev & variant
 	mov_q		\tmp2, \model
@@ -466,6 +513,10 @@ alternative_endif
 	and		\res, \res, \tmp2
 	.endif
 .Ldone\@:
+	.endm
+
+	.macro get_thread_info, rd
+	mrs \rd, sp_el0
 	.endm
 
 #endif	/* __ASM_ASSEMBLER_H */

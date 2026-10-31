@@ -255,6 +255,13 @@ static enum pin_config_param pcs_bias[] = {
 };
 
 /*
+ * This lock class tells lockdep that irqchip core that this single
+ * pinctrl can be in a different category than its parents, so it won't
+ * report false recursion.
+ */
+static struct lock_class_key pcs_lock_class;
+
+/*
  * REVISIT: Reads and writes could eventually use regmap or something
  * generic. But at least on omaps, some mux registers are performance
  * critical as they may need to be remuxed every time before and after
@@ -1071,7 +1078,7 @@ static int pcs_parse_pinconf(struct pcs_device *pcs, struct device_node *np,
 
 	/* If pinconf isn't supported, don't parse properties in below. */
 	if (!PCS_HAS_PINCONF)
-		return -ENOTSUPP;
+		return 0;
 
 	/* cacluate how much properties are supported in current node */
 	for (i = 0; i < ARRAY_SIZE(prop2); i++) {
@@ -1083,7 +1090,7 @@ static int pcs_parse_pinconf(struct pcs_device *pcs, struct device_node *np,
 			nconfs++;
 	}
 	if (!nconfs)
-		return -ENOTSUPP;
+		return 0;
 
 	func->conf = devm_kzalloc(pcs->dev,
 				  sizeof(struct pcs_conf_vals) * nconfs,
@@ -1196,12 +1203,9 @@ static int pcs_parse_one_pinctrl_entry(struct pcs_device *pcs,
 
 	if (PCS_HAS_PINCONF) {
 		res = pcs_parse_pinconf(pcs, np, function, map);
-		if (res == 0)
-			*num_maps = 2;
-		else if (res == -ENOTSUPP)
-			*num_maps = 1;
-		else
+		if (res)
 			goto free_pingroups;
+		*num_maps = 2;
 	} else {
 		*num_maps = 1;
 	}
@@ -1328,7 +1332,6 @@ static int pcs_parse_bits_in_pinctrl_entry(struct pcs_device *pcs,
 
 	if (PCS_HAS_PINCONF) {
 		dev_err(pcs->dev, "pinconf not supported\n");
-		res = -ENOTSUPP;
 		goto free_pingroups;
 	}
 
@@ -1488,10 +1491,7 @@ static void pcs_irq_free(struct pcs_device *pcs)
 static void pcs_free_resources(struct pcs_device *pcs)
 {
 	pcs_irq_free(pcs);
-
-	if (pcs->pctl)
-		pinctrl_unregister(pcs->pctl);
-
+	pinctrl_unregister(pcs->pctl);
 	pcs_free_funcs(pcs);
 	pcs_free_pingroups(pcs);
 }
@@ -1723,6 +1723,7 @@ static int pcs_irqdomain_map(struct irq_domain *d, unsigned int irq,
 	irq_set_chip_data(irq, pcs_soc);
 	irq_set_chip_and_handler(irq, &pcs->chip,
 				 handle_level_irq);
+	irq_set_lockdep_class(irq, &pcs_lock_class);
 	irq_set_noprobe(irq);
 
 	return 0;

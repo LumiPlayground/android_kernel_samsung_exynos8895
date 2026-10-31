@@ -169,7 +169,7 @@ config HARDENED_USERCOPY
 config HARDENED_USERCOPY_PAGESPAN
 	bool "Refuse to copy allocations that span multiple pages"
 	depends on HARDENED_USERCOPY
-	depends on !COMPILE_TEST
+	depends on EXPERT
 	help
 	  When a multi-page allocation is done without __GFP_COMP,
 	  hardened usercopy will reject attempts to copy it. There are,
@@ -181,6 +181,7 @@ source security/selinux/Kconfig
 source security/smack/Kconfig
 source security/tomoyo/Kconfig
 source security/apparmor/Kconfig
+source security/loadpin/Kconfig
 source security/yama/Kconfig
 source security/mstdrv/Kconfig
 
@@ -224,4 +225,3 @@ config DEFAULT_SECURITY
 	default "" if DEFAULT_SECURITY_DAC
 
 endmenu
-

@@ -21,23 +21,6 @@
 
 /**
  * kvm_s390_real_to_abs - convert guest real address to guest absolute address
- * @prefix - guest prefix
- * @gra - guest real address
- *
- * Returns the guest absolute address that corresponds to the passed guest real
- * address @gra of by applying the given prefix.
- */
-static inline unsigned long _kvm_s390_real_to_abs(u32 prefix, unsigned long gra)
-{
-	if (gra < 2 * PAGE_SIZE)
-		gra += prefix;
-	else if (gra >= prefix && gra < prefix + 2 * PAGE_SIZE)
-		gra -= prefix;
-	return gra;
-}
-
-/**
- * kvm_s390_real_to_abs - convert guest real address to guest absolute address
  * @vcpu - guest virtual cpu
  * @gra - guest real address
  *
@@ -47,7 +30,13 @@ static inline unsigned long _kvm_s390_real_to_abs(u32 prefix, unsigned long gra)
 static inline unsigned long kvm_s390_real_to_abs(struct kvm_vcpu *vcpu,
 						 unsigned long gra)
 {
-	return _kvm_s390_real_to_abs(kvm_s390_get_prefix(vcpu), gra);
+	unsigned long prefix  = kvm_s390_get_prefix(vcpu);
+
+	if (gra < 2 * PAGE_SIZE)
+		gra += prefix;
+	else if (gra >= prefix && gra < prefix + 2 * PAGE_SIZE)
+		gra -= prefix;
+	return gra;
 }
 
 /**
@@ -166,16 +155,22 @@ int read_guest_lc(struct kvm_vcpu *vcpu, unsigned long gra, void *data,
 	return kvm_read_guest(vcpu->kvm, gpa, data, len);
 }
 
+enum gacc_mode {
+	GACC_FETCH,
+	GACC_STORE,
+	GACC_IFETCH,
+};
+
 int guest_translate_address(struct kvm_vcpu *vcpu, unsigned long gva,
-			    ar_t ar, unsigned long *gpa, int write);
+			    ar_t ar, unsigned long *gpa, enum gacc_mode mode);
 int check_gva_range(struct kvm_vcpu *vcpu, unsigned long gva, ar_t ar,
-		    unsigned long length, int is_write);
+		    unsigned long length, enum gacc_mode mode);
 
 int access_guest(struct kvm_vcpu *vcpu, unsigned long ga, ar_t ar, void *data,
-		 unsigned long len, int write);
+		 unsigned long len, enum gacc_mode mode);
 
 int access_guest_real(struct kvm_vcpu *vcpu, unsigned long gra,
-		      void *data, unsigned long len, int write);
+		      void *data, unsigned long len, enum gacc_mode mode);
 
 /**
  * write_guest - copy data from kernel space to guest space
@@ -226,7 +221,7 @@ static inline __must_check
 int write_guest(struct kvm_vcpu *vcpu, unsigned long ga, ar_t ar, void *data,
 		unsigned long len)
 {
-	return access_guest(vcpu, ga, ar, data, len, 1);
+	return access_guest(vcpu, ga, ar, data, len, GACC_STORE);
 }
 
 /**
@@ -246,7 +241,27 @@ static inline __must_check
 int read_guest(struct kvm_vcpu *vcpu, unsigned long ga, ar_t ar, void *data,
 	       unsigned long len)
 {
-	return access_guest(vcpu, ga, ar, data, len, 0);
+	return access_guest(vcpu, ga, ar, data, len, GACC_FETCH);
+}
+
+/**
+ * read_guest_instr - copy instruction data from guest space to kernel space
+ * @vcpu: virtual cpu
+ * @data: destination address in kernel space
+ * @len: number of bytes to copy
+ *
+ * Copy @len bytes from the current psw address (guest space) to @data (kernel
+ * space).
+ *
+ * The behaviour of read_guest_instr is identical to read_guest, except that
+ * instruction data will be read from primary space when in home-space or
+ * address-space mode.
+ */
+static inline __must_check
+int read_guest_instr(struct kvm_vcpu *vcpu, void *data, unsigned long len)
+{
+	return access_guest(vcpu, vcpu->arch.sie_block->gpsw.addr, 0, data, len,
+			    GACC_IFETCH);
 }
 
 /**
@@ -345,5 +360,8 @@ void ipte_lock(struct kvm_vcpu *vcpu);
 void ipte_unlock(struct kvm_vcpu *vcpu);
 int ipte_lock_held(struct kvm_vcpu *vcpu);
 int kvm_s390_check_low_addr_prot_real(struct kvm_vcpu *vcpu, unsigned long gra);
+
+int kvm_s390_shadow_fault(struct kvm_vcpu *vcpu, struct gmap *shadow,
+			  unsigned long saddr);
 
 #endif /* __KVM_S390_GACCESS_H */

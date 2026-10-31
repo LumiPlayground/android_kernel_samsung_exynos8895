@@ -529,8 +529,8 @@ static int ad7746_write_raw(struct iio_dev *indio_dev,
 
 		val /= 338646;
 
-		chip->capdac[chan->channel][chan->differential] = (val > 0 ?
-			AD7746_CAPDAC_DACP(val) | AD7746_CAPDAC_DACEN : 0);
+		chip->capdac[chan->channel][chan->differential] = val > 0 ?
+			AD7746_CAPDAC_DACP(val) | AD7746_CAPDAC_DACEN : 0;
 
 		ret = i2c_smbus_write_byte_data(chip->client,
 			AD7746_REG_CAPDACA,
@@ -714,6 +714,7 @@ static int ad7746_probe(struct i2c_client *client,
 		indio_dev->num_channels = ARRAY_SIZE(ad7746_channels);
 	else
 		indio_dev->num_channels =  ARRAY_SIZE(ad7746_channels) - 2;
+	indio_dev->num_channels = ARRAY_SIZE(ad7746_channels);
 	indio_dev->modes = INDIO_DIRECT_MODE;
 
 	if (pdata) {

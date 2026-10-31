@@ -23,7 +23,6 @@
  * - BUS:    bus glue code, bus abstraction layer
  *
  * Compile Options
- * - CONFIG_USB_CHIPIDEA_DEBUG: enable debug facilities
  * - STALL_IN:  non-empty bulk-in pipes cannot be halted
  *              if defined mass storage compliance succeeds but with warnings
  *              => case 4: Hi >  Dn
@@ -71,7 +70,6 @@
 #include "udc.h"
 #include "bits.h"
 #include "host.h"
-#include "debug.h"
 #include "otg.h"
 #include "otg_fsm.h"
 
@@ -518,7 +516,7 @@ int hw_device_reset(struct ci_hdrc *ci)
 	return 0;
 }
 
-static irqreturn_t ci_irq_handler(int irq, void *data)
+static irqreturn_t ci_irq(int irq, void *data)
 {
 	struct ci_hdrc *ci = data;
 	irqreturn_t ret = IRQ_NONE;
@@ -571,15 +569,6 @@ static irqreturn_t ci_irq_handler(int irq, void *data)
 	return ret;
 }
 
-static void ci_irq(struct ci_hdrc *ci)
-{
-	unsigned long flags;
-
-	local_irq_save(flags);
-	ci_irq_handler(ci->irq, ci);
-	local_irq_restore(flags);
-}
-
 static int ci_vbus_notifier(struct notifier_block *nb, unsigned long event,
 			    void *ptr)
 {
@@ -593,7 +582,7 @@ static int ci_vbus_notifier(struct notifier_block *nb, unsigned long event,
 
 	vbus->changed = true;
 
-	ci_irq(ci);
+	ci_irq(ci->irq, ci);
 	return NOTIFY_DONE;
 }
 
@@ -610,7 +599,7 @@ static int ci_id_notifier(struct notifier_block *nb, unsigned long event,
 
 	id->changed = true;
 
-	ci_irq(ci);
+	ci_irq(ci->irq, ci);
 	return NOTIFY_DONE;
 }
 
@@ -665,53 +654,43 @@ static int ci_get_platdata(struct device *dev,
 	if (usb_get_maximum_speed(dev) == USB_SPEED_FULL)
 		platdata->flags |= CI_HDRC_FORCE_FULLSPEED;
 
-	if (of_find_property(dev->of_node, "phy-clkgate-delay-us", NULL))
-		of_property_read_u32(dev->of_node, "phy-clkgate-delay-us",
+	of_property_read_u32(dev->of_node, "phy-clkgate-delay-us",
 				     &platdata->phy_clkgate_delay_us);
 
 	platdata->itc_setting = 1;
-	if (of_find_property(dev->of_node, "itc-setting", NULL)) {
-		ret = of_property_read_u32(dev->of_node, "itc-setting",
-			&platdata->itc_setting);
-		if (ret) {
-			dev_err(dev,
-				"failed to get itc-setting\n");
-			return ret;
-		}
-	}
 
-	if (of_find_property(dev->of_node, "ahb-burst-config", NULL)) {
-		ret = of_property_read_u32(dev->of_node, "ahb-burst-config",
-			&platdata->ahb_burst_config);
-		if (ret) {
-			dev_err(dev,
-				"failed to get ahb-burst-config\n");
-			return ret;
-		}
+	of_property_read_u32(dev->of_node, "itc-setting",
+					&platdata->itc_setting);
+
+	ret = of_property_read_u32(dev->of_node, "ahb-burst-config",
+				&platdata->ahb_burst_config);
+	if (!ret) {
 		platdata->flags |= CI_HDRC_OVERRIDE_AHB_BURST;
+	} else if (ret != -EINVAL) {
+		dev_err(dev, "failed to get ahb-burst-config\n");
+		return ret;
 	}
 
-	if (of_find_property(dev->of_node, "tx-burst-size-dword", NULL)) {
-		ret = of_property_read_u32(dev->of_node, "tx-burst-size-dword",
-			&platdata->tx_burst_size);
-		if (ret) {
-			dev_err(dev,
-				"failed to get tx-burst-size-dword\n");
-			return ret;
-		}
+	ret = of_property_read_u32(dev->of_node, "tx-burst-size-dword",
+				&platdata->tx_burst_size);
+	if (!ret) {
 		platdata->flags |= CI_HDRC_OVERRIDE_TX_BURST;
+	} else if (ret != -EINVAL) {
+		dev_err(dev, "failed to get tx-burst-size-dword\n");
+		return ret;
 	}
 
-	if (of_find_property(dev->of_node, "rx-burst-size-dword", NULL)) {
-		ret = of_property_read_u32(dev->of_node, "rx-burst-size-dword",
-			&platdata->rx_burst_size);
-		if (ret) {
-			dev_err(dev,
-				"failed to get rx-burst-size-dword\n");
-			return ret;
-		}
+	ret = of_property_read_u32(dev->of_node, "rx-burst-size-dword",
+				&platdata->rx_burst_size);
+	if (!ret) {
 		platdata->flags |= CI_HDRC_OVERRIDE_RX_BURST;
+	} else if (ret != -EINVAL) {
+		dev_err(dev, "failed to get rx-burst-size-dword\n");
+		return ret;
 	}
+
+	if (of_find_property(dev->of_node, "non-zero-ttctrl-ttha", NULL))
+		platdata->flags |= CI_HDRC_SET_NON_ZERO_TTHA;
 
 	ext_id = ERR_PTR(-ENODEV);
 	ext_vbus = ERR_PTR(-ENODEV);
@@ -1032,7 +1011,7 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, ci);
-	ret = devm_request_irq(dev, ci->irq, ci_irq_handler, IRQF_SHARED,
+	ret = devm_request_irq(dev, ci->irq, ci_irq, IRQF_SHARED,
 			ci->platdata->name, ci);
 	if (ret)
 		goto stop;
@@ -1131,29 +1110,6 @@ static void ci_controller_suspend(struct ci_hdrc *ci)
 	enable_irq(ci->irq);
 }
 
-/*
- * Handle the wakeup interrupt triggered by extcon connector
- * We need to call ci_irq again for extcon since the first
- * interrupt (wakeup int) only let the controller be out of
- * low power mode, but not handle any interrupts.
- */
-static void ci_extcon_wakeup_int(struct ci_hdrc *ci)
-{
-	struct ci_hdrc_cable *cable_id, *cable_vbus;
-	u32 otgsc = hw_read_otgsc(ci, ~0);
-
-	cable_id = &ci->platdata->id_extcon;
-	cable_vbus = &ci->platdata->vbus_extcon;
-
-	if (!IS_ERR(cable_id->edev) && ci->is_otg &&
-		(otgsc & OTGSC_IDIE) && (otgsc & OTGSC_IDIS))
-		ci_irq(ci);
-
-	if (!IS_ERR(cable_vbus->edev) && ci->is_otg &&
-		(otgsc & OTGSC_BSVIE) && (otgsc & OTGSC_BSVIS))
-		ci_irq(ci);
-}
-
 static int ci_controller_resume(struct device *dev)
 {
 	struct ci_hdrc *ci = dev_get_drvdata(dev);
@@ -1180,7 +1136,6 @@ static int ci_controller_resume(struct device *dev)
 		enable_irq(ci->irq);
 		if (ci_otg_is_fsm_mode(ci))
 			ci_otg_fsm_wakeup_by_srp(ci);
-		ci_extcon_wakeup_int(ci);
 	}
 
 	return 0;

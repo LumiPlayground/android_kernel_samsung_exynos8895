@@ -533,7 +533,7 @@ static void haptic_enable(struct timed_output_dev *tout_dev, int value)
 	int duty = drvdata->duty;
 	int ret = 0;
 
-	flush_kthread_worker(&drvdata->kworker);
+	kthread_flush_worker(&drvdata->kworker);
 	ret = hrtimer_cancel(timer);
 
 	value = min_t(int, value, (int)pdata->max_timeout);
@@ -603,7 +603,7 @@ static enum hrtimer_restart haptic_timer_func(struct hrtimer *timer)
 
 	pr_info("%s\n", __func__);
 
-	queue_kthread_work(&drvdata->kworker, &drvdata->kwork);
+	kthread_queue_work(&drvdata->kworker, &drvdata->kwork);
 	return HRTIMER_NORESTART;
 }
 
@@ -836,7 +836,7 @@ static int max77865_haptic_probe(struct platform_device *pdev)
 	drvdata->intensity = 8000;
 	drvdata->duty = pdata->duty;
 
-	init_kthread_worker(&drvdata->kworker);
+	kthread_init_worker(&drvdata->kworker);
 	mutex_init(&drvdata->mutex);
 	kworker_task = kthread_run(kthread_worker_fn,
 		   &drvdata->kworker, "max77865_haptic");
@@ -846,7 +846,7 @@ static int max77865_haptic_probe(struct platform_device *pdev)
 		goto err_kthread;
 	}
 
-	init_kthread_work(&drvdata->kwork, haptic_work);
+	kthread_init_work(&drvdata->kwork, haptic_work);
 
 	drvdata->pwm = pwm_request(pdata->pwm_id, "vibrator");
 	if (IS_ERR(drvdata->pwm)) {
@@ -1018,7 +1018,7 @@ static int max77865_haptic_suspend(struct platform_device *pdev,
 		= platform_get_drvdata(pdev);
 
 //	motor_vdd_en(drvdata, false);
-	flush_kthread_worker(&drvdata->kworker);
+	kthread_flush_worker(&drvdata->kworker);
 	hrtimer_cancel(&drvdata->timer);
 	max77865_motor_boost_control(drvdata, BOOST_OFF);
 	return 0;

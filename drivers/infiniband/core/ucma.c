@@ -108,6 +108,7 @@ struct ucma_multicast {
 	int			events_reported;
 
 	u64			uid;
+	u8			join_state;
 	struct list_head	list;
 	struct sockaddr_storage	addr;
 };
@@ -318,7 +319,7 @@ static void ucma_removal_event_handler(struct rdma_cm_id *cm_id)
 		}
 	}
 	if (!event_found)
-		printk(KERN_ERR "ucma_removal_event_handler: warning: connect request event wasn't found\n");
+		pr_err("ucma_removal_event_handler: warning: connect request event wasn't found\n");
 }
 
 static int ucma_event_handler(struct rdma_cm_id *cm_id,
@@ -1295,12 +1296,12 @@ static ssize_t ucma_set_option(struct ucma_file *file, const char __user *inbuf,
 	if (copy_from_user(&cmd, inbuf, sizeof(cmd)))
 		return -EFAULT;
 
-	if (unlikely(cmd.optlen > KMALLOC_MAX_SIZE))
-		return -EINVAL;
-
 	ctx = ucma_get_ctx(file, cmd.id);
 	if (IS_ERR(ctx))
 		return PTR_ERR(ctx);
+
+	if (unlikely(cmd.optlen > KMALLOC_MAX_SIZE))
+		return -EINVAL;
 
 	optval = memdup_user((void __user *) (unsigned long) cmd.optval,
 			     cmd.optlen);
@@ -1347,12 +1348,20 @@ static ssize_t ucma_process_join(struct ucma_file *file,
 	struct ucma_multicast *mc;
 	struct sockaddr *addr;
 	int ret;
+	u8 join_state;
 
 	if (out_len < sizeof(resp))
 		return -ENOSPC;
 
 	addr = (struct sockaddr *) &cmd->addr;
-	if (cmd->reserved || (cmd->addr_size != rdma_addr_size(addr)))
+	if (cmd->addr_size != rdma_addr_size(addr))
+		return -EINVAL;
+
+	if (cmd->join_flags == RDMA_MC_JOIN_FLAG_FULLMEMBER)
+		join_state = BIT(FULLMEMBER_JOIN);
+	else if (cmd->join_flags == RDMA_MC_JOIN_FLAG_SENDONLY_FULLMEMBER)
+		join_state = BIT(SENDONLY_FULLMEMBER_JOIN);
+	else
 		return -EINVAL;
 
 	ctx = ucma_get_ctx(file, cmd->id);
@@ -1365,10 +1374,11 @@ static ssize_t ucma_process_join(struct ucma_file *file,
 		ret = -ENOMEM;
 		goto err1;
 	}
-
+	mc->join_state = join_state;
 	mc->uid = cmd->uid;
 	memcpy(&mc->addr, addr, cmd->addr_size);
-	ret = rdma_join_multicast(ctx->cm_id, (struct sockaddr *) &mc->addr, mc);
+	ret = rdma_join_multicast(ctx->cm_id, (struct sockaddr *)&mc->addr,
+				  join_state, mc);
 	if (ret)
 		goto err2;
 
@@ -1419,7 +1429,7 @@ static ssize_t ucma_join_ip_multicast(struct ucma_file *file,
 	if (!join_cmd.addr_size)
 		return -EINVAL;
 
-	join_cmd.reserved = 0;
+	join_cmd.join_flags = RDMA_MC_JOIN_FLAG_FULLMEMBER;
 	memcpy(&join_cmd.addr, &cmd.addr, join_cmd.addr_size);
 
 	return ucma_process_join(file, &join_cmd, out_len);
@@ -1673,7 +1683,8 @@ static int ucma_open(struct inode *inode, struct file *filp)
 	if (!file)
 		return -ENOMEM;
 
-	file->close_wq = create_singlethread_workqueue("ucma_close_id");
+	file->close_wq = alloc_ordered_workqueue("ucma_close_id",
+						 WQ_MEM_RECLAIM);
 	if (!file->close_wq) {
 		kfree(file);
 		return -ENOMEM;
@@ -1766,13 +1777,13 @@ static int __init ucma_init(void)
 
 	ret = device_create_file(ucma_misc.this_device, &dev_attr_abi_version);
 	if (ret) {
-		printk(KERN_ERR "rdma_ucm: couldn't create abi_version attr\n");
+		pr_err("rdma_ucm: couldn't create abi_version attr\n");
 		goto err1;
 	}
 
 	ucma_ctl_table_hdr = register_net_sysctl(&init_net, "net/rdma_ucm", ucma_ctl_table);
 	if (!ucma_ctl_table_hdr) {
-		printk(KERN_ERR "rdma_ucm: couldn't register sysctl paths\n");
+		pr_err("rdma_ucm: couldn't register sysctl paths\n");
 		ret = -ENOMEM;
 		goto err2;
 	}

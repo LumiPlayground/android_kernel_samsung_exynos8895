@@ -464,7 +464,7 @@ static const struct dev_pm_ops mcu_ipc_pm_ops = {
 static const struct of_device_id exynos_mcu_ipc_dt_match[] = {
 		{ .compatible = "samsung,exynos7580-mailbox", },
 		{ .compatible = "samsung,exynos7890-mailbox", },
-		{ .compatible = "samsung,exynos8890-mailbox", },
+
 		{ .compatible = "samsung,exynos7870-mailbox", },
 		{ .compatible = "samsung,exynos-shd-ipc-mailbox", },
 		{},

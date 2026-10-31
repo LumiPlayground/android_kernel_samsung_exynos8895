@@ -104,13 +104,15 @@ ENTRY(startup_32)
 	notl	%eax
 	andl	%eax, %ebx
 	cmpl	$LOAD_PHYSICAL_ADDR, %ebx
-	jae	1f
+	jge	1f
 #endif
 	movl	$LOAD_PHYSICAL_ADDR, %ebx
 1:
 
 	/* Target address to relocate to for decompression */
-	addl	$z_extract_offset, %ebx
+	movl	BP_init_size(%esi), %eax
+	subl	$_end, %eax
+	addl	%eax, %ebx
 
 /*
  * Prepare for entering 64 bit mode
@@ -132,7 +134,7 @@ ENTRY(startup_32)
 	/* Initialize Page tables to 0 */
 	leal	pgtable(%ebx), %edi
 	xorl	%eax, %eax
-	movl	$((4096*6)/4), %ecx
+	movl	$(BOOT_INIT_PGT_SIZE/4), %ecx
 	rep	stosl
 
 	/* Build Level 4 */
@@ -225,11 +227,6 @@ ENTRY(efi32_stub_entry)
 	leal	efi32_config(%ebp), %eax
 	movl	%eax, efi_config(%ebp)
 
-	/* Disable paging */
-	movl	%cr0, %eax
-	btrl	$X86_CR0_PG_BIT, %eax
-	movl	%eax, %cr0
-
 	jmp	startup_32
 ENDPROC(efi32_stub_entry)
 #endif
@@ -268,7 +265,7 @@ ENTRY(efi_pe_entry)
 	/*
 	 * Relocate efi_config->call().
 	 */
-	addq	%rbp, efi64_config+88(%rip)
+	addq	%rbp, efi64_config+32(%rip)
 
 	movq	%rax, %rdi
 	call	make_boot_params
@@ -288,7 +285,7 @@ handover_entry:
 	 * Relocate efi_config->call().
 	 */
 	movq	efi_config(%rip), %rax
-	addq	%rbp, 88(%rax)
+	addq	%rbp, 32(%rax)
 2:
 	movq	efi_config(%rip), %rdi
 	call	efi_main
@@ -337,13 +334,15 @@ preferred_addr:
 	notq	%rax
 	andq	%rax, %rbp
 	cmpq	$LOAD_PHYSICAL_ADDR, %rbp
-	jae	1f
+	jge	1f
 #endif
 	movq	$LOAD_PHYSICAL_ADDR, %rbp
 1:
 
 	/* Target address to relocate to for decompression */
-	leaq	z_extract_offset(%rbp), %rbx
+	movl	BP_init_size(%rsi), %ebx
+	subl	$_end, %ebx
+	addq	%rbp, %rbx
 
 	/* Set up the stack */
 	leaq	boot_stack_end(%rbx), %rsp
@@ -413,19 +412,16 @@ relocated:
 2:
 	
 /*
- * Do the decompression, and jump to the new kernel..
+ * Do the extraction, and jump to the new kernel..
  */
 	pushq	%rsi			/* Save the real mode argument */
-	movq	$z_run_size, %r9	/* size of kernel with .bss and .brk */
-	pushq	%r9
 	movq	%rsi, %rdi		/* real mode address */
 	leaq	boot_heap(%rip), %rsi	/* malloc area for uncompression */
 	leaq	input_data(%rip), %rdx  /* input_data */
 	movl	$z_input_len, %ecx	/* input_len */
 	movq	%rbp, %r8		/* output target address */
 	movq	$z_output_len, %r9	/* decompressed length, end of relocs */
-	call	decompress_kernel	/* returns kernel location in %rax */
-	popq	%r9
+	call	extract_kernel		/* returns kernel location in %rax */
 	popq	%rsi
 
 /*
@@ -461,14 +457,14 @@ efi_config:
 #ifdef CONFIG_EFI_MIXED
 	.global efi32_config
 efi32_config:
-	.fill	11,8,0
+	.fill	4,8,0
 	.quad	efi64_thunk
 	.byte	0
 #endif
 
 	.global efi64_config
 efi64_config:
-	.fill	11,8,0
+	.fill	4,8,0
 	.quad	efi_call
 	.byte	1
 #endif /* CONFIG_EFI_STUB */
@@ -490,4 +486,4 @@ boot_stack_end:
 	.section ".pgtable","a",@nobits
 	.balign 4096
 pgtable:
-	.fill 6*4096, 1, 0
+	.fill BOOT_PGT_SIZE, 1, 0

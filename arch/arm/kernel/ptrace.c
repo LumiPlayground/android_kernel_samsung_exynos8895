@@ -227,8 +227,8 @@ static struct undef_hook arm_break_hook = {
 };
 
 static struct undef_hook thumb_break_hook = {
-	.instr_mask	= 0xffffffff,
-	.instr_val	= 0x0000de01,
+	.instr_mask	= 0xffff,
+	.instr_val	= 0xde01,
 	.cpsr_mask	= PSR_T_BIT,
 	.cpsr_val	= PSR_T_BIT,
 	.fn		= break_trap,
@@ -943,6 +943,7 @@ asmlinkage int syscall_trace_enter(struct pt_regs *regs, int scno)
 	/* XXX: remove this once OABI gets fixed */
 	secure_computing_strict(current_thread_info()->syscall);
 #endif
+
 	/* Tracer or seccomp may have changed syscall. */
 	scno = current_thread_info()->syscall;
 

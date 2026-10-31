@@ -126,7 +126,7 @@ out:
 	return skb;
 }
 
-static struct genl_multicast_group dropmon_mcgrps[] = {
+static const struct genl_multicast_group dropmon_mcgrps[] = {
 	{ .name = "events", },
 };
 
@@ -159,7 +159,6 @@ static void sched_send_work(unsigned long _data)
 static void trace_drop_common(struct sk_buff *skb, void *location)
 {
 	struct net_dm_alert_msg *msg;
-	struct net_dm_drop_point *point;
 	struct nlmsghdr *nlh;
 	struct nlattr *nla;
 	int i;
@@ -178,13 +177,11 @@ static void trace_drop_common(struct sk_buff *skb, void *location)
 	nlh = (struct nlmsghdr *)dskb->data;
 	nla = genlmsg_data(nlmsg_data(nlh));
 	msg = nla_data(nla);
-	point = msg->points;
 	for (i = 0; i < msg->entries; i++) {
-		if (!memcmp(&location, &point->pc, sizeof(void *))) {
-			point->count++;
+		if (!memcmp(&location, msg->points[i].pc, sizeof(void *))) {
+			msg->points[i].count++;
 			goto out;
 		}
-		point++;
 	}
 	if (msg->entries == dm_hit_limit)
 		goto out;
@@ -193,8 +190,8 @@ static void trace_drop_common(struct sk_buff *skb, void *location)
 	 */
 	__nla_reserve_nohdr(dskb, sizeof(struct net_dm_drop_point));
 	nla->nla_len += NLA_ALIGN(sizeof(struct net_dm_drop_point));
-	memcpy(point->pc, &location, sizeof(void *));
-	point->count = 1;
+	memcpy(msg->points[msg->entries].pc, &location, sizeof(void *));
+	msg->points[msg->entries].count = 1;
 	msg->entries++;
 
 	if (!timer_pending(&data->send_timer)) {
@@ -211,7 +208,8 @@ static void trace_kfree_skb_hit(void *ignore, struct sk_buff *skb, void *locatio
 	trace_drop_common(skb, location);
 }
 
-static void trace_napi_poll_hit(void *ignore, struct napi_struct *napi)
+static void trace_napi_poll_hit(void *ignore, struct napi_struct *napi,
+				int work, int budget)
 {
 	struct dm_hw_stat_delta *new_stat;
 

@@ -712,10 +712,7 @@ static int hvfb_getmem(struct hv_device *hdev, struct fb_info *info)
 		goto err1;
 	}
 
-	/*
-	 * Map the VRAM cacheable for performance.
-	 */
-	fb_virt = ioremap_wc(par->mem->start, screen_fb_size);
+	fb_virt = ioremap(par->mem->start, screen_fb_size);
 	if (!fb_virt)
 		goto err2;
 
@@ -746,7 +743,7 @@ static int hvfb_getmem(struct hv_device *hdev, struct fb_info *info)
 err3:
 	iounmap(fb_virt);
 err2:
-	release_mem_region(par->mem->start, screen_fb_size);
+	vmbus_free_mmio(par->mem->start, screen_fb_size);
 	par->mem = NULL;
 err1:
 	if (!gen2vm)
@@ -761,7 +758,7 @@ static void hvfb_putmem(struct fb_info *info)
 	struct hvfb_par *par = info->par;
 
 	iounmap(info->screen_base);
-	release_mem_region(par->mem->start, screen_fb_size);
+	vmbus_free_mmio(par->mem->start, screen_fb_size);
 	par->mem = NULL;
 }
 

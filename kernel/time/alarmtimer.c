@@ -30,7 +30,6 @@
  * struct alarm_base - Alarm timer bases
  * @lock:		Lock for syncrhonized access to the base
  * @timerqueue:		Timerqueue head managing the list of events
- * @timer: 		hrtimer used to schedule events while running
  * @gettime:		Function to read the time correlating to the base
  * @base_clockid:	clockid for the base
  */
@@ -271,8 +270,24 @@ static int alarmtimer_suspend(struct device *dev)
 		__pm_wakeup_event(ws, MSEC_PER_SEC);
 	return ret;
 }
+
+static int alarmtimer_resume(struct device *dev)
+{
+	struct rtc_device *rtc;
+
+	rtc = alarmtimer_get_rtcdev();
+	if (rtc)
+		rtc_timer_cancel(rtc, &rtctimer);
+	return 0;
+}
+
 #else
 static int alarmtimer_suspend(struct device *dev)
+{
+	return 0;
+}
+
+static int alarmtimer_resume(struct device *dev)
 {
 	return 0;
 }
@@ -527,16 +542,14 @@ static int alarm_clock_get(clockid_t which_clock, struct timespec *tp)
 static int alarm_timer_create(struct k_itimer *new_timer)
 {
 	enum  alarmtimer_type type;
-	struct alarm_base *base;
 
 	if (!alarmtimer_get_rtcdev())
-		return -EOPNOTSUPP;
+		return -ENOTSUPP;
 
 	if (!capable(CAP_WAKE_ALARM))
 		return -EPERM;
 
 	type = clock2alarm(new_timer->it_clock);
-	base = &alarm_bases[type];
 	alarm_init(&new_timer->it.alarm.alarmtimer, type, alarm_handle_timer);
 	return 0;
 }
@@ -573,7 +586,7 @@ static void alarm_timer_get(struct k_itimer *timr,
 static int alarm_timer_del(struct k_itimer *timr)
 {
 	if (!rtcdev)
-		return -EOPNOTSUPP;
+		return -ENOTSUPP;
 
 	if (alarm_try_to_cancel(&timr->it.alarm.alarmtimer) < 0)
 		return TIMER_RETRY;
@@ -597,7 +610,7 @@ static int alarm_timer_set(struct k_itimer *timr, int flags,
 	ktime_t exp;
 
 	if (!rtcdev)
-		return -EOPNOTSUPP;
+		return -ENOTSUPP;
 
 	if (flags & ~TIMER_ABSTIME)
 		return -EINVAL;
@@ -759,7 +772,7 @@ static int alarm_timer_nsleep(const clockid_t which_clock, int flags,
 	struct restart_block *restart;
 
 	if (!alarmtimer_get_rtcdev())
-		return -EOPNOTSUPP;
+		return -ENOTSUPP;
 
 	if (flags & ~TIMER_ABSTIME)
 		return -EINVAL;
@@ -810,6 +823,7 @@ out:
 /* Suspend hook structures */
 static const struct dev_pm_ops alarmtimer_pm_ops = {
 	.suspend = alarmtimer_suspend,
+	.resume = alarmtimer_resume,
 };
 
 static struct platform_driver alarmtimer_driver = {

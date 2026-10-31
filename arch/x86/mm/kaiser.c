@@ -9,7 +9,6 @@
 #include <linux/spinlock.h>
 #include <linux/mm.h>
 #include <linux/uaccess.h>
-#include <linux/ftrace.h>
 #include <linux/cpu.h>
 
 #undef pr_fmt
@@ -22,6 +21,7 @@
 #include <asm/desc.h>
 #include <asm/cmdline.h>
 #include <asm/vsyscall.h>
+#include <asm/sections.h>
 
 int kaiser_enabled __read_mostly = 1;
 EXPORT_SYMBOL(kaiser_enabled);	/* for inlined TLB flush functions */
@@ -365,7 +365,7 @@ void __init kaiser_init(void)
 	kaiser_add_user_map_ptrs_early(__entry_text_start, __entry_text_end,
 				       __PAGE_KERNEL_RX);
 
-#ifdef CONFIG_FUNCTION_GRAPH_TRACER
+#if defined(CONFIG_FUNCTION_GRAPH_TRACER) || defined(CONFIG_KASAN)
 	kaiser_add_user_map_ptrs_early(__irqentry_text_start,
 				       __irqentry_text_end,
 				       __PAGE_KERNEL_RX);

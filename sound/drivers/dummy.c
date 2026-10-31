@@ -355,7 +355,7 @@ static void dummy_systimer_free(struct snd_pcm_substream *substream)
 	kfree(substream->runtime->private_data);
 }
 
-static struct dummy_timer_ops dummy_systimer_ops = {
+static const struct dummy_timer_ops dummy_systimer_ops = {
 	.create =	dummy_systimer_create,
 	.free =		dummy_systimer_free,
 	.prepare =	dummy_systimer_prepare,
@@ -482,7 +482,7 @@ static void dummy_hrtimer_free(struct snd_pcm_substream *substream)
 	kfree(dpcm);
 }
 
-static struct dummy_timer_ops dummy_hrtimer_ops = {
+static const struct dummy_timer_ops dummy_hrtimer_ops = {
 	.create =	dummy_hrtimer_create,
 	.free =		dummy_hrtimer_free,
 	.prepare =	dummy_hrtimer_prepare,
@@ -925,7 +925,7 @@ static void print_formats(struct snd_dummy *dummy,
 {
 	int i;
 
-	for (i = 0; i <= SNDRV_PCM_FORMAT_LAST; i++) {
+	for (i = 0; i < SNDRV_PCM_FORMAT_LAST; i++) {
 		if (dummy->pcm_hw.formats & (1ULL << i))
 			snd_iprintf(buffer, " %s", snd_pcm_format_name(i));
 	}

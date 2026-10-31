@@ -1381,6 +1381,7 @@ static unsigned int get_rx_coal(struct mv643xx_eth_private *mp)
 		temp = (val & 0x003fff00) >> 8;
 
 	temp *= 64000000;
+	temp += mp->t_clk / 2;
 	do_div(temp, mp->t_clk);
 
 	return (unsigned int)temp;
@@ -1417,6 +1418,7 @@ static unsigned int get_tx_coal(struct mv643xx_eth_private *mp)
 
 	temp = (rdlp(mp, TX_FIFO_URGENT_THRESHOLD) & 0x3fff0) >> 4;
 	temp *= 64000000;
+	temp += mp->t_clk / 2;
 	do_div(temp, mp->t_clk);
 
 	return (unsigned int)temp;
@@ -2973,6 +2975,22 @@ static void set_params(struct mv643xx_eth_private *mp,
 	mp->txq_count = pd->tx_queue_count ? : 1;
 }
 
+static int get_phy_mode(struct mv643xx_eth_private *mp)
+{
+	struct device *dev = mp->dev->dev.parent;
+	int iface = -1;
+
+	if (dev->of_node)
+		iface = of_get_phy_mode(dev->of_node);
+
+	/* Historical default if unspecified. We could also read/write
+	 * the interface state in the PSC1
+	 */
+	if (iface < 0)
+		iface = PHY_INTERFACE_MODE_GMII;
+	return iface;
+}
+
 static struct phy_device *phy_scan(struct mv643xx_eth_private *mp,
 				   int phy_addr)
 {
@@ -2999,7 +3017,7 @@ static struct phy_device *phy_scan(struct mv643xx_eth_private *mp,
 				"orion-mdio-mii", addr);
 
 		phydev = phy_connect(mp->dev, phy_id, mv643xx_eth_adjust_link,
-				PHY_INTERFACE_MODE_GMII);
+				     get_phy_mode(mp));
 		if (!IS_ERR(phydev)) {
 			phy_addr_set(mp, addr);
 			break;
@@ -3095,6 +3113,7 @@ static int mv643xx_eth_probe(struct platform_device *pdev)
 	if (!dev)
 		return -ENOMEM;
 
+	SET_NETDEV_DEV(dev, &pdev->dev);
 	mp = netdev_priv(dev);
 	platform_set_drvdata(pdev, mp);
 
@@ -3134,11 +3153,11 @@ static int mv643xx_eth_probe(struct platform_device *pdev)
 	if (pd->phy_node) {
 		mp->phy = of_phy_connect(mp->dev, pd->phy_node,
 					 mv643xx_eth_adjust_link, 0,
-					 PHY_INTERFACE_MODE_GMII);
+					 get_phy_mode(mp));
 		if (!mp->phy)
 			err = -ENODEV;
 		else
-			phy_addr_set(mp, mp->phy->addr);
+			phy_addr_set(mp, mp->phy->mdio.addr);
 	} else if (pd->phy_addr != MV643XX_ETH_PHY_NONE) {
 		mp->phy = phy_scan(mp, pd->phy_addr);
 
@@ -3191,8 +3210,6 @@ static int mv643xx_eth_probe(struct platform_device *pdev)
 
 	dev->priv_flags |= IFF_UNICAST_FLT;
 	dev->gso_max_segs = MV643XX_MAX_TSO_SEGS;
-
-	SET_NETDEV_DEV(dev, &pdev->dev);
 
 	if (mp->shared->win_protect)
 		wrl(mp, WINDOW_PROTECT(mp->port_num), mp->shared->win_protect);
@@ -3262,25 +3279,20 @@ static struct platform_driver mv643xx_eth_driver = {
 	},
 };
 
+static struct platform_driver * const drivers[] = {
+	&mv643xx_eth_shared_driver,
+	&mv643xx_eth_driver,
+};
+
 static int __init mv643xx_eth_init_module(void)
 {
-	int rc;
-
-	rc = platform_driver_register(&mv643xx_eth_shared_driver);
-	if (!rc) {
-		rc = platform_driver_register(&mv643xx_eth_driver);
-		if (rc)
-			platform_driver_unregister(&mv643xx_eth_shared_driver);
-	}
-
-	return rc;
+	return platform_register_drivers(drivers, ARRAY_SIZE(drivers));
 }
 module_init(mv643xx_eth_init_module);
 
 static void __exit mv643xx_eth_cleanup_module(void)
 {
-	platform_driver_unregister(&mv643xx_eth_driver);
-	platform_driver_unregister(&mv643xx_eth_shared_driver);
+	platform_unregister_drivers(drivers, ARRAY_SIZE(drivers));
 }
 module_exit(mv643xx_eth_cleanup_module);
 

@@ -15,10 +15,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
  * specificly written as a driver for the speakup screenreview
  * s not a general device driver.
  */
@@ -51,7 +47,7 @@ static unsigned char get_index(void);
 static int in_escape;
 static int is_flushing;
 
-static DEFINE_SPINLOCK(flush_lock);
+static spinlock_t flush_lock;
 static DECLARE_WAIT_QUEUE_HEAD(flush);
 
 static struct var_t vars[] = {

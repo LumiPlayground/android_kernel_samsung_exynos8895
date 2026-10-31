@@ -296,7 +296,7 @@ int fimc_is_hw_3aa_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_m
 			} else {
 				info_hw("starting flush ddk works for %s...",
 					hw_3aa->lib_support->task_taaisp[i].task->comm);
-				flush_kthread_worker(&hw_3aa->lib_support->task_taaisp[i].worker);
+				kthread_flush_worker(&hw_3aa->lib_support->task_taaisp[i].worker);
 				pr_cont(" done!\n");
 			}
 		}

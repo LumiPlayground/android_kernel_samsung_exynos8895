@@ -87,11 +87,6 @@ static int skb_to_mamac(const struct sk_buff *skb, struct mbo *mbo)
 	unsigned int payload_len = skb->len - ETH_HLEN;
 	unsigned int mdp_len = payload_len + MDP_HDR_LEN;
 
-	if (mdp_len < skb->len) {
-		pr_err("drop: too large packet! (%u)\n", skb->len);
-		return -EINVAL;
-	}
-
 	if (mbo->buffer_length < mdp_len) {
 		pr_err("drop: too small buffer! (%d for %d)\n",
 		       mbo->buffer_length, mdp_len);
@@ -138,11 +133,6 @@ static int skb_to_mep(const struct sk_buff *skb, struct mbo *mbo)
 {
 	u8 *buff = mbo->virt_address;
 	unsigned int mep_len = skb->len + MEP_HDR_LEN;
-
-	if (mep_len < skb->len) {
-		pr_err("drop: too large packet! (%u)\n", skb->len);
-		return -EINVAL;
-	}
 
 	if (mbo->buffer_length < mep_len) {
 		pr_err("drop: too small buffer! (%d for %d)\n",
@@ -308,15 +298,16 @@ static struct net_dev_context *get_net_dev_context(
 	struct most_interface *iface)
 {
 	struct net_dev_context *nd, *tmp;
+	unsigned long flags;
 
-	spin_lock(&list_lock);
+	spin_lock_irqsave(&list_lock, flags);
 	list_for_each_entry_safe(nd, tmp, &net_devices, list) {
 		if (nd->iface == iface) {
-			spin_unlock(&list_lock);
+			spin_unlock_irqrestore(&list_lock, flags);
 			return nd;
 		}
 	}
-	spin_unlock(&list_lock);
+	spin_unlock_irqrestore(&list_lock, flags);
 	return NULL;
 }
 
@@ -326,6 +317,7 @@ static int aim_probe_channel(struct most_interface *iface, int channel_idx,
 {
 	struct net_dev_context *nd;
 	struct net_dev_channel *ch;
+	unsigned long flags;
 
 	if (!iface)
 		return -EINVAL;
@@ -342,9 +334,9 @@ static int aim_probe_channel(struct most_interface *iface, int channel_idx,
 
 		nd->iface = iface;
 
-		spin_lock(&list_lock);
+		spin_lock_irqsave(&list_lock, flags);
 		list_add(&nd->list, &net_devices);
-		spin_unlock(&list_lock);
+		spin_unlock_irqrestore(&list_lock, flags);
 	}
 
 	ch = ccfg->direction == MOST_CH_TX ? &nd->tx : &nd->rx;
@@ -387,6 +379,7 @@ static int aim_disconnect_channel(struct most_interface *iface,
 {
 	struct net_dev_context *nd;
 	struct net_dev_channel *ch;
+	unsigned long flags;
 
 	nd = get_net_dev_context(iface);
 	if (!nd)
@@ -408,9 +401,9 @@ static int aim_disconnect_channel(struct most_interface *iface,
 	most_net_rm_netdev_safe(nd);
 
 	if (!nd->rx.linked && !nd->tx.linked) {
-		spin_lock(&list_lock);
+		spin_lock_irqsave(&list_lock, flags);
 		list_del(&nd->list);
-		spin_unlock(&list_lock);
+		spin_unlock_irqrestore(&list_lock, flags);
 		kfree(nd);
 	}
 
@@ -441,6 +434,7 @@ static int aim_rx_data(struct mbo *mbo)
 	u32 len = mbo->processed_length;
 	struct sk_buff *skb;
 	struct net_device *dev;
+	unsigned int skb_len;
 
 	nd = get_net_dev_context(mbo->ifp);
 	if (!nd || !nd->channels_opened || nd->rx.ch_id != mbo->hdm_channel_id)
@@ -492,9 +486,13 @@ static int aim_rx_data(struct mbo *mbo)
 
 	memcpy(skb_put(skb, len), buf, len);
 	skb->protocol = eth_type_trans(skb, dev);
-	dev->stats.rx_packets++;
-	dev->stats.rx_bytes += skb->len;
-	netif_rx(skb);
+	skb_len = skb->len;
+	if (netif_rx(skb) == NET_RX_SUCCESS) {
+		dev->stats.rx_packets++;
+		dev->stats.rx_bytes += skb_len;
+	} else {
+		dev->stats.rx_dropped++;
+	}
 
 out:
 	most_put_mbo(mbo);
@@ -519,20 +517,21 @@ static int __init most_net_init(void)
 static void __exit most_net_exit(void)
 {
 	struct net_dev_context *nd, *tmp;
+	unsigned long flags;
 
-	spin_lock(&list_lock);
+	spin_lock_irqsave(&list_lock, flags);
 	list_for_each_entry_safe(nd, tmp, &net_devices, list) {
 		list_del(&nd->list);
-		spin_unlock(&list_lock);
+		spin_unlock_irqrestore(&list_lock, flags);
 		/*
 		 * do not call most_stop_channel() here, because channels are
 		 * going to be closed in ndo_stop() after unregister_netdev()
 		 */
 		most_net_rm_netdev_safe(nd);
 		kfree(nd);
-		spin_lock(&list_lock);
+		spin_lock_irqsave(&list_lock, flags);
 	}
-	spin_unlock(&list_lock);
+	spin_unlock_irqrestore(&list_lock, flags);
 
 	most_deregister_aim(&aim);
 	pr_info("most_net_exit()\n");

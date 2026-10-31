@@ -29,7 +29,6 @@
 #include <net/flow.h>
 #include <net/inet_sock.h>
 #include <net/ip_fib.h>
-#include <net/l3mdev.h>
 #include <linux/in_route.h>
 #include <linux/rtnetlink.h>
 #include <linux/rcupdate.h>
@@ -287,15 +286,6 @@ static inline struct rtable *ip_route_connect(struct flowi4 *fl4,
 	ip_route_connect_init(fl4, dst, src, tos, oif, protocol,
 			      sport, dport, sk);
 
-	if (!src && oif) {
-		int rc;
-
-		rc = l3mdev_get_saddr(net, oif, fl4);
-		if (rc < 0)
-			return ERR_PTR(rc);
-
-		src = fl4->saddr;
-	}
 	if (!dst || !src) {
 		rt = __ip_route_output_key(net, fl4);
 		if (IS_ERR(rt))
@@ -327,21 +317,21 @@ static inline struct rtable *ip_route_newports(struct flowi4 *fl4, struct rtable
 
 static inline int inet_iif(const struct sk_buff *skb)
 {
-	int iif = skb_rtable(skb)->rt_iif;
+	struct rtable *rt = skb_rtable(skb);
 
-	if (iif)
-		return iif;
+	if (rt && rt->rt_iif)
+		return rt->rt_iif;
+
 	return skb->skb_iif;
 }
-
-extern int sysctl_ip_default_ttl;
 
 static inline int ip4_dst_hoplimit(const struct dst_entry *dst)
 {
 	int hoplimit = dst_metric_raw(dst, RTAX_HOPLIMIT);
+	struct net *net = dev_net(dst->dev);
 
 	if (hoplimit == 0)
-		hoplimit = sysctl_ip_default_ttl;
+		hoplimit = net->ipv4.sysctl_ip_default_ttl;
 	return hoplimit;
 }
 

@@ -1761,8 +1761,7 @@ static int snd_rme9652_free(struct snd_rme9652 *rme9652)
 	if (rme9652->port)
 		pci_release_regions(rme9652->pci);
 
-	if (pci_is_enabled(rme9652->pci))
-		pci_disable_device(rme9652->pci);
+	pci_disable_device(rme9652->pci);
 	return 0;
 }
 
@@ -2371,7 +2370,7 @@ static int snd_rme9652_capture_release(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static struct snd_pcm_ops snd_rme9652_playback_ops = {
+static const struct snd_pcm_ops snd_rme9652_playback_ops = {
 	.open =		snd_rme9652_playback_open,
 	.close =	snd_rme9652_playback_release,
 	.ioctl =	snd_rme9652_ioctl,
@@ -2383,7 +2382,7 @@ static struct snd_pcm_ops snd_rme9652_playback_ops = {
 	.silence =	snd_rme9652_hw_silence,
 };
 
-static struct snd_pcm_ops snd_rme9652_capture_ops = {
+static const struct snd_pcm_ops snd_rme9652_capture_ops = {
 	.open =		snd_rme9652_capture_open,
 	.close =	snd_rme9652_capture_release,
 	.ioctl =	snd_rme9652_ioctl,

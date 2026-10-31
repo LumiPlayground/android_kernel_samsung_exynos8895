@@ -479,7 +479,7 @@ static int rsc_parse(struct cache_detail *cd,
 			kgid = make_kgid(&init_user_ns, id);
 			if (!gid_valid(kgid))
 				goto out;
-			GROUP_AT(rsci.cred.cr_group_info, i) = kgid;
+			rsci.cred.cr_group_info->gid[i] = kgid;
 		}
 		groups_sort(rsci.cred.cr_group_info);
 
@@ -719,30 +719,37 @@ gss_write_null_verf(struct svc_rqst *rqstp)
 static int
 gss_write_verf(struct svc_rqst *rqstp, struct gss_ctx *ctx_id, u32 seq)
 {
-	__be32			xdr_seq;
+	__be32			*xdr_seq;
 	u32			maj_stat;
 	struct xdr_buf		verf_data;
 	struct xdr_netobj	mic;
 	__be32			*p;
 	struct kvec		iov;
+	int err = -1;
 
 	svc_putnl(rqstp->rq_res.head, RPC_AUTH_GSS);
-	xdr_seq = htonl(seq);
+	xdr_seq = kmalloc(4, GFP_KERNEL);
+	if (!xdr_seq)
+		return -1;
+	*xdr_seq = htonl(seq);
 
-	iov.iov_base = &xdr_seq;
-	iov.iov_len = sizeof(xdr_seq);
+	iov.iov_base = xdr_seq;
+	iov.iov_len = 4;
 	xdr_buf_from_iov(&iov, &verf_data);
 	p = rqstp->rq_res.head->iov_base + rqstp->rq_res.head->iov_len;
 	mic.data = (u8 *)(p + 1);
 	maj_stat = gss_get_mic(ctx_id, &verf_data, &mic);
 	if (maj_stat != GSS_S_COMPLETE)
-		return -1;
+		goto out;
 	*p++ = htonl(mic.len);
 	memset((u8 *)p + mic.len, 0, round_up_to_quad(mic.len) - mic.len);
 	p += XDR_QUADLEN(mic.len);
 	if (!xdr_ressize_check(rqstp, p))
-		return -1;
-	return 0;
+		goto out;
+	err = 0;
+out:
+	kfree(xdr_seq);
+	return err;
 }
 
 struct gss_domain {
@@ -772,7 +779,7 @@ u32 svcauth_gss_flavor(struct auth_domain *dom)
 
 EXPORT_SYMBOL_GPL(svcauth_gss_flavor);
 
-struct auth_domain *
+int
 svcauth_gss_register_pseudoflavor(u32 pseudoflavor, char * name)
 {
 	struct gss_domain	*new;
@@ -789,23 +796,21 @@ svcauth_gss_register_pseudoflavor(u32 pseudoflavor, char * name)
 	new->h.flavour = &svcauthops_gss;
 	new->pseudoflavor = pseudoflavor;
 
+	stat = 0;
 	test = auth_domain_lookup(name, &new->h);
-	if (test != &new->h) {
-		pr_warn("svc: duplicate registration of gss pseudo flavour %s.\n",
-			name);
-		stat = -EADDRINUSE;
+	if (test != &new->h) { /* Duplicate registration */
 		auth_domain_put(test);
-		goto out_free_name;
+		kfree(new->h.name);
+		goto out_free_dom;
 	}
-	return test;
+	return 0;
 
-out_free_name:
-	kfree(new->h.name);
 out_free_dom:
 	kfree(new);
 out:
-	return ERR_PTR(stat);
+	return stat;
 }
+
 EXPORT_SYMBOL_GPL(svcauth_gss_register_pseudoflavor);
 
 static inline int
@@ -1175,7 +1180,6 @@ static int gss_proxy_save_rsc(struct cache_detail *cd,
 		dprintk("RPC:       No creds found!\n");
 		goto out;
 	} else {
-		struct timespec64 boot;
 
 		/* steal creds */
 		rsci.cred = ud->creds;
@@ -1196,9 +1200,6 @@ static int gss_proxy_save_rsc(struct cache_detail *cd,
 						&expiry, GFP_KERNEL);
 		if (status)
 			goto out;
-
-		getboottime64(&boot);
-		expiry -= boot.tv_sec;
 	}
 
 	rsci.h.expiry_time = expiry;
@@ -1238,8 +1239,9 @@ static int svcauth_gss_proxy_init(struct svc_rqst *rqstp,
 	if (status)
 		goto out;
 
-	dprintk("RPC:       svcauth_gss: gss major status = %d\n",
-			ud.major_status);
+	dprintk("RPC:       svcauth_gss: gss major status = %d "
+			"minor status = %d\n",
+			ud.major_status, ud.minor_status);
 
 	switch (ud.major_status) {
 	case GSS_S_CONTINUE_NEEDED:
@@ -1547,7 +1549,7 @@ complete:
 	ret = SVC_COMPLETE;
 	goto out;
 drop:
-	ret = SVC_DROP;
+	ret = SVC_CLOSE;
 out:
 	if (rsci)
 		cache_put(&rsci->h, sn->rsc_cache);
@@ -1697,14 +1699,11 @@ static int
 svcauth_gss_release(struct svc_rqst *rqstp)
 {
 	struct gss_svc_data *gsd = (struct gss_svc_data *)rqstp->rq_auth_data;
-	struct rpc_gss_wire_cred *gc;
+	struct rpc_gss_wire_cred *gc = &gsd->clcred;
 	struct xdr_buf *resbuf = &rqstp->rq_res;
 	int stat = -EINVAL;
 	struct sunrpc_net *sn = net_generic(SVC_NET(rqstp), sunrpc_net_id);
 
-	if (!gsd)
-		goto out;
-	gc = &gsd->clcred;
 	if (gc->gc_proc != RPC_GSS_PROC_DATA)
 		goto out;
 	/* Release can be called twice, but we only wrap once. */
@@ -1745,10 +1744,10 @@ out_err:
 	if (rqstp->rq_cred.cr_group_info)
 		put_group_info(rqstp->rq_cred.cr_group_info);
 	rqstp->rq_cred.cr_group_info = NULL;
-	if (gsd && gsd->rsci) {
+	if (gsd->rsci)
 		cache_put(&gsd->rsci->h, sn->rsc_cache);
-		gsd->rsci = NULL;
-	}
+	gsd->rsci = NULL;
+
 	return stat;
 }
 
@@ -1845,7 +1844,7 @@ gss_svc_init_net(struct net *net)
 		goto out2;
 	return 0;
 out2:
-	rsi_cache_destroy_net(net);
+	destroy_use_gss_proxy_proc_entry(net);
 out1:
 	rsc_cache_destroy_net(net);
 	return rv;

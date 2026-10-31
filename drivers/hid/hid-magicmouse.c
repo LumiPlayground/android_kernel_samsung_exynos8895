@@ -451,12 +451,6 @@ static int magicmouse_setup_input(struct input_dev *input, struct hid_device *hd
 		__set_bit(MSC_RAW, input->mscbit);
 	}
 
-	/*
-	 * hid-input may mark device as using autorepeat, but neither
-	 * the trackpad, nor the mouse actually want it.
-	 */
-	__clear_bit(EV_REP, input->evbit);
-
 	return 0;
 }
 
@@ -499,7 +493,8 @@ static int magicmouse_input_configured(struct hid_device *hdev,
 static int magicmouse_probe(struct hid_device *hdev,
 	const struct hid_device_id *id)
 {
-	__u8 feature[] = { 0xd7, 0x01 };
+	const u8 feature[] = { 0xd7, 0x01 };
+	u8 *buf;
 	struct magicmouse_sc *msc;
 	struct hid_report *report;
 	int ret;
@@ -550,6 +545,12 @@ static int magicmouse_probe(struct hid_device *hdev,
 	}
 	report->size = 6;
 
+	buf = kmemdup(feature, sizeof(feature), GFP_KERNEL);
+	if (!buf) {
+		ret = -ENOMEM;
+		goto err_stop_hw;
+	}
+
 	/*
 	 * Some devices repond with 'invalid report id' when feature
 	 * report switching it into multitouch mode is sent to it.
@@ -558,8 +559,9 @@ static int magicmouse_probe(struct hid_device *hdev,
 	 * but there seems to be no other way of switching the mode.
 	 * Thus the super-ugly hacky success check below.
 	 */
-	ret = hid_hw_raw_request(hdev, feature[0], feature, sizeof(feature),
+	ret = hid_hw_raw_request(hdev, buf[0], buf, sizeof(feature),
 				HID_FEATURE_REPORT, HID_REQ_SET_REPORT);
+	kfree(buf);
 	if (ret != -EIO && ret != sizeof(feature)) {
 		hid_err(hdev, "unable to request touch data (%d)\n", ret);
 		goto err_stop_hw;

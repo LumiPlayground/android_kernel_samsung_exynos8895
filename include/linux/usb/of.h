@@ -7,16 +7,26 @@
 #ifndef __LINUX_USB_OF_H
 #define __LINUX_USB_OF_H
 
+struct device;
+unsigned int of_usb_get_suspend_clk_freq(struct device *dev);
+
 #include <linux/usb/ch9.h>
 #include <linux/usb/otg.h>
 #include <linux/usb/phy.h>
 
 #if IS_ENABLED(CONFIG_OF)
+enum usb_dr_mode of_usb_get_dr_mode_by_phy(struct device_node *np, int arg0);
 bool of_usb_host_tpl_support(struct device_node *np);
 int of_usb_update_otg_caps(struct device_node *np,
 			struct usb_otg_caps *otg_caps);
-unsigned int of_usb_get_suspend_clk_freq(struct device *dev);
+struct device_node *usb_of_get_child_node(struct device_node *parent,
+			int portnum);
 #else
+static inline enum usb_dr_mode
+of_usb_get_dr_mode_by_phy(struct device_node *np, int arg0)
+{
+	return USB_DR_MODE_UNKNOWN;
+}
 static inline bool of_usb_host_tpl_support(struct device_node *np)
 {
 	return false;
@@ -26,9 +36,10 @@ static inline int of_usb_update_otg_caps(struct device_node *np,
 {
 	return 0;
 }
-static inline unsigned int of_usb_get_suspend_clk_freq(struct device *dev)
+static inline struct device_node *usb_of_get_child_node
+		(struct device_node *parent, int portnum)
 {
-	return 0;
+	return NULL;
 }
 #endif
 

@@ -22,8 +22,6 @@
 
 #include <linux/kvm_host.h>
 #include "kvm_cache_regs.h"
-#include <linux/module.h>
-#include <linux/nospec.h>
 #include <asm/kvm_emulate.h>
 #include <linux/stringify.h>
 #include <asm/debugreg.h>
@@ -312,23 +310,29 @@ static void invalidate_registers(struct x86_emulate_ctxt *ctxt)
 
 static int fastop(struct x86_emulate_ctxt *ctxt, void (*fop)(struct fastop *));
 
-#define FOP_ALIGN ".align " __stringify(FASTOP_SIZE) " \n\t"
+#define FOP_FUNC(name) \
+	".align " __stringify(FASTOP_SIZE) " \n\t" \
+	".type " name ", @function \n\t" \
+	name ":\n\t"
+
 #define FOP_RET   "ret \n\t"
 
 #define FOP_START(op) \
 	extern void em_##op(struct fastop *fake); \
 	asm(".pushsection .text, \"ax\" \n\t" \
 	    ".global em_" #op " \n\t" \
-            FOP_ALIGN \
-	    "em_" #op ": \n\t"
+	    FOP_FUNC("em_" #op)
 
 #define FOP_END \
 	    ".popsection")
 
-#define FOPNOP() FOP_ALIGN FOP_RET
+#define FOPNOP() \
+	FOP_FUNC(__stringify(__UNIQUE_ID(nop))) \
+	FOP_RET
 
 #define FOP1E(op,  dst) \
-	FOP_ALIGN "10: " #op " %" #dst " \n\t" FOP_RET
+	FOP_FUNC(#op "_" #dst) \
+	"10: " #op " %" #dst " \n\t" FOP_RET
 
 #define FOP1EEX(op,  dst) \
 	FOP1E(op, dst) _ASM_EXTABLE(10b, kvm_fastop_exception)
@@ -360,7 +364,8 @@ static int fastop(struct x86_emulate_ctxt *ctxt, void (*fop)(struct fastop *));
 	FOP_END
 
 #define FOP2E(op,  dst, src)	   \
-	FOP_ALIGN #op " %" #src ", %" #dst " \n\t" FOP_RET
+	FOP_FUNC(#op "_" #dst "_" #src) \
+	#op " %" #src ", %" #dst " \n\t" FOP_RET
 
 #define FASTOP2(op) \
 	FOP_START(op) \
@@ -398,7 +403,8 @@ static int fastop(struct x86_emulate_ctxt *ctxt, void (*fop)(struct fastop *));
 	FOP_END
 
 #define FOP3E(op,  dst, src, src2) \
-	FOP_ALIGN #op " %" #src2 ", %" #src ", %" #dst " \n\t" FOP_RET
+	FOP_FUNC(#op "_" #dst "_" #src "_" #src2) \
+	#op " %" #src2 ", %" #src ", %" #dst " \n\t" FOP_RET
 
 /* 3-operand, word-only, src2=cl */
 #define FASTOP3WCL(op) \
@@ -410,7 +416,12 @@ static int fastop(struct x86_emulate_ctxt *ctxt, void (*fop)(struct fastop *));
 	FOP_END
 
 /* Special case for SETcc - 1 instruction per cc */
-#define FOP_SETCC(op) ".align 4; " #op " %al; ret \n\t"
+#define FOP_SETCC(op) \
+	".align 4 \n\t" \
+	".type " #op ", @function \n\t" \
+	#op ": \n\t" \
+	#op " %al \n\t" \
+	FOP_RET
 
 asm(".global kvm_fastop_exception \n"
     "kvm_fastop_exception: xor %esi, %esi; ret");
@@ -1009,7 +1020,7 @@ static int em_bsr_c(struct x86_emulate_ctxt *ctxt)
 	return fastop(ctxt, em_bsr);
 }
 
-static u8 test_cc(unsigned int condition, unsigned long flags)
+static __always_inline u8 test_cc(unsigned int condition, unsigned long flags)
 {
 	u8 rc;
 	void (*fop)(void) = (void *)em_setcc + 4 * (condition & 0xf);
@@ -3519,16 +3530,6 @@ static int em_cwd(struct x86_emulate_ctxt *ctxt)
 	return X86EMUL_CONTINUE;
 }
 
-static int em_rdpid(struct x86_emulate_ctxt *ctxt)
-{
-	u64 tsc_aux = 0;
-
-	if (ctxt->ops->get_msr(ctxt, MSR_TSC_AUX, &tsc_aux))
-		return emulate_ud(ctxt);
-	ctxt->dst.val = tsc_aux;
-	return X86EMUL_CONTINUE;
-}
-
 static int em_rdtsc(struct x86_emulate_ctxt *ctxt)
 {
 	u64 tsc = 0;
@@ -3919,12 +3920,6 @@ static int em_bswap(struct x86_emulate_ctxt *ctxt)
 static int em_clflush(struct x86_emulate_ctxt *ctxt)
 {
 	/* emulating clflush regardless of cpuid */
-	return X86EMUL_CONTINUE;
-}
-
-static int em_clflushopt(struct x86_emulate_ctxt *ctxt)
-{
-	/* emulating clflushopt regardless of cpuid */
 	return X86EMUL_CONTINUE;
 }
 
@@ -4395,20 +4390,10 @@ static const struct opcode group8[] = {
 	F(DstMem | SrcImmByte | Lock | PageTable,	em_btc),
 };
 
-/*
- * The "memory" destination is actually always a register, since we come
- * from the register case of group9.
- */
-static const struct gprefix pfx_0f_c7_7 = {
-	N, N, N, II(DstMem | ModRM | Op3264 | EmulateOnUD, em_rdpid, rdtscp),
-};
-
-
 static const struct group_dual group9 = { {
 	N, I(DstMem64 | Lock | PageTable, em_cmpxchg8b), N, N, N, N, N, N,
 }, {
-	N, N, N, N, N, N, N,
-	GP(0, &pfx_0f_c7_7),
+	N, N, N, N, N, N, N, N,
 } };
 
 static const struct opcode group11[] = {
@@ -4417,7 +4402,7 @@ static const struct opcode group11[] = {
 };
 
 static const struct gprefix pfx_0f_ae_7 = {
-	I(SrcMem | ByteOp, em_clflush), I(SrcMem | ByteOp, em_clflushopt), N, N,
+	I(SrcMem | ByteOp, em_clflush), N, N, N,
 };
 
 static const struct group_dual group15 = { {
@@ -5016,7 +5001,6 @@ int x86_decode_insn(struct x86_emulate_ctxt *ctxt, void *insn, int insn_len)
 	ctxt->fetch.ptr = ctxt->fetch.data;
 	ctxt->fetch.end = ctxt->fetch.data + insn_len;
 	ctxt->opcode_len = 1;
-	ctxt->intercept = x86_intercept_none;
 	if (insn_len > 0)
 		memcpy(ctxt->fetch.data, insn, insn_len);
 	else {
@@ -5069,28 +5053,16 @@ int x86_decode_insn(struct x86_emulate_ctxt *ctxt, void *insn, int insn_len)
 				ctxt->ad_bytes = def_ad_bytes ^ 6;
 			break;
 		case 0x26:	/* ES override */
-			has_seg_override = true;
-			ctxt->seg_override = VCPU_SREG_ES;
-			break;
 		case 0x2e:	/* CS override */
-			has_seg_override = true;
-			ctxt->seg_override = VCPU_SREG_CS;
-			break;
 		case 0x36:	/* SS override */
-			has_seg_override = true;
-			ctxt->seg_override = VCPU_SREG_SS;
-			break;
 		case 0x3e:	/* DS override */
 			has_seg_override = true;
-			ctxt->seg_override = VCPU_SREG_DS;
+			ctxt->seg_override = (ctxt->b >> 3) & 3;
 			break;
 		case 0x64:	/* FS override */
-			has_seg_override = true;
-			ctxt->seg_override = VCPU_SREG_FS;
-			break;
 		case 0x65:	/* GS override */
 			has_seg_override = true;
-			ctxt->seg_override = VCPU_SREG_GS;
+			ctxt->seg_override = ctxt->b & 7;
 			break;
 		case 0x40 ... 0x4f: /* REX */
 			if (mode != X86EMUL_MODE_PROT64)
@@ -5174,15 +5146,10 @@ done_prefixes:
 			}
 			break;
 		case Escape:
-			if (ctxt->modrm > 0xbf) {
-				size_t size = ARRAY_SIZE(opcode.u.esc->high);
-				u32 index = array_index_nospec(
-					ctxt->modrm - 0xc0, size);
-
-				opcode = opcode.u.esc->high[index];
-			} else {
+			if (ctxt->modrm > 0xbf)
+				opcode = opcode.u.esc->high[ctxt->modrm - 0xc0];
+			else
 				opcode = opcode.u.esc->op[(ctxt->modrm >> 3) & 7];
-			}
 			break;
 		case InstrDual:
 			if ((ctxt->modrm >> 6) == 3)
@@ -5290,8 +5257,6 @@ done_prefixes:
 					ctxt->memopp->addr.mem.ea + ctxt->_eip);
 
 done:
-	if (rc == X86EMUL_PROPAGATE_FAULT)
-		ctxt->have_exception = true;
 	return (rc != X86EMUL_CONTINUE) ? EMULATION_FAILED : EMULATION_OK;
 }
 
@@ -5344,12 +5309,15 @@ static void fetch_possible_mmx_operand(struct x86_emulate_ctxt *ctxt,
 static int fastop(struct x86_emulate_ctxt *ctxt, void (*fop)(struct fastop *))
 {
 	ulong flags = (ctxt->eflags & EFLAGS_MASK) | X86_EFLAGS_IF;
+
 	if (!(ctxt->d & ByteOp))
 		fop += __ffs(ctxt->dst.bytes) * FASTOP_SIZE;
-	asm("push %[flags]; popf; " CALL_NOSPEC "; pushf; pop %[flags]\n"
+
+	asm("push %[flags]; popf; " CALL_NOSPEC " ; pushf; pop %[flags]\n"
 	    : "+a"(ctxt->dst.val), "+d"(ctxt->src.val), [flags]"+D"(flags),
-	      [thunk_target]"+S"(fop)
+	      [thunk_target]"+S"(fop), ASM_CALL_CONSTRAINT
 	    : "c"(ctxt->src2.val));
+
 	ctxt->eflags = (ctxt->eflags & ~EFLAGS_MASK) | (flags & EFLAGS_MASK);
 	if (!fop) /* exception is returned in fop variable */
 		return emulate_de(ctxt);

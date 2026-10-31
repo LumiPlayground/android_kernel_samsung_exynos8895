@@ -1484,10 +1484,10 @@ SIO_PATCH_VERSION(UPIU_customize, 1, 0, "");
 static void set_customized_upiu_flags(struct ufshcd_lrb *lrbp, u32 *upiu_flags)
 {
 	if (lrbp->command_type == UTP_CMD_TYPE_SCSI) {
-		if (lrbp->cmd->request->cmd_flags & REQ_WRITE) {
-			if (lrbp->cmd->request->cmd_flags & REQ_FLUSH)
+		if (req_op(lrbp->cmd->request) == REQ_OP_WRITE) {
+			if (lrbp->cmd->request->cmd_flags & REQ_PREFLUSH)
 				*upiu_flags |= UPIU_TASK_ATTR_HEADQ;
-			else if (lrbp->cmd->request->cmd_flags & REQ_DISCARD)
+			else if (req_op(lrbp->cmd->request) == REQ_OP_DISCARD)
 				*upiu_flags |= UPIU_TASK_ATTR_ORDERED;
 			else if (lrbp->cmd->request->cmd_flags & REQ_SYNC)
 				*upiu_flags |= UPIU_COMMAND_PRIORITY_HIGH;

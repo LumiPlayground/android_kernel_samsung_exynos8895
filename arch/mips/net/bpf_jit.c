@@ -14,7 +14,6 @@
 #include <linux/errno.h>
 #include <linux/filter.h>
 #include <linux/if_vlan.h>
-#include <linux/kconfig.h>
 #include <linux/moduleloader.h>
 #include <linux/netdevice.h>
 #include <linux/string.h>
@@ -426,7 +425,7 @@ static inline void emit_load_ptr(unsigned int dst, unsigned int src,
 static inline void emit_load_func(unsigned int reg, ptr imm,
 				  struct jit_ctx *ctx)
 {
-	if (config_enabled(CONFIG_64BIT)) {
+	if (IS_ENABLED(CONFIG_64BIT)) {
 		/* At this point imm is always 64-bit */
 		emit_load_imm(r_tmp, (u64)imm >> 32, ctx);
 		emit_dsll(r_tmp_imm, r_tmp, 16, ctx); /* left shift by 16 */
@@ -516,7 +515,7 @@ static inline void emit_jr(unsigned int reg, struct jit_ctx *ctx)
 static inline u16 align_sp(unsigned int num)
 {
 	/* Double word alignment for 32-bit, quadword for 64-bit */
-	unsigned int align = config_enabled(CONFIG_64BIT) ? 16 : 8;
+	unsigned int align = IS_ENABLED(CONFIG_64BIT) ? 16 : 8;
 	num = (num + (align - 1)) & -align;
 	return num;
 }
@@ -1194,8 +1193,6 @@ jmp_cmp:
 
 	return 0;
 }
-
-int bpf_jit_enable __read_mostly;
 
 void bpf_jit_compile(struct bpf_prog *fp)
 {

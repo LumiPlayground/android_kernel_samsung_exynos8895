@@ -370,7 +370,7 @@ static void iuu_led_activity_on(struct urb *urb)
 	int result;
 	char *buf_ptr = port->write_urb->transfer_buffer;
 	*buf_ptr++ = IUU_SET_LED;
-	if (xmas == 1) {
+	if (xmas) {
 		get_random_bytes(buf_ptr, 6);
 		*(buf_ptr+7) = 1;
 	} else {
@@ -390,7 +390,7 @@ static void iuu_led_activity_off(struct urb *urb)
 	struct usb_serial_port *port = urb->context;
 	int result;
 	char *buf_ptr = port->write_urb->transfer_buffer;
-	if (xmas == 1) {
+	if (xmas) {
 		iuu_rxcmd(urb);
 		return;
 	} else {
@@ -551,29 +551,23 @@ static int iuu_uart_flush(struct usb_serial_port *port)
 	struct device *dev = &port->dev;
 	int i;
 	int status;
-	u8 *rxcmd;
+	u8 rxcmd = IUU_UART_RX;
 	struct iuu_private *priv = usb_get_serial_port_data(port);
 
 	if (iuu_led(port, 0xF000, 0, 0, 0xFF) < 0)
 		return -EIO;
 
-	rxcmd = kmalloc(1, GFP_KERNEL);
-	if (!rxcmd)
-		return -ENOMEM;
-
-	rxcmd[0] = IUU_UART_RX;
-
 	for (i = 0; i < 2; i++) {
-		status = bulk_immediate(port, rxcmd, 1);
+		status = bulk_immediate(port, &rxcmd, 1);
 		if (status != IUU_OPERATION_OK) {
 			dev_dbg(dev, "%s - uart_flush_write error\n", __func__);
-			goto out_free;
+			return status;
 		}
 
 		status = read_immediate(port, &priv->len, 1);
 		if (status != IUU_OPERATION_OK) {
 			dev_dbg(dev, "%s - uart_flush_read error\n", __func__);
-			goto out_free;
+			return status;
 		}
 
 		if (priv->len > 0) {
@@ -581,16 +575,12 @@ static int iuu_uart_flush(struct usb_serial_port *port)
 			status = read_immediate(port, priv->buf, priv->len);
 			if (status != IUU_OPERATION_OK) {
 				dev_dbg(dev, "%s - uart_flush_read error\n", __func__);
-				goto out_free;
+				return status;
 			}
 		}
 	}
 	dev_dbg(dev, "%s - uart_flush_read OK!\n", __func__);
 	iuu_led(port, 0, 0xF000, 0, 0xFF);
-
-out_free:
-	kfree(rxcmd);
-
 	return status;
 }
 
@@ -727,16 +717,14 @@ static int iuu_uart_write(struct tty_struct *tty, struct usb_serial_port *port,
 	struct iuu_private *priv = usb_get_serial_port_data(port);
 	unsigned long flags;
 
-	spin_lock_irqsave(&priv->lock, flags);
+	if (count > 256)
+		return -ENOMEM;
 
-	count = min(count, 256 - priv->writelen);
-	if (count == 0)
-		goto out;
+	spin_lock_irqsave(&priv->lock, flags);
 
 	/* fill the buffer */
 	memcpy(priv->writebuf + priv->writelen, buf, count);
 	priv->writelen += count;
-out:
 	spin_unlock_irqrestore(&priv->lock, flags);
 
 	return count;

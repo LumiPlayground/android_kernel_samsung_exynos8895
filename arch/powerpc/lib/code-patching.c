@@ -18,17 +18,12 @@
 #include <asm/sections.h>
 
 
-static inline bool is_init(unsigned int *addr)
-{
-	return addr >= (unsigned int *)__init_begin && addr < (unsigned int *)__init_end;
-}
-
 int patch_instruction(unsigned int *addr, unsigned int instr)
 {
 	int err;
 
 	/* Make sure we aren't patching a freed init section */
-	if (*PTRRELOC(&init_mem_is_free) && is_init(addr)) {
+	if (*PTRRELOC(&init_mem_is_free) && init_section_contains(addr, 4)) {
 		pr_debug("Skipping init section patching addr: 0x%px\n", addr);
 		return 0;
 	}
@@ -122,6 +117,11 @@ int instr_is_relative_branch(unsigned int instr)
 		return 0;
 
 	return instr_is_branch_iform(instr) || instr_is_branch_bform(instr);
+}
+
+int instr_is_relative_link_branch(unsigned int instr)
+{
+	return instr_is_relative_branch(instr) && (instr & BRANCH_SET_LINK);
 }
 
 static unsigned long branch_iform_target(const unsigned int *instr)

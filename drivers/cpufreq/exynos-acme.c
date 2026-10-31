@@ -76,6 +76,17 @@ struct exynos_cpufreq_domain *find_domain_cpumask(const struct cpumask *mask)
 	return NULL;
 }
 
+int exynos_cpufreq_domain_count(void)
+{
+	struct exynos_cpufreq_domain *domain;
+	unsigned int count = 0;
+
+	list_for_each_entry(domain, &domains, list)
+		count = max(count, (unsigned int)domain->id + 1);
+
+	return count;
+}
+
 struct list_head *get_domain_list(void)
 {
 	return &domains;
@@ -137,7 +148,7 @@ static bool static_governor(struct cpufreq_policy *policy)
 	return false;
 }
 
-static int index_to_freq(struct cpufreq_frequency_table *table,
+static unsigned int index_to_freq(struct cpufreq_frequency_table *table,
 					unsigned int index)
 {
 	return table[index].frequency;
@@ -162,10 +173,16 @@ static int set_freq(struct exynos_cpufreq_domain *domain,
 {
 	int err;
 
+	exynos_ss_printk("ID %d: %d -> %d (%d)\n",
+		domain->id, domain->old, target_freq, ESS_FLAG_IN);
+
 	err = cal_dfs_set_rate(domain->cal_id, target_freq);
 	if (err < 0)
 		pr_err("failed to scale frequency of domain%d (%d -> %d)\n",
 			domain->id, domain->old, target_freq);
+
+	exynos_ss_printk("ID %d: %d -> %d (%d)\n",
+		domain->id, domain->old, target_freq, ESS_FLAG_OUT);
 
 	return err;
 }
@@ -243,6 +260,17 @@ fail_scale:
 	return ret;
 }
 
+static struct cpufreq_policy *get_online_policy(struct exynos_cpufreq_domain *domain)
+{
+	struct cpumask mask;
+
+	cpumask_and(&mask, &domain->cpus, cpu_online_mask);
+	if (cpumask_empty(&mask))
+		return NULL;
+
+	return cpufreq_cpu_get(cpumask_first(&mask));
+}
+
 static int update_freq(struct exynos_cpufreq_domain *domain,
 					 unsigned int freq)
 {
@@ -252,9 +280,9 @@ static int update_freq(struct exynos_cpufreq_domain *domain,
 	pr_debug("update frequency of domain%d to %d kHz\n",
 						domain->id, freq);
 
-	policy = cpufreq_cpu_get(cpumask_first(&domain->cpus));
+	policy = get_online_policy(domain);
 	if (!policy)
-		return -EINVAL;
+		return -ENODEV;
 
 	if (static_governor(policy)) {
 		cpufreq_cpu_put(policy);
@@ -331,8 +359,11 @@ static int __exynos_cpufreq_target(struct cpufreq_policy *policy,
 	 * priority of policy is higher.
 	 */
 	target_freq = apply_pm_qos(domain, policy, target_freq);
-	ret = cpufreq_frequency_table_target(policy, domain->freq_table,
-					target_freq, relation, &index);
+	ret = cpufreq_frequency_table_target(policy, target_freq, relation);
+		if (ret >= 0) {
+			index = ret;
+			ret = 0;
+		}
 	if (ret) {
 		pr_err("target frequency(%d) out of range\n", target_freq);
 		goto out;
@@ -457,7 +488,7 @@ static void update_dm_constraint(struct exynos_cpufreq_domain *domain,
 		policy_min = new_policy->min;
 		policy_max = new_policy->max;
 	} else {
-		policy = cpufreq_cpu_get(cpumask_first(&domain->cpus));
+		policy = get_online_policy(domain);
 		if (!policy)
 			return;
 
@@ -481,6 +512,9 @@ static int dm_scaler(enum exynos_dm_type dm_type, unsigned int target_freq,
 	struct cpumask mask;
 	int ret;
 
+	if (!domain)
+		return -EINVAL;
+
 	/* Skip scaling if all cpus of domain are hotplugged out */
 	cpumask_and(&mask, &domain->cpus, cpu_online_mask);
 	if (cpumask_weight(&mask) == 0)
@@ -491,7 +525,7 @@ static int dm_scaler(enum exynos_dm_type dm_type, unsigned int target_freq,
 	else
 		relation = CPUFREQ_RELATION_H;
 
-	policy = cpufreq_cpu_get(cpumask_first(&domain->cpus));
+	policy = get_online_policy(domain);
 	if (!policy) {
 		pr_err("%s: failed get cpufreq policy\n", __func__);
 		return -ENODEV;
@@ -1306,7 +1340,9 @@ static __init int early_init_domain(struct exynos_cpufreq_domain *domain,
 	ret = of_property_read_string(dn, "sibling-cpus", &buf);
 	if (ret)
 		return ret;
-	cpulist_parse(buf, &domain->cpus);
+	ret = cpulist_parse(buf, &domain->cpus);
+	if (ret)
+		return ret;
 	cpumask_and(&domain->cpus, &domain->cpus, cpu_possible_mask);
 	if (cpumask_weight(&domain->cpus) == 0)
 		return -ENODEV;
@@ -1465,9 +1501,15 @@ static int __init exynos_cpufreq_init(void)
 	 * Update frequency as soon as domain is enabled.
 	 */
 	list_for_each_entry(domain, &domains, list) {
+		struct cpufreq_policy *policy;
+
 		enable_domain(domain);
 		update_freq(domain, domain->old);
-		cpufreq_update_policy(cpumask_first(&domain->cpus));
+		policy = get_online_policy(domain);
+		if (policy) {
+			cpufreq_update_policy(policy->cpu);
+			cpufreq_cpu_put(policy);
+		}
 	}
 
 	pr_info("Initialized Exynos cpufreq driver\n");

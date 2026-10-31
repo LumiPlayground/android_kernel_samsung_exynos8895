@@ -227,10 +227,8 @@ int seq_buf_putmem_hex(struct seq_buf *s, const void *mem,
 
 	WARN_ON(s->size == 0);
 
-	BUILD_BUG_ON(MAX_MEMHEX_BYTES * 2 >= HEX_CHARS);
-
 	while (len) {
-		start_len = min(len, MAX_MEMHEX_BYTES);
+		start_len = min(len, HEX_CHARS - 1);
 #ifdef __BIG_ENDIAN
 		for (i = 0, j = 0; i < start_len; i++) {
 #else
@@ -243,14 +241,12 @@ int seq_buf_putmem_hex(struct seq_buf *s, const void *mem,
 			break;
 
 		/* j increments twice per loop */
+		len -= j / 2;
 		hex[j++] = ' ';
 
 		seq_buf_putmem(s, hex, j);
 		if (seq_buf_has_overflowed(s))
 			return -1;
-
-		len -= start_len;
-		data += start_len;
 	}
 	return 0;
 }
@@ -314,10 +310,12 @@ int seq_buf_to_user(struct seq_buf *s, char __user *ubuf, int cnt)
 	if (!cnt)
 		return 0;
 
-	if (s->len <= s->readpos)
+	len = seq_buf_used(s);
+
+	if (len <= s->readpos)
 		return -EBUSY;
 
-	len = seq_buf_used(s) - s->readpos;
+	len -= s->readpos;
 	if (cnt > len)
 		cnt = len;
 	ret = copy_to_user(ubuf, s->buffer + s->readpos, cnt);

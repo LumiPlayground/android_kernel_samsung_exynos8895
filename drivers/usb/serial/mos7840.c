@@ -126,18 +126,15 @@
 #define BANDB_DEVICE_ID_USOPTL4_2P       0xBC02
 #define BANDB_DEVICE_ID_USOPTL4_4        0xAC44
 #define BANDB_DEVICE_ID_USOPTL4_4P       0xBC03
+#define BANDB_DEVICE_ID_USOPTL2_4        0xAC24
 
 /* This driver also supports
  * ATEN UC2324 device using Moschip MCS7840
  * ATEN UC2322 device using Moschip MCS7820
- * MOXA UPort 2210 device using Moschip MCS7820
  */
 #define USB_VENDOR_ID_ATENINTL		0x0557
 #define ATENINTL_DEVICE_ID_UC2324	0x2011
 #define ATENINTL_DEVICE_ID_UC2322	0x7820
-
-#define USB_VENDOR_ID_MOXA		0x110a
-#define MOXA_DEVICE_ID_2210		0x2210
 
 /* Interrupt Routine Defines    */
 
@@ -206,9 +203,9 @@ static const struct usb_device_id id_table[] = {
 	{USB_DEVICE(USB_VENDOR_ID_BANDB, BANDB_DEVICE_ID_USOPTL4_2P)},
 	{USB_DEVICE(USB_VENDOR_ID_BANDB, BANDB_DEVICE_ID_USOPTL4_4)},
 	{USB_DEVICE(USB_VENDOR_ID_BANDB, BANDB_DEVICE_ID_USOPTL4_4P)},
+	{USB_DEVICE(USB_VENDOR_ID_BANDB, BANDB_DEVICE_ID_USOPTL2_4)},
 	{USB_DEVICE(USB_VENDOR_ID_ATENINTL, ATENINTL_DEVICE_ID_UC2324)},
 	{USB_DEVICE(USB_VENDOR_ID_ATENINTL, ATENINTL_DEVICE_ID_UC2322)},
-	{USB_DEVICE(USB_VENDOR_ID_MOXA, MOXA_DEVICE_ID_2210)},
 	{}			/* terminating entry */
 };
 MODULE_DEVICE_TABLE(usb, id_table);
@@ -652,7 +649,7 @@ static void mos7840_interrupt_callback(struct urb *urb)
 	 * Byte 4 IIR Port 4 (port.number is 3)
 	 * Byte 5 FIFO status for both */
 
-	if (length && length > 5) {
+	if (length > 5) {
 		dev_dbg(&urb->dev->dev, "%s", "Wrong data !!!\n");
 		return;
 	}
@@ -1360,10 +1357,8 @@ static int mos7840_write(struct tty_struct *tty, struct usb_serial_port *port,
 	if (urb->transfer_buffer == NULL) {
 		urb->transfer_buffer = kmalloc(URB_TRANSFER_BUFFER_SIZE,
 					       GFP_ATOMIC);
-		if (!urb->transfer_buffer) {
-			bytes_sent = -ENOMEM;
+		if (!urb->transfer_buffer)
 			goto exit;
-		}
 	}
 	transfer_size = min(count, URB_TRANSFER_BUFFER_SIZE);
 
@@ -1445,7 +1440,7 @@ static void mos7840_throttle(struct tty_struct *tty)
 			return;
 	}
 	/* if we are implementing RTS/CTS, toggle that line */
-	if (tty->termios.c_cflag & CRTSCTS) {
+	if (C_CRTSCTS(tty)) {
 		mos7840_port->shadowMCR &= ~MCR_RTS;
 		status = mos7840_set_uart_reg(port, MODEM_CONTROL_REGISTER,
 					 mos7840_port->shadowMCR);
@@ -1486,7 +1481,7 @@ static void mos7840_unthrottle(struct tty_struct *tty)
 	}
 
 	/* if we are implementing RTS/CTS, toggle that line */
-	if (tty->termios.c_cflag & CRTSCTS) {
+	if (C_CRTSCTS(tty)) {
 		mos7840_port->shadowMCR |= MCR_RTS;
 		status = mos7840_set_uart_reg(port, MODEM_CONTROL_REGISTER,
 					 mos7840_port->shadowMCR);
@@ -1862,7 +1857,7 @@ static void mos7840_change_port_settings(struct tty_struct *tty,
 	Data = 0x0c;
 	mos7840_set_uart_reg(port, INTERRUPT_ENABLE_REGISTER, Data);
 
-	if (mos7840_port->read_urb_busy == false) {
+	if (!mos7840_port->read_urb_busy) {
 		mos7840_port->read_urb_busy = true;
 		status = usb_submit_urb(mos7840_port->read_urb, GFP_KERNEL);
 		if (status) {
@@ -1926,7 +1921,7 @@ static void mos7840_set_termios(struct tty_struct *tty,
 		return;
 	}
 
-	if (mos7840_port->read_urb_busy == false) {
+	if (!mos7840_port->read_urb_busy) {
 		mos7840_port->read_urb_busy = true;
 		status = usb_submit_urb(mos7840_port->read_urb, GFP_KERNEL);
 		if (status) {
@@ -2094,18 +2089,12 @@ static int mos7840_probe(struct usb_serial *serial,
 				const struct usb_device_id *id)
 {
 	u16 product = le16_to_cpu(serial->dev->descriptor.idProduct);
-	u16 vid = le16_to_cpu(serial->dev->descriptor.idVendor);
 	u8 *buf;
 	int device_type;
 
 	if (product == MOSCHIP_DEVICE_ID_7810 ||
 		product == MOSCHIP_DEVICE_ID_7820) {
 		device_type = product;
-		goto out;
-	}
-
-	if (vid == USB_VENDOR_ID_MOXA && product == MOXA_DEVICE_ID_2210) {
-		device_type = MOSCHIP_DEVICE_ID_7820;
 		goto out;
 	}
 
@@ -2361,6 +2350,11 @@ out:
 			goto error;
 		} else
 			dev_dbg(&port->dev, "ZLP_REG5 Writing success status%d\n", status);
+
+		/* setting configuration feature to one */
+		usb_control_msg(serial->dev, usb_sndctrlpipe(serial->dev, 0),
+				0x03, 0x00, 0x01, 0x00, NULL, 0x00,
+				MOS_WDR_TIMEOUT);
 	}
 	return 0;
 error:

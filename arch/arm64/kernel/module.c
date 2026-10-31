@@ -33,10 +33,29 @@
 void *module_alloc(unsigned long size)
 {
 	void *p;
+	u64 module_alloc_end = module_alloc_base + MODULES_VSIZE;
+
+	if (IS_ENABLED(CONFIG_KASAN))
+		/* don't exceed the static module region - see below */
+		module_alloc_end = MODULES_END;
 
 	p = __vmalloc_node_range(size, MODULE_ALIGN, module_alloc_base,
-				module_alloc_base + MODULES_VSIZE,
-				GFP_KERNEL, PAGE_KERNEL_EXEC, 0,
+				module_alloc_end, GFP_KERNEL, PAGE_KERNEL_EXEC, 0,
+				NUMA_NO_NODE, __builtin_return_address(0));
+
+	if (!p && IS_ENABLED(CONFIG_ARM64_MODULE_PLTS) &&
+	    !IS_ENABLED(CONFIG_KASAN))
+		/*
+		 * KASAN can only deal with module allocations being served
+		 * from the reserved module region, since the remainder of
+		 * the vmalloc region is already backed by zero shadow pages,
+		 * and punching holes into it is non-trivial. Since the module
+		 * region is not randomized when KASAN is enabled, it is even
+		 * less likely that the module region gets exhausted, so we
+		 * can simply omit this fallback in that case.
+		 */
+		p = __vmalloc_node_range(size, MODULE_ALIGN, VMALLOC_START,
+				VMALLOC_END, GFP_KERNEL, PAGE_KERNEL_EXEC, 0,
 				NUMA_NO_NODE, __builtin_return_address(0));
 
 	if (!p && IS_ENABLED(CONFIG_ARM64_MODULE_PLTS) &&

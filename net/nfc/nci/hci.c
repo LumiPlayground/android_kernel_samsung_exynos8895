@@ -676,7 +676,7 @@ int nci_hci_connect_gate(struct nci_dev *ndev,
 	break;
 	default:
 		pipe = nci_hci_create_pipe(ndev, dest_host, dest_gate, &r);
-		if (pipe < 0)
+		if (pipe == NCI_HCI_INVALID_PIPE)
 			return r;
 		pipe_created = true;
 		break;
@@ -797,9 +797,4 @@ struct nci_hci_dev *nci_hci_allocate(struct nci_dev *ndev)
 	hdev->ndev = ndev;
 
 	return hdev;
-}
-
-void nci_hci_deallocate(struct nci_dev *ndev)
-{
-	kfree(ndev->hci_dev);
 }

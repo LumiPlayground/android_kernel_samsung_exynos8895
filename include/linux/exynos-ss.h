@@ -14,6 +14,12 @@
 #ifndef EXYNOS_SNAPSHOT_H
 #define EXYNOS_SNAPSHOT_H
 
+#ifdef CONFIG_EXYNOS_SNAPSHOT_EARLY_LOG
+extern void exynos_ss_early_log_init(void);
+#else
+static inline void exynos_ss_early_log_init(void) { }
+#endif
+
 #ifdef CONFIG_EXYNOS_SNAPSHOT
 #include <asm/ptrace.h>
 #include <linux/bug.h>

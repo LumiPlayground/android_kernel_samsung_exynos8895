@@ -52,13 +52,14 @@
 #define CREATE_TRACE_POINTS
 #include "trace/lowmemorykiller.h"
 
-static uint32_t lowmem_debug_level = 1;
+static u32 lowmem_debug_level = 1;
 static short lowmem_adj[6] = {
 	0,
 	1,
 	6,
 	12,
 };
+
 static int lowmem_adj_size = 4;
 static int lowmem_minfree[6] = {
 	3 * 512,	/* 6MB */
@@ -66,6 +67,7 @@ static int lowmem_minfree[6] = {
 	4 * 1024,	/* 16MB */
 	16 * 1024,	/* 64MB */
 };
+
 static int lowmem_minfree_size = 4;
 
 static unsigned long lowmem_deathpending_timeout;
@@ -263,20 +265,20 @@ static void show_memory(void)
 		"\n",
 		K(totalram_pages),
 		K(global_page_state(NR_FREE_PAGES)),
-		K(global_page_state(NR_ACTIVE_ANON)),
-		K(global_page_state(NR_INACTIVE_ANON)),
-		K(global_page_state(NR_ACTIVE_FILE)),
-		K(global_page_state(NR_INACTIVE_FILE)),
-		K(global_page_state(NR_UNEVICTABLE)),
-		K(global_page_state(NR_ISOLATED_ANON)),
-		K(global_page_state(NR_ISOLATED_FILE)),
-		K(global_page_state(NR_FILE_DIRTY)),
-		K(global_page_state(NR_WRITEBACK)),
-		K(global_page_state(NR_FILE_MAPPED)),
-		K(global_page_state(NR_SHMEM)),
+		K(global_node_page_state(NR_ACTIVE_ANON)),
+		K(global_node_page_state(NR_INACTIVE_ANON)),
+		K(global_node_page_state(NR_ACTIVE_FILE)),
+		K(global_node_page_state(NR_INACTIVE_FILE)),
+		K(global_node_page_state(NR_UNEVICTABLE)),
+		K(global_node_page_state(NR_ISOLATED_ANON)),
+		K(global_node_page_state(NR_ISOLATED_FILE)),
+		K(global_node_page_state(NR_FILE_DIRTY)),
+		K(global_node_page_state(NR_WRITEBACK)),
+		K(global_node_page_state(NR_FILE_MAPPED)),
+		K(global_node_page_state(NR_SHMEM)),
 		K(global_page_state(NR_SLAB_RECLAIMABLE)),
 		K(global_page_state(NR_SLAB_UNRECLAIMABLE)),
-		K(global_page_state(NR_KERNEL_STACK)),
+		global_page_state(NR_KERNEL_STACK_KB),
 		K(global_page_state(NR_PAGETABLE)),
 		K(global_page_state(NR_FREE_CMA_PAGES)),
 		K(nr_rbin_free),
@@ -290,10 +292,10 @@ static void show_memory(void)
 static unsigned long lowmem_count(struct shrinker *s,
 				  struct shrink_control *sc)
 {
-	return global_page_state(NR_ACTIVE_ANON) +
-		global_page_state(NR_ACTIVE_FILE) +
-		global_page_state(NR_INACTIVE_ANON) +
-		global_page_state(NR_INACTIVE_FILE);
+	return global_node_page_state(NR_ACTIVE_ANON) +
+		global_node_page_state(NR_ACTIVE_FILE) +
+		global_node_page_state(NR_INACTIVE_ANON) +
+		global_node_page_state(NR_INACTIVE_FILE);
 }
 
 static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
@@ -309,9 +311,9 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	short selected_oom_score_adj;
 	int array_size = ARRAY_SIZE(lowmem_adj);
 	int other_free = global_page_state(NR_FREE_PAGES) - totalreserve_pages;
-	int other_file = global_page_state(NR_FILE_PAGES) -
-						global_page_state(NR_SHMEM) -
-						global_page_state(NR_UNEVICTABLE) -
+	int other_file = global_node_page_state(NR_FILE_PAGES) -
+						global_node_page_state(NR_SHMEM) -
+						global_node_page_state(NR_UNEVICTABLE) -
 						total_swapcache_pages();
 	unsigned long nr_rbin_free, nr_rbin_pool, nr_rbin_alloc, nr_rbin_file;
 
@@ -338,8 +340,8 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	}
 
 	lowmem_print(3, "lowmem_scan %lu, %x, ofree %d %d, ma %hd\n",
-			sc->nr_to_scan, sc->gfp_mask, other_free,
-			other_file, min_score_adj);
+		     sc->nr_to_scan, sc->gfp_mask, other_free,
+		     other_file, min_score_adj);
 
 	if (min_score_adj == OOM_SCORE_ADJ_MAX + 1) {
 		lowmem_print(5, "lowmem_scan %lu, %x, return 0\n",
@@ -368,7 +370,8 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		if (!p)
 			continue;
 
-		if (test_tsk_thread_flag(p, TIF_MEMDIE)) {
+		if (task_lmk_waiting(p) &&
+		    time_before_eq(jiffies, lowmem_deathpending_timeout)) {
 			task_unlock(p);
 
 			if (time_before_eq(jiffies,
@@ -416,27 +419,21 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 
 		task_lock(selected);
 		send_sig(SIGKILL, selected, 0);
-		/*
-		 * FIXME: lowmemorykiller shouldn't abuse global OOM killer
-		 * infrastructure. There is no real reason why the selected
-		 * task should have access to the memory reserves.
-		 */
 		if (selected->mm)
-			mark_oom_victim(selected);
+			task_set_lmk_waiting(selected);
 		task_unlock(selected);
-		trace_lowmemory_kill(selected, cache_size, cache_limit, free);
-		lowmem_print(1, "Killing '%s' (%d) (tgid %d), adj %hd,\n" \
-			        "   to free %ldkB on behalf of '%s' (%d) because\n" \
-			        "   cache %ldkB is below limit %ldkB for oom_score_adj %hd\n" \
-			        "   Free memory is %ldkB above reserved\n",
-			     selected->comm, selected->pid, selected->tgid,
+		lowmem_print(1, "Killing '%s' (%d), adj %hd,\n"
+				 "   to free %ldkB on behalf of '%s' (%d) because\n"
+				 "   cache %ldkB is below limit %ldkB for oom_score_adj %hd\n"
+				 "   Free memory is %ldkB above reserved\n",
+			     selected->comm, selected->pid,
 			     selected_oom_score_adj,
 			     selected_tasksize * (long)(PAGE_SIZE / 1024),
 			     current->comm, current->pid,
-			     cache_size, cache_limit,
+			     other_file * (long)(PAGE_SIZE / 1024),
+			     minfree * (long)(PAGE_SIZE / 1024),
 			     min_score_adj,
-			     free);
-		show_memory();
+			     other_free * (long)(PAGE_SIZE / 1024));
 		lowmem_deathpending_timeout = jiffies + HZ;
 		rem += selected_tasksize;
 		get_task_struct(selected);
@@ -548,18 +545,15 @@ static const struct kparam_array __param_arr_adj = {
  * not really modular, but the easiest way to keep compat with existing
  * bootargs behaviour is to continue using module_param here.
  */
-module_param_named(cost, lowmem_shrinker.seeks, int, S_IRUGO | S_IWUSR);
+module_param_named(cost, lowmem_shrinker.seeks, int, 0644);
 #ifdef CONFIG_ANDROID_LOW_MEMORY_KILLER_AUTODETECT_OOM_ADJ_VALUES
-module_param_cb(adj, &lowmem_adj_array_ops,
-		.arr = &__param_arr_adj,
-		S_IRUGO | S_IWUSR);
+module_param_cb(adj, &lowmem_adj_array_ops, (void *)&__param_arr_adj, 0644);
 __MODULE_PARM_TYPE(adj, "array of short");
 #else
-module_param_array_named(adj, lowmem_adj, short, &lowmem_adj_size,
-			 S_IRUGO | S_IWUSR);
+module_param_array_named(adj, lowmem_adj, short, &lowmem_adj_size, 0644);
 #endif
 module_param_array_named(minfree, lowmem_minfree, uint, &lowmem_minfree_size,
-			 S_IRUGO | S_IWUSR);
-module_param_named(debug_level, lowmem_debug_level, uint, S_IRUGO | S_IWUSR);
+			 0644);
+module_param_named(debug_level, lowmem_debug_level, uint, 0644);
 
 MODULE_LICENSE("GPL");

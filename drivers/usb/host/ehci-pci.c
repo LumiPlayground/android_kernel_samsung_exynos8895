@@ -229,13 +229,6 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 		ehci_info(ehci, "applying MosChip frame-index workaround\n");
 		ehci->frame_index_bug = 1;
 		break;
-	case PCI_VENDOR_ID_HUAWEI:
-		/* Synopsys HC bug */
-		if (pdev->device == 0xa239) {
-			ehci_info(ehci, "applying Synopsys HC workaround\n");
-			ehci->has_synopsys_hc_bug = 1;
-		}
-		break;
 	}
 
 	/* optional debug port, normally in the first BAR */
@@ -312,9 +305,6 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 	if (pdev->vendor == PCI_VENDOR_ID_STMICRO
 	    && pdev->device == PCI_DEVICE_ID_STMICRO_USB_HOST)
 		;	/* ConneXT has no sbrn register */
-	else if (pdev->vendor == PCI_VENDOR_ID_HUAWEI
-			 && pdev->device == 0xa239)
-		;	/* HUAWEI Kunpeng920 USB EHCI has no sbrn register */
 	else
 		pci_read_config_byte(pdev, 0x60, &ehci->sbrn);
 
@@ -387,6 +377,12 @@ static int ehci_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	return usb_hcd_pci_probe(pdev, id);
 }
 
+static void ehci_pci_remove(struct pci_dev *pdev)
+{
+	pci_clear_mwi(pdev);
+	usb_hcd_pci_remove(pdev);	
+}
+
 /* PCI driver selection metadata; PCI hotplugging uses this */
 static const struct pci_device_id pci_ids [] = { {
 	/* handle any USB 2.0 EHCI controller */
@@ -406,7 +402,7 @@ static struct pci_driver ehci_pci_driver = {
 	.id_table =	pci_ids,
 
 	.probe =	ehci_pci_probe,
-	.remove =	usb_hcd_pci_remove,
+	.remove =	ehci_pci_remove,
 	.shutdown = 	usb_hcd_pci_shutdown,
 
 #ifdef CONFIG_PM

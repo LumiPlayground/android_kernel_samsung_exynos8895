@@ -328,11 +328,7 @@ int bcmgenet_mii_config(struct net_device *dev)
 	 */
 	if (priv->ext_phy) {
 		reg = bcmgenet_ext_readl(priv, EXT_RGMII_OOB_CTRL);
-		reg |= id_mode_dis;
-		if (GENET_IS_V1(priv) || GENET_IS_V2(priv) || GENET_IS_V3(priv))
-			reg |= RGMII_MODE_EN_V123;
-		else
-			reg |= RGMII_MODE_EN;
+		reg |= RGMII_MODE_EN | id_mode_dis;
 		bcmgenet_ext_writel(priv, reg, EXT_RGMII_OOB_CTRL);
 	}
 
@@ -346,12 +342,11 @@ int bcmgenet_mii_probe(struct net_device *dev)
 	struct bcmgenet_priv *priv = netdev_priv(dev);
 	struct device_node *dn = priv->pdev->dev.of_node;
 	struct phy_device *phydev;
-	u32 phy_flags = 0;
+	u32 phy_flags;
 	int ret;
 
 	/* Communicate the integrated PHY revision */
-	if (priv->internal_phy)
-		phy_flags = priv->gphy_rev;
+	phy_flags = priv->gphy_rev;
 
 	/* Initialize link state variables that bcmgenet_mii_setup() uses */
 	priv->old_link = -1;
@@ -397,9 +392,7 @@ int bcmgenet_mii_probe(struct net_device *dev)
 	 * Ethernet MAC ISRs
 	 */
 	if (priv->internal_phy)
-		priv->mii_bus->irq[phydev->addr] = PHY_IGNORE_INTERRUPT;
-	else
-		priv->mii_bus->irq[phydev->addr] = PHY_POLL;
+		priv->phydev->irq = PHY_IGNORE_INTERRUPT;
 
 	return 0;
 }
@@ -473,12 +466,6 @@ static int bcmgenet_mii_alloc(struct bcmgenet_priv *priv)
 	snprintf(bus->id, MII_BUS_ID_SIZE, "%s-%d",
 		 priv->pdev->name, priv->pdev->id);
 
-	bus->irq = kcalloc(PHY_MAX_ADDR, sizeof(int), GFP_KERNEL);
-	if (!bus->irq) {
-		mdiobus_free(priv->mii_bus);
-		return -ENOMEM;
-	}
-
 	return 0;
 }
 
@@ -546,8 +533,10 @@ static int bcmgenet_mii_of_init(struct bcmgenet_priv *priv)
 	/* Make sure we initialize MoCA PHYs with a link down */
 	if (phy_mode == PHY_INTERFACE_MODE_MOCA) {
 		phydev = of_phy_find_device(dn);
-		if (phydev)
+		if (phydev) {
 			phydev->link = 0;
+			put_device(&phydev->mdio.dev);
+		}
 	}
 
 	return 0;
@@ -577,7 +566,7 @@ static int bcmgenet_mii_pd_init(struct bcmgenet_priv *priv)
 		}
 
 		if (pd->phy_address >= 0 && pd->phy_address < PHY_MAX_ADDR)
-			phydev = mdio->phy_map[pd->phy_address];
+			phydev = mdiobus_get_phy(mdio, pd->phy_address);
 		else
 			phydev = phy_find_first(mdio);
 
@@ -629,6 +618,7 @@ static int bcmgenet_mii_bus_init(struct bcmgenet_priv *priv)
 int bcmgenet_mii_init(struct net_device *dev)
 {
 	struct bcmgenet_priv *priv = netdev_priv(dev);
+	struct device_node *dn = priv->pdev->dev.of_node;
 	int ret;
 
 	ret = bcmgenet_mii_alloc(priv);
@@ -642,9 +632,10 @@ int bcmgenet_mii_init(struct net_device *dev)
 	return 0;
 
 out:
+	if (of_phy_is_fixed_link(dn))
+		of_phy_deregister_fixed_link(dn);
 	of_node_put(priv->phy_dn);
 	mdiobus_unregister(priv->mii_bus);
-	kfree(priv->mii_bus->irq);
 	mdiobus_free(priv->mii_bus);
 	return ret;
 }
@@ -652,9 +643,11 @@ out:
 void bcmgenet_mii_exit(struct net_device *dev)
 {
 	struct bcmgenet_priv *priv = netdev_priv(dev);
+	struct device_node *dn = priv->pdev->dev.of_node;
 
+	if (of_phy_is_fixed_link(dn))
+		of_phy_deregister_fixed_link(dn);
 	of_node_put(priv->phy_dn);
 	mdiobus_unregister(priv->mii_bus);
-	kfree(priv->mii_bus->irq);
 	mdiobus_free(priv->mii_bus);
 }

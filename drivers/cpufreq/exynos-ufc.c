@@ -202,8 +202,11 @@ static ssize_t store_cpufreq_min_limit(struct kobject *kobj,
 			if (sse_mode && r_ufc_32)
 				r_ufc = r_ufc_32;
 
-			ret = cpufreq_frequency_table_target(policy, domain->freq_table,
-							freq, CPUFREQ_RELATION_L, &index);
+			ret = cpufreq_frequency_table_target(policy, freq, CPUFREQ_RELATION_L);
+		if (ret >= 0) {
+			index = ret;
+			ret = 0;
+		}
 			if (ret) {
 				pr_err("target frequency(%d) out of range\n", freq);
 				continue;
@@ -313,8 +316,11 @@ static ssize_t store_cpufreq_min_limit_wo_boost(struct kobject *kobj,
 			if (sse_mode && r_ufc_32)
 				r_ufc = r_ufc_32;
 
-			ret = cpufreq_frequency_table_target(policy, domain->freq_table,
-							freq, CPUFREQ_RELATION_L, &index);
+			ret = cpufreq_frequency_table_target(policy, freq, CPUFREQ_RELATION_L);
+		if (ret >= 0) {
+			index = ret;
+			ret = 0;
+		}
 			if (ret) {
 				pr_err("target frequency(%d) out of range\n", freq);
 				continue;
@@ -468,8 +474,11 @@ static void cpufreq_max_limit_update(int input_freq)
 			if (sse_mode && r_ufc_32)
 				r_ufc = r_ufc_32;
 
-			ret = cpufreq_frequency_table_target(policy, domain->freq_table,
-							freq, CPUFREQ_RELATION_L, &index);
+			ret = cpufreq_frequency_table_target(policy, freq, CPUFREQ_RELATION_L);
+		if (ret >= 0) {
+			index = ret;
+			ret = 0;
+		}
 			if (ret) {
 				pr_err("target frequency(%d) out of range\n", freq);
 				continue;

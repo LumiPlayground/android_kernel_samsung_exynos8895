@@ -143,7 +143,6 @@ static int device_authorization(struct hdpvr_device *dev)
 
 	dev->fw_ver = dev->usbc_buf[1];
 
-	dev->usbc_buf[46] = '\0';
 	v4l2_info(&dev->v4l2_dev, "firmware version 0x%x dated %s\n",
 			  dev->fw_ver, &dev->usbc_buf[2]);
 
@@ -279,7 +278,6 @@ static int hdpvr_probe(struct usb_interface *interface,
 #endif
 	size_t buffer_size;
 	int i;
-	int dev_num;
 	int retval = -ENOMEM;
 
 	/* allocate memory for our device state and initialize it */
@@ -311,10 +309,6 @@ static int hdpvr_probe(struct usb_interface *interface,
 
 	init_waitqueue_head(&dev->wait_buffer);
 	init_waitqueue_head(&dev->wait_data);
-
-	dev->workqueue = create_singlethread_workqueue("hdpvr_buffer");
-	if (!dev->workqueue)
-		goto err_free_usbc;
 
 	dev->options = hdpvr_default_options;
 
@@ -388,17 +382,8 @@ static int hdpvr_probe(struct usb_interface *interface,
 	}
 #endif
 
-	dev_num = atomic_inc_return(&dev_nr);
-	if (dev_num >= HDPVR_MAX) {
-		v4l2_err(&dev->v4l2_dev,
-			 "max device number reached, device register failed\n");
-		atomic_dec(&dev_nr);
-		retval = -ENODEV;
-		goto reg_fail;
-	}
-
 	retval = hdpvr_register_videodev(dev, &interface->dev,
-				    video_nr[dev_num]);
+				    video_nr[atomic_inc_return(&dev_nr)]);
 	if (retval < 0) {
 		v4l2_err(&dev->v4l2_dev, "registering videodev failed\n");
 		goto reg_fail;
@@ -417,9 +402,6 @@ error_free_buffers:
 	hdpvr_free_buffers(dev);
 error_put_usb:
 	usb_put_dev(dev->udev);
-	/* Destroy single thread */
-	destroy_workqueue(dev->workqueue);
-err_free_usbc:
 	kfree(dev->usbc_buf);
 error_v4l2_unregister:
 	v4l2_device_unregister(&dev->v4l2_dev);
@@ -443,7 +425,7 @@ static void hdpvr_disconnect(struct usb_interface *interface)
 	mutex_unlock(&dev->io_mutex);
 	v4l2_device_disconnect(&dev->v4l2_dev);
 	msleep(100);
-	flush_workqueue(dev->workqueue);
+	flush_work(&dev->worker);
 	mutex_lock(&dev->io_mutex);
 	hdpvr_cancel_queue(dev);
 	mutex_unlock(&dev->io_mutex);

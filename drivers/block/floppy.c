@@ -848,17 +848,14 @@ static void reset_fdc_info(int mode)
 /* selects the fdc and drive, and enables the fdc's input/dma. */
 static void set_fdc(int drive)
 {
-	unsigned int new_fdc = fdc;
-
 	if (drive >= 0 && drive < N_DRIVE) {
-		new_fdc = FDC(drive);
+		fdc = FDC(drive);
 		current_drive = drive;
 	}
-	if (new_fdc >= N_FDC) {
+	if (fdc != 1 && fdc != 0) {
 		pr_info("bad fdc value\n");
 		return;
 	}
-	fdc = new_fdc;
 	set_dor(fdc, ~0, 8);
 #if N_FDC > 1
 	set_dor(1 - fdc, ~8, 0);
@@ -994,7 +991,7 @@ static DECLARE_DELAYED_WORK(fd_timer, fd_timer_workfn);
 static void cancel_activity(void)
 {
 	do_floppy = NULL;
-	cancel_delayed_work(&fd_timer);
+	cancel_delayed_work_sync(&fd_timer);
 	cancel_work_sync(&floppy_work);
 }
 
@@ -3116,8 +3113,6 @@ static void raw_cmd_free(struct floppy_raw_cmd **ptr)
 	}
 }
 
-#define MAX_LEN (1UL << MAX_ORDER << PAGE_SHIFT)
-
 static int raw_cmd_copyin(int cmd, void __user *param,
 				 struct floppy_raw_cmd **rcmd)
 {
@@ -3155,7 +3150,7 @@ loop:
 	ptr->resultcode = 0;
 
 	if (ptr->flags & (FD_RAW_READ | FD_RAW_WRITE)) {
-		if (ptr->length <= 0 || ptr->length >= MAX_LEN)
+		if (ptr->length <= 0)
 			return -EINVAL;
 		ptr->kernel_data = (char *)fd_dma_mem_alloc(ptr->length);
 		fallback_on_nodma_alloc(&ptr->kernel_data, ptr->length);
@@ -3789,7 +3784,7 @@ static int compat_getdrvprm(int drive,
 	v.native_format = UDP->native_format;
 	mutex_unlock(&floppy_mutex);
 
-	if (copy_to_user(arg, &v, sizeof(struct compat_floppy_drive_params)))
+	if (copy_from_user(arg, &v, sizeof(struct compat_floppy_drive_params)))
 		return -EFAULT;
 	return 0;
 }
@@ -3825,7 +3820,7 @@ static int compat_getdrvstat(int drive, bool poll,
 	v.bufblocks = UDRS->bufblocks;
 	mutex_unlock(&floppy_mutex);
 
-	if (copy_to_user(arg, &v, sizeof(struct compat_floppy_drive_struct)))
+	if (copy_from_user(arg, &v, sizeof(struct compat_floppy_drive_struct)))
 		return -EFAULT;
 	return 0;
 Eintr:
@@ -3948,7 +3943,7 @@ static void __init config_types(void)
 		unsigned int type = UDP->cmos;
 		struct floppy_drive_params *params;
 		const char *name = NULL;
-		static char temparea[32];
+		char temparea[32];
 
 		if (type < ARRAY_SIZE(default_drive_params)) {
 			params = &default_drive_params[type].params;
@@ -3959,7 +3954,8 @@ static void __init config_types(void)
 				allowed_drive_mask &= ~(1 << drive);
 		} else {
 			params = &default_drive_params[0].params;
-			sprintf(temparea, "unknown type %d (usb?)", type);
+			snprintf(temparea, sizeof(temparea),
+				 "unknown type %d (usb?)", type);
 			name = temparea;
 		}
 		if (name) {
@@ -4111,7 +4107,7 @@ static unsigned int floppy_check_events(struct gendisk *disk,
 
 	if (time_after(jiffies, UDRS->last_checked + UDP->checkfreq)) {
 		if (lock_fdc(drive))
-			return -EINTR;
+			return 0;
 		poll_drive(false, 0);
 		process_fd_request();
 	}
@@ -4180,11 +4176,13 @@ static int __floppy_read_block_0(struct block_device *bdev, int drive)
 	bio.bi_flags |= (1 << BIO_QUIET);
 	bio.bi_private = &cbdata;
 	bio.bi_end_io = floppy_rb0_cb;
-
-	submit_bio(READ, &bio);
-	process_fd_request();
+	bio_set_op_attrs(&bio, REQ_OP_READ, 0);
 
 	init_completion(&cbdata.complete);
+
+	submit_bio(&bio);
+	process_fd_request();
+
 	wait_for_completion(&cbdata.complete);
 
 	__free_page(page);
@@ -4710,8 +4708,7 @@ static int __init do_floppy_init(void)
 		/* to be cleaned up... */
 		disks[drive]->private_data = (void *)(long)drive;
 		disks[drive]->flags |= GENHD_FL_REMOVABLE;
-		disks[drive]->driverfs_dev = &floppy_device[drive].dev;
-		add_disk(disks[drive]);
+		device_add_disk(&floppy_device[drive].dev, disks[drive]);
 	}
 
 	return 0;

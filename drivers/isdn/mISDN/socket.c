@@ -713,6 +713,9 @@ base_sock_bind(struct socket *sock, struct sockaddr *addr, int addr_len)
 	struct sock *sk = sock->sk;
 	int err = 0;
 
+	if (addr_len < sizeof(struct sockaddr_mISDN))
+		return -EINVAL;
+
 	if (!maddr || maddr->family != AF_ISDN)
 		return -EINVAL;
 
@@ -763,8 +766,6 @@ base_sock_create(struct net *net, struct socket *sock, int protocol, int kern)
 
 	if (sock->type != SOCK_RAW)
 		return -ESOCKTNOSUPPORT;
-	if (!capable(CAP_NET_RAW))
-		return -EPERM;
 
 	sk = sk_alloc(net, PF_ISDN, GFP_KERNEL, &mISDN_proto, kern);
 	if (!sk)

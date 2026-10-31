@@ -124,27 +124,12 @@ static void pnv_setup_rfi_flush(void)
 			type = L1D_FLUSH_ORI;
 	}
 
-	/*
-	 * 4.4 doesn't support Power9 bare metal, so we don't need to flush
-	 * here - the flushes fix a P9 specific vulnerability.
-	 */
-	security_ftr_clear(SEC_FTR_L1D_FLUSH_ENTRY);
-	security_ftr_clear(SEC_FTR_L1D_FLUSH_UACCESS);
-
 	enable = security_ftr_enabled(SEC_FTR_FAVOUR_SECURITY) && \
 		 (security_ftr_enabled(SEC_FTR_L1D_FLUSH_PR)   || \
 		  security_ftr_enabled(SEC_FTR_L1D_FLUSH_HV));
 
 	setup_rfi_flush(type, enable);
 	setup_count_cache_flush();
-
-	enable = security_ftr_enabled(SEC_FTR_FAVOUR_SECURITY) &&
-		 security_ftr_enabled(SEC_FTR_L1D_FLUSH_ENTRY);
-	setup_entry_flush(enable);
-
-	enable = security_ftr_enabled(SEC_FTR_FAVOUR_SECURITY) &&
-		 security_ftr_enabled(SEC_FTR_L1D_FLUSH_UACCESS);
-	setup_uaccess_flush(enable);
 }
 
 static void __init pnv_setup_arch(void)
@@ -170,7 +155,7 @@ static void __init pnv_setup_arch(void)
 	/* XXX PMCS */
 }
 
-static void __init pnv_init_early(void)
+static void __init pnv_init(void)
 {
 	/*
 	 * Initialize the LPC bus now so that legacy serial
@@ -380,17 +365,15 @@ static void __init pnv_setup_machdep_opal(void)
 
 static int __init pnv_probe(void)
 {
-	unsigned long root = of_get_flat_dt_root();
-
-	if (!of_flat_dt_is_compatible(root, "ibm,powernv"))
+	if (!of_machine_is_compatible("ibm,powernv"))
 		return 0;
-
-	hpte_init_native();
 
 	if (firmware_has_feature(FW_FEATURE_OPAL))
 		pnv_setup_machdep_opal();
 
 	pr_debug("PowerNV detected !\n");
+
+	pnv_init();
 
 	return 1;
 }
@@ -417,14 +400,13 @@ static unsigned long pnv_get_proc_freq(unsigned int cpu)
 define_machine(powernv) {
 	.name			= "PowerNV",
 	.probe			= pnv_probe,
-	.init_early		= pnv_init_early,
 	.setup_arch		= pnv_setup_arch,
 	.init_IRQ		= pnv_init_IRQ,
 	.show_cpuinfo		= pnv_show_cpuinfo,
 	.get_proc_freq          = pnv_get_proc_freq,
 	.progress		= pnv_progress,
 	.machine_shutdown	= pnv_shutdown,
-	.power_save             = power7_idle,
+	.power_save             = NULL,
 	.calibrate_decr		= generic_calibrate_decr,
 #ifdef CONFIG_KEXEC
 	.kexec_cpu_down		= pnv_kexec_cpu_down,

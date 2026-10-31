@@ -269,7 +269,7 @@ static int etspi_sec_spi_unprepare(struct sec_spi_info *spi_info,
 	return 0;
 }
 
-#if !defined(CONFIG_SOC_EXYNOS8890) && !defined(CONFIG_SOC_EXYNOS8895)
+#if !defined(CONFIG_SOC_EXYNOS8895)
 static struct amba_device *adev_dma;
 static int etspi_sec_dma_prepare(struct sec_spi_info *spi_info)
 {
@@ -617,7 +617,7 @@ static long etspi_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				retval = etspi_sec_spi_unprepare(spi_info, spi);
 				if (retval < 0)
 					pr_err("%s: couldn't disable spi clks\n", __func__);
-#if !defined(CONFIG_SOC_EXYNOS8890) && !defined(CONFIG_SOC_EXYNOS8895)
+#if !defined(CONFIG_SOC_EXYNOS8895)
 				retval = etspi_sec_dma_unprepare();
 				if (retval < 0)
 					pr_err("%s: couldn't disable spi dma\n", __func__);
@@ -640,7 +640,7 @@ static long etspi_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			retval = etspi_sec_spi_prepare(spi_info, spi);
 			if (retval < 0)
 				pr_err("%s: Unable to enable spi clk\n", __func__);
-#if !defined(CONFIG_SOC_EXYNOS8890) && !defined(CONFIG_SOC_EXYNOS8895)
+#if !defined(CONFIG_SOC_EXYNOS8895)
 			retval = etspi_sec_dma_prepare(spi_info);
 			if (retval < 0)
 				pr_err("%s: Unable to enable spi dma\n", __func__);
@@ -685,7 +685,7 @@ static long etspi_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			retval = etspi_sec_spi_unprepare(spi_info, spi);
 			if (retval < 0)
 				pr_err("%s: couldn't disable spi clks\n", __func__);
-#if !defined(CONFIG_SOC_EXYNOS8890) && !defined(CONFIG_SOC_EXYNOS8895)
+#if !defined(CONFIG_SOC_EXYNOS8895)
 			retval = etspi_sec_dma_unprepare();
 			if (retval < 0)
 				pr_err("%s: couldn't disable spi dma\n", __func__);
@@ -930,7 +930,7 @@ void etspi_platformUninit(struct etspi_data *etspi)
 		gpio_free(etspi->sleepPin);
 		gpio_free(etspi->drdyPin);
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 		if (etspi->cs_gpio)
 			gpio_free(etspi->cs_gpio);
 #endif
@@ -951,7 +951,7 @@ static int etspi_parse_dt(struct device *dev,
 	int gpio;
 
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 	gpio = of_get_named_gpio_flags(np, "etspi-csgpio",
 		0, &flags);
 	if (gpio < 0) {
@@ -1178,7 +1178,7 @@ static int etspi_set_timer(struct etspi_data *etspi)
 }
 
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 static int etspi_set_cs_gpio(struct etspi_data *etspi,
 		struct s3c64xx_spi_csinfo *cs)
 {
@@ -1218,7 +1218,7 @@ static int etspi_probe(struct spi_device *spi)
 	unsigned long minor;
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
 	int retry = 0;
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 	struct s3c64xx_spi_csinfo *cs;
 #endif
 #endif
@@ -1261,7 +1261,7 @@ static int etspi_probe(struct spi_device *spi)
 	spi->mode = SPI_MODE_0;
 	spi->chip_select = 0;
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 	/* set cs pin in fp driver, use only Exynos8890 */
 	/* for use auto cs mode with dualization fp sensor */
 	cs = spi->controller_data;

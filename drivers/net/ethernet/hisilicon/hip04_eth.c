@@ -174,7 +174,6 @@ struct hip04_priv {
 	dma_addr_t rx_phys[RX_DESC_NUM];
 	unsigned int rx_head;
 	unsigned int rx_buf_size;
-	unsigned int rx_cnt_remaining;
 
 	struct device_node *phy_node;
 	struct phy_device *phy;
@@ -455,9 +454,9 @@ static int hip04_mac_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	skb_tx_timestamp(skb);
 
 	hip04_set_xmit_desc(priv, phys);
+	priv->tx_head = TX_NEXT(tx_head);
 	count++;
 	netdev_sent_queue(ndev, skb->len);
-	priv->tx_head = TX_NEXT(tx_head);
 
 	stats->tx_bytes += skb->len;
 	stats->tx_packets++;
@@ -488,6 +487,7 @@ static int hip04_rx_poll(struct napi_struct *napi, int budget)
 	struct hip04_priv *priv = container_of(napi, struct hip04_priv, napi);
 	struct net_device *ndev = priv->ndev;
 	struct net_device_stats *stats = &ndev->stats;
+	unsigned int cnt = hip04_recv_cnt(priv);
 	struct rx_desc *desc;
 	struct sk_buff *skb;
 	unsigned char *buf;
@@ -500,12 +500,14 @@ static int hip04_rx_poll(struct napi_struct *napi, int budget)
 
 	/* clean up tx descriptors */
 	tx_remaining = hip04_tx_reclaim(ndev, false);
-	priv->rx_cnt_remaining += hip04_recv_cnt(priv);
-	while (priv->rx_cnt_remaining && !last) {
+
+	while (cnt && !last) {
 		buf = priv->rx_buf[priv->rx_head];
 		skb = build_skb(buf, priv->rx_buf_size);
-		if (unlikely(!skb))
+		if (unlikely(!skb)) {
 			net_dbg_ratelimited("build_skb failed\n");
+			goto refill;
+		}
 
 		dma_unmap_single(priv->dev, priv->rx_phys[priv->rx_head],
 				 RX_BUF_SIZE, DMA_FROM_DEVICE);
@@ -532,6 +534,7 @@ static int hip04_rx_poll(struct napi_struct *napi, int budget)
 			rx++;
 		}
 
+refill:
 		buf = netdev_alloc_frag(priv->rx_buf_size);
 		if (!buf)
 			goto done;
@@ -544,13 +547,11 @@ static int hip04_rx_poll(struct napi_struct *napi, int budget)
 		hip04_set_recv_desc(priv, phys);
 
 		priv->rx_head = RX_NEXT(priv->rx_head);
-		if (rx >= budget) {
-			--priv->rx_cnt_remaining;
+		if (rx >= budget)
 			goto done;
-		}
 
-		if (--priv->rx_cnt_remaining == 0)
-			priv->rx_cnt_remaining += hip04_recv_cnt(priv);
+		if (--cnt == 0)
+			cnt = hip04_recv_cnt(priv);
 	}
 
 	if (!(priv->reg_inten & RCV_INT)) {
@@ -602,7 +603,7 @@ static irqreturn_t hip04_mac_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-enum hrtimer_restart tx_done(struct hrtimer *hrtimer)
+static enum hrtimer_restart tx_done(struct hrtimer *hrtimer)
 {
 	struct hip04_priv *priv;
 
@@ -635,7 +636,6 @@ static int hip04_mac_open(struct net_device *ndev)
 	int i;
 
 	priv->rx_head = 0;
-	priv->rx_cnt_remaining = 0;
 	priv->tx_head = 0;
 	priv->tx_tail = 0;
 	hip04_reset_ppe(priv);
@@ -758,13 +758,13 @@ static void hip04_get_drvinfo(struct net_device *netdev,
 	strlcpy(drvinfo->version, DRV_VERSION, sizeof(drvinfo->version));
 }
 
-static struct ethtool_ops hip04_ethtool_ops = {
+static const struct ethtool_ops hip04_ethtool_ops = {
 	.get_coalesce		= hip04_get_coalesce,
 	.set_coalesce		= hip04_set_coalesce,
 	.get_drvinfo		= hip04_get_drvinfo,
 };
 
-static struct net_device_ops hip04_netdev_ops = {
+static const struct net_device_ops hip04_netdev_ops = {
 	.ndo_open		= hip04_mac_open,
 	.ndo_stop		= hip04_mac_stop,
 	.ndo_get_stats		= hip04_get_stats,
@@ -950,6 +950,7 @@ static int hip04_remove(struct platform_device *pdev)
 
 	hip04_free_ring(ndev, d);
 	unregister_netdev(ndev);
+	free_irq(ndev->irq, ndev);
 	of_node_put(priv->phy_node);
 	cancel_work_sync(&priv->tx_timeout_task);
 	free_netdev(ndev);

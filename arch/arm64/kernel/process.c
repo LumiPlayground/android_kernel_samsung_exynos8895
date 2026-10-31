@@ -277,10 +277,19 @@ void __show_regs(struct pt_regs *regs)
 	printk("pc : [<%016llx>] lr : [<%016llx>] pstate: %08llx\n",
 	       regs->pc, lr, regs->pstate);
 	printk("sp : %016llx\n", sp);
-	for (i = top_reg; i >= 0; i--) {
+
+	i = top_reg;
+
+	while (i >= 0) {
 		printk("x%-2d: %016llx ", i, regs->regs[i]);
-		if (i % 2 == 0)
-			printk("\n");
+		i--;
+
+		if (i % 2 == 0) {
+			pr_cont("x%-2d: %016llx ", i, regs->regs[i]);
+			i--;
+		}
+
+		pr_cont("\n");
 	}
 	if (!user_mode(regs))
 		show_extra_register_data(regs, 128);
@@ -295,7 +304,7 @@ void show_regs(struct pt_regs * regs)
 
 static void tls_thread_flush(void)
 {
-	asm ("msr tpidr_el0, xzr");
+	write_sysreg(0, tpidr_el0);
 
 	if (is_compat_task()) {
 		current->thread.tp_value = 0;
@@ -306,7 +315,7 @@ static void tls_thread_flush(void)
 		 * with a stale shadow state during context switch.
 		 */
 		barrier();
-		asm ("msr tpidrro_el0, xzr");
+		write_sysreg(0, tpidrro_el0);
 	}
 }
 
@@ -354,14 +363,11 @@ int copy_thread(unsigned long clone_flags, unsigned long stack_start,
 		 * Read the current TLS pointer from tpidr_el0 as it may be
 		 * out-of-sync with the saved value.
 		 */
-		asm("mrs %0, tpidr_el0" : "=r" (*task_user_tls(p)));
+		*task_user_tls(p) = read_sysreg(tpidr_el0);
 
 		if (stack_start) {
 			if (is_compat_thread(task_thread_info(p)))
 				childregs->compat_sp = stack_start;
-			/* 16-byte aligned stack mandatory on AArch64 */
-			else if (stack_start & 15)
-				return -EINVAL;
 			else
 				childregs->sp = stack_start;
 		}
@@ -376,7 +382,7 @@ int copy_thread(unsigned long clone_flags, unsigned long stack_start,
 		memset(childregs, 0, sizeof(struct pt_regs));
 		childregs->pstate = PSR_MODE_EL1h;
 		if (IS_ENABLED(CONFIG_ARM64_UAO) &&
-		    cpus_have_cap(ARM64_HAS_UAO))
+		    cpus_have_const_cap(ARM64_HAS_UAO))
 			childregs->pstate |= PSR_UAO_BIT;
 		p->thread.cpu_context.x19 = stack_start;
 		p->thread.cpu_context.x20 = stk_sz;
@@ -393,7 +399,7 @@ static void tls_thread_switch(struct task_struct *next)
 {
 	unsigned long tpidr;
 
-	asm("mrs %0, tpidr_el0" : "=r" (tpidr));
+	tpidr = read_sysreg(tpidr_el0);
 	*task_user_tls(current) = tpidr;
 
 	if (is_compat_thread(task_thread_info(next)))
@@ -414,6 +420,9 @@ void uao_thread_switch(struct task_struct *next)
 			asm(ALTERNATIVE("nop", SET_PSTATE_UAO(0), ARM64_HAS_UAO));
 	}
 }
+
+/* Restore the UAO state depending on next's addr_limit */
+
 
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 /*
@@ -443,9 +452,7 @@ struct task_struct *__switch_to(struct task_struct *prev,
 	tls_thread_switch(next);
 	hw_breakpoint_thread_switch(next);
 	contextidr_thread_switch(next);
-#ifdef CONFIG_THREAD_INFO_IN_TASK
 	entry_task_switch(next);
-#endif
 	uao_thread_switch(next);
 
 	/*
@@ -478,15 +485,14 @@ unsigned long get_wchan(struct task_struct *p)
 #ifdef CONFIG_FUNCTION_GRAPH_TRACER
 	frame.graph = p->curr_ret_stack;
 #endif
+	stack_page = (unsigned long)task_stack_page(p);
 	do {
 		if (frame.sp < stack_page ||
 		    frame.sp >= stack_page + THREAD_SIZE ||
 		    unwind_frame(p, &frame))
-			goto out;
-		if (!in_sched_functions(frame.pc)) {
-			ret = frame.pc;
-			goto out;
-		}
+			return 0;
+		if (!in_sched_functions(frame.pc))
+			return frame.pc;
 	} while (count ++ < 16);
 
 out:
@@ -501,13 +507,10 @@ unsigned long arch_align_stack(unsigned long sp)
 	return sp & ~0xf;
 }
 
-static unsigned long randomize_base(unsigned long base)
-{
-	unsigned long range_end = base + (STACK_RND_MASK << PAGE_SHIFT) + 1;
-	return randomize_range(base, range_end, 0) ? : base;
-}
-
 unsigned long arch_randomize_brk(struct mm_struct *mm)
 {
-	return randomize_base(mm->brk);
+	if (is_compat_task())
+		return randomize_page(mm->brk, 0x02000000);
+	else
+		return randomize_page(mm->brk, 0x40000000);
 }

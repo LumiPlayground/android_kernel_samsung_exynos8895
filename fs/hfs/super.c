@@ -406,6 +406,7 @@ static int hfs_fill_super(struct super_block *sb, void *data, int silent)
 	}
 
 	sb->s_op = &hfs_super_operations;
+	sb->s_xattr = hfs_xattr_handlers;
 	sb->s_flags |= MS_NODIRATIME;
 	mutex_init(&sbi->bitmap_lock);
 
@@ -426,12 +427,14 @@ static int hfs_fill_super(struct super_block *sb, void *data, int silent)
 	if (!res) {
 		if (fd.entrylength > sizeof(rec) || fd.entrylength < 0) {
 			res =  -EIO;
-			goto bail_hfs_find;
+			goto bail;
 		}
 		hfs_bnode_read(fd.bnode, &rec, fd.entryoffset, fd.entrylength);
 	}
-	if (res)
-		goto bail_hfs_find;
+	if (res) {
+		hfs_find_exit(&fd);
+		goto bail_no_root;
+	}
 	res = -EINVAL;
 	root_inode = hfs_iget(sb, &fd.search_key->cat, &rec);
 	hfs_find_exit(&fd);
@@ -447,8 +450,6 @@ static int hfs_fill_super(struct super_block *sb, void *data, int silent)
 	/* everything's okay */
 	return 0;
 
-bail_hfs_find:
-	hfs_find_exit(&fd);
 bail_no_root:
 	pr_err("get root inode failed\n");
 bail:
@@ -483,8 +484,8 @@ static int __init init_hfs_fs(void)
 	int err;
 
 	hfs_inode_cachep = kmem_cache_create("hfs_inode_cache",
-		sizeof(struct hfs_inode_info), 0, SLAB_HWCACHE_ALIGN,
-		hfs_init_once);
+		sizeof(struct hfs_inode_info), 0,
+		SLAB_HWCACHE_ALIGN|SLAB_ACCOUNT, hfs_init_once);
 	if (!hfs_inode_cachep)
 		return -ENOMEM;
 	err = register_filesystem(&hfs_fs_type);

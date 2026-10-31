@@ -70,7 +70,7 @@ static int da9052_i2c_fix(struct da9052 *da9052, unsigned char reg)
 	case DA9053_BA:
 	case DA9053_BB:
 		/* A dummy read to a safe register address. */
-	if (!i2c_safe_reg(reg))
+		if (!i2c_safe_reg(reg))
 			return regmap_read(da9052->regmap,
 					   DA9052_PARK_REGISTER,
 					   &val);
@@ -118,7 +118,6 @@ static const struct i2c_device_id da9052_i2c_id[] = {
 	{"da9053-bc", DA9053_BC},
 	{}
 };
-MODULE_DEVICE_TABLE(i2c, da9052_i2c_id);
 
 #ifdef CONFIG_OF
 static const struct of_device_id dialog_dt_ids[] = {

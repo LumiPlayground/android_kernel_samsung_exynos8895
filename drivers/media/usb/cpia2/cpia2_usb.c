@@ -545,18 +545,30 @@ static void free_sbufs(struct camera_data *cam)
 static int write_packet(struct usb_device *udev,
 			u8 request, u8 * registers, u16 start, size_t size)
 {
+	unsigned char *buf;
+	int ret;
+
 	if (!registers || size <= 0)
 		return -EINVAL;
 
-	return usb_control_msg(udev,
+	buf = kmalloc(size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	memcpy(buf, registers, size);
+
+	ret = usb_control_msg(udev,
 			       usb_sndctrlpipe(udev, 0),
 			       request,
 			       USB_TYPE_VENDOR | USB_RECIP_DEVICE,
 			       start,	/* value */
 			       0,	/* index */
-			       registers,	/* buffer */
+			       buf,	/* buffer */
 			       size,
 			       HZ);
+
+	kfree(buf);
+	return ret;
 }
 
 /****************************************************************************
@@ -567,18 +579,32 @@ static int write_packet(struct usb_device *udev,
 static int read_packet(struct usb_device *udev,
 		       u8 request, u8 * registers, u16 start, size_t size)
 {
+	unsigned char *buf;
+	int ret;
+
 	if (!registers || size <= 0)
 		return -EINVAL;
 
-	return usb_control_msg(udev,
+	buf = kmalloc(size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	ret = usb_control_msg(udev,
 			       usb_rcvctrlpipe(udev, 0),
 			       request,
 			       USB_DIR_IN|USB_TYPE_VENDOR|USB_RECIP_DEVICE,
 			       start,	/* value */
 			       0,	/* index */
-			       registers,	/* buffer */
+			       buf,	/* buffer */
 			       size,
 			       HZ);
+
+	if (ret >= 0)
+		memcpy(registers, buf, size);
+
+	kfree(buf);
+
+	return ret;
 }
 
 /******************************************************************************
@@ -662,13 +688,8 @@ static int submit_urbs(struct camera_data *cam)
 		}
 		urb = usb_alloc_urb(FRAMES_PER_DESC, GFP_KERNEL);
 		if (!urb) {
-			ERR("%s: usb_alloc_urb error!\n", __func__);
 			for (j = 0; j < i; j++)
 				usb_free_urb(cam->sbuf[j].urb);
-			for (j = 0; j < NUM_SBUF; j++) {
-				kfree(cam->sbuf[j].data);
-				cam->sbuf[j].data = NULL;
-			}
 			return -ENOMEM;
 		}
 
@@ -835,13 +856,15 @@ static int cpia2_usb_probe(struct usb_interface *intf,
 	ret = set_alternate(cam, USBIF_CMDONLY);
 	if (ret < 0) {
 		ERR("%s: usb_set_interface error (ret = %d)\n", __func__, ret);
-		goto alt_err;
+		kfree(cam);
+		return ret;
 	}
 
 
 	if((ret = cpia2_init_camera(cam)) < 0) {
 		ERR("%s: failed to initialize cpia2 camera (ret = %d)\n", __func__, ret);
-		goto alt_err;
+		kfree(cam);
+		return ret;
 	}
 	LOG("  CPiA Version: %d.%02d (%d.%d)\n",
 	       cam->params.version.firmware_revision_hi,
@@ -861,14 +884,11 @@ static int cpia2_usb_probe(struct usb_interface *intf,
 	ret = cpia2_register_camera(cam);
 	if (ret < 0) {
 		ERR("%s: Failed to register cpia2 camera (ret = %d)\n", __func__, ret);
-		goto alt_err;
+		kfree(cam);
+		return ret;
 	}
 
 	return 0;
-
-alt_err:
-	cpia2_deinit_camera_struct(cam, intf);
-	return ret;
 }
 
 /******************************************************************************
@@ -894,8 +914,7 @@ static void cpia2_usb_disconnect(struct usb_interface *intf)
 		DBG("Wakeup waiting processes\n");
 		cam->curbuff->status = FRAME_READY;
 		cam->curbuff->length = 0;
-		if (waitqueue_active(&cam->wq_stream))
-			wake_up_interruptible(&cam->wq_stream);
+		wake_up_interruptible(&cam->wq_stream);
 	}
 
 	DBG("Releasing interface\n");

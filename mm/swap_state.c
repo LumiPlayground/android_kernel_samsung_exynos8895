@@ -19,7 +19,6 @@
 #include <linux/migrate.h>
 
 #include <asm/pgtable.h>
-#include "internal.h"
 
 /*
  * swapper_space is a fiction, retained to simplify the path through
@@ -38,6 +37,8 @@ struct address_space swapper_spaces[MAX_SWAPFILES] = {
 		.page_tree	= RADIX_TREE_INIT(GFP_ATOMIC|__GFP_NOWARN),
 		.i_mmap_writable = ATOMIC_INIT(0),
 		.a_ops		= &swap_aops,
+		/* swap cache doesn't use writeback related tags */
+		.flags		= 1 << AS_NO_WRITEBACK_TAGS,
 	}
 };
 
@@ -86,17 +87,17 @@ int __add_to_swap_cache(struct page *page, swp_entry_t entry)
 	VM_BUG_ON_PAGE(PageSwapCache(page), page);
 	VM_BUG_ON_PAGE(!PageSwapBacked(page), page);
 
-	page_cache_get(page);
+	get_page(page);
 	SetPageSwapCache(page);
 	set_page_private(page, entry.val);
 
 	address_space = swap_address_space(entry);
 	spin_lock_irq(&address_space->tree_lock);
 	error = radix_tree_insert(&address_space->page_tree,
-					entry.val, page);
+				  swp_offset(entry), page);
 	if (likely(!error)) {
 		address_space->nrpages++;
-		__inc_zone_page_state(page, NR_FILE_PAGES);
+		__inc_node_page_state(page, NR_FILE_PAGES);
 		INC_CACHE_INFO(add_total);
 	}
 	spin_unlock_irq(&address_space->tree_lock);
@@ -110,7 +111,7 @@ int __add_to_swap_cache(struct page *page, swp_entry_t entry)
 		VM_BUG_ON(error == -EEXIST);
 		set_page_private(page, 0UL);
 		ClearPageSwapCache(page);
-		page_cache_release(page);
+		put_page(page);
 	}
 
 	return error;
@@ -144,11 +145,11 @@ void __delete_from_swap_cache(struct page *page)
 
 	entry.val = page_private(page);
 	address_space = swap_address_space(entry);
-	radix_tree_delete(&address_space->page_tree, page_private(page));
+	radix_tree_delete(&address_space->page_tree, swp_offset(entry));
 	set_page_private(page, 0);
 	ClearPageSwapCache(page);
 	address_space->nrpages--;
-	__dec_zone_page_state(page, NR_FILE_PAGES);
+	__dec_node_page_state(page, NR_FILE_PAGES);
 	INC_CACHE_INFO(del_total);
 }
 
@@ -171,6 +172,11 @@ int add_to_swap(struct page *page, struct list_head *list)
 	if (!entry.val)
 		return 0;
 
+	if (mem_cgroup_try_charge_swap(page, entry)) {
+		swapcache_free(entry);
+		return 0;
+	}
+
 	if (unlikely(PageTransHuge(page)))
 		if (unlikely(split_huge_page_to_list(page, list))) {
 			swapcache_free(entry);
@@ -186,13 +192,12 @@ int add_to_swap(struct page *page, struct list_head *list)
 	 * deadlock in the swap out path.
 	 */
 	/*
-	 * Add it to the swap cache and mark it dirty
+	 * Add it to the swap cache.
 	 */
 	err = add_to_swap_cache(page, entry,
 			__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN);
 
-	if (!err) {	/* Success */
-		SetPageDirty(page);
+	if (!err) {
 		return 1;
 	} else {	/* -ENOMEM radix-tree allocation failure */
 		/*
@@ -223,7 +228,7 @@ void delete_from_swap_cache(struct page *page)
 	spin_unlock_irq(&address_space->tree_lock);
 
 	swapcache_free(entry);
-	page_cache_release(page);
+	put_page(page);
 }
 
 /* 
@@ -249,7 +254,8 @@ static inline void free_swap_cache(struct page *page)
 void free_page_and_swap_cache(struct page *page)
 {
 	free_swap_cache(page);
-	page_cache_release(page);
+	if (!is_huge_zero_page(page))
+		put_page(page);
 }
 
 /*
@@ -277,7 +283,7 @@ struct page * lookup_swap_cache(swp_entry_t entry)
 {
 	struct page *page;
 
-	page = find_get_page(swap_address_space(entry), entry.val);
+	page = find_get_page(swap_address_space(entry), swp_offset(entry));
 
 	if (page) {
 		INC_CACHE_INFO(find_success);
@@ -304,7 +310,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		 * called after lookup_swap_cache() failed, re-calling
 		 * that would confuse statistics.
 		 */
-		found_page = find_get_page(swapper_space, entry.val);
+		found_page = find_get_page(swapper_space, swp_offset(entry));
 		if (found_page)
 			break;
 
@@ -320,7 +326,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		/*
 		 * call radix_tree_preload() while we can wait.
 		 */
-		err = radix_tree_maybe_preload(gfp_mask & GFP_RECLAIM_MASK);
+		err = radix_tree_maybe_preload(gfp_mask & GFP_KERNEL);
 		if (err)
 			break;
 
@@ -354,21 +360,21 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		}
 
 		/* May fail (-ENOMEM) if radix-tree node allocation failed. */
-		__set_page_locked(new_page);
-		SetPageSwapBacked(new_page);
+		__SetPageLocked(new_page);
+		__SetPageSwapBacked(new_page);
 		err = __add_to_swap_cache(new_page, entry);
 		if (likely(!err)) {
 			radix_tree_preload_end();
 			/*
 			 * Initiate read into locked page and return.
 			 */
+			SetPageWorkingset(new_page);
 			lru_cache_add_anon(new_page);
 			*new_page_allocated = true;
 			return new_page;
 		}
 		radix_tree_preload_end();
-		ClearPageSwapBacked(new_page);
-		__clear_page_locked(new_page);
+		__ClearPageLocked(new_page);
 		/*
 		 * add_to_swap_cache() doesn't return -EEXIST, so we can safely
 		 * clear SWAP_HAS_CACHE flag.
@@ -377,7 +383,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	} while (err != -ENOMEM);
 
 	if (new_page)
-		page_cache_release(new_page);
+		put_page(new_page);
 	return found_page;
 }
 
@@ -495,7 +501,7 @@ struct page *swapin_readahead(swp_entry_t entry, gfp_t gfp_mask,
 			continue;
 		if (offset != entry_offset)
 			SetPageReadahead(page);
-		page_cache_release(page);
+		put_page(page);
 	}
 	blk_finish_plug(&plug);
 

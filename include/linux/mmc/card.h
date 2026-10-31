@@ -99,8 +99,7 @@ struct mmc_ext_csd {
 	u8			raw_partition_support;	/* 160 */
 	u8			raw_rpmb_size_mult;	/* 168 */
 	u8			raw_erased_mem_count;	/* 181 */
-	u8			enhanced_strobe_support;	/* 184 */
-#define MMC_STROBE_ENHANCED_SUPPORT	BIT(0)
+	u8			strobe_support;		/* 184 */
 	u8			raw_ext_csd_structure;	/* 194 */
 	u8			raw_card_type;		/* 196 */
 	u8			raw_driver_strength;	/* 197 */
@@ -252,17 +251,21 @@ struct mmc_part {
 };
 
 struct mmc_card_error_log {
-	char	type[4];	// sbc, cmd, data, stop, busy
+	char	type[4];        // sbc, cmd, data, stop
 	int	err_type;
 	u32	status;
 	u64	first_issue_time;
 	u64	last_issue_time;
 	u32	count;
-	u32     ge_cnt;         // status[19] : general error or unknown error
-	u32     cc_cnt;         // status[20] : internal card controller error
-	u32     ecc_cnt;        // status[21] : ecc error
-	u32     wp_cnt;         // status[26] : write protection error
-	u32     oor_cnt;        // status[31] : out of range error
+	u32	ge_cnt;			// status[19] : general error or unknown error_count
+	u32	cc_cnt;			// status[20] : internal card controller error_count
+	u32	ecc_cnt;		// status[21] : ecc error_count
+	u32	wp_cnt;			// status[26] : write protection error_count
+	u32	oor_cnt;		// status[31] : out of range error
+	u32	noti_cnt;		// uevent notification count
+	u32	halt_cnt;		// cq halt / unhalt fail
+	u32	cq_cnt;			// cq enable / disable fail
+	u32	rpmb_cnt;		// RPMB switch fail
 };
 
 /*
@@ -302,6 +305,7 @@ struct mmc_card {
 #define MMC_QUIRK_SEC_ERASE_TRIM_BROKEN (1<<10)	/* Skip secure for erase/trim */
 #define MMC_QUIRK_BROKEN_IRQ_POLLING	(1<<11)	/* Polling SDIO_CCCR_INTx could create a fake interrupt */
 #define MMC_QUIRK_TRIM_BROKEN	(1<<12)		/* Skip trim */
+#define MMC_QUIRK_BROKEN_HPI	(1<<13)		/* Disable broken HPI support */
 
 
 	unsigned int		erase_size;	/* erase size in sectors */
@@ -313,6 +317,7 @@ struct mmc_card {
 	u32			raw_cid[4];	/* raw card CID */
 	u32			raw_csd[4];	/* raw card CSD */
 	u32			raw_scr[2];	/* raw card SCR */
+	u32			raw_ssr[16];	/* raw card SSR */
 	struct mmc_cid		cid;		/* card identification */
 	struct mmc_csd		csd;		/* card specific */
 	struct mmc_ext_csd	ext_csd;	/* mmc v4 extended card specific */
@@ -336,8 +341,6 @@ struct mmc_card {
 	struct dentry		*debugfs_root;
 	struct mmc_part	part[MMC_NUM_PHY_PARTITION]; /* physical partitions */
 	unsigned int    nr_parts;
-	u8 en_strobe_enhanced;	/*enhanced strobe ctrl */
-	
 	struct device_attribute error_count;
 	struct mmc_card_error_log err_log[10];
 };
@@ -380,6 +383,9 @@ struct mmc_fixup {
 	/* SDIO-specfic fields. You can use SDIO_ANY_ID here of course */
 	u16 cis_vendor, cis_device;
 
+	/* for MMC cards */
+	unsigned int ext_csd_rev;
+
 	void (*vendor_fixup)(struct mmc_card *card, int data);
 	int data;
 };
@@ -388,11 +394,20 @@ struct mmc_fixup {
 #define CID_OEMID_ANY ((unsigned short) -1)
 #define CID_NAME_ANY (NULL)
 
+#define EXT_CSD_REV_ANY (-1u)
+
+#define CID_MANFID_SANDISK      0x2
+#define CID_MANFID_TOSHIBA      0x11
+#define CID_MANFID_MICRON       0x13
+#define CID_MANFID_SAMSUNG      0x15
+#define CID_MANFID_KINGSTON     0x70
+#define CID_MANFID_HYNIX	0x90
+
 #define END_FIXUP { NULL }
 
 #define _FIXUP_EXT(_name, _manfid, _oemid, _rev_start, _rev_end,	\
 		   _cis_vendor, _cis_device,				\
-		   _fixup, _data)					\
+		   _fixup, _data, _ext_csd_rev)				\
 	{						   \
 		.name = (_name),			   \
 		.manfid = (_manfid),			   \
@@ -403,23 +418,30 @@ struct mmc_fixup {
 		.cis_device = (_cis_device),		   \
 		.vendor_fixup = (_fixup),		   \
 		.data = (_data),			   \
+		.ext_csd_rev = (_ext_csd_rev),		   \
 	 }
 
 #define MMC_FIXUP_REV(_name, _manfid, _oemid, _rev_start, _rev_end,	\
-		      _fixup, _data)					\
+		      _fixup, _data, _ext_csd_rev)			\
 	_FIXUP_EXT(_name, _manfid,					\
 		   _oemid, _rev_start, _rev_end,			\
 		   SDIO_ANY_ID, SDIO_ANY_ID,				\
-		   _fixup, _data)					\
+		   _fixup, _data, _ext_csd_rev)				\
 
 #define MMC_FIXUP(_name, _manfid, _oemid, _fixup, _data) \
-	MMC_FIXUP_REV(_name, _manfid, _oemid, 0, -1ull, _fixup, _data)
+	MMC_FIXUP_REV(_name, _manfid, _oemid, 0, -1ull, _fixup, _data,	\
+		      EXT_CSD_REV_ANY)
+
+#define MMC_FIXUP_EXT_CSD_REV(_name, _manfid, _oemid, _fixup, _data,	\
+			      _ext_csd_rev)				\
+	MMC_FIXUP_REV(_name, _manfid, _oemid, 0, -1ull, _fixup, _data,	\
+		      _ext_csd_rev)
 
 #define SDIO_FIXUP(_vendor, _device, _fixup, _data)			\
 	_FIXUP_EXT(CID_NAME_ANY, CID_MANFID_ANY,			\
 		    CID_OEMID_ANY, 0, -1ull,				\
 		   _vendor, _device,					\
-		   _fixup, _data)					\
+		   _fixup, _data, EXT_CSD_REV_ANY)			\
 
 #define cid_rev(hwrev, fwrev, year, month)	\
 	(((u64) hwrev) << 40 |                  \
@@ -536,6 +558,11 @@ static inline int mmc_card_long_read_time(const struct mmc_card *c)
 static inline int mmc_card_broken_irq_polling(const struct mmc_card *c)
 {
 	return c->quirks & MMC_QUIRK_BROKEN_IRQ_POLLING;
+}
+
+static inline int mmc_card_broken_hpi(const struct mmc_card *c)
+{
+	return c->quirks & MMC_QUIRK_BROKEN_HPI;
 }
 
 #define mmc_card_name(c)	((c)->cid.prod_name)

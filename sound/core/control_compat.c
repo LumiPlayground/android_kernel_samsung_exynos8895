@@ -196,7 +196,7 @@ static int get_ctl_type(struct snd_card *card, struct snd_ctl_elem_id *id,
 	kctl = snd_ctl_find_id(card, id);
 	if (! kctl) {
 		up_read(&card->controls_rwsem);
-		return -ENXIO;
+		return -ENOENT;
 	}
 	info = kzalloc(sizeof(*info), GFP_KERNEL);
 	if (info == NULL) {
@@ -281,7 +281,6 @@ static int copy_ctl_value_to_user(void __user *userdata,
 				  struct snd_ctl_elem_value *data,
 				  int type, int count)
 {
-	struct snd_ctl_elem_value32 __user *data32 = userdata;
 	int i, size;
 
 	if (type == SNDRV_CTL_ELEM_TYPE_BOOLEAN ||
@@ -298,8 +297,6 @@ static int copy_ctl_value_to_user(void __user *userdata,
 		if (copy_to_user(valuep, data->value.bytes.data, size))
 			return -EFAULT;
 	}
-	if (copy_to_user(&data32->id, &data->id, sizeof(data32->id)))
-		return -EFAULT;
 	return 0;
 }
 

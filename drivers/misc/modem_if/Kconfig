@@ -28,9 +28,6 @@ config LTE_MODEM_S5E7890
 	bool "modem chip : LSI S5E7890(onechip)"
 	default n
 
-config LTE_MODEM_S5E8890
-	bool "modem chip : LSI S5E8890(onechip)"
-	default n
 endmenu
 
 config LINK_DEVICE_SHMEM

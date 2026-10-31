@@ -31,13 +31,8 @@
  * CONFIG -PLATFORM CONFIG
  * =================================================================================================
  */
-#ifdef CONFIG_SOC_EXYNOS8890
-#define VPU_AHB_BASE_ADDR 0x0
-#define VPU_STOP_WAIT_COUNT 200 /* 1 unit : 10ms */
-#else
 #define VPU_AHB_BASE_ADDR 0x20200000
 #define VPU_STOP_WAIT_COUNT 200
-#endif
 
 
 /*

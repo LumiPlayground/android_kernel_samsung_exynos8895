@@ -21,12 +21,15 @@ extern struct squashfs_page_actor *squashfs_page_actor_init(struct page **,
 	int, int, void (*)(struct page **, int, int));
 extern void squashfs_page_actor_free(struct squashfs_page_actor *, int);
 
-extern void squashfs_actor_to_buf(struct squashfs_page_actor *, void *, int);
-extern void squashfs_buf_to_actor(void *, struct squashfs_page_actor *, int);
-extern void squashfs_bh_to_actor(struct buffer_head **, int,
-	struct squashfs_page_actor *, int, int, int);
-extern void squashfs_bh_to_buf(struct buffer_head **, int, void *, int, int,
-	int);
+	if (actor == NULL)
+		return NULL;
+
+	actor->length = length ? : pages * PAGE_SIZE;
+	actor->page = page;
+	actor->pages = pages;
+	actor->next_page = 0;
+	return actor;
+}
 
 /*
  * Calling code should avoid sleeping between calls to squashfs_first_page()

@@ -1408,7 +1408,7 @@ static int exynos_ufs_init_system(struct exynos_ufs *ufs)
 	struct clk *c, *p;
 	int ret = 0;
 
-#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
+#if !defined(CONFIG_SOC_EXYNOS7420)
 	u32 val;
 
 	/* Getting the soc revision*/
@@ -2180,7 +2180,7 @@ static int exynos_ufs_populate_dt(struct device *dev, struct exynos_ufs *ufs)
 	if (of_property_read_u32(np, "ufs-pm-qos-int", &ufs->pm_qos_int_value))
 		ufs->pm_qos_int_value = 0;
 
-#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
+#if !defined(CONFIG_SOC_EXYNOS7420)
         ufs->pmureg = syscon_regmap_lookup_by_phandle(np,
                                         "samsung,pmu-phandle");
         if (IS_ERR(ufs->pmureg)) {

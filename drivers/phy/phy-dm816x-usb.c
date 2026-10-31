@@ -118,7 +118,7 @@ static const struct phy_ops ops = {
 	.owner		= THIS_MODULE,
 };
 
-static int dm816x_usb_phy_runtime_suspend(struct device *dev)
+static int __maybe_unused dm816x_usb_phy_runtime_suspend(struct device *dev)
 {
 	struct dm816x_usb_phy *phy = dev_get_drvdata(dev);
 	unsigned int mask, val;
@@ -136,7 +136,7 @@ static int dm816x_usb_phy_runtime_suspend(struct device *dev)
 	return 0;
 }
 
-static int dm816x_usb_phy_runtime_resume(struct device *dev)
+static int __maybe_unused dm816x_usb_phy_runtime_resume(struct device *dev)
 {
 	struct dm816x_usb_phy *phy = dev_get_drvdata(dev);
 	unsigned int mask, val;
@@ -246,28 +246,19 @@ static int dm816x_usb_phy_probe(struct platform_device *pdev)
 
 	pm_runtime_enable(phy->dev);
 	generic_phy = devm_phy_create(phy->dev, NULL, &ops);
-	if (IS_ERR(generic_phy)) {
-		error = PTR_ERR(generic_phy);
-		goto clk_unprepare;
-	}
+	if (IS_ERR(generic_phy))
+		return PTR_ERR(generic_phy);
 
 	phy_set_drvdata(generic_phy, phy);
 
 	phy_provider = devm_of_phy_provider_register(phy->dev,
 						     of_phy_simple_xlate);
-	if (IS_ERR(phy_provider)) {
-		error = PTR_ERR(phy_provider);
-		goto clk_unprepare;
-	}
+	if (IS_ERR(phy_provider))
+		return PTR_ERR(phy_provider);
 
 	usb_add_phy_dev(&phy->phy);
 
 	return 0;
-
-clk_unprepare:
-	pm_runtime_disable(phy->dev);
-	clk_unprepare(phy->refclk);
-	return error;
 }
 
 static int dm816x_usb_phy_remove(struct platform_device *pdev)

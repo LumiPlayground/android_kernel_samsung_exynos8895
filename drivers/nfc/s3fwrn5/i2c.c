@@ -37,8 +37,8 @@ struct s3fwrn5_i2c_phy {
 	struct i2c_client *i2c_dev;
 	struct nci_dev *ndev;
 
-	int gpio_en;
-	int gpio_fw_wake;
+	unsigned int gpio_en;
+	unsigned int gpio_fw_wake;
 
 	struct mutex mutex;
 
@@ -125,7 +125,7 @@ static int s3fwrn5_i2c_write(void *phy_id, struct sk_buff *skb)
 	return 0;
 }
 
-static struct s3fwrn5_phy_ops i2c_phy_ops = {
+static const struct s3fwrn5_phy_ops i2c_phy_ops = {
 	.set_wake = s3fwrn5_i2c_set_wake,
 	.set_mode = s3fwrn5_i2c_set_mode,
 	.get_mode = s3fwrn5_i2c_get_mode,

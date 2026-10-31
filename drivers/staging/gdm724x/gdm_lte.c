@@ -382,7 +382,7 @@ static s32 gdm_lte_tx_nic_type(struct net_device *dev, struct sk_buff *skb)
 		/* Check DHCPv4 */
 		if (ip->protocol == IPPROTO_UDP) {
 			struct udphdr *udp =
-					(network_data + sizeof(struct iphdr));
+					network_data + sizeof(struct iphdr);
 			if (ntohs(udp->dest) == 67 || ntohs(udp->dest) == 68)
 				nic_type |= NIC_TYPE_F_DHCP;
 		}
@@ -393,12 +393,12 @@ static s32 gdm_lte_tx_nic_type(struct net_device *dev, struct sk_buff *skb)
 
 		if (ipv6->nexthdr == IPPROTO_ICMPV6) /* Check NDP request */ {
 			struct icmp6hdr *icmp6 =
-					(network_data + sizeof(struct ipv6hdr));
+					network_data + sizeof(struct ipv6hdr);
 			if (icmp6->icmp6_type == NDISC_NEIGHBOUR_SOLICITATION)
 				nic_type |= NIC_TYPE_ICMPV6;
 		} else if (ipv6->nexthdr == IPPROTO_UDP) /* Check DHCPv6 */ {
 			struct udphdr *udp =
-					(network_data + sizeof(struct ipv6hdr));
+					network_data + sizeof(struct ipv6hdr);
 			if (ntohs(udp->dest) == 546 || ntohs(udp->dest) == 547)
 				nic_type |= NIC_TYPE_F_DHCP;
 		}
@@ -555,7 +555,7 @@ int gdm_lte_event_init(void)
 void gdm_lte_event_exit(void)
 {
 	if (lte_event.sock && --lte_event.ref_cnt == 0) {
-		netlink_exit(lte_event.sock);
+		sock_release(lte_event.sock->sk_socket);
 		lte_event.sock = NULL;
 	}
 }
@@ -624,12 +624,10 @@ static void gdm_lte_netif_rx(struct net_device *dev, char *buf,
 						  * bytes (99,130,83,99 dec)
 						  */
 			} __packed;
-			int offset = sizeof(struct iphdr) +
-				     sizeof(struct udphdr) +
-				     offsetof(struct dhcp_packet, chaddr);
-			if (offset + ETH_ALEN > len)
-				return;
-			ether_addr_copy(nic->dest_mac_addr, buf + offset);
+			void *addr = buf + sizeof(struct iphdr) +
+				sizeof(struct udphdr) +
+				offsetof(struct dhcp_packet, chaddr);
+			ether_addr_copy(nic->dest_mac_addr, addr);
 		}
 	}
 
@@ -691,7 +689,6 @@ static void gdm_lte_multi_sdu_pkt(struct phy_dev *phy_dev, char *buf, int len)
 	struct multi_sdu *multi_sdu = (struct multi_sdu *)buf;
 	struct sdu *sdu = NULL;
 	u8 *data = (u8 *)multi_sdu->data;
-	int copied;
 	u16 i = 0;
 	u16 num_packet;
 	u16 hci_len;
@@ -705,12 +702,6 @@ static void gdm_lte_multi_sdu_pkt(struct phy_dev *phy_dev, char *buf, int len)
 				      multi_sdu->num_packet);
 
 	for (i = 0; i < num_packet; i++) {
-		copied = data - multi_sdu->data;
-		if (len < copied + sizeof(*sdu)) {
-			pr_err("rx prevent buffer overflow");
-			return;
-		}
-
 		sdu = (struct sdu *)data;
 
 		cmd_evt = gdm_dev16_to_cpu(phy_dev->
@@ -724,8 +715,7 @@ static void gdm_lte_multi_sdu_pkt(struct phy_dev *phy_dev, char *buf, int len)
 			pr_err("rx sdu wrong hci %04x\n", cmd_evt);
 			return;
 		}
-		if (hci_len < 12 ||
-		    len < copied + sizeof(*sdu) + (hci_len - 12)) {
+		if (hci_len < 12) {
 			pr_err("rx sdu invalid len %d\n", hci_len);
 			return;
 		}
@@ -838,7 +828,7 @@ void start_rx_proc(struct phy_dev *phy_dev)
 				rx_complete, phy_dev, USB_COMPLETE);
 }
 
-static struct net_device_ops gdm_netdev_ops = {
+static const struct net_device_ops gdm_netdev_ops = {
 	.ndo_open			= gdm_lte_open,
 	.ndo_stop			= gdm_lte_close,
 	.ndo_set_config			= gdm_lte_set_config,
@@ -865,7 +855,7 @@ static void form_mac_address(u8 *dev_addr, u8 *nic_src, u8 *nic_dest,
 	/* Create random nic src and copy the first
 	 * 3 bytes to be the same as dev_addr
 	 */
-	random_ether_addr(nic_src);
+	eth_random_addr(nic_src);
 	memcpy(nic_src, dev_addr, 3);
 
 	/* Copy the nic_dest from dev_addr*/

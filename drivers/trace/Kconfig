@@ -26,6 +26,17 @@ config EXYNOS_SNAPSHOT_CALLSTACK
 	range 1 4
 	default 4
 
+config EXYNOS_SNAPSHOT_EARLY_LOG
+	bool "Start Exynos persistent kernel logging before timers"
+	depends on EXYNOS_SNAPSHOT && SOC_EXYNOS8895
+	default n
+	help
+	  Diagnostic option for hangs before early_initcall. Map the existing
+	  ess_setup buffer after memory, scheduler and RCU initialization, and
+	  start saving printk before IRQ and timer initialization. Earlier hangs
+	  still require an early UART trace. The normal snapshot initialization
+	  will reuse the mapping and leave the saved previous log intact.
+
 config EXYNOS_SNAPSHOT_IRQ_EXIT
 	bool "Enable debugging of interrupt exit event by kevent"
 	depends on EXYNOS_SNAPSHOT && !EXYNOS_SNAPSHOT_MINIMIZED_MODE

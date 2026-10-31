@@ -48,7 +48,13 @@ struct pids_cgroup {
 	 * %PIDS_MAX = (%PID_MAX_LIMIT + 1).
 	 */
 	atomic64_t			counter;
-	atomic64_t			limit;
+	int64_t				limit;
+
+	/* Handle for "pids.events" */
+	struct cgroup_file		events_file;
+
+	/* Number of times fork failed because limit was hit. */
+	atomic64_t			events_limit;
 };
 
 static struct pids_cgroup *css_pids(struct cgroup_subsys_state *css)
@@ -70,8 +76,9 @@ pids_css_alloc(struct cgroup_subsys_state *parent)
 	if (!pids)
 		return ERR_PTR(-ENOMEM);
 
+	pids->limit = PIDS_MAX;
 	atomic64_set(&pids->counter, 0);
-	atomic64_set(&pids->limit, PIDS_MAX);
+	atomic64_set(&pids->events_limit, 0);
 	return &pids->css;
 }
 
@@ -134,7 +141,7 @@ static void pids_charge(struct pids_cgroup *pids, int num)
  *
  * This function follows the set limit. It will fail if the charge would cause
  * the new value to exceed the hierarchical limit. Returns 0 if the charge
- * succeded, otherwise -EAGAIN.
+ * succeeded, otherwise -EAGAIN.
  */
 static int pids_try_charge(struct pids_cgroup *pids, int num)
 {
@@ -142,14 +149,13 @@ static int pids_try_charge(struct pids_cgroup *pids, int num)
 
 	for (p = pids; parent_pids(p); p = parent_pids(p)) {
 		int64_t new = atomic64_add_return(num, &p->counter);
-		int64_t limit = atomic64_read(&p->limit);
 
 		/*
 		 * Since new is capped to the maximum number of pid_t, if
 		 * p->limit is %PIDS_MAX then we know that this test will never
 		 * fail.
 		 */
-		if (new > limit)
+		if (new > p->limit)
 			goto revert;
 	}
 
@@ -210,17 +216,28 @@ static void pids_cancel_attach(struct cgroup_taskset *tset)
  * task_css_check(true) in pids_can_fork() and pids_cancel_fork() relies
  * on threadgroup_change_begin() held by the copy_process().
  */
-static int pids_can_fork(struct task_struct *task, void **priv_p)
+static int pids_can_fork(struct task_struct *task)
 {
 	struct cgroup_subsys_state *css;
 	struct pids_cgroup *pids;
+	int err;
 
 	css = task_css_check(current, pids_cgrp_id, true);
 	pids = css_pids(css);
-	return pids_try_charge(pids, 1);
+	err = pids_try_charge(pids, 1);
+	if (err) {
+		/* Only log the first time events_limit is incremented. */
+		if (atomic64_inc_return(&pids->events_limit) == 1) {
+			pr_info("cgroup: fork rejected by pids controller in ");
+			pr_cont_cgroup_path(css->cgroup);
+			pr_cont("\n");
+		}
+		cgroup_file_notify(&pids->events_file);
+	}
+	return err;
 }
 
-static void pids_cancel_fork(struct task_struct *task, void *priv)
+static void pids_cancel_fork(struct task_struct *task)
 {
 	struct cgroup_subsys_state *css;
 	struct pids_cgroup *pids;
@@ -263,7 +280,7 @@ set_limit:
 	 * Limit updates don't need to be mutex'd, since it isn't
 	 * critical that any racing fork()s follow the new limit.
 	 */
-	atomic64_set(&pids->limit, limit);
+	pids->limit = limit;
 	return nbytes;
 }
 
@@ -271,7 +288,7 @@ static int pids_max_show(struct seq_file *sf, void *v)
 {
 	struct cgroup_subsys_state *css = seq_css(sf);
 	struct pids_cgroup *pids = css_pids(css);
-	int64_t limit = atomic64_read(&pids->limit);
+	int64_t limit = pids->limit;
 
 	if (limit >= PIDS_MAX)
 		seq_printf(sf, "%s\n", PIDS_MAX_STR);
@@ -289,6 +306,14 @@ static s64 pids_current_read(struct cgroup_subsys_state *css,
 	return atomic64_read(&pids->counter);
 }
 
+static int pids_events_show(struct seq_file *sf, void *v)
+{
+	struct pids_cgroup *pids = css_pids(seq_css(sf));
+
+	seq_printf(sf, "max %lld\n", (s64)atomic64_read(&pids->events_limit));
+	return 0;
+}
+
 static struct cftype pids_files[] = {
 	{
 		.name = "max",
@@ -299,6 +324,12 @@ static struct cftype pids_files[] = {
 	{
 		.name = "current",
 		.read_s64 = pids_current_read,
+		.flags = CFTYPE_NOT_ON_ROOT,
+	},
+	{
+		.name = "events",
+		.seq_show = pids_events_show,
+		.file_offset = offsetof(struct pids_cgroup, events_file),
 		.flags = CFTYPE_NOT_ON_ROOT,
 	},
 	{ }	/* terminate */

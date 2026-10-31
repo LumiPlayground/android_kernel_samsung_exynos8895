@@ -167,6 +167,14 @@ static const struct dmi_system_id video_detect_dmi_table[] = {
 		DMI_MATCH(DMI_PRODUCT_VERSION, "ThinkPad X201s"),
 		},
 	},
+        {
+         .callback = video_detect_force_video,
+         .ident = "ThinkPad X201T",
+         .matches = {
+                DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+                DMI_MATCH(DMI_PRODUCT_VERSION, "ThinkPad X201T"),
+                },
+        },
 
 	/* The native backlight controls do not work on some older machines */
 	{
@@ -251,13 +259,13 @@ static const struct dmi_system_id video_detect_dmi_table[] = {
 		DMI_MATCH(DMI_PRODUCT_NAME, "XPS L521X"),
 		},
 	},
-	/* https://bugs.launchpad.net/bugs/1894667 */
 	{
+	 /* https://bugzilla.kernel.org/show_bug.cgi?id=108971 */
 	 .callback = video_detect_force_video,
-	 .ident = "HP 635 Notebook",
+	 .ident = "SAMSUNG 530U4E/540U4E",
 	 .matches = {
-		DMI_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
-		DMI_MATCH(DMI_PRODUCT_NAME, "HP 635 Notebook PC"),
+		DMI_MATCH(DMI_SYS_VENDOR, "SAMSUNG ELECTRONICS CO., LTD."),
+		DMI_MATCH(DMI_PRODUCT_NAME, "530U4E/540U4E"),
 		},
 	},
 
@@ -290,6 +298,14 @@ static const struct dmi_system_id video_detect_dmi_table[] = {
 		},
 	},
 	{
+	 .callback = video_detect_force_native,
+	 .ident = "Dell Vostro V131",
+	 .matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
+		DMI_MATCH(DMI_PRODUCT_NAME, "Vostro V131"),
+		},
+	},
+	{
 	 /* https://bugzilla.redhat.com/show_bug.cgi?id=1123661 */
 	 .callback = video_detect_force_native,
 	 .ident = "Dell XPS 17 L702X",
@@ -298,6 +314,17 @@ static const struct dmi_system_id video_detect_dmi_table[] = {
 		DMI_MATCH(DMI_PRODUCT_NAME, "Dell System XPS L702X"),
 		},
 	},
+	{
+	/* https://bugzilla.redhat.com/show_bug.cgi?id=1204476 */
+	/* https://bugs.launchpad.net/ubuntu/+source/linux-lts-trusty/+bug/1416940 */
+	.callback = video_detect_force_native,
+	.ident = "HP Pavilion dv6",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
+		DMI_MATCH(DMI_PRODUCT_NAME, "HP Pavilion dv6 Notebook PC"),
+		},
+	},
+
 	{ },
 };
 
@@ -368,7 +395,7 @@ enum acpi_backlight_type acpi_video_get_backlight_type(void)
 	if (!(video_caps & ACPI_VIDEO_BACKLIGHT))
 		return acpi_backlight_vendor;
 
-	if (acpi_osi_is_win8() && backlight_device_registered(BACKLIGHT_RAW))
+	if (acpi_osi_is_win8() && backlight_device_get_by_type(BACKLIGHT_RAW))
 		return acpi_backlight_native;
 
 	return acpi_backlight_video;

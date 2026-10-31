@@ -17,15 +17,16 @@
 # define __release(x)	__context__(x,-1)
 # define __cond_lock(x,c)	((c) ? ({ __acquire(x); 1; }) : 0)
 # define __percpu	__attribute__((noderef, address_space(3)))
-# define __pmem		__attribute__((noderef, address_space(5)))
 #ifdef CONFIG_SPARSE_RCU_POINTER
 # define __rcu		__attribute__((noderef, address_space(4)))
-#else
+#else /* CONFIG_SPARSE_RCU_POINTER */
 # define __rcu
-#endif
+#endif /* CONFIG_SPARSE_RCU_POINTER */
+# define __private	__attribute__((noderef))
 extern void __chk_user_ptr(const volatile void __user *);
 extern void __chk_io_ptr(const volatile void __iomem *);
-#else
+# define ACCESS_PRIVATE(p, member) (*((typeof((p)->member) __force *) &(p)->member))
+#else /* __CHECKER__ */
 # define __user
 # define __kernel
 # define __safe
@@ -43,8 +44,9 @@ extern void __chk_io_ptr(const volatile void __iomem *);
 # define __cond_lock(x,c) (c)
 # define __percpu
 # define __rcu
-# define __pmem
-#endif
+# define __private
+# define ACCESS_PRIVATE(p, member) ((p)->member)
+#endif /* __CHECKER__ */
 
 /* Indirect macros required for expanded argument pasting, eg. __LINE__. */
 #define ___PASTE(a,b) a##b
@@ -201,14 +203,35 @@ void ftrace_likely_update(struct ftrace_branch_data *f, int val, int expect);
 # define unreachable() do { } while (1)
 #endif
 
+/*
+ * KENTRY - kernel entry point
+ * This can be used to annotate symbols (functions or data) that are used
+ * without their linker symbol being referenced explicitly. For example,
+ * interrupt vector handlers, or functions in the kernel image that are found
+ * programatically.
+ *
+ * Not required for symbols exported with EXPORT_SYMBOL, or initcalls. Those
+ * are handled in their own way (with KEEP() in linker scripts).
+ *
+ * KENTRY can be avoided if the symbols in question are marked as KEEP() in the
+ * linker script. For example an architecture could KEEP() its entire
+ * boot/exception vector code rather than annotate each function and data.
+ */
+#ifndef KENTRY
+# define KENTRY(sym)						\
+	extern typeof(sym) sym;					\
+	static const unsigned long __kentry_##sym		\
+	__used							\
+	__attribute__((section("___kentry" "+" #sym ), used))	\
+	= (unsigned long)&sym;
+#endif
+
 #ifndef RELOC_HIDE
 # define RELOC_HIDE(ptr, off)					\
   ({ unsigned long __ptr;					\
      __ptr = (unsigned long) (ptr);				\
     (typeof(ptr)) (__ptr + (off)); })
 #endif
-
-#define absolute_pointer(val)	RELOC_HIDE((void *)(val), 0)
 
 #ifndef OPTIMIZER_HIDE_VAR
 #define OPTIMIZER_HIDE_VAR(var) barrier()
@@ -284,8 +307,9 @@ static __always_inline void __write_once_size(volatile void *p, void *res, int s
  * In contrast to ACCESS_ONCE these two macros will also work on aggregate
  * data types like structs or unions. If the size of the accessed data
  * type exceeds the word size of the machine (e.g., 32 bits or 64 bits)
- * READ_ONCE() and WRITE_ONCE()  will fall back to memcpy and print a
- * compile-time warning.
+ * READ_ONCE() and WRITE_ONCE() will fall back to memcpy(). There's at
+ * least two memcpy()s: one for the __builtin_memcpy() and then one for
+ * the macro doing the copy of variable - '__u' allocated on the stack.
  *
  * Their two major use cases are: (1) Mediating communication between
  * process-level code and irq/NMI handlers, all running on the same CPU,
@@ -364,6 +388,10 @@ unsigned long read_word_at_a_time(const void *addr)
 #define __deprecated_for_modules
 #endif
 
+#ifndef __malloc
+#define __malloc
+#endif
+
 /*
  * Allow us to avoid 'defined but not used' warnings on functions and data,
  * as well as force them to be emitted to the assembly file.
@@ -428,6 +456,10 @@ unsigned long read_word_at_a_time(const void *addr)
 # define __attribute_const__	/* unimplemented */
 #endif
 
+#ifndef __latent_entropy
+# define __latent_entropy
+#endif
+
 /*
  * Tell gcc if a function is cold. The compiler will assume any path
  * directly leading to the call is unlikely.
@@ -462,6 +494,10 @@ unsigned long read_word_at_a_time(const void *addr)
 /* Is this type a native word size -- useful for atomic operations */
 #ifndef __native_word
 # define __native_word(t) (sizeof(t) == sizeof(char) || sizeof(t) == sizeof(short) || sizeof(t) == sizeof(int) || sizeof(t) == sizeof(long))
+#endif
+
+#ifndef __optimize
+# define __optimize(level)
 #endif
 
 /* Compile time object size, -1 for unknown */
@@ -510,7 +546,7 @@ unsigned long read_word_at_a_time(const void *addr)
  * compiler has support to do so.
  */
 #define compiletime_assert(condition, msg) \
-	_compiletime_assert(condition, msg, __compiletime_assert_, __COUNTER__)
+	_compiletime_assert(condition, msg, __compiletime_assert_, __LINE__)
 
 #define compiletime_assert_atomic_type(t)				\
 	compiletime_assert(__native_word(t),				\
@@ -548,10 +584,15 @@ unsigned long read_word_at_a_time(const void *addr)
  * Similar to rcu_dereference(), but for situations where the pointed-to
  * object's lifetime is managed by something other than RCU.  That
  * "something other" might be reference counting or simple immortality.
+ *
+ * The seemingly unused variable ___typecheck_p validates that @p is
+ * indeed a pointer type by using a pointer to typeof(*p) as the type.
+ * Taking a pointer to typeof(*p) again is needed in case p is void *.
  */
 #define lockless_dereference(p) \
 ({ \
 	typeof(p) _________p1 = READ_ONCE(p); \
+	typeof(*(p)) *___typecheck_p __maybe_unused; \
 	smp_read_barrier_depends(); /* Dependency order vs. p above. */ \
 	(_________p1); \
 })
@@ -564,11 +605,9 @@ unsigned long read_word_at_a_time(const void *addr)
 # define __kprobes
 # define nokprobe_inline	inline
 #endif
-
-/*
- * This is needed in functions which generate the stack canary, see
- * arch/x86/kernel/smpboot.c::start_secondary() for an example.
- */
-#define prevent_tail_call_optimization()	mb()
-
 #endif /* __LINUX_COMPILER_H */
+
+/* GCC builds do not use Clang control-flow instrumentation. */
+#ifndef __nocfi
+#define __nocfi
+#endif

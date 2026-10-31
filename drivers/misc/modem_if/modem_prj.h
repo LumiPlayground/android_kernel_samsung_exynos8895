@@ -730,8 +730,7 @@ struct modemctl_ops {
 	int (*modem_force_crash_exit)(struct modem_ctl *);
 	int (*modem_dump_reset)(struct modem_ctl *);
 	int (*modem_dump_start)(struct modem_ctl *);
-#if defined(CONFIG_LTE_MODEM_S5E4270) || defined(CONFIG_LTE_MODEM_S5E7580) ||\
-	defined(CONFIG_LTE_MODEM_S5E7890) || defined(CONFIG_LTE_MODEM_S5E8890)
+#if defined(CONFIG_LTE_MODEM_S5E4270) || defined(CONFIG_LTE_MODEM_S5E7580) || defined(CONFIG_LTE_MODEM_S5E7890)
 	int (*suspend_modem_ctrl)(struct modem_ctl *);
 	int (*resume_modem_ctrl)(struct modem_ctl *);
 	int (*modem_get_meminfo)(struct modem_ctl *, unsigned long arg);

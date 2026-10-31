@@ -307,8 +307,8 @@ retry:
 }
 
 #define is_vma_cached(vma)						      \
-	((pgprot_noncached((vma)->vm_page_prot) != (vma)->vm_page_prot) &&    \
-	   (pgprot_writecombine((vma)->vm_page_prot) != (vma)->vm_page_prot))
+	((pgprot_val(pgprot_noncached((vma)->vm_page_prot)) != pgprot_val((vma)->vm_page_prot)) &&    \
+	   (pgprot_val(pgprot_writecombine((vma)->vm_page_prot)) != pgprot_val((vma)->vm_page_prot)))
 
 static void m2m1shot2_unmap_image(struct m2m1shot2_device *m21dev,
 				struct m2m1shot2_context_image *img,

@@ -4,7 +4,7 @@
  * Jeremy Fitzhardinge <jeremy@xensource.com>, XenSource Inc, 2007
  */
 
-#include <linux/module.h>
+#include <linux/init.h>
 #include <linux/sched.h>
 #include <linux/mm.h>
 #include <linux/pm.h>
@@ -18,6 +18,7 @@
 #include <asm/setup.h>
 #include <asm/acpi.h>
 #include <asm/numa.h>
+#include <asm/sections.h>
 #include <asm/xen/hypervisor.h>
 #include <asm/xen/hypercall.h>
 
@@ -861,7 +862,7 @@ char * __init xen_memory_setup(void)
 	e820_add_region(ISA_START_ADDRESS, ISA_END_ADDRESS - ISA_START_ADDRESS,
 			E820_RESERVED);
 
-	sanitize_e820_map(e820.map, ARRAY_SIZE(e820.map), &e820.nr_map);
+	sanitize_e820_map(e820->map, ARRAY_SIZE(e820->map), &e820->nr_map);
 
 	/*
 	 * Check whether the kernel itself conflicts with the target E820 map.

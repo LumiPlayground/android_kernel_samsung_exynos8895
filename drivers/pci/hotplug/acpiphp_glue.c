@@ -136,21 +136,13 @@ static struct acpiphp_context *acpiphp_grab_context(struct acpi_device *adev)
 	struct acpiphp_context *context;
 
 	acpi_lock_hp_context();
-
 	context = acpiphp_get_context(adev);
-	if (!context)
-		goto unlock;
-
-	if (context->func.parent->is_going_away) {
-		acpiphp_put_context(context);
-		context = NULL;
-		goto unlock;
+	if (!context || context->func.parent->is_going_away) {
+		acpi_unlock_hp_context();
+		return NULL;
 	}
-
 	get_bridge(context->func.parent);
 	acpiphp_put_context(context);
-
-unlock:
 	acpi_unlock_hp_context();
 	return context;
 }
@@ -538,7 +530,6 @@ static void enable_slot(struct acpiphp_slot *slot)
 			slot->flags &= (~SLOT_ENABLED);
 			continue;
 		}
-		pci_dev_put(dev);
 	}
 }
 
@@ -693,6 +684,9 @@ static void acpiphp_check_bridge(struct acpiphp_bridge *bridge)
 	if (bridge->is_going_away)
 		return;
 
+	if (bridge->pci_dev)
+		pm_runtime_get_sync(&bridge->pci_dev->dev);
+
 	list_for_each_entry(slot, &bridge->slots, node) {
 		struct pci_bus *bus = slot->bus;
 		struct pci_dev *dev, *tmp;
@@ -712,6 +706,9 @@ static void acpiphp_check_bridge(struct acpiphp_bridge *bridge)
 			disable_slot(slot);
 		}
 	}
+
+	if (bridge->pci_dev)
+		pm_runtime_put(&bridge->pci_dev->dev);
 }
 
 /*
@@ -725,7 +722,7 @@ static void acpiphp_sanitize_bus(struct pci_bus *bus)
 	unsigned long type_mask = IORESOURCE_IO | IORESOURCE_MEM;
 
 	list_for_each_entry_safe_reverse(dev, tmp, &bus->devices, bus_list) {
-		for (i=0; i<PCI_BRIDGE_RESOURCES; i++) {
+		for (i = 0; i < PCI_BRIDGE_RESOURCES; i++) {
 			struct resource *res = &dev->resource[i];
 			if ((res->flags & type_mask) && !res->start &&
 					res->end) {

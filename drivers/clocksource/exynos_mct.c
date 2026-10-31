@@ -650,14 +650,16 @@ static void __init mct_init_dt(struct device_node *np, unsigned int int_type)
 }
 
 
-static void __init mct_init_spi(struct device_node *np)
+static int __init mct_init_spi(struct device_node *np)
 {
-	return mct_init_dt(np, MCT_INT_SPI);
+	mct_init_dt(np, MCT_INT_SPI);
+	return 0;
 }
 
-static void __init mct_init_ppi(struct device_node *np)
+static int __init mct_init_ppi(struct device_node *np)
 {
-	return mct_init_dt(np, MCT_INT_PPI);
+	mct_init_dt(np, MCT_INT_PPI);
+	return 0;
 }
 CLOCKSOURCE_OF_DECLARE(exynos4210, "samsung,exynos4210-mct", mct_init_spi);
 CLOCKSOURCE_OF_DECLARE(exynos4412, "samsung,exynos4412-mct", mct_init_ppi);

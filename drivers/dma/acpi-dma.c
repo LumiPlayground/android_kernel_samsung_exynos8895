@@ -72,14 +72,10 @@ static int acpi_dma_parse_resource_group(const struct acpi_csrt_group *grp,
 
 	si = (const struct acpi_csrt_shared_info *)&grp[1];
 
-	/* Match device by MMIO */
+	/* Match device by MMIO and IRQ */
 	if (si->mmio_base_low != lower_32_bits(mem) ||
-	    si->mmio_base_high != upper_32_bits(mem))
-		return 0;
-
-	/* Match device by Linux vIRQ */
-	ret = acpi_register_gsi(NULL, si->gsi_interrupt, si->interrupt_mode, si->interrupt_polarity);
-	if (ret != irq)
+	    si->mmio_base_high != upper_32_bits(mem) ||
+	    si->gsi_interrupt != irq)
 		return 0;
 
 	dev_dbg(&adev->dev, "matches with %.4s%04X (rev %u)\n",
@@ -442,7 +438,7 @@ struct dma_chan *acpi_dma_request_slave_chan_by_name(struct device *dev,
 			return ERR_PTR(-ENODEV);
 	}
 
-	dev_dbg(dev, "found DMA channel \"%s\" at index %d\n", name, index);
+	dev_dbg(dev, "Looking for DMA channel \"%s\" at index %d...\n", name, index);
 	return acpi_dma_request_slave_chan_by_index(dev, index);
 }
 EXPORT_SYMBOL_GPL(acpi_dma_request_slave_chan_by_name);

@@ -14,27 +14,6 @@
 
 #include "modem_prj.h"
 
-#ifdef CONFIG_SOC_EXYNOS8890
-/* BLK_ALIVE: CP related SFRs */
-#define EXYNOS_PMU_CP_CTRL_NS			0x0030
-#define EXYNOS_PMU_CP_CTRL_S			0x0034
-#define EXYNOS_PMU_CP_STAT			0x0038
-#define EXYNOS_PMU_CP_DEBUG			0x003C
-#define EXYNOS_PMU_CP_DURATION			0x0040
-#define EXYNOS_PMU_CP2AP_MEM_CONFIG		0x0050
-#define EXYNOS_PMU_CP2AP_MIF0_PERI_ACCESS_CON	0x0054
-#define EXYNOS_PMU_CP2AP_MIF1_PERI_ACCESS_CON	0x0058
-#define EXYNOS_PMU_CP2AP_MIF2_PERI_ACCESS_CON	0x005C
-#define EXYNOS_PMU_CP2AP_MIF3_PERI_ACCESS_CON	0x0060
-#define EXYNOS_PMU_CP2AP_CCORE_PERI_ACCESS_CON	0x0064
-#define EXYNOS_PMU_CP_BOOT_TEST_RST_CONFIG	0x0068
-#define EXYNOS_PMU_CP2AP_PERI_ACCESS_WIN	0x006C
-#define EXYNOS_PMU_MODAPIF_CONFIG		0x0070
-#define EXYNOS_PMU_CP_CLK_CTRL			0x0074
-#define EXYNOS_PMU_CP_QOS			0x0078
-#define EXYNOS_PMU_ERROR_CODE_DATA		0x007C
-#define EXYNOS_PMU_ERROR_CODE_PERI		0x0080
-#endif
 
 #define SMC_ID		0x82000700
 #define READ_CTRL	0x3
@@ -57,7 +36,7 @@ enum cp_control {
 	CP_CTRL_NS,
 };
 
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
+#if defined(CONFIG_SOC_EXYNOS8895)
 extern int exynos_cp_reset(struct modem_ctl *);
 extern int exynos_cp_release(struct modem_ctl *);
 extern int exynos_cp_init(struct modem_ctl *);

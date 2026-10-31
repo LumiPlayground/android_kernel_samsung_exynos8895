@@ -31,6 +31,7 @@
 #include <linux/jump_label.h>
 #include <linux/random.h>
 
+#include <asm/text-patching.h>
 #include <asm/page.h>
 #include <asm/pgtable.h>
 #include <asm/setup.h>
@@ -124,7 +125,6 @@ int apply_relocate(Elf32_Shdr *sechdrs,
 			*location += sym->st_value;
 			break;
 		case R_386_PC32:
-		case R_386_PLT32:
 			/* Add the value, subtract its position */
 			*location += sym->st_value - (uint32_t)location;
 			break;

@@ -1117,13 +1117,15 @@ static const struct snd_soc_codec_driver vts_codec = {
 	.ignore_pmdown_time = true,
 	.idle_bias_off = true,
 	.suspend_bias_off = true,
-	.controls = vts_controls,
-	.num_controls = ARRAY_SIZE(vts_controls),
-	.dapm_widgets = vts_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(vts_dapm_widgets),
-	.dapm_routes = vts_dapm_routes,
-	.num_dapm_routes = ARRAY_SIZE(vts_dapm_routes),
 	.get_regmap = vts_codec_get_regmap,
+	.component_driver = {
+		.controls = vts_controls,
+		.num_controls = ARRAY_SIZE(vts_controls),
+		.dapm_widgets = vts_dapm_widgets,
+		.num_dapm_widgets = ARRAY_SIZE(vts_dapm_widgets),
+		.dapm_routes = vts_dapm_routes,
+		.num_dapm_routes = ARRAY_SIZE(vts_dapm_routes),
+	},
 };
 
 int vts_set_dmicctrl(struct platform_device *pdev, int micconf_type, bool enable)

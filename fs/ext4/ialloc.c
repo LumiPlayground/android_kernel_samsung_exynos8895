@@ -22,7 +22,6 @@
 #include <linux/bitops.h>
 #include <linux/blkdev.h>
 #include <asm/byteorder.h>
-#include <linux/ratelimit.h>
 
 #include "ext4.h"
 #include "ext4_jbd2.h"
@@ -193,7 +192,7 @@ ext4_read_inode_bitmap(struct super_block *sb, ext4_group_t block_group)
 	trace_ext4_load_inode_bitmap(sb, block_group);
 	bh->b_end_io = ext4_end_bitmap_read;
 	get_bh(bh);
-	submit_bh(READ | REQ_META | REQ_PRIO, bh);
+	submit_bh(REQ_OP_READ, REQ_META | REQ_PRIO, bh);
 	wait_on_buffer(bh);
 	if (!buffer_uptodate(bh)) {
 		put_bh(bh);
@@ -332,13 +331,11 @@ void ext4_free_inode(handle_t *handle, struct inode *inode)
 
 	percpu_counter_inc(&sbi->s_freeinodes_counter);
 	if (sbi->s_log_groups_per_flex) {
-		struct flex_groups *fg;
+		ext4_group_t f = ext4_flex_group(sbi, block_group);
 
-		fg = sbi_array_rcu_deref(sbi, s_flex_groups,
-					 ext4_flex_group(sbi, block_group));
-		atomic_inc(&fg->free_inodes);
+		atomic_inc(&sbi->s_flex_groups[f].free_inodes);
 		if (is_directory)
-			atomic_dec(&fg->used_dirs);
+			atomic_dec(&sbi->s_flex_groups[f].used_dirs);
 	}
 	BUFFER_TRACE(bh2, "call ext4_handle_dirty_metadata");
 	fatal = ext4_handle_dirty_metadata(handle, NULL, bh2);
@@ -349,6 +346,7 @@ out:
 		if (!fatal)
 			fatal = err;
 	} else {
+		print_bh(sb, bitmap_bh, 0, EXT4_BLOCK_SIZE(sb));
 		ext4_error(sb, "bit already cleared for inode %lu", ino);
 		if (gdp && !EXT4_MB_GRP_IBITMAP_CORRUPT(grp)) {
 			int count;
@@ -379,13 +377,12 @@ static void get_orlov_stats(struct super_block *sb, ext4_group_t g,
 			    int flex_size, struct orlov_stats *stats)
 {
 	struct ext4_group_desc *desc;
+	struct flex_groups *flex_group = EXT4_SB(sb)->s_flex_groups;
 
 	if (flex_size > 1) {
-		struct flex_groups *fg = sbi_array_rcu_deref(EXT4_SB(sb),
-							     s_flex_groups, g);
-		stats->free_inodes = atomic_read(&fg->free_inodes);
-		stats->free_clusters = atomic64_read(&fg->free_clusters);
-		stats->used_dirs = atomic_read(&fg->used_dirs);
+		stats->free_inodes = atomic_read(&flex_group[g].free_inodes);
+		stats->free_clusters = atomic64_read(&flex_group[g].free_clusters);
+		stats->used_dirs = atomic_read(&flex_group[g].used_dirs);
 		return;
 	}
 
@@ -406,7 +403,7 @@ static void get_orlov_stats(struct super_block *sb, ext4_group_t g,
  *
  * We always try to spread first-level directories.
  *
- * If there are blockgroups with both free inodes and free clusters counts
+ * If there are blockgroups with both free inodes and free blocks counts
  * not worse than average we return one with smallest directory count.
  * Otherwise we simply return a random group.
  *
@@ -415,7 +412,7 @@ static void get_orlov_stats(struct super_block *sb, ext4_group_t g,
  * It's OK to put directory into a group unless
  * it has too many directories already (max_dirs) or
  * it has too few free inodes left (min_inodes) or
- * it has too few free clusters left (min_clusters) or
+ * it has too few free blocks left (min_blocks) or
  * Parent's group is preferred, if it doesn't satisfy these
  * conditions we search cyclically through the rest. If none
  * of the groups look good we just look for a group with more
@@ -431,7 +428,7 @@ static int find_group_orlov(struct super_block *sb, struct inode *parent,
 	ext4_group_t real_ngroups = ext4_get_groups_count(sb);
 	int inodes_per_group = EXT4_INODES_PER_GROUP(sb);
 	unsigned int freei, avefreei, grp_free;
-	ext4_fsblk_t freec, avefreec;
+	ext4_fsblk_t freeb, avefreec;
 	unsigned int ndirs;
 	int max_dirs, min_inodes;
 	ext4_grpblk_t min_clusters;
@@ -450,8 +447,9 @@ static int find_group_orlov(struct super_block *sb, struct inode *parent,
 
 	freei = percpu_counter_read_positive(&sbi->s_freeinodes_counter);
 	avefreei = freei / ngroups;
-	freec = percpu_counter_read_positive(&sbi->s_freeclusters_counter);
-	avefreec = freec;
+	freeb = EXT4_C2B(sbi,
+		percpu_counter_read_positive(&sbi->s_freeclusters_counter));
+	avefreec = freeb;
 	do_div(avefreec, ngroups);
 	ndirs = percpu_counter_read_positive(&sbi->s_dirs_counter);
 
@@ -720,13 +718,13 @@ out:
 static inline int ext4_has_free_inodes(struct ext4_sb_info *sbi)
 {
 	if (likely(percpu_counter_read_positive(&sbi->s_freeinodes_counter) >
-			sbi->s_r_inodes_count * 2))
+			sbi->s_r_inodes_count))
 		return 1;
 
 	/* Hm, nope.  Are (enough) root reserved inodes available? */
 	if (uid_eq(sbi->s_resuid, current_fsuid()) ||
 	    (!gid_eq(sbi->s_resgid, GLOBAL_ROOT_GID) && in_group_p(sbi->s_resgid)) ||
-	    capable(CAP_SYS_RESOURCE) || ext4_android_claim_r_blocks(sbi))
+	    capable(CAP_SYS_RESOURCE) || in_group_p(AID_USE_ROOT_RESERVED))
 		return 1;
 	return 0;
 }
@@ -769,11 +767,11 @@ struct inode *__ext4_new_inode(handle_t *handle, struct inode *dir,
 	if ((ext4_encrypted_inode(dir) ||
 	     DUMMY_ENCRYPTION_ENABLED(EXT4_SB(dir->i_sb))) &&
 	    (S_ISREG(mode) || S_ISDIR(mode) || S_ISLNK(mode))) {
-		err = ext4_get_encryption_info(dir);
+		err = fscrypt_get_encryption_info(dir);
 		if (err)
 			return ERR_PTR(err);
-		if (ext4_encryption_info(dir) == NULL)
-			return ERR_PTR(-EPERM);
+		if (!fscrypt_has_encryption_key(dir))
+			return ERR_PTR(-ENOKEY);
 		if (!handle)
 			nblocks += EXT4_DATA_TRANS_BLOCKS(dir->i_sb);
 		encrypt = 1;
@@ -789,7 +787,7 @@ struct inode *__ext4_new_inode(handle_t *handle, struct inode *dir,
 	sbi = EXT4_SB(sb);
 
 	/*
-	 * Initalize owners and quota early so that we don't have to account
+	 * Initialize owners and quota early so that we don't have to account
 	 * for quota initialization worst case in standard inode creating
 	 * transaction
 	 */
@@ -803,6 +801,13 @@ struct inode *__ext4_new_inode(handle_t *handle, struct inode *dir,
 		inode->i_gid = dir->i_gid;
 	} else
 		inode_init_owner(inode, dir, mode);
+
+	if (ext4_has_feature_project(sb) &&
+	    ext4_test_inode_flag(dir, EXT4_INODE_PROJINHERIT))
+		ei->i_projid = EXT4_I(dir)->i_projid;
+	else
+		ei->i_projid = make_kprojid(&init_user_ns, EXT4_DEF_PROJID);
+
 	err = dquot_initialize(inode);
 	if (err)
 		goto out;
@@ -1010,8 +1015,7 @@ got:
 		if (sbi->s_log_groups_per_flex) {
 			ext4_group_t f = ext4_flex_group(sbi, group);
 
-			atomic_inc(&sbi_array_rcu_deref(sbi, s_flex_groups,
-							f)->used_dirs);
+			atomic_inc(&sbi->s_flex_groups[f].used_dirs);
 		}
 	}
 	if (ext4_has_group_desc_csum(sb)) {
@@ -1034,8 +1038,7 @@ got:
 
 	if (sbi->s_log_groups_per_flex) {
 		flex_group = ext4_flex_group(sbi, group);
-		atomic_dec(&sbi_array_rcu_deref(sbi, s_flex_groups,
-						flex_group)->free_inodes);
+		atomic_dec(&sbi->s_flex_groups[flex_group].free_inodes);
 	}
 
 	inode->i_ino = ino + group * EXT4_INODES_PER_GROUP(sb);
@@ -1096,6 +1099,17 @@ got:
 	if (err)
 		goto fail_drop;
 
+	/*
+	 * Since the encryption xattr will always be unique, create it first so
+	 * that it's less likely to end up in an external xattr block and
+	 * prevent its deduplication.
+	 */
+	if (encrypt) {
+		err = fscrypt_inherit_context(dir, inode, handle, true);
+		if (err)
+			goto fail_free_drop;
+	}
+
 	err = ext4_init_acl(handle, inode, dir);
 	if (err)
 		goto fail_free_drop;
@@ -1115,12 +1129,6 @@ got:
 	if (ext4_handle_valid(handle)) {
 		ei->i_sync_tid = handle->h_transaction->t_tid;
 		ei->i_datasync_tid = handle->h_transaction->t_tid;
-	}
-
-	if (encrypt) {
-		err = ext4_inherit_context(dir, inode);
-		if (err)
-			goto fail_free_drop;
 	}
 
 	err = ext4_mark_inode_dirty(handle, inode);
@@ -1181,7 +1189,7 @@ struct inode *ext4_orphan_get(struct super_block *sb, unsigned long ino)
 	if (!ext4_test_bit(bit, bitmap_bh->b_data))
 		goto bad_orphan;
 
-	inode = ext4_iget(sb, ino, EXT4_IGET_NORMAL);
+	inode = ext4_iget(sb, ino);
 	if (IS_ERR(inode)) {
 		err = PTR_ERR(inode);
 		ext4_error(sb, "couldn't read orphan inode %lu (err %d)",
@@ -1309,7 +1317,6 @@ int ext4_init_inode_table(struct super_block *sb, ext4_group_t group,
 	handle_t *handle;
 	ext4_fsblk_t blk;
 	int num, ret = 0, used_blks = 0;
-	unsigned long used_inos = 0;
 
 	/* This should not happen, but just to be sure check this */
 	if (sb->s_flags & MS_RDONLY) {
@@ -1340,37 +1347,22 @@ int ext4_init_inode_table(struct super_block *sb, ext4_group_t group,
 	 * used inodes so we need to skip blocks with used inodes in
 	 * inode table.
 	 */
-	if (!(gdp->bg_flags & cpu_to_le16(EXT4_BG_INODE_UNINIT))) {
-		used_inos = EXT4_INODES_PER_GROUP(sb) -
-			    ext4_itable_unused_count(sb, gdp);
-		used_blks = DIV_ROUND_UP(used_inos, sbi->s_inodes_per_block);
+	if (!(gdp->bg_flags & cpu_to_le16(EXT4_BG_INODE_UNINIT)))
+		used_blks = DIV_ROUND_UP((EXT4_INODES_PER_GROUP(sb) -
+			    ext4_itable_unused_count(sb, gdp)),
+			    sbi->s_inodes_per_block);
 
-		/* Bogus inode unused count? */
-		if (used_blks < 0 || used_blks > sbi->s_itb_per_group) {
-			ext4_error(sb, "Something is wrong with group %u: "
-				   "used itable blocks: %d; "
-				   "itable unused count: %u",
-				   group, used_blks,
-				   ext4_itable_unused_count(sb, gdp));
-			ret = 1;
-			goto err_out;
-		}
-
-		used_inos += group * EXT4_INODES_PER_GROUP(sb);
-		/*
-		 * Are there some uninitialized inodes in the inode table
-		 * before the first normal inode?
-		 */
-		if ((used_blks != sbi->s_itb_per_group) &&
-		     (used_inos < EXT4_FIRST_INO(sb))) {
-			ext4_error(sb, "Something is wrong with group %u: "
-				   "itable unused count: %u; "
-				   "itables initialized count: %ld",
-				   group, ext4_itable_unused_count(sb, gdp),
-				   used_inos);
-			ret = 1;
-			goto err_out;
-		}
+	if ((used_blks < 0) || (used_blks > sbi->s_itb_per_group) ||
+	    ((group == 0) && ((EXT4_INODES_PER_GROUP(sb) -
+			       ext4_itable_unused_count(sb, gdp)) <
+			      EXT4_FIRST_INO(sb)))) {
+		ext4_error(sb, "Something is wrong with group %u: "
+			   "used itable blocks: %d; "
+			   "itable unused count: %u",
+			   group, used_blks,
+			   ext4_itable_unused_count(sb, gdp));
+		ret = 1;
+		goto err_out;
 	}
 
 	blk = ext4_inode_table(sb, gdp) + used_blks;

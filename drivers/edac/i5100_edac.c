@@ -575,9 +575,7 @@ static void i5100_check_error(struct mem_ctl_info *mci)
 
 static void i5100_refresh_scrubbing(struct work_struct *work)
 {
-	struct delayed_work *i5100_scrubbing = container_of(work,
-							    struct delayed_work,
-							    work);
+	struct delayed_work *i5100_scrubbing = to_delayed_work(work);
 	struct i5100_priv *priv = container_of(i5100_scrubbing,
 					       struct i5100_priv,
 					       i5100_scrubbing);
@@ -1075,14 +1073,15 @@ static int i5100_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 				    PCI_DEVICE_ID_INTEL_5100_19, 0);
 	if (!einj) {
 		ret = -ENODEV;
-		goto bail_mc_free;
+		goto bail_einj;
 	}
 
 	rc = pci_enable_device(einj);
 	if (rc < 0) {
 		ret = rc;
-		goto bail_einj;
+		goto bail_disable_einj;
 	}
+
 
 	mci->pdev = &pdev->dev;
 
@@ -1150,13 +1149,13 @@ static int i5100_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 bail_scrub:
 	priv->scrub_enable = 0;
 	cancel_delayed_work_sync(&(priv->i5100_scrubbing));
+	edac_mc_free(mci);
+
+bail_disable_einj:
 	pci_disable_device(einj);
 
 bail_einj:
 	pci_dev_put(einj);
-
-bail_mc_free:
-	edac_mc_free(mci);
 
 bail_disable_ch1:
 	pci_disable_device(ch1mm);

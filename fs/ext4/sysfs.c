@@ -56,12 +56,15 @@ static ssize_t sec_fs_stat_show(struct ext4_attr *a,
 		"F_BLOCKS",
 		(unsigned long long)ext4_blocks_count(sbi->s_es),
 		"F_BFREE",
-		(unsigned long long)percpu_counter_sum_positive(&sbi->s_freeclusters_counter) -
-		(unsigned long long)percpu_counter_sum_positive(&sbi->s_dirtyclusters_counter),
+		(unsigned long long)percpu_counter_sum_positive(
+						&sbi->s_freeclusters_counter) -
+		(unsigned long long)percpu_counter_sum_positive(
+						&sbi->s_dirtyclusters_counter),
 		"F_FILES",
 		(unsigned int)le32_to_cpu(sbi->s_es->s_inodes_count),
 		"F_FFREE",
-		(unsigned long long)percpu_counter_sum_positive(&sbi->s_freeinodes_counter),
+		(unsigned long long)percpu_counter_sum_positive(
+						&sbi->s_freeinodes_counter),
 		"FS_ERROR",
 		(unsigned int)le32_to_cpu(sbi->s_es->s_error_count));
 }
@@ -71,6 +74,7 @@ static ssize_t sec_fs_freefrag_show(struct ext4_attr *a,
 {
 	return ext4_mb_freefrag_show(sbi, buf);
 }
+
 
 static ssize_t session_write_kbytes_show(struct ext4_attr *a,
 					 struct ext4_sb_info *sbi, char *buf)
@@ -404,7 +408,6 @@ static int name##_open(struct inode *inode, struct file *file) \
 } \
 \
 static const struct file_operations ext4_seq_##name##_fops = { \
-	.owner		= THIS_MODULE, \
 	.open		= name##_open, \
 	.read		= seq_read, \
 	.llseek		= seq_lseek, \
@@ -440,14 +443,15 @@ int ext4_register_sysfs(struct super_block *sb)
 	if (err)
 		return err;
 
-	if (le32_to_cpu(sbi->s_es->s_sec_magic) == EXT4_SEC_DATA_MAGIC) {
+	if (strnlen(sbi->s_es->s_volume_name, 16) == strlen("data") &&
+	    strncmp(sbi->s_es->s_volume_name, "data", strlen("data")) == 0) {
 		err = sysfs_create_link(&ext4_kset.kobj, &sbi->s_kobj,
 			      "userdata");
 		if (err)
 			printk(KERN_ERR "Can not create sysfs link"
 					"for userdata(%d)", err);
 	}
-	
+
 	if (ext4_proc_root)
 		sbi->s_proc = proc_mkdir(sb->s_id, ext4_proc_root);
 
@@ -470,7 +474,8 @@ void ext4_unregister_sysfs(struct super_block *sb)
 		remove_proc_entry(sb->s_id, ext4_proc_root);
 	}
 
-	if (le32_to_cpu(sbi->s_es->s_sec_magic) == EXT4_SEC_DATA_MAGIC)
+	if (strnlen(sbi->s_es->s_volume_name, 16) == strlen("data") &&
+	    strncmp(sbi->s_es->s_volume_name, "data", strlen("data")) == 0)
 		sysfs_delete_link(&ext4_kset.kobj, &sbi->s_kobj, "userdata");
 
 	kobject_del(&sbi->s_kobj);

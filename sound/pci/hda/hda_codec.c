@@ -876,7 +876,6 @@ int snd_hda_codec_new(struct hda_bus *bus, struct snd_card *card,
 
 	/* power-up all before initialization */
 	hda_set_power_state(codec, AC_PWRST_D0);
-	codec->core.dev.power.power_state = PMSG_ON;
 
 	snd_hda_codec_proc_new(codec);
 
@@ -1608,11 +1607,8 @@ void snd_hda_ctls_clear(struct hda_codec *codec)
 {
 	int i;
 	struct hda_nid_item *items = codec->mixers.list;
-
-	down_write(&codec->card->controls_rwsem);
 	for (i = 0; i < codec->mixers.used; i++)
 		snd_ctl_remove(codec->card, items[i].kctl);
-	up_write(&codec->card->controls_rwsem);
 	snd_array_free(&codec->mixers);
 	snd_array_free(&codec->nids);
 }
@@ -3499,7 +3495,7 @@ EXPORT_SYMBOL_GPL(snd_hda_set_power_save);
  * @nid: NID to check / update
  *
  * Check whether the given NID is in the amp list.  If it's in the list,
- * check the current AMP status, and update the power-status according
+ * check the current AMP status, and update the the power-status according
  * to the mute status.
  *
  * This function is supposed to be set or called from the check_power_status
@@ -3641,6 +3637,12 @@ static void setup_dig_out_stream(struct hda_codec *codec, hda_nid_t nid,
 	bool reset;
 
 	spdif = snd_hda_spdif_out_of_nid(codec, nid);
+	/* Add sanity check to pass klockwork check.
+	 * This should never happen.
+	 */
+	if (WARN_ON(spdif == NULL))
+		return;
+
 	curr_fmt = snd_hda_codec_read(codec, nid, 0,
 				      AC_VERB_GET_STREAM_FORMAT, 0);
 	reset = codec->spdif_status_reset &&
@@ -3825,7 +3827,7 @@ int snd_hda_multi_out_analog_prepare(struct hda_codec *codec,
 	spdif = snd_hda_spdif_out_of_nid(codec, mout->dig_out_nid);
 	if (mout->dig_out_nid && mout->share_spdif &&
 	    mout->dig_out_used != HDA_DIG_EXCLUSIVE) {
-		if (chs == 2 &&
+		if (chs == 2 && spdif != NULL &&
 		    snd_hda_is_supported_format(codec, mout->dig_out_nid,
 						format) &&
 		    !(spdif->status & IEC958_AES0_NONAUDIO)) {
@@ -4102,7 +4104,7 @@ void snd_print_pcm_bits(int pcm, char *buf, int buflen)
 
 	for (i = 0, j = 0; i < ARRAY_SIZE(bits); i++)
 		if (pcm & (AC_SUPPCM_BITS_8 << i))
-			j += scnprintf(buf + j, buflen - j,  " %d", bits[i]);
+			j += snprintf(buf + j, buflen - j,  " %d", bits[i]);
 
 	buf[j] = '\0'; /* necessary when j == 0 */
 }

@@ -665,7 +665,7 @@ static void pmao_restore_workaround(bool ebb)
 
 	/*
 	 * We are already soft-disabled in power_pmu_enable(). We need to hard
-	 * enable to actually prevent the PMU exception from firing.
+	 * disable to actually prevent the PMU exception from firing.
 	 */
 	hard_irq_disable();
 
@@ -1006,7 +1006,7 @@ static u64 check_and_compute_delta(u64 prev, u64 val)
 	 * than the previous value it will cause the delta and the counter to
 	 * have bogus values unless we rolled a counter over.  If a coutner is
 	 * rolled back, it will be smaller, but within 256, which is the maximum
-	 * number of events to rollback at once.  If we dectect a rollback
+	 * number of events to rollback at once.  If we detect a rollback
 	 * return 0.  This can lead to a small lack of precision in the
 	 * counters.
 	 */
@@ -1800,6 +1800,7 @@ static int power_pmu_event_init(struct perf_event *event)
 	int n;
 	int err;
 	struct cpu_hw_events *cpuhw;
+	u64 bhrb_filter;
 
 	if (!ppmu)
 		return -ENOENT;
@@ -1896,13 +1897,14 @@ static int power_pmu_event_init(struct perf_event *event)
 	err = power_check_constraints(cpuhw, events, cflags, n + 1);
 
 	if (has_branch_stack(event)) {
-		cpuhw->bhrb_filter = ppmu->bhrb_filter_map(
+		bhrb_filter = ppmu->bhrb_filter_map(
 					event->attr.branch_sample_type);
 
-		if (cpuhw->bhrb_filter == -1) {
+		if (bhrb_filter == -1) {
 			put_cpu_var(cpu_hw_events);
 			return -EOPNOTSUPP;
 		}
+		cpuhw->bhrb_filter = bhrb_filter;
 	}
 
 	put_cpu_var(cpu_hw_events);
@@ -2008,17 +2010,7 @@ static void record_and_restart(struct perf_event *event, unsigned long val,
 			left += period;
 			if (left <= 0)
 				left = period;
-
-			/*
-			 * If address is not requested in the sample via
-			 * PERF_SAMPLE_IP, just record that sample irrespective
-			 * of SIAR valid check.
-			 */
-			if (event->attr.sample_type & PERF_SAMPLE_IP)
-				record = siar_valid(regs);
-			else
-				record = 1;
-
+			record = siar_valid(regs);
 			event->hw.last_period = event->hw.sample_period;
 		}
 		if (left < 0x80000000LL)
@@ -2029,17 +2021,6 @@ static void record_and_restart(struct perf_event *event, unsigned long val,
 	local64_set(&event->hw.prev_count, val);
 	local64_set(&event->hw.period_left, left);
 	perf_event_update_userpage(event);
-
-	/*
-	 * Due to hardware limitation, sometimes SIAR could sample a kernel
-	 * address even when freeze on supervisor state (kernel) is set in
-	 * MMCR2. Check attr.exclude_kernel and address to drop the sample in
-	 * these cases.
-	 */
-	if (event->attr.exclude_kernel &&
-	    (event->attr.sample_type & PERF_SAMPLE_IP) &&
-	    is_kernel_addr(mfspr(SPRN_SIAR)))
-		record = 0;
 
 	/*
 	 * Finally record data if requested.
@@ -2208,31 +2189,15 @@ static void perf_event_interrupt(struct pt_regs *regs)
 		irq_exit();
 }
 
-static void power_pmu_setup(int cpu)
+static int power_pmu_prepare_cpu(unsigned int cpu)
 {
 	struct cpu_hw_events *cpuhw = &per_cpu(cpu_hw_events, cpu);
 
-	if (!ppmu)
-		return;
-	memset(cpuhw, 0, sizeof(*cpuhw));
-	cpuhw->mmcr[0] = MMCR0_FC;
-}
-
-static int
-power_pmu_notifier(struct notifier_block *self, unsigned long action, void *hcpu)
-{
-	unsigned int cpu = (long)hcpu;
-
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_UP_PREPARE:
-		power_pmu_setup(cpu);
-		break;
-
-	default:
-		break;
+	if (ppmu) {
+		memset(cpuhw, 0, sizeof(*cpuhw));
+		cpuhw->mmcr[0] = MMCR0_FC;
 	}
-
-	return NOTIFY_OK;
+	return 0;
 }
 
 int register_power_pmu(struct power_pmu *pmu)
@@ -2255,7 +2220,7 @@ int register_power_pmu(struct power_pmu *pmu)
 #endif /* CONFIG_PPC64 */
 
 	perf_pmu_register(&power_pmu, "cpu", PERF_TYPE_RAW);
-	perf_cpu_notifier(power_pmu_notifier);
-
+	cpuhp_setup_state(CPUHP_PERF_POWER, "PERF_POWER",
+			  power_pmu_prepare_cpu, NULL);
 	return 0;
 }

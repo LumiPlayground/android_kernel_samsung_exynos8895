@@ -168,7 +168,7 @@ static void exynos_report_trigger(struct exynos_tmu_data *p)
 		return;
 	}
 
-	thermal_zone_device_update(tz);
+	thermal_zone_device_update(tz, THERMAL_EVENT_UNSPECIFIED);
 }
 
 /*
@@ -1080,7 +1080,7 @@ static struct notifier_block exynos_tmu_pm_notifier = {
 };
 
 static const struct of_device_id exynos_tmu_match[] = {
-	{ .compatible = "samsung,exynos8890-tmu", },
+
 	{ .compatible = "samsung,exynos8895-tmu", },
 	{ /* sentinel */ },
 };
@@ -1088,8 +1088,6 @@ MODULE_DEVICE_TABLE(of, exynos_tmu_match);
 
 static int exynos_of_get_soc_type(struct device_node *np)
 {
-	if (of_device_is_compatible(np, "samsung,exynos8890-tmu"))
-		return SOC_ARCH_EXYNOS8890;
 	if (of_device_is_compatible(np, "samsung,exynos8895-tmu"))
 		return SOC_ARCH_EXYNOS8895;
 
@@ -1709,7 +1707,7 @@ static int exynos_tmu_probe(struct platform_device *pdev)
 	struct exynos_tmu_data *data;
 	int ret;
 #ifdef CONFIG_CPU_FREQ
-	if (!cpufreq_frequency_get_table(0))
+	if (!cpufreq_cpu_get_raw(0) || !cpufreq_cpu_get_raw(0)->freq_table)
 		return -EPROBE_DEFER;
 #endif
 

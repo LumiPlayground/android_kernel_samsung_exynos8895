@@ -27,6 +27,35 @@
 #include <linux/cn_proc.h>
 #include <linux/compat.h>
 
+/*
+ * Access another process' address space via ptrace.
+ * Source/target buffer must be kernel space,
+ * Do not walk the page table directly, use get_user_pages
+ */
+int ptrace_access_vm(struct task_struct *tsk, unsigned long addr,
+		     void *buf, int len, unsigned int gup_flags)
+{
+	struct mm_struct *mm;
+	int ret;
+
+	mm = get_task_mm(tsk);
+	if (!mm)
+		return 0;
+
+	if (!tsk->ptrace ||
+	    (current != tsk->parent) ||
+	    ((get_dumpable(mm) != SUID_DUMP_USER) &&
+	     !ptracer_capable(tsk, mm->user_ns))) {
+		mmput(mm);
+		return 0;
+	}
+
+	ret = __access_remote_vm(tsk, mm, addr, buf, len, gup_flags);
+	mmput(mm);
+
+	return ret;
+}
+
 
 void __ptrace_link(struct task_struct *child, struct task_struct *new_parent,
 		   const struct cred *ptracer_cred)
@@ -81,7 +110,8 @@ void __ptrace_unlink(struct task_struct *child)
 	const struct cred *old_cred;
 	BUG_ON(!child->ptrace);
 
-	child->ptrace = 0;
+	clear_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
+
 	child->parent = child->real_parent;
 	list_del_init(&child->ptrace_entry);
 	old_cred = child->ptracer_cred;
@@ -89,7 +119,7 @@ void __ptrace_unlink(struct task_struct *child)
 	put_cred(old_cred);
 
 	spin_lock(&child->sighand->siglock);
-
+	child->ptrace = 0;
 	/*
 	 * Clear all pending traps and TRAPPING.  TRAPPING should be
 	 * cleared regardless of JOBCTL_STOP_PENDING.  Do it explicitly.
@@ -129,21 +159,6 @@ void __ptrace_unlink(struct task_struct *child)
 	spin_unlock(&child->sighand->siglock);
 }
 
-static bool looks_like_a_spurious_pid(struct task_struct *task)
-{
-	if (task->exit_code != ((PTRACE_EVENT_EXEC << 8) | SIGTRAP))
-		return false;
-
-	if (task_pid_vnr(task) == task->ptrace_message)
-		return false;
-	/*
-	 * The tracee changed its pid but the PTRACE_EVENT_EXEC event
-	 * was not wait()'ed, most probably debugger targets the old
-	 * leader which was destroyed in de_thread().
-	 */
-	return true;
-}
-
 /* Ensure that nothing can wake it up, even SIGKILL */
 static bool ptrace_freeze_traced(struct task_struct *task)
 {
@@ -154,8 +169,7 @@ static bool ptrace_freeze_traced(struct task_struct *task)
 		return ret;
 
 	spin_lock_irq(&task->sighand->siglock);
-	if (task_is_traced(task) && !looks_like_a_spurious_pid(task) &&
-	    !__fatal_signal_pending(task)) {
+	if (task_is_traced(task) && !__fatal_signal_pending(task)) {
 		task->state = __TASK_TRACED;
 		ret = true;
 	}
@@ -431,8 +445,14 @@ unlock_creds:
 	mutex_unlock(&task->signal->cred_guard_mutex);
 out:
 	if (!retval) {
-		wait_on_bit(&task->jobctl, JOBCTL_TRAPPING_BIT,
-			    TASK_UNINTERRUPTIBLE);
+		/*
+		 * We do not bother to change retval or clear JOBCTL_TRAPPING
+		 * if wait_on_bit() was interrupted by SIGKILL. The tracer will
+		 * not return to user-mode, it will exit and clear this bit in
+		 * __ptrace_unlink() if it wasn't already cleared by the tracee;
+		 * and until then nobody can ptrace this task.
+		 */
+		wait_on_bit(&task->jobctl, JOBCTL_TRAPPING_BIT, TASK_KILLABLE);
 		proc_ptrace_connector(task, PTRACE_ATTACH);
 	}
 
@@ -528,7 +548,6 @@ static int ptrace_detach(struct task_struct *child, unsigned int data)
 
 	/* Architecture-specific hardware disable .. */
 	ptrace_disable(child);
-	clear_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
 
 	write_lock_irq(&tasklist_lock);
 	/*
@@ -575,7 +594,8 @@ int ptrace_readdata(struct task_struct *tsk, unsigned long src, char __user *dst
 		int this_len, retval;
 
 		this_len = (len > sizeof(buf)) ? sizeof(buf) : len;
-		retval = access_process_vm(tsk, src, buf, this_len, 0);
+		retval = ptrace_access_vm(tsk, src, buf, this_len, FOLL_FORCE);
+
 		if (!retval) {
 			if (copied)
 				break;
@@ -602,7 +622,8 @@ int ptrace_writedata(struct task_struct *tsk, char __user *src, unsigned long ds
 		this_len = (len > sizeof(buf)) ? sizeof(buf) : len;
 		if (copy_from_user(buf, src, this_len))
 			return -EFAULT;
-		retval = access_process_vm(tsk, dst, buf, this_len, 1);
+		retval = ptrace_access_vm(tsk, dst, buf, this_len,
+				FOLL_FORCE | FOLL_WRITE);
 		if (!retval) {
 			if (copied)
 				break;
@@ -624,8 +645,8 @@ static int ptrace_setoptions(struct task_struct *child, unsigned long data)
 		return -EINVAL;
 
 	if (unlikely(data & PTRACE_O_SUSPEND_SECCOMP)) {
-		if (!config_enabled(CONFIG_CHECKPOINT_RESTORE) ||
-		    !config_enabled(CONFIG_SECCOMP))
+		if (!IS_ENABLED(CONFIG_CHECKPOINT_RESTORE) ||
+		    !IS_ENABLED(CONFIG_SECCOMP))
 			return -EINVAL;
 
 		if (!capable(CAP_SYS_ADMIN))
@@ -725,7 +746,7 @@ static int ptrace_peek_siginfo(struct task_struct *child,
 			break;
 
 #ifdef CONFIG_COMPAT
-		if (unlikely(is_compat_task())) {
+		if (unlikely(in_compat_syscall())) {
 			compat_siginfo_t __user *uinfo = compat_ptr(data);
 
 			if (copy_siginfo_to_user32(uinfo, &info) ||
@@ -1171,7 +1192,7 @@ int generic_ptrace_peekdata(struct task_struct *tsk, unsigned long addr,
 	unsigned long tmp;
 	int copied;
 
-	copied = access_process_vm(tsk, addr, &tmp, sizeof(tmp), 0);
+	copied = ptrace_access_vm(tsk, addr, &tmp, sizeof(tmp), FOLL_FORCE);
 	if (copied != sizeof(tmp))
 		return -EIO;
 	return put_user(tmp, (unsigned long __user *)data);
@@ -1182,7 +1203,8 @@ int generic_ptrace_pokedata(struct task_struct *tsk, unsigned long addr,
 {
 	int copied;
 
-	copied = access_process_vm(tsk, addr, &data, sizeof(data), 1);
+	copied = ptrace_access_vm(tsk, addr, &data, sizeof(data),
+			FOLL_FORCE | FOLL_WRITE);
 	return (copied == sizeof(data)) ? 0 : -EIO;
 }
 
@@ -1199,7 +1221,8 @@ int compat_ptrace_request(struct task_struct *child, compat_long_t request,
 	switch (request) {
 	case PTRACE_PEEKTEXT:
 	case PTRACE_PEEKDATA:
-		ret = access_process_vm(child, addr, &word, sizeof(word), 0);
+		ret = ptrace_access_vm(child, addr, &word, sizeof(word),
+				FOLL_FORCE);
 		if (ret != sizeof(word))
 			ret = -EIO;
 		else
@@ -1208,7 +1231,8 @@ int compat_ptrace_request(struct task_struct *child, compat_long_t request,
 
 	case PTRACE_POKETEXT:
 	case PTRACE_POKEDATA:
-		ret = access_process_vm(child, addr, &data, sizeof(data), 1);
+		ret = ptrace_access_vm(child, addr, &data, sizeof(data),
+				FOLL_FORCE | FOLL_WRITE);
 		ret = (ret != sizeof(data) ? -EIO : 0);
 		break;
 

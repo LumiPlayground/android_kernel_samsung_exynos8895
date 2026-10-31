@@ -45,13 +45,15 @@
 #include <linux/slab.h>
 #include <linux/hardirq.h>
 #include <linux/preempt.h>
-#include <linux/module.h>
+#include <linux/extable.h>
 #include <linux/kdebug.h>
 #include <linux/kallsyms.h>
 #include <linux/ftrace.h>
+#include <linux/frame.h>
 #include <linux/kasan.h>
 #include <linux/moduleloader.h>
 
+#include <asm/text-patching.h>
 #include <asm/cacheflush.h>
 #include <asm/desc.h>
 #include <asm/pgtable.h>
@@ -59,6 +61,7 @@
 #include <asm/alternative.h>
 #include <asm/insn.h>
 #include <asm/debugreg.h>
+#include <asm/sections.h>
 
 #include "common.h"
 
@@ -372,10 +375,6 @@ int __copy_instruction(u8 *dest, u8 *src)
 	if (insn.opcode.bytes[0] == BREAKPOINT_INSTRUCTION)
 		return 0;
 	memcpy(dest, insn.kaddr, length);
-
-	/* We should not singlestep on the exception masking instructions */
-	if (insn_masking_exception(&insn))
-		return 0;
 
 #ifdef CONFIG_X86_64
 	if (insn_rip_relative(&insn)) {
@@ -703,39 +702,39 @@ NOKPROBE_SYMBOL(kprobe_int3_handler);
  * When a retprobed function returns, this code saves registers and
  * calls trampoline_handler() runs, which calls the kretprobe's handler.
  */
-static void __used kretprobe_trampoline_holder(void)
-{
-	asm volatile (
-			".global kretprobe_trampoline\n"
-			"kretprobe_trampoline: \n"
+asm(
+	".global kretprobe_trampoline\n"
+	".type kretprobe_trampoline, @function\n"
+	"kretprobe_trampoline:\n"
 #ifdef CONFIG_X86_64
-			/* We don't bother saving the ss register */
-			"	pushq %rsp\n"
-			"	pushfq\n"
-			SAVE_REGS_STRING
-			"	movq %rsp, %rdi\n"
-			"	call trampoline_handler\n"
-			/* Replace saved sp with true return address. */
-			"	movq %rax, 152(%rsp)\n"
-			RESTORE_REGS_STRING
-			"	popfq\n"
+	/* We don't bother saving the ss register */
+	"	pushq %rsp\n"
+	"	pushfq\n"
+	SAVE_REGS_STRING
+	"	movq %rsp, %rdi\n"
+	"	call trampoline_handler\n"
+	/* Replace saved sp with true return address. */
+	"	movq %rax, 152(%rsp)\n"
+	RESTORE_REGS_STRING
+	"	popfq\n"
 #else
-			"	pushf\n"
-			SAVE_REGS_STRING
-			"	movl %esp, %eax\n"
-			"	call trampoline_handler\n"
-			/* Move flags to cs */
-			"	movl 56(%esp), %edx\n"
-			"	movl %edx, 52(%esp)\n"
-			/* Replace saved flags with true return address. */
-			"	movl %eax, 56(%esp)\n"
-			RESTORE_REGS_STRING
-			"	popf\n"
+	"	pushf\n"
+	SAVE_REGS_STRING
+	"	movl %esp, %eax\n"
+	"	call trampoline_handler\n"
+	/* Move flags to cs */
+	"	movl 56(%esp), %edx\n"
+	"	movl %edx, 52(%esp)\n"
+	/* Replace saved flags with true return address. */
+	"	movl %eax, 56(%esp)\n"
+	RESTORE_REGS_STRING
+	"	popf\n"
 #endif
-			"	ret\n");
-}
-NOKPROBE_SYMBOL(kretprobe_trampoline_holder);
+	"	ret\n"
+	".size kretprobe_trampoline, .-kretprobe_trampoline\n"
+);
 NOKPROBE_SYMBOL(kretprobe_trampoline);
+STACK_FRAME_NON_STANDARD(kretprobe_trampoline);
 
 /*
  * Called from kretprobe_trampoline
@@ -750,13 +749,6 @@ __visible __used void *trampoline_handler(struct pt_regs *regs)
 	kprobe_opcode_t *correct_ret_addr = NULL;
 	void *frame_pointer;
 	bool skipped = false;
-
-	/*
-	 * Set a dummy kprobe for avoiding kretprobe recursion.
-	 * Since kretprobe never run in kprobe handler, kprobe must not
-	 * be running at this point.
-	 */
-	kprobe_busy_begin();
 
 	INIT_HLIST_HEAD(&empty_rp);
 	kretprobe_hash_lock(current, &head, &flags);
@@ -833,9 +825,10 @@ __visible __used void *trampoline_handler(struct pt_regs *regs)
 		orig_ret_address = (unsigned long)ri->ret_addr;
 		if (ri->rp && ri->rp->handler) {
 			__this_cpu_write(current_kprobe, &ri->rp->kp);
+			get_kprobe_ctlblk()->kprobe_status = KPROBE_HIT_ACTIVE;
 			ri->ret_addr = correct_ret_addr;
 			ri->rp->handler(ri, regs);
-			__this_cpu_write(current_kprobe, &kprobe_busy);
+			__this_cpu_write(current_kprobe, NULL);
 		}
 
 		recycle_rp_inst(ri, &empty_rp);
@@ -850,8 +843,6 @@ __visible __used void *trampoline_handler(struct pt_regs *regs)
 	}
 
 	kretprobe_hash_unlock(current, &flags);
-
-	kprobe_busy_end();
 
 	hlist_for_each_entry_safe(ri, tmp, &empty_rp, hlist) {
 		hlist_del(&ri->hlist);
@@ -1015,11 +1006,6 @@ int kprobe_fault_handler(struct pt_regs *regs, int trapnr)
 		 * So clear it by resetting the current kprobe:
 		 */
 		regs->flags &= ~X86_EFLAGS_TF;
-		/*
-		 * Since the single step (trap) has been cancelled,
-		 * we need to restore BTF here.
-		 */
-		restore_btf();
 
 		/*
 		 * If the TF flag was set before the kprobe hit,
@@ -1055,7 +1041,7 @@ int kprobe_fault_handler(struct pt_regs *regs, int trapnr)
 		 * In case the user-specified fault handler returned
 		 * zero, try to fix up.
 		 */
-		if (fixup_exception(regs))
+		if (fixup_exception(regs, trapnr))
 			return 1;
 
 		/*
@@ -1110,9 +1096,10 @@ int setjmp_pre_handler(struct kprobe *p, struct pt_regs *regs)
 	 * tailcall optimization. So, to be absolutely safe
 	 * we also save and restore enough stack bytes to cover
 	 * the argument area.
+	 * Use __memcpy() to avoid KASAN stack out-of-bounds reports as we copy
+	 * raw stack chunk with redzones:
 	 */
-	memcpy(kcb->jprobes_stack, (kprobe_opcode_t *)addr,
-	       MIN_STACK_SIZE(addr));
+	__memcpy(kcb->jprobes_stack, (kprobe_opcode_t *)addr, MIN_STACK_SIZE(addr));
 	regs->flags &= ~X86_EFLAGS_IF;
 	trace_hardirqs_off();
 	regs->ip = (unsigned long)(jp->entry);
@@ -1174,7 +1161,7 @@ int longjmp_break_handler(struct kprobe *p, struct pt_regs *regs)
 		/* It's OK to start function graph tracing again */
 		unpause_graph_tracing();
 		*regs = kcb->jprobe_saved_regs;
-		memcpy(saved_sp, kcb->jprobes_stack, MIN_STACK_SIZE(saved_sp));
+		__memcpy(saved_sp, kcb->jprobes_stack, MIN_STACK_SIZE(saved_sp));
 		preempt_enable_no_resched();
 		return 1;
 	}

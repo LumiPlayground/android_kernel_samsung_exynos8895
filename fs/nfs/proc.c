@@ -145,7 +145,7 @@ nfs_proc_setattr(struct dentry *dentry, struct nfs_fattr *fattr,
 }
 
 static int
-nfs_proc_lookup(struct inode *dir, struct qstr *name,
+nfs_proc_lookup(struct inode *dir, const struct qstr *name,
 		struct nfs_fh *fhandle, struct nfs_fattr *fattr,
 		struct nfs4_label *label)
 {
@@ -299,7 +299,7 @@ out:
 }
   
 static int
-nfs_proc_remove(struct inode *dir, struct qstr *name)
+nfs_proc_remove(struct inode *dir, const struct qstr *name)
 {
 	struct nfs_removeargs arg = {
 		.fh = NFS_FH(dir),
@@ -357,7 +357,7 @@ nfs_proc_rename_done(struct rpc_task *task, struct inode *old_dir,
 }
 
 static int
-nfs_proc_link(struct inode *inode, struct inode *dir, struct qstr *name)
+nfs_proc_link(struct inode *inode, struct inode *dir, const struct qstr *name)
 {
 	struct nfs_linkargs	arg = {
 		.fromfh		= NFS_FH(inode),
@@ -456,7 +456,7 @@ out:
 }
 
 static int
-nfs_proc_rmdir(struct inode *dir, struct qstr *name)
+nfs_proc_rmdir(struct inode *dir, const struct qstr *name)
 {
 	struct nfs_diropargs	arg = {
 		.fh		= NFS_FH(dir),
@@ -588,8 +588,7 @@ static int nfs_read_done(struct rpc_task *task, struct nfs_pgio_header *hdr)
 		/* Emulate the eof flag, which isn't normally needed in NFSv2
 		 * as it is guaranteed to always return the file attributes
 		 */
-		if ((hdr->res.count == 0 && hdr->args.count > 0) ||
-		    hdr->args.offset + hdr->res.count >= hdr->res.fattr->size)
+		if (hdr->args.offset + hdr->res.count >= hdr->res.fattr->size)
 			hdr->res.eof = 1;
 	}
 	return 0;
@@ -610,10 +609,8 @@ static int nfs_proc_pgio_rpc_prepare(struct rpc_task *task,
 
 static int nfs_write_done(struct rpc_task *task, struct nfs_pgio_header *hdr)
 {
-	if (task->tk_status >= 0) {
-		hdr->res.count = hdr->args.count;
+	if (task->tk_status >= 0)
 		nfs_writeback_update_inode(hdr);
-	}
 	return 0;
 }
 

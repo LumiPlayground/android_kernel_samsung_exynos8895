@@ -39,6 +39,7 @@ static struct usb_device_id peak_usb_table[] = {
 	{USB_DEVICE(PCAN_USB_VENDOR_ID, PCAN_USBPRO_PRODUCT_ID)},
 	{USB_DEVICE(PCAN_USB_VENDOR_ID, PCAN_USBFD_PRODUCT_ID)},
 	{USB_DEVICE(PCAN_USB_VENDOR_ID, PCAN_USBPROFD_PRODUCT_ID)},
+	{USB_DEVICE(PCAN_USB_VENDOR_ID, PCAN_USBX6_PRODUCT_ID)},
 	{} /* Terminating entry */
 };
 
@@ -50,6 +51,7 @@ static const struct peak_usb_adapter *const peak_usb_adapters_list[] = {
 	&pcan_usb_pro,
 	&pcan_usb_fd,
 	&pcan_usb_pro_fd,
+	&pcan_usb_x6,
 };
 
 /*
@@ -150,55 +152,14 @@ void peak_usb_get_ts_tv(struct peak_time_ref *time_ref, u32 ts,
 	/* protect from getting timeval before setting now */
 	if (time_ref->tv_host.tv_sec > 0) {
 		u64 delta_us;
-		s64 delta_ts = 0;
 
-		/* General case: dev_ts_1 < dev_ts_2 < ts, with:
-		 *
-		 * - dev_ts_1 = previous sync timestamp
-		 * - dev_ts_2 = last sync timestamp
-		 * - ts = event timestamp
-		 * - ts_period = known sync period (theoretical)
-		 *             ~ dev_ts2 - dev_ts1
-		 * *but*:
-		 *
-		 * - time counters wrap (see adapter->ts_used_bits)
-		 * - sometimes, dev_ts_1 < ts < dev_ts2
-		 *
-		 * "normal" case (sync time counters increase):
-		 * must take into account case when ts wraps (tsw)
-		 *
-		 *      < ts_period > <          >
-		 *     |             |            |
-		 *  ---+--------+----+-------0-+--+-->
-		 *     ts_dev_1 |    ts_dev_2  |
-		 *              ts             tsw
-		 */
-		if (time_ref->ts_dev_1 < time_ref->ts_dev_2) {
-			/* case when event time (tsw) wraps */
-			if (ts < time_ref->ts_dev_1)
-				delta_ts = BIT_ULL(time_ref->adapter->ts_used_bits);
+		delta_us = ts - time_ref->ts_dev_2;
+		if (ts < time_ref->ts_dev_2)
+			delta_us &= (1 << time_ref->adapter->ts_used_bits) - 1;
 
-		/* Otherwise, sync time counter (ts_dev_2) has wrapped:
-		 * handle case when event time (tsn) hasn't.
-		 *
-		 *      < ts_period > <          >
-		 *     |             |            |
-		 *  ---+--------+--0-+---------+--+-->
-		 *     ts_dev_1 |    ts_dev_2  |
-		 *              tsn            ts
-		 */
-		} else if (time_ref->ts_dev_1 < ts) {
-			delta_ts = -BIT_ULL(time_ref->adapter->ts_used_bits);
-		}
+		delta_us += time_ref->ts_total;
 
-		/* add delay between last sync and event timestamps */
-		delta_ts += (signed int)(ts - time_ref->ts_dev_2);
-
-		/* add time from beginning to last sync */
-		delta_ts += time_ref->ts_total;
-
-		/* convert ticks number into microseconds */
-		delta_us = delta_ts * time_ref->adapter->us_per_ts_scale;
+		delta_us *= time_ref->adapter->us_per_ts_scale;
 		delta_us >>= time_ref->adapter->us_per_ts_shift;
 
 		*tv = time_ref->tv_host_0;
@@ -315,7 +276,7 @@ static void peak_usb_write_bulk_callback(struct urb *urb)
 		netdev->stats.tx_bytes += context->data_len;
 
 		/* prevent tx timeout */
-		netdev->trans_start = jiffies;
+		netif_trans_update(netdev);
 		break;
 
 	default:
@@ -414,7 +375,7 @@ static netdev_tx_t peak_usb_ndo_start_xmit(struct sk_buff *skb,
 			stats->tx_dropped++;
 		}
 	} else {
-		netdev->trans_start = jiffies;
+		netif_trans_update(netdev);
 
 		/* slow down tx path */
 		if (atomic_read(&dev->active_tx_urbs) >= PCAN_USB_MAX_TX_URBS)
@@ -440,7 +401,6 @@ static int peak_usb_start(struct peak_usb_device *dev)
 		/* create a URB, and a buffer for it, to receive usb messages */
 		urb = usb_alloc_urb(0, GFP_KERNEL);
 		if (!urb) {
-			netdev_err(netdev, "No memory left for URBs\n");
 			err = -ENOMEM;
 			break;
 		}
@@ -495,7 +455,6 @@ static int peak_usb_start(struct peak_usb_device *dev)
 		/* create a URB and a buffer for it, to transmit usb messages */
 		urb = usb_alloc_urb(0, GFP_KERNEL);
 		if (!urb) {
-			netdev_err(netdev, "No memory left for URBs\n");
 			err = -ENOMEM;
 			break;
 		}
@@ -692,10 +651,8 @@ static int peak_usb_restart(struct peak_usb_device *dev)
 
 	/* first allocate a urb to handle the asynchronous steps */
 	urb = usb_alloc_urb(0, GFP_ATOMIC);
-	if (!urb) {
-		netdev_err(dev->netdev, "no memory left for urb\n");
+	if (!urb)
 		return -ENOMEM;
-	}
 
 	/* also allocate enough space for the commands to send */
 	buf = kmalloc(PCAN_USB_MAX_CMD_LEN, GFP_ATOMIC);
@@ -817,7 +774,7 @@ static int peak_usb_create_dev(const struct peak_usb_adapter *peak_usb_adapter,
 	dev = netdev_priv(netdev);
 
 	/* allocate a buffer large enough to send commands */
-	dev->cmd_buf = kzalloc(PCAN_USB_MAX_CMD_LEN, GFP_KERNEL);
+	dev->cmd_buf = kmalloc(PCAN_USB_MAX_CMD_LEN, GFP_KERNEL);
 	if (!dev->cmd_buf) {
 		err = -ENOMEM;
 		goto lbl_free_candev;
@@ -882,7 +839,7 @@ static int peak_usb_create_dev(const struct peak_usb_adapter *peak_usb_adapter,
 	if (dev->adapter->dev_set_bus) {
 		err = dev->adapter->dev_set_bus(dev, 0);
 		if (err)
-			goto adap_dev_free;
+			goto lbl_unregister_candev;
 	}
 
 	/* get device number early */
@@ -893,10 +850,6 @@ static int peak_usb_create_dev(const struct peak_usb_adapter *peak_usb_adapter,
 			peak_usb_adapter->name, ctrl_idx, dev->device_number);
 
 	return 0;
-
-adap_dev_free:
-	if (dev->adapter->dev_free)
-		dev->adapter->dev_free(dev);
 
 lbl_unregister_candev:
 	unregister_candev(netdev);

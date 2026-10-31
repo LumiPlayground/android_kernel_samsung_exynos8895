@@ -412,15 +412,13 @@ static void *vb2_ion_vaddr(void *buf_priv)
 	if (buf->handle)
 		return vb2_ion_private_vaddr(&buf->cookie);
 
-	if (dma_buf_begin_cpu_access(buf->dma_buf,
-		0, buf->size, buf->direction))
+	if (dma_buf_begin_cpu_access(buf->dma_buf, buf->direction))
 		return NULL;
 
 	buf->kva = dma_buf_kmap(buf->dma_buf, buf->cookie.offset / PAGE_SIZE);
 
 	if (buf->kva == NULL)
-		dma_buf_end_cpu_access(buf->dma_buf, 0,
-			buf->size, buf->direction);
+		dma_buf_end_cpu_access(buf->dma_buf, buf->direction);
 	else
 		buf->kva += buf->cookie.offset & ~PAGE_MASK;
 
@@ -559,7 +557,7 @@ static void vb2_ion_detach_dmabuf(void *mem_priv)
 
 	if (buf->kva != NULL) {
 		dma_buf_kunmap(buf->dma_buf, 0, buf->kva);
-		dma_buf_end_cpu_access(buf->dma_buf, 0, buf->size, 0);
+		dma_buf_end_cpu_access(buf->dma_buf, 0);
 	}
 
 	/* detach this attachment */
@@ -784,10 +782,8 @@ static void *vb2_ion_get_userptr(void *alloc_ctx, unsigned long vaddr,
 		}
 	}
 
-	if ((pgprot_noncached(buf->vma->vm_page_prot)
-				== buf->vma->vm_page_prot)
-			|| (pgprot_writecombine(buf->vma->vm_page_prot)
-				== buf->vma->vm_page_prot))
+	if ((pgprot_val(pgprot_noncached(buf->vma->vm_page_prot)) == pgprot_val(buf->vma->vm_page_prot))
+			|| (pgprot_val(pgprot_writecombine(buf->vma->vm_page_prot)) == pgprot_val(buf->vma->vm_page_prot)))
 		buf->cached = false;
 	else
 		buf->cached = true;
@@ -812,8 +808,7 @@ static void vb2_ion_put_userptr(void *mem_priv)
 	if (buf->kva) {
 		dma_buf_kunmap(buf->dma_buf, buf->cookie.offset / PAGE_SIZE,
 				buf->kva - (buf->cookie.offset & ~PAGE_SIZE));
-		dma_buf_end_cpu_access(buf->dma_buf, buf->cookie.offset,
-					buf->size, DMA_FROM_DEVICE);
+		dma_buf_end_cpu_access(buf->dma_buf, DMA_FROM_DEVICE);
 	}
 
 	if (buf->dma_buf)

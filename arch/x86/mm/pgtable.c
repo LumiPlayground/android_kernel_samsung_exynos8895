@@ -7,7 +7,7 @@
 #include <asm/fixmap.h>
 #include <asm/mtrr.h>
 
-#define PGALLOC_GFP (GFP_KERNEL | __GFP_NOTRACK | __GFP_REPEAT | __GFP_ZERO)
+#define PGALLOC_GFP (GFP_KERNEL_ACCOUNT | __GFP_NOTRACK | __GFP_ZERO)
 
 #ifdef CONFIG_HIGHPTE
 #define PGALLOC_USER_GFP __GFP_HIGHMEM
@@ -19,7 +19,7 @@ gfp_t __userpte_alloc_gfp = PGALLOC_GFP | PGALLOC_USER_GFP;
 
 pte_t *pte_alloc_one_kernel(struct mm_struct *mm, unsigned long address)
 {
-	return (pte_t *)__get_free_page(PGALLOC_GFP);
+	return (pte_t *)__get_free_page(PGALLOC_GFP & ~__GFP_ACCOUNT);
 }
 
 pgtable_t pte_alloc_one(struct mm_struct *mm, unsigned long address)
@@ -208,9 +208,13 @@ static int preallocate_pmds(struct mm_struct *mm, pmd_t *pmds[])
 {
 	int i;
 	bool failed = false;
+	gfp_t gfp = PGALLOC_GFP;
+
+	if (mm == &init_mm)
+		gfp &= ~__GFP_ACCOUNT;
 
 	for(i = 0; i < PREALLOCATED_PMDS; i++) {
-		pmd_t *pmd = (pmd_t *)__get_free_page(PGALLOC_GFP);
+		pmd_t *pmd = (pmd_t *)__get_free_page(gfp);
 		if (!pmd)
 			failed = true;
 		if (pmd && !pgtable_pmd_page_ctor(virt_to_page(pmd))) {
@@ -342,18 +346,9 @@ static inline void _pgd_free(pgd_t *pgd)
 }
 #else
 
-/*
- * Instead of one pgd, Kaiser acquires two pgds.  Being order-1, it is
- * both 8k in size and 8k-aligned.  That lets us just flip bit 12
- * in a pointer to swap between the two 4k halves.
- */
-#define PGD_ALLOCATION_ORDER	kaiser_enabled
-
 static inline pgd_t *_pgd_alloc(void)
 {
-	/* No __GFP_REPEAT: to avoid page allocation stalls in order-1 case */
-	return (pgd_t *)__get_free_pages(PGALLOC_GFP & ~__GFP_REPEAT,
-					 PGD_ALLOCATION_ORDER);
+	return (pgd_t *)__get_free_pages(PGALLOC_GFP, PGD_ALLOCATION_ORDER);
 }
 
 static inline void _pgd_free(pgd_t *pgd)
@@ -425,7 +420,7 @@ int ptep_set_access_flags(struct vm_area_struct *vma,
 
 	if (changed && dirty) {
 		set_pte(ptep, entry);
-		pte_update_defer(vma->vm_mm, address, ptep);
+		pte_update(vma->vm_mm, address, ptep);
 	}
 
 	return changed;
@@ -442,7 +437,6 @@ int pmdp_set_access_flags(struct vm_area_struct *vma,
 
 	if (changed && dirty) {
 		set_pmd(pmdp, entry);
-		pmd_update_defer(vma->vm_mm, address, pmdp);
 		/*
 		 * We had a write-protection fault here and changed the pmd
 		 * to to more permissive. No need to flush the TLB for that,
@@ -479,9 +473,6 @@ int pmdp_test_and_clear_young(struct vm_area_struct *vma,
 	if (pmd_young(*pmdp))
 		ret = test_and_clear_bit(_PAGE_BIT_ACCESSED,
 					 (unsigned long *)pmdp);
-
-	if (ret)
-		pmd_update(vma->vm_mm, addr, pmdp);
 
 	return ret;
 }
@@ -520,20 +511,6 @@ int pmdp_clear_flush_young(struct vm_area_struct *vma,
 
 	return young;
 }
-
-void pmdp_splitting_flush(struct vm_area_struct *vma,
-			  unsigned long address, pmd_t *pmdp)
-{
-	int set;
-	VM_BUG_ON(address & ~HPAGE_PMD_MASK);
-	set = !test_and_set_bit(_PAGE_BIT_SPLITTING,
-				(unsigned long *)pmdp);
-	if (set) {
-		pmd_update(vma->vm_mm, address, pmdp);
-		/* need tlb flush only to serialize against gup-fast */
-		flush_tlb_range(vma, address, address + HPAGE_PMD_SIZE);
-	}
-}
 #endif
 
 /**
@@ -567,8 +544,8 @@ void __native_set_fixmap(enum fixed_addresses idx, pte_t pte)
 	fixmaps_set++;
 }
 
-void native_set_fixmap(unsigned /* enum fixed_addresses */ idx,
-		       phys_addr_t phys, pgprot_t flags)
+void native_set_fixmap(enum fixed_addresses idx, phys_addr_t phys,
+		       pgprot_t flags)
 {
 	__native_set_fixmap(idx, pfn_pte(phys >> PAGE_SHIFT, flags));
 }
@@ -720,8 +697,6 @@ int pud_free_pmd_page(pud_t *pud, unsigned long addr)
 	}
 
 	free_page((unsigned long)pmd_sv);
-
-	pgtable_pmd_page_dtor(virt_to_page(pmd));
 	free_page((unsigned long)pmd);
 
 	return 1;

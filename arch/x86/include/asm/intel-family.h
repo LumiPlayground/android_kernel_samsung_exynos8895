@@ -5,10 +5,10 @@
  * "Big Core" Processors (Branded as Core, Xeon, etc...)
  *
  * The "_X" parts are generally the EP and EX Xeons, or the
- * "Extreme" ones, like Broadwell-E, or Atom microserver.
+ * "Extreme" ones, like Broadwell-E.
  *
  * Things ending in "2" are usually because we have no better
- * name for them.  There's no processor called "WESTMERE2".
+ * name for them.  There's no processor called "SILVERMONT2".
  */
 
 #define INTEL_FAM6_CORE_YONAH		0x0E
@@ -19,11 +19,11 @@
 #define INTEL_FAM6_CORE2_DUNNINGTON	0x1D
 
 #define INTEL_FAM6_NEHALEM		0x1E
+#define INTEL_FAM6_NEHALEM_G		0x1F /* Auburndale / Havendale */
 #define INTEL_FAM6_NEHALEM_EP		0x1A
 #define INTEL_FAM6_NEHALEM_EX		0x2E
 
 #define INTEL_FAM6_WESTMERE		0x25
-#define INTEL_FAM6_WESTMERE2		0x1F
 #define INTEL_FAM6_WESTMERE_EP		0x2C
 #define INTEL_FAM6_WESTMERE_EX		0x2F
 
@@ -67,7 +67,6 @@
 #define INTEL_FAM6_ATOM_GOLDMONT	0x5C /* Apollo Lake */
 #define INTEL_FAM6_ATOM_GOLDMONT_X	0x5F /* Denverton */
 #define INTEL_FAM6_ATOM_GOLDMONT_PLUS	0x7A /* Gemini Lake */
-#define INTEL_FAM6_ATOM_TREMONT_X	0x86 /* Jacobsville */
 
 /* Xeon Phi */
 

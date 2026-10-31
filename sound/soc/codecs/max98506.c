@@ -1803,8 +1803,11 @@ static struct snd_soc_codec_driver soc_codec_dev_max98506 = {
 	.set_bias_level		= max98506_set_bias_level,
 	.suspend			= max98506_suspend,
 	.resume				= max98506_resume,
-	.controls			= max98506_snd_controls,
-	.num_controls		= ARRAY_SIZE(max98506_snd_controls),
+
+	.component_driver = {
+		.num_controls		= ARRAY_SIZE(max98506_snd_controls),
+		.controls			= max98506_snd_controls,
+	},
 };
 
 static const struct regmap_config max98506_regmap = {

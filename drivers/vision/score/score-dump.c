@@ -50,7 +50,7 @@ void score_dump_queue_work(struct score_system *system)
 	struct score_interface *itf = &system->interface;
 
 	if (score_dump_kvaddr) {
-		queue_kthread_work(&itf->worker, score_dump_work);
+		kthread_queue_work(&itf->worker, score_dump_work);
 	}
 }
 
@@ -77,7 +77,7 @@ int score_dump_probe(struct score_system *system)
 		return -ENOMEM;
 	}
 
-	init_kthread_work(score_dump_work, score_dump_work_fn);
+	kthread_init_work(score_dump_work, score_dump_work_fn);
 
 	score_dump_nb.notifier_call = score_dump_notifier_start_event;
 	score_dump_nb.next = NULL;

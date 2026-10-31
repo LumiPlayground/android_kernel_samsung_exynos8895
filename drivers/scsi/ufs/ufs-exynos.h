@@ -68,7 +68,7 @@
  #define REFCLK_STOP			BIT(2)
  #define UNIPRO_MCLK_STOP		BIT(1)
  #define UNIPRO_PCLK_STOP		BIT(0)
-#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
+#if !defined(CONFIG_SOC_EXYNOS7420)
  #define CLK_STOP_ALL		(REFCLKOUT_STOP |\
 					REFCLK_STOP |\
 					UNIPRO_MCLK_STOP |\
@@ -87,7 +87,7 @@
  #define UNIPRO_PCLK_STOP_EN	BIT(6)
  #define UNIPRO_MCLK_STOP_EN	BIT(5)
  #define HCI_CORECLK_STOP_EN	BIT(4)
-#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
+#if !defined(CONFIG_SOC_EXYNOS7420)
  #define CLK_STOP_CTRL_EN_ALL	(UFSP_DRCG_EN |\
 					MPHY_APBCLK_STOP_EN |\
 					REFCLKOUT_STOP_EN |\
@@ -107,7 +107,7 @@
 #define HCI_DMA1_MONITOR_STATE		0xD0
 #define HCI_DMA1_MONITOR_CNT		0xD4
 
-#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
+#if !defined(CONFIG_SOC_EXYNOS7420)
 #define HCI_UFS_AXI_DMA_IF_CTRL		0xF8
 #define HCI_UFS_ACG_DISABLE		0xFC
  #define HCI_UFS_ACG_DISABLE_EN		BIT(0)
@@ -160,7 +160,7 @@ enum {
 #define UNIP_COMP_INFO				0x004
 #define UNIP_COMP_RESET				0x010
 
-#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
+#if !defined(CONFIG_SOC_EXYNOS7420)
 #define UNIP_DME_POWERON_REQ			0x7800
 #define UNIP_DME_POWERON_CNF_RESULT		0x7804
 #define UNIP_DME_POWEROFF_REQ			0x7810
@@ -231,7 +231,7 @@ enum {
 #define UNIP_DME_INTR_STATUS			0x0E0
 #define UNIP_DME_INTR_ENABLE			0x0E4
 
-#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
+#if !defined(CONFIG_SOC_EXYNOS7420)
 #define UNIP_DME_GETSET_CONTROL                0x7A00
 #define UNIP_DME_GETSET_ADDR                   0x7A04
 #define UNIP_DME_GETSET_WDATA                  0x7A08
@@ -264,7 +264,7 @@ enum {
 #define UNIP_DME_PEER_GETSET_RESULT		0x130
 #endif
 
-#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
+#if !defined(CONFIG_SOC_EXYNOS7420)
 #define UNIP_DME_INTR_ERROR_CODE		0x7B20
 #define UNIP_DME_DEEPSTALL_ENTER_REQ		0x7910
 #define UNIP_DME_DISCARD_CPORT_ID		0x7B24
@@ -374,7 +374,7 @@ enum {
 /*
  * MIBs for PA debug registers
  */
-#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
+#if !defined(CONFIG_SOC_EXYNOS7420)
 #define PA_DBG_CLK_PERIOD		0x9514
 #define PA_DBG_RXPHY_CFGUPDT		0x9519
 #define PA_DBG_MODE			0x9529
@@ -460,7 +460,7 @@ enum {
 #if defined(CONFIG_SOC_EMULATOR8895)
 #define PHY_PMA_COMN_ADDR(reg)  ((reg) << 2)
 #define PHY_PMA_TRSV_ADDR(reg, lane)    (((reg) + (0x40 * (lane))) << 2)
-#elif !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
+#elif !defined(CONFIG_SOC_EXYNOS7420)
 #define PHY_PMA_COMN_ADDR(reg)		(reg)
 #define PHY_PMA_TRSV_ADDR(reg, lane)	((reg) + (0x140 * (lane)))
 #else
@@ -729,7 +729,7 @@ EXYNOS_UFS_MMIO_FUNC(hci);
 EXYNOS_UFS_MMIO_FUNC(unipro);
 EXYNOS_UFS_MMIO_FUNC(ufsp);
 
-#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
+#if !defined(CONFIG_SOC_EXYNOS7420)
 static inline void phy_pma_writel(struct exynos_ufs *ufs, u32 val, u32 reg)
 {
 	u32 reg1 = hci_readl(ufs, HCI_CLKSTOP_CTRL);

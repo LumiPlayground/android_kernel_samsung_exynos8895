@@ -15,6 +15,8 @@
 #include <sound/dmaengine_pcm.h>
 
 struct s3c_dma_params {
+	struct snd_dmaengine_dai_dma_data dma_data;
+	void *slave;
 	struct s3c2410_dma_client *client;	/* stream identifier */
 	int channel;				/* Channel ID */
 	dma_addr_t dma_addr;

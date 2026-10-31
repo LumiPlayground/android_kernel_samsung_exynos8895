@@ -268,11 +268,10 @@ static volatile u32 good_2byte_insns[256 / 32] = {
 
 static bool is_prefix_bad(struct insn *insn)
 {
-	insn_byte_t p;
 	int i;
 
-	for_each_insn_prefix(insn, i, p) {
-		switch (p) {
+	for (i = 0; i < insn->prefixes.nbytes; i++) {
+		switch (insn->prefixes.bytes[i]) {
 		case 0x26:	/* INAT_PFX_ES   */
 		case 0x2E:	/* INAT_PFX_CS   */
 		case 0x36:	/* INAT_PFX_DS   */
@@ -295,10 +294,6 @@ static int uprobe_init_insn(struct arch_uprobe *auprobe, struct insn *insn, bool
 		return -ENOEXEC;
 
 	if (is_prefix_bad(insn))
-		return -ENOTSUPP;
-
-	/* We should not singlestep on the exception masking instructions */
-	if (insn_masking_exception(insn))
 		return -ENOTSUPP;
 
 	if (x86_64)
@@ -586,7 +581,7 @@ static void default_abort_op(struct arch_uprobe *auprobe, struct pt_regs *regs)
 	riprel_post_xol(auprobe, regs);
 }
 
-static struct uprobe_xol_ops default_xol_ops = {
+static const struct uprobe_xol_ops default_xol_ops = {
 	.pre_xol  = default_pre_xol_op,
 	.post_xol = default_post_xol_op,
 	.abort	  = default_abort_op,
@@ -703,7 +698,7 @@ static void branch_clear_offset(struct arch_uprobe *auprobe, struct insn *insn)
 		0, insn->immediate.nbytes);
 }
 
-static struct uprobe_xol_ops branch_xol_ops = {
+static const struct uprobe_xol_ops branch_xol_ops = {
 	.emulate  = branch_emulate_op,
 	.post_xol = branch_post_xol_op,
 };
@@ -712,7 +707,6 @@ static struct uprobe_xol_ops branch_xol_ops = {
 static int branch_setup_xol_ops(struct arch_uprobe *auprobe, struct insn *insn)
 {
 	u8 opc1 = OPCODE1(insn);
-	insn_byte_t p;
 	int i;
 
 	switch (opc1) {
@@ -743,8 +737,8 @@ static int branch_setup_xol_ops(struct arch_uprobe *auprobe, struct insn *insn)
 	 * Intel and AMD behavior differ in 64-bit mode: Intel ignores 66 prefix.
 	 * No one uses these insns, reject any branch insns with such prefix.
 	 */
-	for_each_insn_prefix(insn, i, p) {
-		if (p == 0x66)
+	for (i = 0; i < insn->prefixes.nbytes; i++) {
+		if (insn->prefixes.bytes[i] == 0x66)
 			return -ENOTSUPP;
 	}
 
@@ -989,7 +983,7 @@ arch_uretprobe_hijack_return_addr(unsigned long trampoline_vaddr, struct pt_regs
 		pr_err("uprobe: return address clobbered: pid=%d, %%sp=%#lx, "
 			"%%ip=%#lx\n", current->pid, regs->sp, regs->ip);
 
-		force_sig(SIGSEGV, current);
+		force_sig_info(SIGSEGV, SEND_SIG_FORCED, current);
 	}
 
 	return -1;

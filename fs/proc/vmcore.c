@@ -105,19 +105,14 @@ static ssize_t read_from_oldmem(char *buf, size_t count,
 			nr_bytes = count;
 
 		/* If pfn is not ram, return zeros for sparse dump files */
-		if (pfn_is_ram(pfn) == 0) {
-			tmp = 0;
-			if (!userbuf)
-				memset(buf, 0, nr_bytes);
-			else if (clear_user(buf, nr_bytes))
-				tmp = -EFAULT;
-		} else {
+		if (pfn_is_ram(pfn) == 0)
+			memset(buf, 0, nr_bytes);
+		else {
 			tmp = copy_oldmem_page(pfn, buf, nr_bytes,
 						offset, userbuf);
+			if (tmp < 0)
+				return tmp;
 		}
-		if (tmp < 0)
-			return tmp;
-
 		*ppos += nr_bytes;
 		count -= nr_bytes;
 		buf += nr_bytes;
@@ -167,16 +162,6 @@ int __weak remap_oldmem_pfn_range(struct vm_area_struct *vma,
 				  unsigned long size, pgprot_t prot)
 {
 	return remap_pfn_range(vma, from, pfn, size, prot);
-}
-
-/*
- * Architectures which support memory encryption override this.
- */
-ssize_t __weak
-copy_oldmem_page_encrypted(unsigned long pfn, char *buf, size_t csize,
-			   unsigned long offset, int userbuf)
-{
-	return copy_oldmem_page(pfn, buf, csize, offset, userbuf);
 }
 
 /*
@@ -246,7 +231,9 @@ static ssize_t __read_vmcore(char *buffer, size_t buflen, loff_t *fpos,
 
 	list_for_each_entry(m, &vmcore_list, list) {
 		if (*fpos < m->offset + m->size) {
-			tsz = min_t(size_t, m->offset + m->size - *fpos, buflen);
+			tsz = (size_t)min_t(unsigned long long,
+					    m->offset + m->size - *fpos,
+					    buflen);
 			start = m->paddr + *fpos - m->offset;
 			tmp = read_from_oldmem(buffer, tsz, &start, userbuf);
 			if (tmp < 0)
@@ -292,12 +279,12 @@ static int mmap_vmcore_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	if (!page)
 		return VM_FAULT_OOM;
 	if (!PageUptodate(page)) {
-		offset = (loff_t) index << PAGE_CACHE_SHIFT;
+		offset = (loff_t) index << PAGE_SHIFT;
 		buf = __va((page_to_pfn(page) << PAGE_SHIFT));
 		rc = __read_vmcore(buf, PAGE_SIZE, &offset, 0);
 		if (rc < 0) {
 			unlock_page(page);
-			page_cache_release(page);
+			put_page(page);
 			return (rc == -ENOMEM) ? VM_FAULT_OOM : VM_FAULT_SIGBUS;
 		}
 		SetPageUptodate(page);
@@ -476,7 +463,8 @@ static int mmap_vmcore(struct file *file, struct vm_area_struct *vma)
 		if (start < m->offset + m->size) {
 			u64 paddr = 0;
 
-			tsz = min_t(size_t, m->offset + m->size - start, size);
+			tsz = (size_t)min_t(unsigned long long,
+					    m->offset + m->size - start, size);
 			paddr = m->paddr + start - m->offset;
 			if (vmcore_remap_oldmem_pfn(vma, vma->vm_start + len,
 						    paddr >> PAGE_SHIFT, tsz,
@@ -1083,7 +1071,7 @@ static int __init parse_crash_elf32_headers(void)
 	/* Do some basic Verification. */
 	if (memcmp(ehdr.e_ident, ELFMAG, SELFMAG) != 0 ||
 		(ehdr.e_type != ET_CORE) ||
-		!elf_check_arch(&ehdr) ||
+		!vmcore_elf32_check_arch(&ehdr) ||
 		ehdr.e_ident[EI_CLASS] != ELFCLASS32||
 		ehdr.e_ident[EI_VERSION] != EV_CURRENT ||
 		ehdr.e_version != EV_CURRENT ||

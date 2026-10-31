@@ -227,7 +227,7 @@ struct fimc_is_lib_support {
 };
 
 struct fimc_is_memory_attribute {
-	pgprot_t state;
+	unsigned long state; /* Logical RO/RW state, not a page protection value. */
 	int numpages;
 	ulong vaddr;
 };

@@ -82,16 +82,10 @@ static void of_pci_parse_addrs(struct device_node *node, struct pci_dev *dev)
 	const __be32 *addrs;
 	u32 i;
 	int proplen;
-	bool mark_unset = false;
 
 	addrs = of_get_property(node, "assigned-addresses", &proplen);
-	if (!addrs || !proplen) {
-		addrs = of_get_property(node, "reg", &proplen);
-		if (!addrs || !proplen)
-			return;
-		mark_unset = true;
-	}
-
+	if (!addrs)
+		return;
 	pr_debug("    parse addresses (%d bytes) @ %p\n", proplen, addrs);
 	for (; proplen >= 20; proplen -= 20, addrs += 5) {
 		flags = pci_parse_of_flags(of_read_number(addrs, 1), 0);
@@ -116,8 +110,6 @@ static void of_pci_parse_addrs(struct device_node *node, struct pci_dev *dev)
 			continue;
 		}
 		res->flags = flags;
-		if (mark_unset)
-			res->flags |= IORESOURCE_UNSET;
 		res->name = pci_name(dev);
 		region.start = base;
 		region.end = base + size - 1;
@@ -188,7 +180,7 @@ struct pci_dev *of_create_pci_dev(struct device_node *node,
 		dev->hdr_type = PCI_HEADER_TYPE_NORMAL;
 		dev->rom_base_reg = PCI_ROM_ADDRESS;
 		/* Maybe do a default OF mapping here */
-		dev->irq = NO_IRQ;
+		dev->irq = 0;
 	}
 
 	of_pci_parse_addrs(node, dev);
@@ -196,9 +188,6 @@ struct pci_dev *of_create_pci_dev(struct device_node *node,
 	pr_debug("    adding to system ...\n");
 
 	pci_device_add(dev, bus);
-
-	/* Setup MSI caps & disable MSI/MSI-X interrupts */
-	pci_msi_setup_pci_dev(dev);
 
 	return dev;
 }

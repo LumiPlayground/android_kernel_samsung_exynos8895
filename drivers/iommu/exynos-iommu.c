@@ -2027,7 +2027,7 @@ static int sysmmu_map_pte(struct mm_struct *mm,
 			while (cnt++ < maxcnt) {
 				spin_unlock(ptl);
 				/* find_vma() always successes */
-				ret = handle_mm_fault(mm, find_vma(mm, addr),
+				ret = handle_mm_fault(find_vma(mm, addr),
 						addr, fault_flag);
 				spin_lock(ptl);
 				if (ret & VM_FAULT_ERROR) {

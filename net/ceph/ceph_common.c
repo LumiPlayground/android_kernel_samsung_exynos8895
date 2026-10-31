@@ -45,19 +45,6 @@ bool libceph_compatible(void *data)
 }
 EXPORT_SYMBOL(libceph_compatible);
 
-/*
- * find filename portion of a path (/foo/bar/baz -> baz)
- */
-const char *ceph_file_part(const char *s, int len)
-{
-	const char *e = s + len;
-
-	while (e != s && *(e-1) != '/')
-		e--;
-	return e;
-}
-EXPORT_SYMBOL(ceph_file_part);
-
 const char *ceph_msg_type_name(int type)
 {
 	switch (type) {
@@ -361,7 +348,6 @@ ceph_parse_options(char *options, const char *dev_name,
 	opt->osd_keepalive_timeout = CEPH_OSD_KEEPALIVE_DEFAULT;
 	opt->mount_timeout = CEPH_MOUNT_TIMEOUT_DEFAULT;
 	opt->osd_idle_ttl = CEPH_OSD_IDLE_TTL_DEFAULT;
-	opt->monc_ping_timeout = CEPH_MONC_PING_TIMEOUT_DEFAULT;
 
 	/* get mon ip(s) */
 	/* ip1[:port1][,ip2[:port2]...] */
@@ -567,11 +553,17 @@ int ceph_print_client_options(struct seq_file *m, struct ceph_client *client)
 }
 EXPORT_SYMBOL(ceph_print_client_options);
 
-u64 ceph_client_id(struct ceph_client *client)
+struct ceph_entity_addr *ceph_client_addr(struct ceph_client *client)
+{
+	return &client->msgr.inst.addr;
+}
+EXPORT_SYMBOL(ceph_client_addr);
+
+u64 ceph_client_gid(struct ceph_client *client)
 {
 	return client->monc.auth->global_id;
 }
-EXPORT_SYMBOL(ceph_client_id);
+EXPORT_SYMBOL(ceph_client_gid);
 
 /*
  * create a fresh client instance
@@ -652,7 +644,7 @@ EXPORT_SYMBOL(ceph_destroy_client);
 /*
  * true if we have the mon map (and have thus joined the cluster)
  */
-static int have_mon_and_osd_map(struct ceph_client *client)
+static bool have_mon_and_osd_map(struct ceph_client *client)
 {
 	return client->monc.monmap && client->monc.monmap->epoch &&
 	       client->osdc.osdmap && client->osdc.osdmap->epoch;
@@ -686,10 +678,13 @@ int __ceph_open_session(struct ceph_client *client, unsigned long started)
 			return client->auth_err;
 	}
 
+	pr_info("client%llu fsid %pU\n", ceph_client_gid(client),
+		&client->fsid);
+	ceph_debugfs_client_init(client);
+
 	return 0;
 }
 EXPORT_SYMBOL(__ceph_open_session);
-
 
 int ceph_open_session(struct ceph_client *client)
 {
@@ -706,6 +701,23 @@ int ceph_open_session(struct ceph_client *client)
 }
 EXPORT_SYMBOL(ceph_open_session);
 
+int ceph_wait_for_latest_osdmap(struct ceph_client *client,
+				unsigned long timeout)
+{
+	u64 newest_epoch;
+	int ret;
+
+	ret = ceph_monc_get_version(&client->monc, "osdmap", &newest_epoch);
+	if (ret)
+		return ret;
+
+	if (client->osdc.osdmap->epoch >= newest_epoch)
+		return 0;
+
+	ceph_osdc_maybe_request_map(&client->osdc);
+	return ceph_monc_wait_osdmap(&client->monc, newest_epoch, timeout);
+}
+EXPORT_SYMBOL(ceph_wait_for_latest_osdmap);
 
 static int __init init_ceph_lib(void)
 {
@@ -745,6 +757,8 @@ out:
 static void __exit exit_ceph_lib(void)
 {
 	dout("exit_ceph_lib\n");
+	WARN_ON(!ceph_strings_empty());
+
 	ceph_osdc_cleanup();
 	ceph_msgr_exit();
 	ceph_crypto_shutdown();

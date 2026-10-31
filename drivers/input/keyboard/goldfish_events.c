@@ -25,8 +25,6 @@
 #include <linux/io.h>
 #include <linux/acpi.h>
 
-#define GOLDFISH_MAX_FINGERS 5
-
 enum {
 	REG_READ        = 0x00,
 	REG_SET_PAGE    = 0x00,

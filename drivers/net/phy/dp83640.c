@@ -220,9 +220,10 @@ static void rx_timestamp_work(struct work_struct *work);
 
 #define BROADCAST_ADDR 31
 
-static inline int broadcast_write(struct mii_bus *bus, u32 regnum, u16 val)
+static inline int broadcast_write(struct phy_device *phydev, u32 regnum,
+				  u16 val)
 {
-	return mdiobus_write(bus, BROADCAST_ADDR, regnum, val);
+	return mdiobus_write(phydev->mdio.bus, BROADCAST_ADDR, regnum, val);
 }
 
 /* Caller must hold extreg_lock. */
@@ -232,7 +233,7 @@ static int ext_read(struct phy_device *phydev, int page, u32 regnum)
 	int val;
 
 	if (dp83640->clock->page != page) {
-		broadcast_write(phydev->bus, PAGESEL, page);
+		broadcast_write(phydev, PAGESEL, page);
 		dp83640->clock->page = page;
 	}
 	val = phy_read(phydev, regnum);
@@ -247,11 +248,11 @@ static void ext_write(int broadcast, struct phy_device *phydev,
 	struct dp83640_private *dp83640 = phydev->priv;
 
 	if (dp83640->clock->page != page) {
-		broadcast_write(phydev->bus, PAGESEL, page);
+		broadcast_write(phydev, PAGESEL, page);
 		dp83640->clock->page = page;
 	}
 	if (broadcast)
-		broadcast_write(phydev->bus, regnum, val);
+		broadcast_write(phydev, regnum, val);
 	else
 		phy_write(phydev, regnum, val);
 }
@@ -1061,7 +1062,7 @@ static int choose_this_phy(struct dp83640_clock *clock,
 	if (chosen_phy == -1 && !clock->chosen)
 		return 1;
 
-	if (chosen_phy == phydev->addr)
+	if (chosen_phy == phydev->mdio.addr)
 		return 1;
 
 	return 0;
@@ -1107,7 +1108,7 @@ static struct dp83640_clock *dp83640_clock_get_bus(struct mii_bus *bus)
 		goto out;
 	}
 	dp83640_clock_init(clock, bus);
-	list_add_tail(&clock->list, &phyter_clocks);
+	list_add_tail(&phyter_clocks, &clock->list);
 out:
 	mutex_unlock(&phyter_clocks_lock);
 
@@ -1125,10 +1126,10 @@ static int dp83640_probe(struct phy_device *phydev)
 	struct dp83640_private *dp83640;
 	int err = -ENOMEM, i;
 
-	if (phydev->addr == BROADCAST_ADDR)
+	if (phydev->mdio.addr == BROADCAST_ADDR)
 		return 0;
 
-	clock = dp83640_clock_get_bus(phydev->bus);
+	clock = dp83640_clock_get_bus(phydev->mdio.bus);
 	if (!clock)
 		goto no_clock;
 
@@ -1154,7 +1155,8 @@ static int dp83640_probe(struct phy_device *phydev)
 
 	if (choose_this_phy(clock, phydev)) {
 		clock->chosen = dp83640;
-		clock->ptp_clock = ptp_clock_register(&clock->caps, &phydev->dev);
+		clock->ptp_clock = ptp_clock_register(&clock->caps,
+						      &phydev->mdio.dev);
 		if (IS_ERR(clock->ptp_clock)) {
 			err = PTR_ERR(clock->ptp_clock);
 			goto no_register;
@@ -1180,7 +1182,7 @@ static void dp83640_remove(struct phy_device *phydev)
 	struct list_head *this, *next;
 	struct dp83640_private *tmp, *dp83640 = phydev->priv;
 
-	if (phydev->addr == BROADCAST_ADDR)
+	if (phydev->mdio.addr == BROADCAST_ADDR)
 		return;
 
 	enable_status_frames(phydev, false);
@@ -1335,7 +1337,6 @@ static int dp83640_hwtstamp(struct phy_device *phydev, struct ifreq *ifr)
 		dp83640->hwts_rx_en = 1;
 		dp83640->layer = PTP_CLASS_L4;
 		dp83640->version = PTP_CLASS_V1;
-		cfg.rx_filter = HWTSTAMP_FILTER_PTP_V1_L4_EVENT;
 		break;
 	case HWTSTAMP_FILTER_PTP_V2_L4_EVENT:
 	case HWTSTAMP_FILTER_PTP_V2_L4_SYNC:
@@ -1343,7 +1344,6 @@ static int dp83640_hwtstamp(struct phy_device *phydev, struct ifreq *ifr)
 		dp83640->hwts_rx_en = 1;
 		dp83640->layer = PTP_CLASS_L4;
 		dp83640->version = PTP_CLASS_V2;
-		cfg.rx_filter = HWTSTAMP_FILTER_PTP_V2_L4_EVENT;
 		break;
 	case HWTSTAMP_FILTER_PTP_V2_L2_EVENT:
 	case HWTSTAMP_FILTER_PTP_V2_L2_SYNC:
@@ -1351,7 +1351,6 @@ static int dp83640_hwtstamp(struct phy_device *phydev, struct ifreq *ifr)
 		dp83640->hwts_rx_en = 1;
 		dp83640->layer = PTP_CLASS_L2;
 		dp83640->version = PTP_CLASS_V2;
-		cfg.rx_filter = HWTSTAMP_FILTER_PTP_V2_L2_EVENT;
 		break;
 	case HWTSTAMP_FILTER_PTP_V2_EVENT:
 	case HWTSTAMP_FILTER_PTP_V2_SYNC:
@@ -1359,7 +1358,6 @@ static int dp83640_hwtstamp(struct phy_device *phydev, struct ifreq *ifr)
 		dp83640->hwts_rx_en = 1;
 		dp83640->layer = PTP_CLASS_L4 | PTP_CLASS_L2;
 		dp83640->version = PTP_CLASS_V2;
-		cfg.rx_filter = HWTSTAMP_FILTER_PTP_V2_EVENT;
 		break;
 	default:
 		return -ERANGE;
@@ -1534,12 +1532,11 @@ static struct phy_driver dp83640_driver = {
 	.hwtstamp	= dp83640_hwtstamp,
 	.rxtstamp	= dp83640_rxtstamp,
 	.txtstamp	= dp83640_txtstamp,
-	.driver		= {.owner = THIS_MODULE,}
 };
 
 static int __init dp83640_init(void)
 {
-	return phy_driver_register(&dp83640_driver);
+	return phy_driver_register(&dp83640_driver, THIS_MODULE);
 }
 
 static void __exit dp83640_exit(void)

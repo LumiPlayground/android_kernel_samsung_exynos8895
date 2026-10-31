@@ -55,6 +55,7 @@ SECTIONS
 	.text : {
 		TEXT_TEXT
 		SCHED_TEXT
+		CPUIDLE_TEXT
 		LOCK_TEXT
 		KPROBES_TEXT
 		IRQENTRY_TEXT
@@ -91,7 +92,6 @@ SECTIONS
 
 		INIT_TASK_DATA(THREAD_SIZE)
 		NOSAVE_DATA
-		PAGE_ALIGNED_DATA(PAGE_SIZE)
 		CACHELINE_ALIGNED_DATA(1 << CONFIG_MIPS_L1_CACHE_SHIFT)
 		READ_MOSTLY_DATA(1 << CONFIG_MIPS_L1_CACHE_SHIFT)
 		DATA_DATA
@@ -137,15 +137,38 @@ SECTIONS
 #ifdef CONFIG_SMP
 	PERCPU_SECTION(1 << CONFIG_MIPS_L1_CACHE_SHIFT)
 #endif
-#ifdef CONFIG_MIPS_RAW_APPENDED_DTB
-	__appended_dtb = .;
-	/* leave space for appended DTB */
-	. += 0x100000;
-#elif defined(CONFIG_MIPS_ELF_APPENDED_DTB)
+
+#ifdef CONFIG_MIPS_ELF_APPENDED_DTB
 	.appended_dtb : AT(ADDR(.appended_dtb) - LOAD_OFFSET) {
 		*(.appended_dtb)
 		KEEP(*(.appended_dtb))
 	}
+#endif
+
+#ifdef CONFIG_RELOCATABLE
+	. = ALIGN(4);
+
+	.data.reloc : {
+		_relocation_start = .;
+		/*
+		 * Space for relocation table
+		 * This needs to be filled so that the
+		 * relocs tool can overwrite the content.
+		 * An invalid value is left at the start of the
+		 * section to abort relocation if the table
+		 * has not been filled in.
+		 */
+		LONG(0xFFFFFFFF);
+		FILL(0);
+		. += CONFIG_RELOCATION_TABLE_SIZE - 4;
+		_relocation_end = .;
+	}
+#endif
+
+#ifdef CONFIG_MIPS_RAW_APPENDED_DTB
+	__appended_dtb = .;
+	/* leave space for appended DTB */
+	. += 0x100000;
 #endif
 	/*
 	 * Align to 64K in attempt to eliminate holes before the

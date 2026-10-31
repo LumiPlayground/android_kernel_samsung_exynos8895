@@ -132,7 +132,8 @@ static DEFINE_SPINLOCK(siova_pool_lock);
 #define MAX_IOVA_ALIGNMENT	12
 static unsigned long find_first_fit_with_align(unsigned long *map,
 				unsigned long size, unsigned long start,
-				unsigned int nr, void *data)
+				unsigned int nr, void *data,
+				struct gen_pool *pool)
 {
 	unsigned long align = ((*(unsigned long *)data) >> PAGE_SHIFT);
 
@@ -145,10 +146,11 @@ static unsigned long find_first_fit_with_align(unsigned long *map,
 int ion_secure_iova_alloc(unsigned long *addr, unsigned long size,
 				unsigned int align)
 {
+	unsigned long pool_align = align;
 	spin_lock(&siova_pool_lock);
 	if (align > PAGE_SIZE) {
 		gen_pool_set_algo(secure_iova_pool,
-				find_first_fit_with_align, &align);
+				find_first_fit_with_align, &pool_align);
 		*addr = gen_pool_alloc(secure_iova_pool, size);
 		gen_pool_set_algo(secure_iova_pool, NULL, NULL);
 	} else {

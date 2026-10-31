@@ -346,7 +346,6 @@ xfs_compat_attrlist_by_handle(
 {
 	int			error;
 	attrlist_cursor_kern_t	*cursor;
-	compat_xfs_fsop_attrlist_handlereq_t __user *p = arg;
 	compat_xfs_fsop_attrlist_handlereq_t al_hreq;
 	struct dentry		*dentry;
 	char			*kbuf;
@@ -380,11 +379,6 @@ xfs_compat_attrlist_by_handle(
 					al_hreq.flags, cursor);
 	if (error)
 		goto out_kfree;
-
-	if (copy_to_user(&p->pos, cursor, sizeof(attrlist_cursor_kern_t))) {
-		error = -EFAULT;
-		goto out_kfree;
-	}
 
 	if (copy_to_user(compat_ptr(al_hreq.buffer), kbuf, al_hreq.buflen))
 		error = -EFAULT;
@@ -538,11 +532,7 @@ xfs_file_compat_ioctl(
 	struct xfs_inode	*ip = XFS_I(inode);
 	struct xfs_mount	*mp = ip->i_mount;
 	void			__user *arg = (void __user *)p;
-	int			ioflags = 0;
 	int			error;
-
-	if (filp->f_mode & FMODE_NOCMTIME)
-		ioflags |= XFS_IO_INVIS;
 
 	trace_xfs_file_compat_ioctl(ip);
 
@@ -595,7 +585,7 @@ xfs_file_compat_ioctl(
 		if (xfs_compat_flock64_copyin(&bf, arg))
 			return -EFAULT;
 		cmd = _NATIVE_IOC(cmd, struct xfs_flock64);
-		return xfs_ioc_space(ip, inode, filp, ioflags, cmd, &bf);
+		return xfs_ioc_space(filp, cmd, &bf);
 	}
 	case XFS_IOC_FSGEOMETRY_V1_32:
 		return xfs_compat_ioc_fsgeometry_v1(mp, arg);

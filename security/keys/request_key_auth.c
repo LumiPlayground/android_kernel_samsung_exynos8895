@@ -71,9 +71,6 @@ static void request_key_auth_describe(const struct key *key,
 {
 	struct request_key_auth *rka = key->payload.data[0];
 
-	if (!rka)
-		return;
-
 	seq_puts(m, "key:");
 	seq_puts(m, key->description);
 	if (key_is_positive(key))
@@ -90,9 +87,6 @@ static long request_key_auth_read(const struct key *key,
 	struct request_key_auth *rka = key->payload.data[0];
 	size_t datalen;
 	long ret;
-
-	if (!rka)
-		return -EKEYREVOKED;
 
 	datalen = rka->callout_len;
 	ret = datalen;
@@ -208,7 +202,7 @@ struct key *request_key_auth_new(struct key *target, const void *callout_info,
 	authkey = key_alloc(&key_type_request_key_auth, desc,
 			    cred->fsuid, cred->fsgid, cred,
 			    KEY_POS_VIEW | KEY_POS_READ | KEY_POS_SEARCH |
-			    KEY_USR_VIEW, KEY_ALLOC_NOT_IN_QUOTA);
+			    KEY_USR_VIEW, KEY_ALLOC_NOT_IN_QUOTA, NULL);
 	if (IS_ERR(authkey)) {
 		ret = PTR_ERR(authkey);
 		goto error_alloc;

@@ -1005,6 +1005,9 @@ void dpm_complete(pm_message_t state)
 	}
 	list_splice(&list, &dpm_list);
 	mutex_unlock(&dpm_list_mtx);
+
+	/* Allow device probing and trigger re-probing of deferred devices */
+	device_unblock_probing();
 	trace_suspend_resume(TPS("dpm_complete"), state.event, false);
 }
 
@@ -1404,22 +1407,15 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 	}
 
 	/*
-	 * Wait for possible runtime PM transitions of the device in progress
-	 * to complete and if there's a runtime resume request pending for it,
-	 * resume it before proceeding with invoking the system-wide suspend
-	 * callbacks for it.
-	 *
-	 * If the system-wide suspend callbacks below change the configuration
-	 * of the device, they must disable runtime PM for it or otherwise
-	 * ensure that its runtime-resume callbacks will not be confused by that
-	 * change in case they are invoked going forward.
+	 * If a device configured to wake up the system from sleep states
+	 * has been suspended at run time and there's a resume request pending
+	 * for it, this is equivalent to the device signaling wakeup, so the
+	 * system suspend operation should be aborted.
 	 */
-	pm_runtime_barrier(dev);
+	if (pm_runtime_barrier(dev) && device_may_wakeup(dev))
+		pm_wakeup_event(dev, 0);
 
 	if (pm_wakeup_pending()) {
-		pm_get_active_wakeup_sources(suspend_abort,
-			MAX_SUSPEND_ABORT_LEN);
-		log_suspend_abort_reason(suspend_abort);
 		dev->power.direct_complete = false;
 		async_error = -EBUSY;
 		goto Complete;
@@ -1611,7 +1607,6 @@ int dpm_suspend(pm_message_t state)
 static int device_prepare(struct device *dev, pm_message_t state)
 {
 	int (*callback)(struct device *) = NULL;
-	char *info = NULL;
 	int ret = 0;
 
 	if (dev->power.syscore)
@@ -1634,24 +1629,17 @@ static int device_prepare(struct device *dev, pm_message_t state)
 		goto unlock;
 	}
 
-	if (dev->pm_domain) {
-		info = "preparing power domain ";
+	if (dev->pm_domain)
 		callback = dev->pm_domain->ops.prepare;
-	} else if (dev->type && dev->type->pm) {
-		info = "preparing type ";
+	else if (dev->type && dev->type->pm)
 		callback = dev->type->pm->prepare;
-	} else if (dev->class && dev->class->pm) {
-		info = "preparing class ";
+	else if (dev->class && dev->class->pm)
 		callback = dev->class->pm->prepare;
-	} else if (dev->bus && dev->bus->pm) {
-		info = "preparing bus ";
+	else if (dev->bus && dev->bus->pm)
 		callback = dev->bus->pm->prepare;
-	}
 
-	if (!callback && dev->driver && dev->driver->pm) {
-		info = "preparing driver ";
+	if (!callback && dev->driver && dev->driver->pm)
 		callback = dev->driver->pm->prepare;
-	}
 
 	if (callback)
 		ret = callback(dev);
@@ -1689,6 +1677,20 @@ int dpm_prepare(pm_message_t state)
 
 	trace_suspend_resume(TPS("dpm_prepare"), state.event, true);
 	might_sleep();
+
+	/*
+	 * Give a chance for the known devices to complete their probes, before
+	 * disable probing of devices. This sync point is important at least
+	 * at boot time + hibernation restore.
+	 */
+	wait_for_device_probe();
+	/*
+	 * It is unsafe if probing of devices will happen during suspend or
+	 * hibernation and system behavior will be unpredictable in this case.
+	 * So, let's prohibit device's probing here and defer their probes
+	 * instead. The normal behavior will be restored in dpm_complete().
+	 */
+	device_block_probing();
 
 	mutex_lock(&dpm_list_mtx);
 	while (!list_empty(&dpm_list)) {
@@ -1805,10 +1807,13 @@ void device_pm_check_callbacks(struct device *dev)
 {
 	spin_lock_irq(&dev->power.lock);
 	dev->power.no_pm_callbacks =
-		(!dev->bus || pm_ops_is_empty(dev->bus->pm)) &&
-		(!dev->class || pm_ops_is_empty(dev->class->pm)) &&
+		(!dev->bus || (pm_ops_is_empty(dev->bus->pm) &&
+		 !dev->bus->suspend && !dev->bus->resume)) &&
+		(!dev->class || (pm_ops_is_empty(dev->class->pm) &&
+		 !dev->class->suspend && !dev->class->resume)) &&
 		(!dev->type || pm_ops_is_empty(dev->type->pm)) &&
 		(!dev->pm_domain || pm_ops_is_empty(&dev->pm_domain->ops)) &&
-		(!dev->driver || pm_ops_is_empty(dev->driver->pm));
+		(!dev->driver || (pm_ops_is_empty(dev->driver->pm) &&
+		 !dev->driver->suspend && !dev->driver->resume));
 	spin_unlock_irq(&dev->power.lock);
 }

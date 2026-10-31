@@ -4,6 +4,7 @@
 menuconfig BLOCK
        bool "Enable the block layer" if EXPERT
        default y
+       select SBITMAP
        help
 	 Provide block layer support for the kernel.
 
@@ -140,6 +141,9 @@ config BLOCK_COMPAT
 config BLOCK_SUPPORT_STLOG
 	bool "Enable storage log"
 	depends on BLOCK && PROC_STLOG
+config BLK_MQ_PCI
+	bool
+	depends on BLOCK && PCI
 	default y
 
 source block/Kconfig.iosched

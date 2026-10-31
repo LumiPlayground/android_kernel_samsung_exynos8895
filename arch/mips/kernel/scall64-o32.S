@@ -582,4 +582,10 @@ EXPORT(sys32_call_table)
 	PTR	sys_userfaultfd
 	PTR	sys_membarrier
 	PTR	sys_mlock2
+	PTR	sys_copy_file_range		/* 4360 */
+	PTR	compat_sys_preadv2
+	PTR	compat_sys_pwritev2
+	PTR	sys_pkey_mprotect
+	PTR	sys_pkey_alloc
+	PTR	sys_pkey_free			/* 4365 */
 	.size	sys32_call_table,.-sys32_call_table

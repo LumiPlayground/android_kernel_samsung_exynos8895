@@ -88,7 +88,7 @@ extern int abox_register_irq_handler(struct device *dev, int ipc_id,
  * @return		error code if any
  */
 extern int abox_hw_params_fixup_helper(struct snd_soc_pcm_runtime *rtd,
-		struct snd_pcm_hw_params *params);
+		struct snd_pcm_hw_params *params, int stream);
 #else /* !CONFIG_SND_SOC_SAMSUNG_ABOX */
 static inline bool abox_is_on(void) { return false; }
 static inline unsigned int abox_get_requiring_int_freq_in_khz(void)
@@ -106,7 +106,7 @@ static inline int abox_register_irq_handler(struct device *dev, int ipc_id,
 		abox_irq_handler_t irq_handler, void *dev_id)
 { return -ENODEV; }
 static inline int abox_hw_params_fixup_helper(struct snd_soc_pcm_runtime *rtd,
-		struct snd_pcm_hw_params *params) { return -ENODEV; }
+		struct snd_pcm_hw_params *params, int stream) { return -ENODEV; }
 #endif /* !CONFIG_SND_SOC_SAMSUNG_ABOX */
 
 #endif /* __ABOX_H */

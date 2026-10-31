@@ -86,7 +86,7 @@ DECLARE_PER_CPU_SHARED_ALIGNED(struct tlb_state, cpu_tlbstate);
 /* Initialize cr4 shadow for this CPU. */
 static inline void cr4_init_shadow(void)
 {
-	this_cpu_write(cpu_tlbstate.cr4, __read_cr4_safe());
+	this_cpu_write(cpu_tlbstate.cr4, __read_cr4());
 }
 
 /* Set in this cpu's CR4. */
@@ -205,7 +205,7 @@ static inline void __native_flush_tlb_global(void)
 		 * Using INVPCID is considerably faster than a pair of writes
 		 * to CR4 sandwiched inside an IRQ flag save/restore.
 		 *
-	 	 * Note, this works with CR4.PCIDE=0 or 1.
+		 * Note, this works with CR4.PCIDE=0 or 1.
 		 */
 		invpcid_flush_all();
 		return;
@@ -245,15 +245,12 @@ static inline void __native_flush_tlb_single(unsigned long addr)
 	 * ASID.  But, userspace flushes are probably much more
 	 * important performance-wise.
 	 *
-	 * In the KAISER disabled case, do an INVLPG to make sure
-	 * the mapping is flushed in case it is a global one.
+	 * Make sure to do only a single invpcid when KAISER is
+	 * disabled and we have only a single ASID.
 	 */
-	if (kaiser_enabled) {
+	if (kaiser_enabled)
 		invpcid_flush_one(X86_CR3_PCID_ASID_USER, addr);
-		invpcid_flush_one(X86_CR3_PCID_ASID_KERN, addr);
-	} else {
-		asm volatile("invlpg (%0)" ::"r" (addr) : "memory");
-	}
+	invpcid_flush_one(X86_CR3_PCID_ASID_KERN, addr);
 }
 
 static inline void __flush_tlb_all(void)

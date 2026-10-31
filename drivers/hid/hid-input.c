@@ -325,6 +325,9 @@ static const struct hid_device_id hid_battery_quirks[] = {
 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_ELECOM,
 		USB_DEVICE_ID_ELECOM_BM084),
 	  HID_BATTERY_QUIRK_IGNORE },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_SYMBOL,
+		USB_DEVICE_ID_SYMBOL_SCANNER_3),
+	  HID_BATTERY_QUIRK_IGNORE },
 	{}
 };
 
@@ -451,6 +454,14 @@ static int hidinput_setup_battery(struct hid_device *dev, unsigned report_type, 
 
 	if (quirks & HID_BATTERY_QUIRK_IGNORE)
 		return 0;
+
+	quirks = find_battery_quirk(dev);
+
+	hid_dbg(dev, "device %x:%x:%x %d quirks %d\n",
+		dev->bus, dev->vendor, dev->product, dev->version, quirks);
+
+	if (quirks & HID_BATTERY_QUIRK_IGNORE)
+		goto out;
 
 	psy_desc = kzalloc(sizeof(*psy_desc), GFP_KERNEL);
 	if (!psy_desc)
@@ -655,6 +666,23 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 			}
 			break;
 		}
+
+		if ((usage->hid & 0xf0) == 0xb0) {	/* SC - Display */
+			switch (usage->hid & 0xf) {
+			case 0x05: map_key_clear(KEY_SWITCHVIDEOMODE); break;
+			default: goto ignore;
+			}
+			break;
+		}
+
+		/*
+		 * Some lazy vendors declare 255 usages for System Control,
+		 * leading to the creation of ABS_X|Y axis and too many others.
+		 * It wouldn't be a problem if joydev doesn't consider the
+		 * device as a joystick then.
+		 */
+		if (field->application == HID_GD_SYSTEM_CONTROL)
+			goto ignore;
 
 		if ((usage->hid & 0xf0) == 0x90) {	/* D-pad */
 			switch (usage->hid) {
@@ -1018,6 +1046,7 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 	case HID_UP_HPVENDOR2:
 		set_bit(EV_REP, input->evbit);
 		switch (usage->hid & HID_USAGE) {
+		case 0x001: map_key_clear(KEY_MICMUTE);		break;
 		case 0x003: map_key_clear(KEY_BRIGHTNESSDOWN);	break;
 		case 0x004: map_key_clear(KEY_BRIGHTNESSUP);	break;
 		default:    goto ignore;
@@ -1032,6 +1061,10 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 		goto ignore;
 
 	case HID_UP_LOGIVENDOR:
+		/* intentional fallback */
+	case HID_UP_LOGIVENDOR2:
+		/* intentional fallback */
+	case HID_UP_LOGIVENDOR3:
 		goto ignore;
 
 	case HID_UP_PID:
@@ -1060,19 +1093,9 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 	}
 
 mapped:
-	/* Mapping failed, bail out */
-	if (!bit)
-		return;
-
-	if (device->driver->input_mapped &&
-	    device->driver->input_mapped(device, hidinput, field, usage,
-					 &bit, &max) < 0) {
-		/*
-		 * The driver indicated that no further generic handling
-		 * of the usage is desired.
-		 */
-		return;
-	}
+	if (device->driver->input_mapped && device->driver->input_mapped(device,
+				hidinput, field, usage, &bit, &max) < 0)
+		goto ignore;
 
 	set_bit(usage->type, input->evbit);
 
@@ -1130,11 +1153,9 @@ mapped:
 		set_bit(MSC_SCAN, input->mscbit);
 	}
 
+ignore:
 	return;
 
-ignore:
-	usage->type = 0;
-	usage->code = 0;
 }
 
 void hidinput_hid_event(struct hid_device *hid, struct hid_field *field, struct hid_usage *usage, __s32 value)
@@ -1378,7 +1399,7 @@ static void hidinput_led_worker(struct work_struct *work)
 	buf = hid_alloc_report_buf(report, GFP_KERNEL);
 	if (!buf)
 		return;
-	if(!lcd_is_on){
+	if (!READ_ONCE(lcd_is_on)){
 		dbg_hid("lcd is off, don't report LED event\n");
 		kfree(buf);
 		return;

@@ -200,7 +200,7 @@ static const struct attribute_group *hotplugable_cpu_attr_groups[] = {
 
 struct cpu_attr {
 	struct device_attribute attr;
-	const struct cpumask *const * const map;
+	const struct cpumask *const map;
 };
 
 static ssize_t show_cpus_attr(struct device *dev,
@@ -209,7 +209,7 @@ static ssize_t show_cpus_attr(struct device *dev,
 {
 	struct cpu_attr *ca = container_of(attr, struct cpu_attr, attr);
 
-	return cpumap_print_to_pagebuf(true, buf, *ca->map);
+	return cpumap_print_to_pagebuf(true, buf, ca->map);
 }
 
 #define _CPU_ATTR(name, map) \
@@ -217,9 +217,9 @@ static ssize_t show_cpus_attr(struct device *dev,
 
 /* Keep in sync with cpu_subsys_attrs */
 static struct cpu_attr cpu_attrs[] = {
-	_CPU_ATTR(online, &cpu_online_mask),
-	_CPU_ATTR(possible, &cpu_possible_mask),
-	_CPU_ATTR(present, &cpu_present_mask),
+	_CPU_ATTR(online, &__cpu_online_mask),
+	_CPU_ATTR(possible, &__cpu_possible_mask),
+	_CPU_ATTR(present, &__cpu_present_mask),
 };
 
 /*
@@ -370,12 +370,13 @@ int register_cpu(struct cpu *cpu, int num)
 	if (cpu->hotpluggable)
 		cpu->dev.groups = hotplugable_cpu_attr_groups;
 	error = device_register(&cpu->dev);
-	if (!error)
-		per_cpu(cpu_sys_devices, num) = &cpu->dev;
-	if (!error)
-		register_cpu_under_node(num, cpu_to_node(num));
+	if (error)
+		return error;
 
-	return error;
+	per_cpu(cpu_sys_devices, num) = &cpu->dev;
+	register_cpu_under_node(num, cpu_to_node(num));
+
+	return 0;
 }
 
 struct device *get_cpu_device(unsigned cpu)
@@ -535,34 +536,12 @@ ssize_t __weak cpu_show_mds(struct device *dev,
 	return sprintf(buf, "Not affected\n");
 }
 
-ssize_t __weak cpu_show_tsx_async_abort(struct device *dev,
-					struct device_attribute *attr,
-					char *buf)
-{
-	return sprintf(buf, "Not affected\n");
-}
-
-ssize_t __weak cpu_show_itlb_multihit(struct device *dev,
-			    struct device_attribute *attr, char *buf)
-{
-	return sprintf(buf, "Not affected\n");
-}
-
-ssize_t __weak cpu_show_srbds(struct device *dev,
-			      struct device_attribute *attr, char *buf)
-{
-	return sprintf(buf, "Not affected\n");
-}
-
 static DEVICE_ATTR(meltdown, 0444, cpu_show_meltdown, NULL);
 static DEVICE_ATTR(spectre_v1, 0444, cpu_show_spectre_v1, NULL);
 static DEVICE_ATTR(spectre_v2, 0444, cpu_show_spectre_v2, NULL);
 static DEVICE_ATTR(spec_store_bypass, 0444, cpu_show_spec_store_bypass, NULL);
 static DEVICE_ATTR(l1tf, 0444, cpu_show_l1tf, NULL);
 static DEVICE_ATTR(mds, 0444, cpu_show_mds, NULL);
-static DEVICE_ATTR(tsx_async_abort, 0444, cpu_show_tsx_async_abort, NULL);
-static DEVICE_ATTR(itlb_multihit, 0444, cpu_show_itlb_multihit, NULL);
-static DEVICE_ATTR(srbds, 0444, cpu_show_srbds, NULL);
 
 static struct attribute *cpu_root_vulnerabilities_attrs[] = {
 	&dev_attr_meltdown.attr,
@@ -571,9 +550,6 @@ static struct attribute *cpu_root_vulnerabilities_attrs[] = {
 	&dev_attr_spec_store_bypass.attr,
 	&dev_attr_l1tf.attr,
 	&dev_attr_mds.attr,
-	&dev_attr_tsx_async_abort.attr,
-	&dev_attr_itlb_multihit.attr,
-	&dev_attr_srbds.attr,
 	NULL
 };
 

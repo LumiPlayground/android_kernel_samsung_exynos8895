@@ -2087,12 +2087,15 @@ static struct snd_soc_codec_driver soc_codec_dev_cs47l92 = {
 	.set_sysclk = madera_set_sysclk,
 	.set_pll = cs47l92_set_fll,
 
-	.controls = cs47l92_snd_controls,
-	.num_controls = ARRAY_SIZE(cs47l92_snd_controls),
-	.dapm_widgets = cs47l92_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(cs47l92_dapm_widgets),
-	.dapm_routes = cs47l92_dapm_routes,
-	.num_dapm_routes = ARRAY_SIZE(cs47l92_dapm_routes),
+
+	.component_driver = {
+		.num_dapm_routes = ARRAY_SIZE(cs47l92_dapm_routes),
+		.controls = cs47l92_snd_controls,
+		.num_controls = ARRAY_SIZE(cs47l92_snd_controls),
+		.dapm_widgets = cs47l92_dapm_widgets,
+		.num_dapm_widgets = ARRAY_SIZE(cs47l92_dapm_widgets),
+		.dapm_routes = cs47l92_dapm_routes,
+	},
 };
 
 static struct snd_compr_ops cs47l92_compr_ops = {

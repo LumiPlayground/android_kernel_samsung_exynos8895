@@ -51,7 +51,7 @@ nfnl_userspace_cthelper(struct sk_buff *skb, unsigned int protoff,
 	if (help == NULL)
 		return NF_DROP;
 
-	/* rcu_read_lock()ed by nf_hook_slow */
+	/* rcu_read_lock()ed by nf_hook_thresh */
 	helper = rcu_dereference(help->helper);
 	if (helper == NULL)
 		return NF_DROP;
@@ -355,14 +355,10 @@ static int
 nfnl_cthelper_update(const struct nlattr * const tb[],
 		     struct nf_conntrack_helper *helper)
 {
-	u32 size;
 	int ret;
 
-	if (tb[NFCTH_PRIV_DATA_LEN]) {
-		size = ntohl(nla_get_be32(tb[NFCTH_PRIV_DATA_LEN]));
-		if (size != helper->data_len)
-			return -EBUSY;
-	}
+	if (tb[NFCTH_PRIV_DATA_LEN])
+		return -EBUSY;
 
 	if (tb[NFCTH_POLICY]) {
 		ret = nfnl_cthelper_update_policy(helper, tb[NFCTH_POLICY]);
@@ -387,9 +383,9 @@ nfnl_cthelper_update(const struct nlattr * const tb[],
 	return 0;
 }
 
-static int
-nfnl_cthelper_new(struct sock *nfnl, struct sk_buff *skb,
-		  const struct nlmsghdr *nlh, const struct nlattr * const tb[])
+static int nfnl_cthelper_new(struct net *net, struct sock *nfnl,
+			     struct sk_buff *skb, const struct nlmsghdr *nlh,
+			     const struct nlattr * const tb[])
 {
 	const char *helper_name;
 	struct nf_conntrack_helper *cur, *helper = NULL;
@@ -591,9 +587,9 @@ out:
 	return skb->len;
 }
 
-static int
-nfnl_cthelper_get(struct sock *nfnl, struct sk_buff *skb,
-		  const struct nlmsghdr *nlh, const struct nlattr * const tb[])
+static int nfnl_cthelper_get(struct net *net, struct sock *nfnl,
+			     struct sk_buff *skb, const struct nlmsghdr *nlh,
+			     const struct nlattr * const tb[])
 {
 	int ret = -ENOENT;
 	struct nf_conntrack_helper *cur;
@@ -661,9 +657,9 @@ nfnl_cthelper_get(struct sock *nfnl, struct sk_buff *skb,
 	return ret;
 }
 
-static int
-nfnl_cthelper_del(struct sock *nfnl, struct sk_buff *skb,
-	     const struct nlmsghdr *nlh, const struct nlattr * const tb[])
+static int nfnl_cthelper_del(struct net *net, struct sock *nfnl,
+			     struct sk_buff *skb, const struct nlmsghdr *nlh,
+			     const struct nlattr * const tb[])
 {
 	char *helper_name = NULL;
 	struct nf_conntrack_helper *cur;
@@ -715,8 +711,6 @@ static const struct nla_policy nfnl_cthelper_policy[NFCTH_MAX+1] = {
 	[NFCTH_NAME] = { .type = NLA_NUL_STRING,
 			 .len = NF_CT_HELPER_NAME_LEN-1 },
 	[NFCTH_QUEUE_NUM] = { .type = NLA_U32, },
-	[NFCTH_PRIV_DATA_LEN] = { .type = NLA_U32, },
-	[NFCTH_STATUS] = { .type = NLA_U32, },
 };
 
 static const struct nfnl_callback nfnl_cthelper_cb[NFNL_MSG_CTHELPER_MAX] = {

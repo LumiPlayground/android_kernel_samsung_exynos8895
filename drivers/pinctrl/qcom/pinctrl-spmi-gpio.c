@@ -14,6 +14,7 @@
 #include <linux/gpio.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_irq.h>
 #include <linux/pinctrl/pinconf-generic.h>
 #include <linux/pinctrl/pinconf.h>
 #include <linux/pinctrl/pinmux.h>
@@ -158,11 +159,6 @@ static const char *const pmic_gpio_functions[] = {
 	PMIC_GPIO_FUNC_DTEST3, PMIC_GPIO_FUNC_DTEST4,
 };
 
-static inline struct pmic_gpio_state *to_gpio_state(struct gpio_chip *chip)
-{
-	return container_of(chip, struct pmic_gpio_state, chip);
-};
-
 static int pmic_gpio_read(struct pmic_gpio_state *state,
 			  struct pmic_gpio_pad *pad, unsigned int addr)
 {
@@ -216,7 +212,7 @@ static const struct pinctrl_ops pmic_gpio_pinctrl_ops = {
 	.get_group_name		= pmic_gpio_get_group_name,
 	.get_group_pins		= pmic_gpio_get_group_pins,
 	.dt_node_to_map		= pinconf_generic_dt_node_to_map_group,
-	.dt_free_map		= pinctrl_utils_dt_free_map,
+	.dt_free_map		= pinctrl_utils_free_map,
 };
 
 static int pmic_gpio_get_functions_count(struct pinctrl_dev *pctldev)
@@ -511,7 +507,7 @@ static const struct pinconf_ops pmic_gpio_pinconf_ops = {
 
 static int pmic_gpio_direction_input(struct gpio_chip *chip, unsigned pin)
 {
-	struct pmic_gpio_state *state = to_gpio_state(chip);
+	struct pmic_gpio_state *state = gpiochip_get_data(chip);
 	unsigned long config;
 
 	config = pinconf_to_config_packed(PIN_CONFIG_INPUT_ENABLE, 1);
@@ -522,7 +518,7 @@ static int pmic_gpio_direction_input(struct gpio_chip *chip, unsigned pin)
 static int pmic_gpio_direction_output(struct gpio_chip *chip,
 				      unsigned pin, int val)
 {
-	struct pmic_gpio_state *state = to_gpio_state(chip);
+	struct pmic_gpio_state *state = gpiochip_get_data(chip);
 	unsigned long config;
 
 	config = pinconf_to_config_packed(PIN_CONFIG_OUTPUT, val);
@@ -532,7 +528,7 @@ static int pmic_gpio_direction_output(struct gpio_chip *chip,
 
 static int pmic_gpio_get(struct gpio_chip *chip, unsigned pin)
 {
-	struct pmic_gpio_state *state = to_gpio_state(chip);
+	struct pmic_gpio_state *state = gpiochip_get_data(chip);
 	struct pmic_gpio_pad *pad;
 	int ret;
 
@@ -549,12 +545,12 @@ static int pmic_gpio_get(struct gpio_chip *chip, unsigned pin)
 		pad->out_value = ret & PMIC_MPP_REG_RT_STS_VAL_MASK;
 	}
 
-	return pad->out_value;
+	return !!pad->out_value;
 }
 
 static void pmic_gpio_set(struct gpio_chip *chip, unsigned pin, int value)
 {
-	struct pmic_gpio_state *state = to_gpio_state(chip);
+	struct pmic_gpio_state *state = gpiochip_get_data(chip);
 	unsigned long config;
 
 	config = pinconf_to_config_packed(PIN_CONFIG_OUTPUT, value);
@@ -577,7 +573,7 @@ static int pmic_gpio_of_xlate(struct gpio_chip *chip,
 
 static int pmic_gpio_to_irq(struct gpio_chip *chip, unsigned pin)
 {
-	struct pmic_gpio_state *state = to_gpio_state(chip);
+	struct pmic_gpio_state *state = gpiochip_get_data(chip);
 	struct pmic_gpio_pad *pad;
 
 	pad = state->ctrl->desc->pins[pin].drv_data;
@@ -587,7 +583,7 @@ static int pmic_gpio_to_irq(struct gpio_chip *chip, unsigned pin)
 
 static void pmic_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 {
-	struct pmic_gpio_state *state = to_gpio_state(chip);
+	struct pmic_gpio_state *state = gpiochip_get_data(chip);
 	unsigned i;
 
 	for (i = 0; i < chip->ngpio; i++) {
@@ -709,18 +705,19 @@ static int pmic_gpio_probe(struct platform_device *pdev)
 	struct pmic_gpio_pad *pad, *pads;
 	struct pmic_gpio_state *state;
 	int ret, npins, i;
-	u32 res[2];
+	u32 reg;
 
-	ret = of_property_read_u32_array(dev->of_node, "reg", res, 2);
+	ret = of_property_read_u32(dev->of_node, "reg", &reg);
 	if (ret < 0) {
-		dev_err(dev, "missing base address and/or range");
+		dev_err(dev, "missing base address");
 		return ret;
 	}
 
-	npins = res[1] / PMIC_GPIO_ADDRESS_RANGE;
-
+	npins = platform_irq_count(pdev);
 	if (!npins)
 		return -EINVAL;
+	if (npins < 0)
+		return npins;
 
 	BUG_ON(npins > ARRAY_SIZE(pmic_gpio_groups));
 
@@ -768,7 +765,7 @@ static int pmic_gpio_probe(struct platform_device *pdev)
 		if (pad->irq < 0)
 			return pad->irq;
 
-		pad->base = res[0] + i * PMIC_GPIO_ADDRESS_RANGE;
+		pad->base = reg + i * PMIC_GPIO_ADDRESS_RANGE;
 
 		ret = pmic_gpio_populate(state, pad);
 		if (ret < 0)
@@ -776,48 +773,33 @@ static int pmic_gpio_probe(struct platform_device *pdev)
 	}
 
 	state->chip = pmic_gpio_gpio_template;
-	state->chip.dev = dev;
+	state->chip.parent = dev;
 	state->chip.base = -1;
 	state->chip.ngpio = npins;
 	state->chip.label = dev_name(dev);
 	state->chip.of_gpio_n_cells = 2;
 	state->chip.can_sleep = false;
 
-	state->ctrl = pinctrl_register(pctrldesc, dev, state);
+	state->ctrl = devm_pinctrl_register(dev, pctrldesc, state);
 	if (IS_ERR(state->ctrl))
 		return PTR_ERR(state->ctrl);
 
-	ret = gpiochip_add(&state->chip);
+	ret = gpiochip_add_data(&state->chip, state);
 	if (ret) {
 		dev_err(state->dev, "can't add gpio chip\n");
-		goto err_chip;
+		return ret;
 	}
 
-	/*
-	 * For DeviceTree-supported systems, the gpio core checks the
-	 * pinctrl's device node for the "gpio-ranges" property.
-	 * If it is present, it takes care of adding the pin ranges
-	 * for the driver. In this case the driver can skip ahead.
-	 *
-	 * In order to remain compatible with older, existing DeviceTree
-	 * files which don't set the "gpio-ranges" property or systems that
-	 * utilize ACPI the driver has to call gpiochip_add_pin_range().
-	 */
-	if (!of_property_read_bool(dev->of_node, "gpio-ranges")) {
-		ret = gpiochip_add_pin_range(&state->chip, dev_name(dev), 0, 0,
-					     npins);
-		if (ret) {
-			dev_err(dev, "failed to add pin range\n");
-			goto err_range;
-		}
+	ret = gpiochip_add_pin_range(&state->chip, dev_name(dev), 0, 0, npins);
+	if (ret) {
+		dev_err(dev, "failed to add pin range\n");
+		goto err_range;
 	}
 
 	return 0;
 
 err_range:
 	gpiochip_remove(&state->chip);
-err_chip:
-	pinctrl_unregister(state->ctrl);
 	return ret;
 }
 
@@ -826,14 +808,15 @@ static int pmic_gpio_remove(struct platform_device *pdev)
 	struct pmic_gpio_state *state = platform_get_drvdata(pdev);
 
 	gpiochip_remove(&state->chip);
-	pinctrl_unregister(state->ctrl);
 	return 0;
 }
 
 static const struct of_device_id pmic_gpio_of_match[] = {
 	{ .compatible = "qcom,pm8916-gpio" },	/* 4 GPIO's */
 	{ .compatible = "qcom,pm8941-gpio" },	/* 36 GPIO's */
+	{ .compatible = "qcom,pm8994-gpio" },	/* 22 GPIO's */
 	{ .compatible = "qcom,pma8084-gpio" },	/* 22 GPIO's */
+	{ .compatible = "qcom,spmi-gpio" }, /* Generic */
 	{ },
 };
 

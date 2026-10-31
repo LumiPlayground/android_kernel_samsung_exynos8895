@@ -15,7 +15,6 @@
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/genalloc.h>
-#include <linux/irqchip/arm-gic.h>
 #include <linux/mfd/syscon.h>
 #include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
 #include <linux/of.h>
@@ -218,7 +217,7 @@ struct imx6_cpu_pm_info {
 	u32 mmdc_io_val[MX6_MAX_MMDC_IO_NUM][2]; /* To save offset and value */
 } __aligned(8);
 
-void imx6q_set_int_mem_clk_lpm(bool enable)
+void imx6_set_int_mem_clk_lpm(bool enable)
 {
 	u32 val = readl_relaxed(ccm_base + CGPR);
 
@@ -368,7 +367,7 @@ static int imx6q_pm_enter(suspend_state_t state)
 	switch (state) {
 	case PM_SUSPEND_STANDBY:
 		imx6_set_lpm(STOP_POWER_ON);
-		imx6q_set_int_mem_clk_lpm(true);
+		imx6_set_int_mem_clk_lpm(true);
 		imx_gpc_pre_suspend(false);
 		if (cpu_is_imx6sl())
 			imx6sl_set_wait_clk(true);
@@ -381,7 +380,7 @@ static int imx6q_pm_enter(suspend_state_t state)
 		break;
 	case PM_SUSPEND_MEM:
 		imx6_set_lpm(STOP_POWER_OFF);
-		imx6q_set_int_mem_clk_lpm(false);
+		imx6_set_int_mem_clk_lpm(false);
 		imx6q_enable_wb(true);
 		/*
 		 * For suspend into ocram, asm code already take care of
@@ -399,7 +398,7 @@ static int imx6q_pm_enter(suspend_state_t state)
 		imx_gpc_post_resume();
 		imx6_enable_rbc(false);
 		imx6q_enable_wb(false);
-		imx6q_set_int_mem_clk_lpm(true);
+		imx6_set_int_mem_clk_lpm(true);
 		imx6_set_lpm(WAIT_CLOCKED);
 		break;
 	default:
@@ -562,13 +561,13 @@ static int __init imx6q_suspend_init(const struct imx6_pm_socdata *socdata)
 	goto put_node;
 
 pl310_cache_map_failed:
-	iounmap(&pm_info->gpc_base.vbase);
+	iounmap(pm_info->gpc_base.vbase);
 gpc_map_failed:
-	iounmap(&pm_info->iomuxc_base.vbase);
+	iounmap(pm_info->iomuxc_base.vbase);
 iomuxc_map_failed:
-	iounmap(&pm_info->src_base.vbase);
+	iounmap(pm_info->src_base.vbase);
 src_map_failed:
-	iounmap(&pm_info->mmdc_base.vbase);
+	iounmap(pm_info->mmdc_base.vbase);
 put_node:
 	of_node_put(node);
 
@@ -603,29 +602,6 @@ static void __init imx6_pm_common_init(const struct imx6_pm_socdata
 				   IMX6Q_GPR1_GINT);
 }
 
-static void imx6_pm_stby_poweroff(void)
-{
-	gic_cpu_if_down(0);
-	imx6_set_lpm(STOP_POWER_OFF);
-	imx6q_suspend_finish(0);
-
-	mdelay(1000);
-
-	pr_emerg("Unable to poweroff system\n");
-}
-
-static int imx6_pm_stby_poweroff_probe(void)
-{
-	if (pm_power_off) {
-		pr_warn("%s: pm_power_off already claimed  %p %pf!\n",
-			__func__, pm_power_off, pm_power_off);
-		return -EBUSY;
-	}
-
-	pm_power_off = imx6_pm_stby_poweroff;
-	return 0;
-}
-
 void __init imx6_pm_ccm_init(const char *ccm_compat)
 {
 	struct device_node *np;
@@ -642,9 +618,6 @@ void __init imx6_pm_ccm_init(const char *ccm_compat)
 	val = readl_relaxed(ccm_base + CLPCR);
 	val &= ~BM_CLPCR_LPM;
 	writel_relaxed(val, ccm_base + CLPCR);
-
-	if (of_property_read_bool(np, "fsl,pmic-stby-poweroff"))
-		imx6_pm_stby_poweroff_probe();
 }
 
 void __init imx6q_pm_init(void)

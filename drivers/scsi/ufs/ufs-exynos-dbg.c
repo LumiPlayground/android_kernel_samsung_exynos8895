@@ -15,7 +15,7 @@
 #include "mphy.h"
 #include "ufs-exynos.h"
 
-#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
+#if !defined(CONFIG_SOC_EXYNOS7420)
 /*
  * This is a list for latest SoC.
  */

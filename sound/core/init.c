@@ -268,6 +268,9 @@ int snd_card_new(struct device *parent, int idx, const char *xid,
 	if (err < 0)
 		goto __error;
 
+	snprintf(card->irq_descr, sizeof(card->irq_descr), "%s:%s",
+		 dev_driver_string(card->dev), dev_name(&card->card_dev));
+
 	/* the control interface cannot be accessed from the user space until */
 	/* snd_cards_bitmask and snd_cards are set with snd_card_register */
 	err = snd_ctl_create(card);
@@ -403,8 +406,10 @@ int snd_card_disconnect(struct snd_card *card)
 		return 0;
 	}
 	card->shutdown = 1;
+	spin_unlock(&card->files_lock);
 
 	/* replace file->f_op with special dummy operations */
+	spin_lock(&card->files_lock);
 	list_for_each_entry(mfile, &card->files_list, list) {
 		/* it's critical part, use endless loop */
 		/* we have no room to fail */

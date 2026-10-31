@@ -35,6 +35,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
+#include <video/mipi_display.h>
 
 #include "fbtft.h"
 #include "internal.h"
@@ -129,7 +130,8 @@ static int fbtft_request_gpios(struct fbtft_par *par)
 	while (gpio->name[0]) {
 		flags = FBTFT_GPIO_NO_MATCH;
 		/* if driver provides match function, try it first,
-		   if no match use our own */
+		 * if no match use our own
+		 */
 		if (par->fbtftops.request_gpios_match)
 			flags = par->fbtftops.request_gpios_match(par, gpio);
 		if (flags == FBTFT_GPIO_NO_MATCH)
@@ -319,16 +321,13 @@ EXPORT_SYMBOL(fbtft_unregister_backlight);
 static void fbtft_set_addr_win(struct fbtft_par *par, int xs, int ys, int xe,
 			       int ye)
 {
-	/* Column address set */
-	write_reg(par, 0x2A,
-		(xs >> 8) & 0xFF, xs & 0xFF, (xe >> 8) & 0xFF, xe & 0xFF);
+	write_reg(par, MIPI_DCS_SET_COLUMN_ADDRESS,
+		  (xs >> 8) & 0xFF, xs & 0xFF, (xe >> 8) & 0xFF, xe & 0xFF);
 
-	/* Row address set */
-	write_reg(par, 0x2B,
-		(ys >> 8) & 0xFF, ys & 0xFF, (ye >> 8) & 0xFF, ye & 0xFF);
+	write_reg(par, MIPI_DCS_SET_PAGE_ADDRESS,
+		  (ys >> 8) & 0xFF, ys & 0xFF, (ye >> 8) & 0xFF, ye & 0xFF);
 
-	/* Memory write */
-	write_reg(par, 0x2C);
+	write_reg(par, MIPI_DCS_WRITE_MEMORY_START);
 }
 
 static void fbtft_reset(struct fbtft_par *par)
@@ -342,8 +341,8 @@ static void fbtft_reset(struct fbtft_par *par)
 	mdelay(120);
 }
 
-static void fbtft_update_display(struct fbtft_par *par, unsigned start_line,
-				 unsigned end_line)
+static void fbtft_update_display(struct fbtft_par *par, unsigned int start_line,
+				 unsigned int end_line)
 {
 	size_t offset, len;
 	ktime_t ts_start, ts_end;
@@ -436,10 +435,10 @@ static void fbtft_mkdirty(struct fb_info *info, int y, int height)
 static void fbtft_deferred_io(struct fb_info *info, struct list_head *pagelist)
 {
 	struct fbtft_par *par = info->par;
-	unsigned dirty_lines_start, dirty_lines_end;
+	unsigned int dirty_lines_start, dirty_lines_end;
 	struct page *page;
 	unsigned long index;
-	unsigned y_low = 0, y_high = 0;
+	unsigned int y_low = 0, y_high = 0;
 	int count = 0;
 
 	spin_lock(&par->dirty_lock);
@@ -520,26 +519,25 @@ static ssize_t fbtft_fb_write(struct fb_info *info, const char __user *buf,
 		"%s: count=%zd, ppos=%llu\n", __func__,  count, *ppos);
 	res = fb_sys_write(info, buf, count, ppos);
 
-	/* TODO: only mark changed area
-	   update all for now */
+	/* TODO: only mark changed area update all for now */
 	par->fbtftops.mkdirty(info, -1, 0);
 
 	return res;
 }
 
 /* from pxafb.c */
-static unsigned int chan_to_field(unsigned chan, struct fb_bitfield *bf)
+static unsigned int chan_to_field(unsigned int chan, struct fb_bitfield *bf)
 {
 	chan &= 0xffff;
 	chan >>= 16 - bf->length;
 	return chan << bf->offset;
 }
 
-static int fbtft_fb_setcolreg(unsigned regno, unsigned red, unsigned green,
-			      unsigned blue, unsigned transp,
+static int fbtft_fb_setcolreg(unsigned int regno, unsigned int red, unsigned int green,
+			      unsigned int blue, unsigned int transp,
 			      struct fb_info *info)
 {
-	unsigned val;
+	unsigned int val;
 	int ret = 1;
 
 	dev_dbg(info->dev,
@@ -656,11 +654,11 @@ struct fb_info *fbtft_framebuffer_alloc(struct fbtft_display *display,
 	u8 *vmem = NULL;
 	void *txbuf = NULL;
 	void *buf = NULL;
-	unsigned width;
-	unsigned height;
+	unsigned int width;
+	unsigned int height;
 	int txbuflen = display->txbuflen;
-	unsigned bpp = display->bpp;
-	unsigned fps = display->fps;
+	unsigned int bpp = display->bpp;
+	unsigned int fps = display->fps;
 	int vmem_size, i;
 	int *init_sequence = display->init_sequence;
 	char *gamma = display->gamma;
@@ -738,8 +736,11 @@ struct fb_info *fbtft_framebuffer_alloc(struct fbtft_display *display,
 		goto alloc_fail;
 
 	if (display->gamma_num && display->gamma_len) {
-		gamma_curves = devm_kzalloc(dev, display->gamma_num * display->gamma_len * sizeof(gamma_curves[0]),
-						GFP_KERNEL);
+		gamma_curves = devm_kcalloc(dev,
+					    display->gamma_num *
+					    display->gamma_len,
+					    sizeof(gamma_curves[0]),
+					    GFP_KERNEL);
 		if (!gamma_curves)
 			goto alloc_fail;
 	}
@@ -765,7 +766,7 @@ struct fb_info *fbtft_framebuffer_alloc(struct fbtft_display *display,
 	fbdefio->deferred_io =     fbtft_deferred_io;
 	fb_deferred_io_init(info);
 
-	snprintf(info->fix.id, sizeof(info->fix.id), "%s", dev->driver->name);
+	strncpy(info->fix.id, dev->driver->name, 16);
 	info->fix.type =           FB_TYPE_PACKED_PIXELS;
 	info->fix.visual =         FB_VISUAL_TRUECOLOR;
 	info->fix.xpanstep =	   0;
@@ -813,12 +814,14 @@ struct fb_info *fbtft_framebuffer_alloc(struct fbtft_display *display,
 	if (par->gamma.curves && gamma) {
 		if (fbtft_gamma_parse_str(par,
 			par->gamma.curves, gamma, strlen(gamma)))
-			goto release_framebuf;
+			goto alloc_fail;
 	}
 
 	/* Transmit buffer */
 	if (txbuflen == -1)
 		txbuflen = vmem_size + 2; /* add in case startbyte is used */
+	if (txbuflen >= vmem_size + 2)
+		txbuflen = 0;
 
 #ifdef __LITTLE_ENDIAN
 	if ((!txbuflen) && (bpp > 8))
@@ -836,7 +839,7 @@ struct fb_info *fbtft_framebuffer_alloc(struct fbtft_display *display,
 			txbuf = devm_kzalloc(par->info->device, txbuflen, GFP_KERNEL);
 		}
 		if (!txbuf)
-			goto release_framebuf;
+			goto alloc_fail;
 		par->txbuf.buf = txbuf;
 		par->txbuf.len = txbuflen;
 	}
@@ -871,9 +874,6 @@ struct fb_info *fbtft_framebuffer_alloc(struct fbtft_display *display,
 	fbtft_merge_fbtftops(&par->fbtftops, &display->fbtftops);
 
 	return info;
-
-release_framebuf:
-	framebuffer_release(info);
 
 alloc_fail:
 	vfree(vmem);
@@ -990,10 +990,6 @@ int fbtft_register_framebuffer(struct fb_info *fb_info)
 reg_fail:
 	if (par->fbtftops.unregister_backlight)
 		par->fbtftops.unregister_backlight(par);
-	if (spi)
-		spi_set_drvdata(spi, NULL);
-	if (par->pdev)
-		platform_set_drvdata(par->pdev, NULL);
 
 	return ret;
 }
@@ -1011,12 +1007,7 @@ EXPORT_SYMBOL(fbtft_register_framebuffer);
 int fbtft_unregister_framebuffer(struct fb_info *fb_info)
 {
 	struct fbtft_par *par = fb_info->par;
-	struct spi_device *spi = par->spi;
 
-	if (spi)
-		spi_set_drvdata(spi, NULL);
-	if (par->pdev)
-		platform_set_drvdata(par->pdev, NULL);
 	if (par->fbtftops.unregister_backlight)
 		par->fbtftops.unregister_backlight(par);
 	fbtft_sysfs_exit(par);

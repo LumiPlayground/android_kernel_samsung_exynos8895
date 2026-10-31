@@ -266,7 +266,7 @@ static int check_dir_item(struct btrfs_root *root,
 		}
 		if (name_len + data_len > BTRFS_MAX_XATTR_SIZE(root)) {
 			dir_item_err(root, leaf, slot,
-			"dir item name and data len too long, have %u max %zu",
+			"dir item name and data len too long, have %u max %u",
 				name_len + data_len,
 				BTRFS_MAX_XATTR_SIZE(root));
 			return -EUCLEAN;
@@ -608,7 +608,7 @@ int btrfs_check_node(struct btrfs_root *root, struct extent_buffer *node)
 	}
 	if (nr == 0 || nr > BTRFS_NODEPTRS_PER_BLOCK(root)) {
 		btrfs_crit(root->fs_info,
-"corrupt node: root=%llu block=%llu, nritems too %s, have %lu expect range [1,%zu]",
+"corrupt node: root=%llu block=%llu, nritems too %s, have %lu expect range [1,%u]",
 			   root->objectid, node->start,
 			   nr == 0 ? "small" : "large", nr,
 			   BTRFS_NODEPTRS_PER_BLOCK(root));

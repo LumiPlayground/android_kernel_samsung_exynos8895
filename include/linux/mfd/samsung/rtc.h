@@ -44,42 +44,41 @@ enum s2m_rtc_reg {
 #define RTC_I2C_ADDR		(0x0C >> 1)
 
 /* RTC Control Register */
-#define BCD_EN_SHIFT			0
-#define BCD_EN_MASK			(1 << BCD_EN_SHIFT)
-#define MODEL24_SHIFT			1
-#define MODEL24_MASK			(1 << MODEL24_SHIFT)
-/* WTSR and SMPL Register */
-#if defined(CONFIG_REGULATOR_S2MPS11)
-#define WTSRT_SHIFT			0
-#define SMPLT_SHIFT			2
-#define WTSRT_MASK			(3 << WTSRT_SHIFT)
-#define SMPLT_MASK			(3 << SMPLT_SHIFT)
-#else
-#define WTSRT_SHIFT			0
-#define SMPLT_SHIFT			3
-#define WTSRT_MASK			(7 << WTSRT_SHIFT)
-#define SMPLT_MASK			(7 << SMPLT_SHIFT)
-#endif
-#define WTSR_EN_SHIFT			6
-#define SMPL_EN_SHIFT			7
-#define WTSR_EN_MASK			(1 << WTSR_EN_SHIFT)
-#define SMPL_EN_MASK			(1 << SMPL_EN_SHIFT)
-/* RTC Update Register */
-#define RTC_RUDR_SHIFT			0
-#define RTC_RUDR_MASK			(1 << RTC_RUDR_SHIFT)
-#define RTC_AUDR_SHIFT			1
-#define RTC_AUDR_MASK			(1 << RTC_AUDR_SHIFT)
-#define RTC_AUDR_SHIFT_REV		4
-#define RTC_AUDR_MASK_REV		(1 << RTC_AUDR_SHIFT_REV)
-#define RTC_FREEZE_SHIFT		2
-#define RTC_FREEZE_MASK			(1 << RTC_FREEZE_SHIFT)
-#define RTC_WUDR_SHIFT			4
-#define RTC_WUDR_MASK			(1 << RTC_WUDR_SHIFT)
-#define RTC_WUDR_SHIFT_REV		1
-#define RTC_WUDR_MASK_REV		(1 << RTC_WUDR_SHIFT_REV)
-/* RTC HOUR Register */
-#define HOUR_PM_SHIFT			6
-#define HOUR_PM_MASK			(1 << HOUR_PM_SHIFT)
+#define BCD_EN_SHIFT		0
+#define BCD_EN_MASK		(1 << BCD_EN_SHIFT)
+#define MODEL24_SHIFT		1
+#define MODEL24_MASK		(1 << MODEL24_SHIFT)
+/* RTC Update Register1 */
+#define S5M_RTC_UDR_SHIFT	0
+#define S5M_RTC_UDR_MASK	(1 << S5M_RTC_UDR_SHIFT)
+#define S2MPS_RTC_WUDR_SHIFT	4
+#define S2MPS_RTC_WUDR_MASK	(1 << S2MPS_RTC_WUDR_SHIFT)
+#define S2MPS15_RTC_AUDR_SHIFT	4
+#define S2MPS15_RTC_AUDR_MASK	(1 << S2MPS15_RTC_AUDR_SHIFT)
+#define S2MPS13_RTC_AUDR_SHIFT	1
+#define S2MPS13_RTC_AUDR_MASK	(1 << S2MPS13_RTC_AUDR_SHIFT)
+#define S2MPS15_RTC_WUDR_SHIFT	1
+#define S2MPS15_RTC_WUDR_MASK	(1 << S2MPS15_RTC_WUDR_SHIFT)
+#define S2MPS_RTC_RUDR_SHIFT	0
+#define S2MPS_RTC_RUDR_MASK	(1 << S2MPS_RTC_RUDR_SHIFT)
+#define RTC_TCON_SHIFT		1
+#define RTC_TCON_MASK		(1 << RTC_TCON_SHIFT)
+#define S5M_RTC_TIME_EN_SHIFT	3
+#define S5M_RTC_TIME_EN_MASK	(1 << S5M_RTC_TIME_EN_SHIFT)
+/*
+ * UDR_T field in S5M_RTC_UDR_CON register determines the time needed
+ * for updating alarm and time registers. Default is 7.32 ms.
+ */
+#define S5M_RTC_UDR_T_SHIFT	6
+#define S5M_RTC_UDR_T_MASK	(0x3 << S5M_RTC_UDR_T_SHIFT)
+#define S5M_RTC_UDR_T_7320_US	(0x0 << S5M_RTC_UDR_T_SHIFT)
+#define S5M_RTC_UDR_T_1830_US	(0x1 << S5M_RTC_UDR_T_SHIFT)
+#define S5M_RTC_UDR_T_3660_US	(0x2 << S5M_RTC_UDR_T_SHIFT)
+#define S5M_RTC_UDR_T_450_US	(0x3 << S5M_RTC_UDR_T_SHIFT)
+
+/* RTC Hour register */
+#define HOUR_PM_SHIFT		6
+#define HOUR_PM_MASK		(1 << HOUR_PM_SHIFT)
 /* RTC Alarm Enable */
 #define ALARM_ENABLE_SHIFT		7
 #define ALARM_ENABLE_MASK		(1 << ALARM_ENABLE_SHIFT)

@@ -31,6 +31,8 @@
 #include <linux/key.h>
 #include <linux/namei.h>
 #include <linux/crypto.h>
+#include <crypto/hash.h>
+#include <crypto/skcipher.h>
 #include <linux/file.h>
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
@@ -215,54 +217,31 @@ void ecryptfs_from_hex(char *dst, char *src, int dst_size)
  * generate the SHA256 sum of the contents of src.
  */
 static int ecryptfs_calculate_sha256(char *dst,
-				  struct ecryptfs_crypt_stat *crypt_stat,
-				  char *src, int len)
+                                  struct ecryptfs_crypt_stat *crypt_stat,
+                                  char *src, int len)
 {
-	struct scatterlist sg;
-	struct hash_desc desc = {
-		.tfm = crypt_stat->hash_tfm,
-		.flags = CRYPTO_TFM_REQ_MAY_SLEEP
-	};
-	int rc = 0;
-
-	mutex_lock(&crypt_stat->cs_hash_tfm_mutex);
-	sg_init_one(&sg, (u8 *)src, len);
-	if (!desc.tfm) {
-		desc.tfm = crypto_alloc_hash(ECRYPTFS_SHA256_HASH, 0,
-					     CRYPTO_ALG_ASYNC);
-		if (IS_ERR(desc.tfm)) {
-			rc = PTR_ERR(desc.tfm);
-			ecryptfs_printk(KERN_ERR, "Error attempting to "
-					"allocate crypto context; rc = [%d]\n",
-					rc);
-			goto out;
-		}
-		crypt_stat->hash_tfm = desc.tfm;
-	}
-	rc = crypto_hash_init(&desc);
-	if (rc) {
-		printk(KERN_ERR
-		       "%s: Error initializing crypto hash; rc = [%d]\n",
-		       __func__, rc);
-		goto out;
-	}
-	rc = crypto_hash_update(&desc, &sg, len);
-	if (rc) {
-		printk(KERN_ERR
-		       "%s: Error updating crypto hash; rc = [%d]\n",
-		       __func__, rc);
-		goto out;
-	}
-	rc = crypto_hash_final(&desc, dst);
-	if (rc) {
-		printk(KERN_ERR
-		       "%s: Error finalizing crypto hash; rc = [%d]\n",
-		       __func__, rc);
-		goto out;
-	}
+ struct crypto_shash *tfm;
+ int rc;
+ mutex_lock(&crypt_stat->cs_hash_tfm_mutex);
+ tfm = crypt_stat->hash_tfm;
+ if (!tfm) {
+  tfm = crypto_alloc_shash(ECRYPTFS_SHA256_HASH, 0, 0);
+  if (IS_ERR(tfm)) {
+   rc = PTR_ERR(tfm);
+   goto out;
+  }
+  crypt_stat->hash_tfm = tfm;
+ }
+ {
+  SHASH_DESC_ON_STACK(desc, tfm);
+  desc->tfm = tfm;
+  desc->flags = CRYPTO_TFM_REQ_MAY_SLEEP;
+  rc = crypto_shash_digest(desc, src, len, dst);
+  shash_desc_zero(desc);
+ }
 out:
-	mutex_unlock(&crypt_stat->cs_hash_tfm_mutex);
-	return rc;
+ mutex_unlock(&crypt_stat->cs_hash_tfm_mutex);
+ return rc;
 }
 #endif
 
@@ -277,54 +256,31 @@ out:
  * generate the MD5 sum of the contents of src.
  */
 static int ecryptfs_calculate_md5(char *dst,
-				  struct ecryptfs_crypt_stat *crypt_stat,
-				  char *src, int len)
+                                  struct ecryptfs_crypt_stat *crypt_stat,
+                                  char *src, int len)
 {
-	struct scatterlist sg;
-	struct hash_desc desc = {
-		.tfm = crypt_stat->hash_tfm,
-		.flags = CRYPTO_TFM_REQ_MAY_SLEEP
-	};
-	int rc = 0;
-
-	mutex_lock(&crypt_stat->cs_hash_tfm_mutex);
-	sg_init_one(&sg, (u8 *)src, len);
-	if (!desc.tfm) {
-		desc.tfm = crypto_alloc_hash(ECRYPTFS_DEFAULT_HASH, 0,
-					     CRYPTO_ALG_ASYNC);
-		if (IS_ERR(desc.tfm)) {
-			rc = PTR_ERR(desc.tfm);
-			ecryptfs_printk(KERN_ERR, "Error attempting to "
-					"allocate crypto context; rc = [%d]\n",
-					rc);
-			goto out;
-		}
-		crypt_stat->hash_tfm = desc.tfm;
-	}
-	rc = crypto_hash_init(&desc);
-	if (rc) {
-		printk(KERN_ERR
-		       "%s: Error initializing crypto hash; rc = [%d]\n",
-		       __func__, rc);
-		goto out;
-	}
-	rc = crypto_hash_update(&desc, &sg, len);
-	if (rc) {
-		printk(KERN_ERR
-		       "%s: Error updating crypto hash; rc = [%d]\n",
-		       __func__, rc);
-		goto out;
-	}
-	rc = crypto_hash_final(&desc, dst);
-	if (rc) {
-		printk(KERN_ERR
-		       "%s: Error finalizing crypto hash; rc = [%d]\n",
-		       __func__, rc);
-		goto out;
-	}
+ struct crypto_shash *tfm;
+ int rc;
+ mutex_lock(&crypt_stat->cs_hash_tfm_mutex);
+ tfm = crypt_stat->hash_tfm;
+ if (!tfm) {
+  tfm = crypto_alloc_shash(ECRYPTFS_DEFAULT_HASH, 0, 0);
+  if (IS_ERR(tfm)) {
+   rc = PTR_ERR(tfm);
+   goto out;
+  }
+  crypt_stat->hash_tfm = tfm;
+ }
+ {
+  SHASH_DESC_ON_STACK(desc, tfm);
+  desc->tfm = tfm;
+  desc->flags = CRYPTO_TFM_REQ_MAY_SLEEP;
+  rc = crypto_shash_digest(desc, src, len, dst);
+  shash_desc_zero(desc);
+ }
 out:
-	mutex_unlock(&crypt_stat->cs_hash_tfm_mutex);
-	return rc;
+ mutex_unlock(&crypt_stat->cs_hash_tfm_mutex);
+ return rc;
 }
 
 static int ecryptfs_crypto_api_algify_cipher_name(char **algified_name,
@@ -435,9 +391,9 @@ void ecryptfs_destroy_crypt_stat(struct ecryptfs_crypt_stat *crypt_stat)
 	struct ecryptfs_key_sig *key_sig, *key_sig_tmp;
 
 	if (crypt_stat->tfm)
-		crypto_free_ablkcipher(crypt_stat->tfm);
+		crypto_free_skcipher(crypt_stat->tfm);
 	if (crypt_stat->hash_tfm)
-		crypto_free_hash(crypt_stat->hash_tfm);
+		crypto_free_shash(crypt_stat->hash_tfm);
 	list_for_each_entry_safe(key_sig, key_sig_tmp,
 				 &crypt_stat->keysig_list, crypt_stat_list) {
 		list_del(&key_sig->crypt_stat_list);
@@ -542,7 +498,7 @@ static int crypt_scatterlist(struct ecryptfs_crypt_stat *crypt_stat,
 			     struct scatterlist *src_sg, int size,
 			     unsigned char *iv, int op)
 {
-	struct ablkcipher_request *req = NULL;
+	struct skcipher_request *req = NULL;
 	struct extent_crypt_result ecr;
 	int rc = 0;
 
@@ -558,19 +514,19 @@ static int crypt_scatterlist(struct ecryptfs_crypt_stat *crypt_stat,
 	init_completion(&ecr.completion);
 
 	mutex_lock(&crypt_stat->cs_tfm_mutex);
-	req = ablkcipher_request_alloc(crypt_stat->tfm, GFP_NOFS);
+	req = skcipher_request_alloc(crypt_stat->tfm, GFP_NOFS);
 	if (!req) {
 		mutex_unlock(&crypt_stat->cs_tfm_mutex);
 		rc = -ENOMEM;
 		goto out;
 	}
 
-	ablkcipher_request_set_callback(req,
+	skcipher_request_set_callback(req,
 			CRYPTO_TFM_REQ_MAY_BACKLOG | CRYPTO_TFM_REQ_MAY_SLEEP,
 			extent_crypt_complete, &ecr);
 	/* Consider doing this once, when the file is opened */
 	if (!(crypt_stat->flags & ECRYPTFS_KEY_SET)) {
-		rc = crypto_ablkcipher_setkey(crypt_stat->tfm, crypt_stat->key,
+		rc = crypto_skcipher_setkey(crypt_stat->tfm, crypt_stat->key,
 					      crypt_stat->key_size);
 		if (rc) {
 			ecryptfs_printk(KERN_ERR,
@@ -583,9 +539,9 @@ static int crypt_scatterlist(struct ecryptfs_crypt_stat *crypt_stat,
 		crypt_stat->flags |= ECRYPTFS_KEY_SET;
 	}
 	mutex_unlock(&crypt_stat->cs_tfm_mutex);
-	ablkcipher_request_set_crypt(req, src_sg, dst_sg, size, iv);
-	rc = op == ENCRYPT ? crypto_ablkcipher_encrypt(req) :
-			     crypto_ablkcipher_decrypt(req);
+	skcipher_request_set_crypt(req, src_sg, dst_sg, size, iv);
+	rc = op == ENCRYPT ? crypto_skcipher_encrypt(req) :
+			     crypto_skcipher_decrypt(req);
 	if (rc == -EINPROGRESS || rc == -EBUSY) {
 		struct extent_crypt_result *ecr = req->base.data;
 
@@ -594,7 +550,7 @@ static int crypt_scatterlist(struct ecryptfs_crypt_stat *crypt_stat,
 		reinit_completion(&ecr->completion);
 	}
 out:
-	ablkcipher_request_free(req);
+	skcipher_request_free(req);
 	return rc;
 }
 
@@ -982,7 +938,7 @@ int ecryptfs_init_crypt_ctx(struct ecryptfs_crypt_stat *crypt_stat)
 						    crypt_stat->cipher, "cbc");
 	if (rc)
 		goto out_unlock;
-	crypt_stat->tfm = crypto_alloc_ablkcipher(full_alg_name, 0, 0);
+	crypt_stat->tfm = crypto_alloc_skcipher(full_alg_name, 0, 0);
 	if (IS_ERR(crypt_stat->tfm)) {
 		rc = PTR_ERR(crypt_stat->tfm);
 		crypt_stat->tfm = NULL;
@@ -991,7 +947,7 @@ int ecryptfs_init_crypt_ctx(struct ecryptfs_crypt_stat *crypt_stat)
 				full_alg_name);
 		goto out_free;
 	}
-	crypto_ablkcipher_set_flags(crypt_stat->tfm, CRYPTO_TFM_REQ_WEAK_KEY);
+	crypto_skcipher_set_flags(crypt_stat->tfm, CRYPTO_TFM_REQ_WEAK_KEY);
 	rc = 0;
 out_free:
 	kfree(full_alg_name);

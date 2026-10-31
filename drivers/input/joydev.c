@@ -448,7 +448,7 @@ static int joydev_handle_JSIOCSAXMAP(struct joydev *joydev,
 	if (IS_ERR(abspam))
 		return PTR_ERR(abspam);
 
-	for (i = 0; i < len && i < joydev->nabs; i++) {
+	for (i = 0; i < joydev->nabs; i++) {
 		if (abspam[i] > ABS_MAX) {
 			retval = -EINVAL;
 			goto out;
@@ -472,9 +472,6 @@ static int joydev_handle_JSIOCSBTNMAP(struct joydev *joydev,
 	int i;
 	int retval = 0;
 
-	if (len % sizeof(*keypam))
-		return -EINVAL;
-
 	len = min(len, sizeof(joydev->keypam));
 
 	/* Validate the map. */
@@ -482,7 +479,7 @@ static int joydev_handle_JSIOCSBTNMAP(struct joydev *joydev,
 	if (IS_ERR(keypam))
 		return PTR_ERR(keypam);
 
-	for (i = 0; i < (len / 2) && i < joydev->nkey; i++) {
+	for (i = 0; i < joydev->nkey; i++) {
 		if (keypam[i] > KEY_MAX || keypam[i] < BTN_MISC) {
 			retval = -EINVAL;
 			goto out;
@@ -492,7 +489,7 @@ static int joydev_handle_JSIOCSBTNMAP(struct joydev *joydev,
 	memcpy(joydev->keypam, keypam, len);
 
 	for (i = 0; i < joydev->nkey; i++)
-		joydev->keymap[joydev->keypam[i] - BTN_MISC] = i;
+		joydev->keymap[keypam[i] - BTN_MISC] = i;
 
  out:
 	kfree(keypam);
@@ -948,6 +945,12 @@ static const struct input_device_id joydev_ids[] = {
 				INPUT_DEVICE_ID_MATCH_ABSBIT,
 		.evbit = { BIT_MASK(EV_ABS) },
 		.absbit = { BIT_MASK(ABS_X) },
+	},
+	{
+		.flags = INPUT_DEVICE_ID_MATCH_EVBIT |
+				INPUT_DEVICE_ID_MATCH_ABSBIT,
+		.evbit = { BIT_MASK(EV_ABS) },
+		.absbit = { BIT_MASK(ABS_Z) },
 	},
 	{
 		.flags = INPUT_DEVICE_ID_MATCH_EVBIT |

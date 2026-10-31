@@ -18,13 +18,8 @@
 #define TPUT_THRESHOLD		150
 #define MAX_RC_NUM		2
 
-#if defined(CONFIG_SOC_EXYNOS8890)
-#define PCI_DEVICE_ID_EXYNOS	0xa544
-#define GPIO_DEBUG_SFR		0x15601068
-#else
 #define PCI_DEVICE_ID_EXYNOS	0xecec
 #define GPIO_DEBUG_SFR		0x0
-#endif
 
 #define to_exynos_pcie(x)	container_of(x, struct exynos_pcie, pp)
 

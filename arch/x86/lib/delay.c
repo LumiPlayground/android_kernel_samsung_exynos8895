@@ -11,7 +11,7 @@
  *	we have to worry about.
  */
 
-#include <linux/module.h>
+#include <linux/export.h>
 #include <linux/sched.h>
 #include <linux/timex.h>
 #include <linux/preempt.h>
@@ -109,11 +109,11 @@ static void delay_mwaitx(unsigned long __loops)
 		 * Use cpu_tss as a cacheline-aligned, seldomly
 		 * accessed per-cpu variable as the monitor target.
 		 */
-		__monitorx(this_cpu_ptr(&cpu_tss), 0, 0);
+		__monitorx(raw_cpu_ptr(&cpu_tss), 0, 0);
 
 		/*
-		 * AMD, like Intel's MWAIT version, supports the EAX hint and
-		 * EAX=0xf0 means, do not enter any deep C-state and we use it
+		 * AMD, like Intel, supports the EAX hint and EAX=0xf
+		 * means, do not enter any deep C-state and we use it
 		 * here in delay() to minimize wakeup latency.
 		 */
 		__mwaitx(MWAITX_DISABLE_CSTATES, delay, MWAITX_ECX_TIMER_ENABLE);

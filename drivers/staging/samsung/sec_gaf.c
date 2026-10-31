@@ -158,7 +158,12 @@ static struct GAForensicINFO {
 
 	.rq_struct_curr = 0,
 
+#ifdef CONFIG_THREAD_INFO_IN_TASK
+	/* thread_info is the first task member in the 4.9 ARM64 layout. */
+	.thread_info_struct_cpu = offsetof(struct task_struct, cpu),
+#else
 	.thread_info_struct_cpu = offsetof(struct thread_info, cpu),
+#endif
 
 	.task_struct_struct_prio = offsetof(struct task_struct, prio),
 	.task_struct_struct_static_prio

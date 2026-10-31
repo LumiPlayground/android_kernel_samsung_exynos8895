@@ -390,7 +390,7 @@ static int css_evaluate_new_subchannel(struct subchannel_id schid, int slow)
 		/* Will be done on the slow path. */
 		return -EAGAIN;
 	}
-	if (stsch_err(schid, &schib)) {
+	if (stsch(schid, &schib)) {
 		/* Subchannel is not provided. */
 		return -ENXIO;
 	}
@@ -529,11 +529,6 @@ static int slow_eval_known_fn(struct subchannel *sch, void *data)
 		rc = css_evaluate_known_subchannel(sch, 1);
 		if (rc == -EAGAIN)
 			css_schedule_eval(sch->schid);
-		/*
-		 * The loop might take long time for platforms with lots of
-		 * known devices. Allow scheduling here.
-		 */
-		cond_resched();
 	}
 	return 0;
 }
@@ -1125,8 +1120,6 @@ device_initcall(cio_settle_init);
 
 int sch_is_pseudo_sch(struct subchannel *sch)
 {
-	if (!sch->dev.parent)
-		return 0;
 	return sch == to_css(sch->dev.parent)->pseudo_subchannel;
 }
 

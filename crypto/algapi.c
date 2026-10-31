@@ -92,16 +92,15 @@ static struct list_head *crypto_more_spawns(struct crypto_alg *alg,
 {
 	struct crypto_spawn *spawn, *n;
 
-	if (list_empty(stack))
+	spawn = list_first_entry_or_null(stack, struct crypto_spawn, list);
+	if (!spawn)
 		return NULL;
 
-	spawn = list_first_entry(stack, struct crypto_spawn, list);
-	n = list_entry(spawn->list.next, struct crypto_spawn, list);
+	n = list_next_entry(spawn, list);
 
 	if (spawn->alg && &n->list != stack && !n->alg)
 		n->alg = (n->list.next == stack) ? alg :
-			 &list_entry(n->list.next, struct crypto_spawn,
-				     list)->inst->alg;
+			 &list_next_entry(n, list)->inst->alg;
 
 	list_move(&spawn->list, secondary_spawns);
 
@@ -715,9 +714,11 @@ EXPORT_SYMBOL_GPL(crypto_grab_spawn);
 
 void crypto_drop_spawn(struct crypto_spawn *spawn)
 {
+	if (!spawn->alg)
+		return;
+
 	down_write(&crypto_alg_sem);
-	if (spawn->alg)
-		list_del(&spawn->list);
+	list_del(&spawn->list);
 	up_write(&crypto_alg_sem);
 }
 EXPORT_SYMBOL_GPL(crypto_drop_spawn);
@@ -725,16 +726,22 @@ EXPORT_SYMBOL_GPL(crypto_drop_spawn);
 static struct crypto_alg *crypto_spawn_alg(struct crypto_spawn *spawn)
 {
 	struct crypto_alg *alg;
+	struct crypto_alg *alg2;
 
 	down_read(&crypto_alg_sem);
 	alg = spawn->alg;
-	if (alg && !crypto_mod_get(alg)) {
-		alg->cra_flags |= CRYPTO_ALG_DYING;
-		alg = NULL;
-	}
+	alg2 = alg;
+	if (alg2)
+		alg2 = crypto_mod_get(alg2);
 	up_read(&crypto_alg_sem);
 
-	return alg ?: ERR_PTR(-EAGAIN);
+	if (!alg2) {
+		if (alg)
+			crypto_shoot_alg(alg);
+		return ERR_PTR(-EAGAIN);
+	}
+
+	return alg;
 }
 
 struct crypto_tfm *crypto_spawn_tfm(struct crypto_spawn *spawn, u32 type,
@@ -879,6 +886,21 @@ int crypto_attr_u32(struct rtattr *rta, u32 *num)
 }
 EXPORT_SYMBOL_GPL(crypto_attr_u32);
 
+int crypto_inst_setname(struct crypto_instance *inst, const char *name,
+			struct crypto_alg *alg)
+{
+	if (snprintf(inst->alg.cra_name, CRYPTO_MAX_ALG_NAME, "%s(%s)", name,
+		     alg->cra_name) >= CRYPTO_MAX_ALG_NAME)
+		return -ENAMETOOLONG;
+
+	if (snprintf(inst->alg.cra_driver_name, CRYPTO_MAX_ALG_NAME, "%s(%s)",
+		     name, alg->cra_driver_name) >= CRYPTO_MAX_ALG_NAME)
+		return -ENAMETOOLONG;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(crypto_inst_setname);
+
 void *crypto_alloc_instance2(const char *name, struct crypto_alg *alg,
 			     unsigned int head)
 {
@@ -898,13 +920,8 @@ void *crypto_alloc_instance2(const char *name, struct crypto_alg *alg,
 
 	inst = (void *)(p + head);
 
-	err = -ENAMETOOLONG;
-	if (snprintf(inst->alg.cra_name, CRYPTO_MAX_ALG_NAME, "%s(%s)", name,
-		     alg->cra_name) >= CRYPTO_MAX_ALG_NAME)
-		goto err_free_inst;
-
-	if (snprintf(inst->alg.cra_driver_name, CRYPTO_MAX_ALG_NAME, "%s(%s)",
-		     name, alg->cra_driver_name) >= CRYPTO_MAX_ALG_NAME)
+	err = crypto_inst_setname(inst, name, alg);
+	if (err)
 		goto err_free_inst;
 
 	return p;
@@ -1069,6 +1086,21 @@ unsigned int crypto_alg_extsize(struct crypto_alg *alg)
 	       (alg->cra_alignmask & ~(crypto_tfm_ctx_alignment() - 1));
 }
 EXPORT_SYMBOL_GPL(crypto_alg_extsize);
+
+int crypto_type_has_alg(const char *name, const struct crypto_type *frontend,
+			u32 type, u32 mask)
+{
+	int ret = 0;
+	struct crypto_alg *alg = crypto_find_alg(name, frontend, type, mask);
+
+	if (!IS_ERR(alg)) {
+		crypto_mod_put(alg);
+		ret = 1;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(crypto_type_has_alg);
 
 static int __init crypto_algapi_init(void)
 {

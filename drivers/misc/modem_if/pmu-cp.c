@@ -8,7 +8,7 @@
 #include <linux/regmap.h>
 #include <linux/smc.h>
 #include "pmu-cp.h"
-#include "regs-pmu-exynos8890.h"
+#include "regs-pmu-cp.h"
 
 #if defined(CONFIG_CP_SECURE_BOOT)
 static u32 exynos_smc_read(enum cp_control reg)
@@ -363,19 +363,6 @@ int exynos_pmu_cp_init(struct modem_ctl *mc)
 	set_shdmem_base(mc);
 	set_batcher(mc);
 
-#ifdef CONFIG_SOC_EXYNOS8890
-	/* set access window for CP */
-	regmap_write(mc->pmureg, EXYNOS_PMU_CP2AP_MIF0_PERI_ACCESS_CON,
-			0xffffffff);
-	regmap_write(mc->pmureg, EXYNOS_PMU_CP2AP_MIF1_PERI_ACCESS_CON,
-			0xffffffff);
-	regmap_write(mc->pmureg, EXYNOS_PMU_CP2AP_MIF2_PERI_ACCESS_CON,
-			0xffffffff);
-	regmap_write(mc->pmureg, EXYNOS_PMU_CP2AP_MIF3_PERI_ACCESS_CON,
-			0xffffffff);
-	regmap_write(mc->pmureg, EXYNOS_PMU_CP2AP_CCORE_PERI_ACCESS_CON,
-			0xffffffff);
-#endif
 
 #endif
 

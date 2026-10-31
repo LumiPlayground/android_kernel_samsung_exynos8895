@@ -15,8 +15,7 @@
 
 #include <plat/map-base.h>
 
-#if defined(CONFIG_SOC_EXYNOS5433) || defined(CONFIG_SOC_EXYNOS7420) \
-	|| defined(CONFIG_SOC_EXYNOS7890) || defined(CONFIG_SOC_EXYNOS8890)
+#if defined(CONFIG_SOC_EXYNOS5433) || defined(CONFIG_SOC_EXYNOS7420)  || defined(CONFIG_SOC_EXYNOS7890)
 /*
  * The virtual and physical address of UART is aligned to 1MiB boundary usally.
  * However, the Exynos7410's UART physical address is alignd to 64KB boundary.

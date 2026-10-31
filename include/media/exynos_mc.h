@@ -27,11 +27,7 @@
 
 #define MDEV_MODULE_NAME "exynos-mdev"
 #define MAX_GSC_SUBDEV		3
-#if defined(CONFIG_SOC_EXYNOS8890)
-#define MAX_VPP_SUBDEV		9
-#else
 #define MAX_VPP_SUBDEV		4
-#endif
 #define MAX_DSIM_SUBDEV		2
 #define MDEV_MAX_NUM		3
 

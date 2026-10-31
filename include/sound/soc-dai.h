@@ -222,6 +222,7 @@ struct snd_soc_dai_driver {
 	const char *name;
 	unsigned int id;
 	unsigned int base;
+	struct snd_soc_dobj dobj;
 
 	/* DAI driver callbacks */
 	int (*probe)(struct snd_soc_dai *dai);
@@ -281,6 +282,7 @@ struct snd_soc_dai {
 	unsigned int rate;
 	unsigned int channels;
 	unsigned int sample_bits;
+	unsigned int sample_width;
 
 	/* parent platform/codec */
 	struct snd_soc_codec *codec;

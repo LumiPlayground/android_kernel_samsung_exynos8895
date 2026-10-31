@@ -29,6 +29,7 @@
 #include <linux/crc32.h>
 #include <linux/usb/usbnet.h>
 #include <linux/slab.h>
+#include <linux/of_net.h>
 #include "smsc75xx.h"
 
 #define SMSC_CHIPNAME			"smsc75xx"
@@ -101,9 +102,11 @@ static int __must_check __smsc75xx_read_reg(struct usbnet *dev, u32 index,
 	ret = fn(dev, USB_VENDOR_REQUEST_READ_REGISTER, USB_DIR_IN
 		 | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
 		 0, index, &buf, 4);
-	if (unlikely(ret < 0))
+	if (unlikely(ret < 0)) {
 		netdev_warn(dev->net, "Failed to read reg index 0x%08x: %d\n",
 			    index, ret);
+		return ret;
+	}
 
 	le32_to_cpus(&buf);
 	*data = buf;
@@ -767,6 +770,15 @@ static int smsc75xx_ioctl(struct net_device *netdev, struct ifreq *rq, int cmd)
 
 static void smsc75xx_init_mac_address(struct usbnet *dev)
 {
+	const u8 *mac_addr;
+
+	/* maybe the boot loader passed the MAC address in devicetree */
+	mac_addr = of_get_mac_address(dev->udev->dev.of_node);
+	if (mac_addr) {
+		memcpy(dev->net->dev_addr, mac_addr, ETH_ALEN);
+		return;
+	}
+
 	/* try reading mac address from EEPROM */
 	if (smsc75xx_read_eeprom(dev, EEPROM_MAC_OFFSET, ETH_ALEN,
 			dev->net->dev_addr) == 0) {
@@ -778,7 +790,7 @@ static void smsc75xx_init_mac_address(struct usbnet *dev)
 		}
 	}
 
-	/* no eeprom, or eeprom values are invalid. generate random MAC */
+	/* no useful static MAC address found. generate a random one */
 	eth_hw_addr_random(dev->net);
 	netif_dbg(dev, ifup, dev->net, "MAC address set to eth_random_addr\n");
 }
@@ -1485,7 +1497,7 @@ static int smsc75xx_bind(struct usbnet *dev, struct usb_interface *intf)
 	ret = smsc75xx_wait_ready(dev, 0);
 	if (ret < 0) {
 		netdev_warn(dev->net, "device not ready in smsc75xx_bind\n");
-		goto free_pdata;
+		return ret;
 	}
 
 	smsc75xx_init_mac_address(dev);
@@ -1494,7 +1506,7 @@ static int smsc75xx_bind(struct usbnet *dev, struct usb_interface *intf)
 	ret = smsc75xx_reset(dev);
 	if (ret < 0) {
 		netdev_warn(dev->net, "smsc75xx_reset error %d\n", ret);
-		goto cancel_work;
+		return ret;
 	}
 
 	dev->net->netdev_ops = &smsc75xx_netdev_ops;
@@ -1503,13 +1515,6 @@ static int smsc75xx_bind(struct usbnet *dev, struct usb_interface *intf)
 	dev->net->hard_header_len += SMSC75XX_TX_OVERHEAD;
 	dev->hard_mtu = dev->net->mtu + dev->net->hard_header_len;
 	return 0;
-
-cancel_work:
-	cancel_work_sync(&pdata->set_multicast);
-free_pdata:
-	kfree(pdata);
-	dev->data[0] = 0;
-	return ret;
 }
 
 static void smsc75xx_unbind(struct usbnet *dev, struct usb_interface *intf)
@@ -1519,6 +1524,7 @@ static void smsc75xx_unbind(struct usbnet *dev, struct usb_interface *intf)
 		cancel_work_sync(&pdata->set_multicast);
 		netif_dbg(dev, ifdown, dev->net, "free pdata\n");
 		kfree(pdata);
+		pdata = NULL;
 		dev->data[0] = 0;
 	}
 }

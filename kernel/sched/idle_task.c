@@ -24,11 +24,11 @@ static void check_preempt_curr_idle(struct rq *rq, struct task_struct *p, int fl
 }
 
 static struct task_struct *
-pick_next_task_idle(struct rq *rq, struct task_struct *prev)
+pick_next_task_idle(struct rq *rq, struct task_struct *prev, struct pin_cookie cookie)
 {
 	put_prev_task(rq, prev);
-
-	schedstat_inc(rq, sched_goidle);
+	update_idle_core(rq);
+	schedstat_inc(rq->sched_goidle);
 	return rq->idle;
 }
 
@@ -40,14 +40,13 @@ static void
 dequeue_task_idle(struct rq *rq, struct task_struct *p, int flags)
 {
 	raw_spin_unlock_irq(&rq->lock);
-	printk(KERN_ERR "bad: scheduling from the idle thread!\n");
+	pr_auto(ASL6, "bad: scheduling from the idle thread!\n");
 	dump_stack();
 	raw_spin_lock_irq(&rq->lock);
 }
 
 static void put_prev_task_idle(struct rq *rq, struct task_struct *prev)
 {
-	idle_exit_fair(rq);
 	rq_last_tick_reset(rq);
 }
 

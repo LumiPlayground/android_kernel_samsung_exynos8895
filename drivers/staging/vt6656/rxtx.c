@@ -12,9 +12,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * File: rxtx.c
  *
@@ -280,9 +277,11 @@ static u16 vnt_rxtx_datahead_g(struct vnt_usb_send_context *tx_context,
 							PK_TYPE_11B, &buf->b);
 
 	/* Get Duration and TimeStamp */
-	if (ieee80211_is_nullfunc(hdr->frame_control)) {
-		buf->duration_a = hdr->duration_id;
-		buf->duration_b = hdr->duration_id;
+	if (ieee80211_is_pspoll(hdr->frame_control)) {
+		__le16 dur = cpu_to_le16(priv->current_aid | BIT(14) | BIT(15));
+
+		buf->duration_a = dur;
+		buf->duration_b = dur;
 	} else {
 		buf->duration_a = vnt_get_duration_le(priv,
 						tx_context->pkt_type, need_ack);
@@ -371,8 +370,10 @@ static u16 vnt_rxtx_datahead_ab(struct vnt_usb_send_context *tx_context,
 			  tx_context->pkt_type, &buf->ab);
 
 	/* Get Duration and TimeStampOff */
-	if (ieee80211_is_nullfunc(hdr->frame_control)) {
-		buf->duration = hdr->duration_id;
+	if (ieee80211_is_pspoll(hdr->frame_control)) {
+		__le16 dur = cpu_to_le16(priv->current_aid | BIT(14) | BIT(15));
+
+		buf->duration = dur;
 	} else {
 		buf->duration = vnt_get_duration_le(priv, tx_context->pkt_type,
 						    need_ack);
@@ -715,7 +716,7 @@ static void vnt_fill_txkey(struct vnt_usb_send_context *tx_context,
 	u16 payload_len, struct vnt_mic_hdr *mic_hdr)
 {
 	struct ieee80211_hdr *hdr = tx_context->hdr;
-	struct ieee80211_key_seq seq;
+	u64 pn64;
 	u8 *iv = ((u8 *)hdr + ieee80211_get_hdrlen_from_skb(skb));
 
 	/* strip header and icv len from payload */
@@ -748,9 +749,13 @@ static void vnt_fill_txkey(struct vnt_usb_send_context *tx_context,
 		mic_hdr->payload_len = cpu_to_be16(payload_len);
 		ether_addr_copy(mic_hdr->mic_addr2, hdr->addr2);
 
-		ieee80211_get_key_tx_seq(tx_key, &seq);
-
-		memcpy(mic_hdr->ccmp_pn, seq.ccmp.pn, IEEE80211_CCMP_PN_LEN);
+		pn64 = atomic64_read(&tx_key->tx_pn);
+		mic_hdr->ccmp_pn[5] = pn64;
+		mic_hdr->ccmp_pn[4] = pn64 >> 8;
+		mic_hdr->ccmp_pn[3] = pn64 >> 16;
+		mic_hdr->ccmp_pn[2] = pn64 >> 24;
+		mic_hdr->ccmp_pn[1] = pn64 >> 32;
+		mic_hdr->ccmp_pn[0] = pn64 >> 40;
 
 		if (ieee80211_has_a4(hdr->frame_control))
 			mic_hdr->hlen = cpu_to_be16(28);
@@ -808,17 +813,13 @@ int vnt_tx_packet(struct vnt_private *priv, struct sk_buff *skb)
 	}
 
 	if (current_rate > RATE_11M) {
-		if (info->band == IEEE80211_BAND_5GHZ) {
+		if (info->band == NL80211_BAND_5GHZ) {
 			pkt_type = PK_TYPE_11A;
 		} else {
-			if (tx_rate->flags & IEEE80211_TX_RC_USE_CTS_PROTECT) {
-				if (priv->basic_rates & VNT_B_RATES)
-					pkt_type = PK_TYPE_11GB;
-				else
-					pkt_type = PK_TYPE_11GA;
-			} else {
-				pkt_type = PK_TYPE_11A;
-			}
+			if (tx_rate->flags & IEEE80211_TX_RC_USE_CTS_PROTECT)
+				pkt_type = PK_TYPE_11GB;
+			else
+				pkt_type = PK_TYPE_11GA;
 		}
 	} else {
 		pkt_type = PK_TYPE_11B;

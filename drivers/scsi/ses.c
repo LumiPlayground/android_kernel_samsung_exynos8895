@@ -34,6 +34,8 @@
 #include <scsi/scsi_driver.h>
 #include <scsi/scsi_host.h>
 
+#include <scsi/scsi_transport_sas.h>
+
 struct ses_device {
 	unsigned char *page1;
 	unsigned char *page1_types;
@@ -118,7 +120,7 @@ static int ses_recv_diag(struct scsi_device *sdev, int page_code,
 static int ses_send_diag(struct scsi_device *sdev, int page_code,
 			 void *buf, int bufflen)
 {
-	int result;
+	u32 result;
 
 	unsigned char cmd[] = {
 		SEND_DIAGNOSTIC,
@@ -576,33 +578,20 @@ static void ses_enclosure_data_process(struct enclosure_device *edev,
 }
 
 static void ses_match_to_enclosure(struct enclosure_device *edev,
-				   struct scsi_device *sdev)
+				   struct scsi_device *sdev,
+				   int refresh)
 {
-	unsigned char *desc;
+	struct scsi_device *edev_sdev = to_scsi_device(edev->edev.parent);
 	struct efd efd = {
 		.addr = 0,
 	};
 
-	ses_enclosure_data_process(edev, to_scsi_device(edev->edev.parent), 0);
+	if (refresh)
+		ses_enclosure_data_process(edev, edev_sdev, 0);
 
-	if (!sdev->vpd_pg83_len)
-		return;
+	if (scsi_is_sas_rphy(sdev->sdev_target->dev.parent))
+		efd.addr = sas_get_address(sdev);
 
-	desc = sdev->vpd_pg83 + 4;
-	while (desc < sdev->vpd_pg83 + sdev->vpd_pg83_len) {
-		enum scsi_protocol proto = desc[0] >> 4;
-		u8 code_set = desc[0] & 0x0f;
-		u8 piv = desc[1] & 0x80;
-		u8 assoc = (desc[1] & 0x30) >> 4;
-		u8 type = desc[1] & 0x0f;
-		u8 len = desc[3];
-
-		if (piv && code_set == 1 && assoc == 1
-		    && proto == SCSI_PROTOCOL_SAS && type == 3 && len == 8)
-			efd.addr = get_unaligned_be64(&desc[4]);
-
-		desc += len + 4;
-	}
 	if (efd.addr) {
 		efd.dev = &sdev->sdev_gendev;
 
@@ -629,7 +618,7 @@ static int ses_intf_add(struct device *cdev,
 		struct enclosure_device *prev = NULL;
 
 		while ((edev = enclosure_find(&sdev->host->shost_gendev, prev)) != NULL) {
-			ses_match_to_enclosure(edev, sdev);
+			ses_match_to_enclosure(edev, sdev, 1);
 			prev = edev;
 		}
 		return -ENODEV;
@@ -741,7 +730,7 @@ static int ses_intf_add(struct device *cdev,
 	shost_for_each_device(tmp_sdev, sdev->host) {
 		if (tmp_sdev->lun != 0 || scsi_device_enclosure(tmp_sdev))
 			continue;
-		ses_match_to_enclosure(edev, tmp_sdev);
+		ses_match_to_enclosure(edev, tmp_sdev, 0);
 	}
 
 	return 0;
@@ -791,6 +780,8 @@ static void ses_intf_remove_enclosure(struct scsi_device *sdev)
 	if (!edev)
 		return;
 
+	enclosure_unregister(edev);
+
 	ses_dev = edev->scratch;
 	edev->scratch = NULL;
 
@@ -802,7 +793,6 @@ static void ses_intf_remove_enclosure(struct scsi_device *sdev)
 	kfree(edev->component[0].scratch);
 
 	put_device(&edev->edev);
-	enclosure_unregister(edev);
 }
 
 static void ses_intf_remove(struct device *cdev,

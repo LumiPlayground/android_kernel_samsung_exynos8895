@@ -23,6 +23,7 @@ config CPU_FREQ_GOV_ATTR_SET
 
 config CPU_FREQ_GOV_COMMON
 	select CPU_FREQ_GOV_ATTR_SET
+	select IRQ_WORK
 	bool
 
 config CPU_FREQ_BOOST_SW
@@ -34,23 +35,17 @@ config CPU_FREQ_SCHEDUTIL_PERFSTAT_TRIGGER
 	default n
 
 config CPU_FREQ_STAT
-	tristate "CPU frequency translation statistics"
-	default y
+	bool "CPU frequency transition statistics"
 	help
-	  This driver exports CPU frequency statistics information through sysfs
-	  file system.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called cpufreq_stats.
+	  Export CPU frequency statistics information through sysfs.
 
 	  If in doubt, say N.
 
 config CPU_FREQ_STAT_DETAILS
-	bool "CPU frequency translation statistics details"
+	bool "CPU frequency transition statistics details"
 	depends on CPU_FREQ_STAT
 	help
-	  This will show detail CPU frequency translation table in sysfs file
-	  system.
+	  Show detailed CPU frequency transition table in sysfs.
 
 	  If in doubt, say N.
 
@@ -131,6 +126,7 @@ config CPU_FREQ_DEFAULT_GOV_INTERACTIVE
 
 config CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
 	bool "schedutil"
+	depends on SMP
 	select CPU_FREQ_GOV_SCHEDUTIL
 	select CPU_FREQ_GOV_PERFORMANCE
 	help
@@ -234,11 +230,10 @@ config CPU_FREQ_GOV_CONSERVATIVE
 	  If in doubt, say N.
 
 config CPU_FREQ_GOV_SCHEDUTIL
-	tristate "'schedutil' cpufreq policy governor"
-	depends on CPU_FREQ
+	bool "'schedutil' cpufreq policy governor"
+	depends on CPU_FREQ && SMP
 	select CPU_FREQ_GOV_ATTR_SET
 	select IRQ_WORK
-	select SCHED_TUNE
 	help
 	  This governor makes decisions based on the utilization data provided
 	  by the scheduler.  It sets the CPU frequency to be proportional to
@@ -270,11 +265,21 @@ config CPUFREQ_DT
 	depends on HAVE_CLK && OF
 	# if CPU_THERMAL is on and THERMAL=m, CPUFREQ_DT cannot be =y:
 	depends on !CPU_THERMAL || THERMAL
+	select CPUFREQ_DT_PLATDEV
 	select PM_OPP
 	help
 	  This adds a generic DT based cpufreq driver for frequency management.
 	  It supports both uniprocessor (UP) and symmetric multiprocessor (SMP)
-	  systems which share clock and voltage across all CPUs.
+	  systems.
+
+	  If in doubt, say N.
+
+config CPUFREQ_DT_PLATDEV
+	bool
+	help
+	  This adds a generic DT based cpufreq platdev driver for frequency
+	  management.  This creates a 'cpufreq-dt' platform device, on the
+	  supported platforms.
 
 	  If in doubt, say N.
 
@@ -378,6 +383,7 @@ endif
 config QORIQ_CPUFREQ
 	tristate "CPU frequency scaling driver for Freescale QorIQ SoCs"
 	depends on OF && COMMON_CLK && (PPC_E500MC || ARM)
+	depends on !CPU_THERMAL || THERMAL
 	select CLK_QORIQ
 	help
 	  This adds the CPUFreq driver support for Freescale QorIQ SoCs

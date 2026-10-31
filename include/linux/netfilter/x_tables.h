@@ -6,6 +6,10 @@
 #include <linux/static_key.h>
 #include <uapi/linux/netfilter/x_tables.h>
 
+/* Test a struct->invflags and a boolean for inequality */
+#define NF_INVF(ptr, flag, boolean)					\
+	((boolean) ^ !!((ptr)->invflags & (flag)))
+
 /**
  * struct xt_action_param - parameters for matches/targets
  *
@@ -202,6 +206,9 @@ struct xt_table {
 	u_int8_t af;		/* address/protocol family */
 	int priority;		/* hook order */
 
+	/* called when table is needed in the given netns */
+	int (*table_init)(struct net *net);
+
 	/* A unique name... */
 	const char name[XT_TABLE_MAXNAMELEN];
 };
@@ -336,7 +343,7 @@ static inline unsigned int xt_write_recseq_begin(void)
 	 * since addend is most likely 1
 	 */
 	__this_cpu_add(xt_recseq.sequence, addend);
-	smp_mb();
+	smp_wmb();
 
 	return addend;
 }
@@ -406,8 +413,7 @@ xt_get_per_cpu_counter(struct xt_counters *cnt, unsigned int cpu)
 	return cnt;
 }
 
-struct nf_hook_ops *xt_hook_link(const struct xt_table *, nf_hookfn *);
-void xt_hook_unlink(const struct xt_table *, struct nf_hook_ops *);
+struct nf_hook_ops *xt_hook_ops_alloc(const struct xt_table *, nf_hookfn *);
 
 #ifdef CONFIG_COMPAT
 #include <net/compat.h>

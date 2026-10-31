@@ -628,9 +628,6 @@ int ss310ap_init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	struct device_node *np = pdev->dev.of_node;
 	int ret = 0;
 	unsigned int irq_num;
-#ifdef CONFIG_SOC_EXYNOS8890
-	struct resource *sysram_alive;
-#endif
 	unsigned long flags = IRQF_NO_SUSPEND | IRQF_NO_THREAD;
 	unsigned int cp_rst_n ;
 
@@ -674,14 +671,6 @@ int ss310ap_init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	mc->irq_cp_wdt.active = true;
 	mif_disable_irq(&mc->irq_cp_wdt);
 
-#ifdef CONFIG_SOC_EXYNOS8890
-	sysram_alive = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	mc->sysram_alive = devm_ioremap_resource(&pdev->dev, sysram_alive);
-	if (IS_ERR(mc->sysram_alive)) {
-		ret = PTR_ERR(mc->sysram_alive);
-		return ret;
-	}
-#endif
 
 	/*
 	** Register LTE_ACTIVE MBOX interrupt handler

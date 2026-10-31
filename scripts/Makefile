@@ -11,9 +11,6 @@
 
 HOST_EXTRACFLAGS += -I$(srctree)/tools/include
 
-CRYPTO_LIBS = $(shell pkg-config --libs libcrypto 2> /dev/null || echo -lcrypto)
-CRYPTO_CFLAGS = $(shell pkg-config --cflags libcrypto 2> /dev/null)
-
 hostprogs-$(CONFIG_KALLSYMS)     += kallsyms
 hostprogs-$(CONFIG_LOGO)         += pnmtologo
 hostprogs-$(CONFIG_VT)           += conmakehash
@@ -22,13 +19,12 @@ hostprogs-$(CONFIG_BUILDTIME_EXTABLE_SORT) += sortextable
 hostprogs-$(CONFIG_ASN1)	 += asn1_compiler
 hostprogs-$(CONFIG_MODULE_SIG)	 += sign-file
 hostprogs-$(CONFIG_SYSTEM_TRUSTED_KEYRING) += extract-cert
+hostprogs-$(CONFIG_SYSTEM_EXTRA_CERTIFICATE) += insert-sys-cert
 
 HOSTCFLAGS_sortextable.o = -I$(srctree)/tools/include
 HOSTCFLAGS_asn1_compiler.o = -I$(srctree)/include
-HOSTCFLAGS_sign-file.o = $(CRYPTO_CFLAGS)
-HOSTLOADLIBES_sign-file = $(CRYPTO_LIBS)
-HOSTCFLAGS_extract-cert.o = $(CRYPTO_CFLAGS)
-HOSTLOADLIBES_extract-cert = $(CRYPTO_LIBS)
+HOSTLOADLIBES_sign-file = -lcrypto
+HOSTLOADLIBES_extract-cert = -lcrypto
 
 always		:= $(hostprogs-y) $(hostprogs-m)
 
@@ -52,4 +48,4 @@ subdir-$(CONFIG_GDB_SCRIPTS) += gdb
 subdir-$(CONFIG_EXYNOS_DTBTOOL) += dtbtool_exynos
 
 # Let clean descend into subdirs
-subdir-	+= basic kconfig package
+subdir-	+= basic kconfig package gcc-plugins

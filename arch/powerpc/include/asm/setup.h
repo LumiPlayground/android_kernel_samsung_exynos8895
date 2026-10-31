@@ -27,6 +27,18 @@ void initmem_init(void);
 void setup_panic(void);
 #define ARCH_PANIC_TIMEOUT 180
 
+#ifdef CONFIG_PPC_PSERIES
+extern void pseries_enable_reloc_on_exc(void);
+extern void pseries_disable_reloc_on_exc(void);
+extern void pseries_big_endian_exceptions(void);
+extern void pseries_little_endian_exceptions(void);
+#else
+static inline void pseries_enable_reloc_on_exc(void) {}
+static inline void pseries_disable_reloc_on_exc(void) {}
+static inline void pseries_big_endian_exceptions(void) {}
+static inline void pseries_little_endian_exceptions(void) {}
+#endif /* CONFIG_PPC_PSERIES */
+
 void rfi_flush_enable(bool enable);
 
 /* These are bit flags */
@@ -38,16 +50,12 @@ enum l1d_flush_type {
 };
 
 void setup_rfi_flush(enum l1d_flush_type, bool enable);
-void setup_entry_flush(bool enable);
-void setup_uaccess_flush(bool enable);
 void do_rfi_flush_fixups(enum l1d_flush_type types);
 #ifdef CONFIG_PPC_BARRIER_NOSPEC
 void setup_barrier_nospec(void);
 #else
 static inline void setup_barrier_nospec(void) { };
 #endif
-void do_uaccess_flush_fixups(enum l1d_flush_type types);
-void do_entry_flush_fixups(enum l1d_flush_type types);
 void do_barrier_nospec_fixups(bool enable);
 extern bool barrier_nospec_enabled;
 

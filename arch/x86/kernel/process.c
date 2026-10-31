@@ -7,7 +7,8 @@
 #include <linux/prctl.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
-#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/export.h>
 #include <linux/pm.h>
 #include <linux/tick.h>
 #include <linux/random.h>
@@ -31,6 +32,7 @@
 #include <asm/tlbflush.h>
 #include <asm/mce.h>
 #include <asm/vm86.h>
+#include <asm/switch_to.h>
 #include <asm/spec-ctrl.h>
 
 #include "process.h"
@@ -60,11 +62,27 @@ __visible DEFINE_PER_CPU_SHARED_ALIGNED_USER_MAPPED(struct tss_struct, cpu_tss) 
 	  */
 	.io_bitmap		= { [0 ... IO_BITMAP_LONGS] = ~0 },
 #endif
+#ifdef CONFIG_X86_32
+	.SYSENTER_stack_canary	= STACK_END_MAGIC,
+#endif
 };
 EXPORT_PER_CPU_SYMBOL(cpu_tss);
 
 #ifdef CONFIG_X86_64
 static DEFINE_PER_CPU(unsigned char, is_idle);
+static ATOMIC_NOTIFIER_HEAD(idle_notifier);
+
+void idle_notifier_register(struct notifier_block *n)
+{
+	atomic_notifier_chain_register(&idle_notifier, n);
+}
+EXPORT_SYMBOL_GPL(idle_notifier_register);
+
+void idle_notifier_unregister(struct notifier_block *n)
+{
+	atomic_notifier_chain_unregister(&idle_notifier, n);
+}
+EXPORT_SYMBOL_GPL(idle_notifier_unregister);
 #endif
 
 /*
@@ -319,20 +337,28 @@ static __always_inline void __speculation_ctrl_update(unsigned long tifp,
 	u64 msr = x86_spec_ctrl_base;
 	bool updmsr = false;
 
-	/* Handle change of TIF_SSBD depending on the mitigation method. */
-	if (static_cpu_has(X86_FEATURE_VIRT_SSBD)) {
-		if (tif_diff & _TIF_SSBD)
+	/*
+	 * If TIF_SSBD is different, select the proper mitigation
+	 * method. Note that if SSBD mitigation is disabled or permanentely
+	 * enabled this branch can't be taken because nothing can set
+	 * TIF_SSBD.
+	 */
+	if (tif_diff & _TIF_SSBD) {
+		if (static_cpu_has(X86_FEATURE_VIRT_SSBD)) {
 			amd_set_ssb_virt_state(tifn);
-	} else if (static_cpu_has(X86_FEATURE_LS_CFG_SSBD)) {
-		if (tif_diff & _TIF_SSBD)
+		} else if (static_cpu_has(X86_FEATURE_LS_CFG_SSBD)) {
 			amd_set_core_ssb_state(tifn);
-	} else if (static_cpu_has(X86_FEATURE_SPEC_CTRL_SSBD) ||
-		   static_cpu_has(X86_FEATURE_AMD_SSBD)) {
-		updmsr |= !!(tif_diff & _TIF_SSBD);
-		msr |= ssbd_tif_to_spec_ctrl(tifn);
+		} else if (static_cpu_has(X86_FEATURE_SPEC_CTRL_SSBD) ||
+			   static_cpu_has(X86_FEATURE_AMD_SSBD)) {
+			msr |= ssbd_tif_to_spec_ctrl(tifn);
+			updmsr  = true;
+		}
 	}
 
-	/* Only evaluate TIF_SPEC_IB if conditional STIBP is enabled. */
+	/*
+	 * Only evaluate TIF_SPEC_IB if conditional STIBP is enabled,
+	 * otherwise avoid the MSR write.
+	 */
 	if (IS_ENABLED(CONFIG_SMP) &&
 	    static_branch_unlikely(&switch_to_cond_stibp)) {
 		updmsr |= !!(tif_diff & _TIF_SPEC_IB);
@@ -434,14 +460,14 @@ static inline void play_dead(void)
 void enter_idle(void)
 {
 	this_cpu_write(is_idle, 1);
-	idle_notifier_call_chain(IDLE_START);
+	atomic_notifier_call_chain(&idle_notifier, IDLE_START, NULL);
 }
 
 static void __exit_idle(void)
 {
 	if (x86_test_and_clear_bit_percpu(0, is_idle) == 0)
 		return;
-	idle_notifier_call_chain(IDLE_END);
+	atomic_notifier_call_chain(&idle_notifier, IDLE_END, NULL);
 }
 
 /* Called from interrupts to signify idle end */
@@ -481,7 +507,7 @@ void arch_cpu_idle(void)
 /*
  * We use this if we don't have any better idle routine..
  */
-void default_idle(void)
+void __cpuidle default_idle(void)
 {
 	trace_cpu_idle_rcuidle(1, smp_processor_id());
 	safe_halt();
@@ -585,7 +611,7 @@ static int prefer_mwait_c1_over_halt(const struct cpuinfo_x86 *c)
 	if (c->x86_vendor != X86_VENDOR_INTEL)
 		return 0;
 
-	if (!cpu_has(c, X86_FEATURE_MWAIT))
+	if (!cpu_has(c, X86_FEATURE_MWAIT) || static_cpu_has_bug(X86_BUG_MONITOR))
 		return 0;
 
 	return 1;
@@ -596,14 +622,14 @@ static int prefer_mwait_c1_over_halt(const struct cpuinfo_x86 *c)
  * with interrupts enabled and no flags, which is backwards compatible with the
  * original MWAIT implementation.
  */
-static void mwait_idle(void)
+static __cpuidle void mwait_idle(void)
 {
 	if (!current_set_polling_and_test()) {
 		trace_cpu_idle_rcuidle(1, smp_processor_id());
 		if (this_cpu_has(X86_BUG_CLFLUSH_MONITOR)) {
-			smp_mb(); /* quirk */
+			mb(); /* quirk */
 			clflush((void *)&current_thread_info()->flags);
-			smp_mb(); /* quirk */
+			mb(); /* quirk */
 		}
 
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
@@ -627,8 +653,7 @@ void select_idle_routine(const struct cpuinfo_x86 *c)
 	if (x86_idle || boot_option_idle_override == IDLE_POLL)
 		return;
 
-	if (cpu_has_bug(c, X86_BUG_AMD_APIC_C1E)) {
-		/* E400: APIC timer interrupt does not wake up CPU from C1e */
+	if (boot_cpu_has_bug(X86_BUG_AMD_E400)) {
 		pr_info("using AMD E400 aware idle routine\n");
 		x86_idle = amd_e400_idle;
 	} else if (prefer_mwait_c1_over_halt(c)) {
@@ -688,8 +713,18 @@ unsigned long arch_align_stack(unsigned long sp)
 
 unsigned long arch_randomize_brk(struct mm_struct *mm)
 {
-	unsigned long range_end = mm->brk + 0x02000000;
-	return randomize_range(mm->brk, range_end, 0) ? : mm->brk;
+	return randomize_page(mm->brk, 0x02000000);
+}
+
+/*
+ * Return saved PC of a blocked thread.
+ * What is this good for? it will be always the scheduler or ret_from_fork.
+ */
+unsigned long thread_saved_pc(struct task_struct *tsk)
+{
+	struct inactive_task_frame *frame =
+		(struct inactive_task_frame *) READ_ONCE(tsk->thread.sp);
+	return READ_ONCE_NOCHECK(frame->ret_addr);
 }
 
 /*
@@ -700,15 +735,18 @@ unsigned long arch_randomize_brk(struct mm_struct *mm)
  */
 unsigned long get_wchan(struct task_struct *p)
 {
-	unsigned long start, bottom, top, sp, fp, ip;
+	unsigned long start, bottom, top, sp, fp, ip, ret = 0;
 	int count = 0;
 
 	if (!p || p == current || p->state == TASK_RUNNING)
 		return 0;
 
+	if (!try_get_task_stack(p))
+		return 0;
+
 	start = (unsigned long)task_stack_page(p);
 	if (!start)
-		return 0;
+		goto out;
 
 	/*
 	 * Layout of the stack page:
@@ -717,9 +755,7 @@ unsigned long get_wchan(struct task_struct *p)
 	 * PADDING
 	 * ----------- top = topmax - TOP_OF_KERNEL_STACK_PADDING
 	 * stack
-	 * ----------- bottom = start + sizeof(thread_info)
-	 * thread_info
-	 * ----------- start
+	 * ----------- bottom = start
 	 *
 	 * The tasks stack pointer points at the location where the
 	 * framepointer is stored. The data on the stack is:
@@ -730,20 +766,25 @@ unsigned long get_wchan(struct task_struct *p)
 	 */
 	top = start + THREAD_SIZE - TOP_OF_KERNEL_STACK_PADDING;
 	top -= 2 * sizeof(unsigned long);
-	bottom = start + sizeof(struct thread_info);
+	bottom = start;
 
 	sp = READ_ONCE(p->thread.sp);
 	if (sp < bottom || sp > top)
-		return 0;
+		goto out;
 
-	fp = READ_ONCE_NOCHECK(*(unsigned long *)sp);
+	fp = READ_ONCE_NOCHECK(((struct inactive_task_frame *)sp)->bp);
 	do {
 		if (fp < bottom || fp > top)
-			return 0;
+			goto out;
 		ip = READ_ONCE_NOCHECK(*(unsigned long *)(fp + sizeof(unsigned long)));
-		if (!in_sched_functions(ip))
-			return ip;
+		if (!in_sched_functions(ip)) {
+			ret = ip;
+			goto out;
+		}
 		fp = READ_ONCE_NOCHECK(*(unsigned long *)fp);
 	} while (count++ < 16 && p->state != TASK_RUNNING);
-	return 0;
+
+out:
+	put_task_stack(p);
+	return ret;
 }

@@ -40,7 +40,7 @@ renew_parental_timestamps(struct dentry *direntry)
 	/* BB check if there is a way to get the kernel to do this or if we
 	   really need this */
 	do {
-		direntry->d_time = jiffies;
+		cifs_set_time(direntry, jiffies);
 		direntry = direntry->d_parent;
 	} while (!IS_ROOT(direntry));
 }
@@ -485,7 +485,7 @@ cifs_atomic_open(struct inode *inode, struct dentry *direntry,
 		 * Check for hashed negative dentry. We have already revalidated
 		 * the dentry and it is fine. No need to perform another lookup.
 		 */
-		if (!d_unhashed(direntry))
+		if (!d_in_lookup(direntry))
 			return -ENOENT;
 
 		res = cifs_lookup(inode, direntry, 0);
@@ -810,7 +810,7 @@ cifs_lookup(struct inode *parent_dir_inode, struct dentry *direntry,
 
 	} else if (rc == -ENOENT) {
 		rc = 0;
-		direntry->d_time = jiffies;
+		cifs_set_time(direntry, jiffies);
 		d_add(direntry, NULL);
 	/*	if it was once a directory (but how can we tell?) we could do
 		shrink_dcache_parent(direntry); */
@@ -830,36 +830,12 @@ lookup_out:
 static int
 cifs_d_revalidate(struct dentry *direntry, unsigned int flags)
 {
-	struct inode *inode;
-	int rc;
-
 	if (flags & LOOKUP_RCU)
 		return -ECHILD;
 
 	if (d_really_is_positive(direntry)) {
-		inode = d_inode(direntry);
-		if ((flags & LOOKUP_REVAL) && !CIFS_CACHE_READ(CIFS_I(inode)))
-			CIFS_I(inode)->time = 0; /* force reval */
-
-		rc = cifs_revalidate_dentry(direntry);
-		if (rc) {
-			cifs_dbg(FYI, "cifs_revalidate_dentry failed with rc=%d", rc);
-			switch (rc) {
-			case -ENOENT:
-			case -ESTALE:
-				/*
-				 * Those errors mean the dentry is invalid
-				 * (file was deleted or recreated)
-				 */
-				return 0;
-			default:
-				/*
-				 * Otherwise some unexpected error happened
-				 * report it as-is to VFS layer
-				 */
-				return rc;
-			}
-		}
+		if (cifs_revalidate_dentry(direntry))
+			return 0;
 		else {
 			/*
 			 * If the inode wasn't known to be a dfs entry when
@@ -868,7 +844,7 @@ cifs_d_revalidate(struct dentry *direntry, unsigned int flags)
 			 * attributes will have been updated by
 			 * cifs_revalidate_dentry().
 			 */
-			if (IS_AUTOMOUNT(inode) &&
+			if (IS_AUTOMOUNT(d_inode(direntry)) &&
 			   !(direntry->d_flags & DCACHE_NEED_AUTOMOUNT)) {
 				spin_lock(&direntry->d_lock);
 				direntry->d_flags |= DCACHE_NEED_AUTOMOUNT;
@@ -894,7 +870,7 @@ cifs_d_revalidate(struct dentry *direntry, unsigned int flags)
 	if (flags & (LOOKUP_CREATE | LOOKUP_RENAME_TARGET))
 		return 0;
 
-	if (time_after(jiffies, direntry->d_time + HZ) || !lookupCacheEnabled)
+	if (time_after(jiffies, cifs_get_time(direntry) + HZ) || !lookupCacheEnabled)
 		return 0;
 
 	return 1;
@@ -922,7 +898,7 @@ static int cifs_ci_hash(const struct dentry *dentry, struct qstr *q)
 	wchar_t c;
 	int i, charlen;
 
-	hash = init_name_hash();
+	hash = init_name_hash(dentry);
 	for (i = 0; i < q->len; i += charlen) {
 		charlen = codepage->char2uni(&q->name[i], q->len - i, &c);
 		/* error out if we can't convert the character */
@@ -935,10 +911,10 @@ static int cifs_ci_hash(const struct dentry *dentry, struct qstr *q)
 	return 0;
 }
 
-static int cifs_ci_compare(const struct dentry *parent, const struct dentry *dentry,
+static int cifs_ci_compare(const struct dentry *dentry,
 		unsigned int len, const char *str, const struct qstr *name)
 {
-	struct nls_table *codepage = CIFS_SB(parent->d_sb)->local_nls;
+	struct nls_table *codepage = CIFS_SB(dentry->d_sb)->local_nls;
 	wchar_t c1, c2;
 	int i, l1, l2;
 

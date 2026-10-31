@@ -240,7 +240,7 @@ static inline void sprd_rx(struct uart_port *port)
 
 		if (lsr & (SPRD_LSR_BI | SPRD_LSR_PE |
 			SPRD_LSR_FE | SPRD_LSR_OE))
-			if (handle_lsr_errors(port, &flag, &lsr))
+			if (handle_lsr_errors(port, &lsr, &flag))
 				continue;
 		if (uart_handle_sysrq_char(port, ch))
 			continue;
@@ -519,7 +519,7 @@ static struct uart_ops serial_sprd_ops = {
 };
 
 #ifdef CONFIG_SERIAL_SPRD_CONSOLE
-static inline void wait_for_xmitr(struct uart_port *port)
+static void wait_for_xmitr(struct uart_port *port)
 {
 	unsigned int status, tmout = 10000;
 
@@ -626,8 +626,6 @@ static int __init sprd_early_console_setup(
 	device->con->write = sprd_early_write;
 	return 0;
 }
-
-EARLYCON_DECLARE(sprd_serial, sprd_early_console_setup);
 OF_EARLYCON_DECLARE(sprd_serial, "sprd,sc9836-uart",
 		    sprd_early_console_setup);
 
@@ -658,7 +656,7 @@ static int sprd_probe_dt_alias(int index, struct device *dev)
 		return ret;
 
 	ret = of_alias_get_id(np, "serial");
-	if (IS_ERR_VALUE(ret))
+	if (ret < 0)
 		ret = index;
 	else if (ret >= ARRAY_SIZE(sprd_port) || sprd_port[ret] != NULL) {
 		dev_warn(dev, "requested serial port %d not available.\n", ret);
@@ -733,8 +731,8 @@ static int sprd_probe(struct platform_device *pdev)
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
-		dev_err(&pdev->dev, "not provide irq resource: %d\n", irq);
-		return irq;
+		dev_err(&pdev->dev, "not provide irq resource\n");
+		return -ENODEV;
 	}
 	up->irq = irq;
 

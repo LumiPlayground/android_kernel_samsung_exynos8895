@@ -25,7 +25,7 @@
 
 #include <net/ieee802154_netdev.h>
 #include <net/6lowpan.h>
-#include <net/ipv6.h>
+#include <net/ipv6_frag.h>
 #include <net/inet_frag.h>
 
 #include "6lowpan_i.h"
@@ -607,7 +607,6 @@ int __init lowpan_net_frag_init(void)
 
 	lowpan_frags.constructor = lowpan_frag_init;
 	lowpan_frags.destructor = NULL;
-	lowpan_frags.skb_free = NULL;
 	lowpan_frags.qsize = sizeof(struct frag_queue);
 	lowpan_frags.frag_expire = lowpan_frag_expire;
 	lowpan_frags.frags_cache_name = lowpan_frags_cache_name;
@@ -634,7 +633,7 @@ err_sysctl:
 
 void lowpan_net_frag_exit(void)
 {
+	inet_frags_fini(&lowpan_frags);
 	lowpan_frags_sysctl_unregister();
 	unregister_pernet_subsys(&lowpan_frags_ops);
-	inet_frags_fini(&lowpan_frags);
 }

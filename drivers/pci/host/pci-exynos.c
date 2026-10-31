@@ -1459,7 +1459,7 @@ static void exynos_pcie_shutdown(struct platform_device *pdev)
 }
 
 static const struct of_device_id exynos_pcie_of_match[] = {
-	{ .compatible = "samsung,exynos8890-pcie", },
+
 	{ .compatible = "samsung,exynos-pcie", },
 	{},
 };
