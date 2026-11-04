@@ -889,18 +889,24 @@ static void get_enc_mode_from_bio(struct bio *bio, int *enc_mode)
 
 static void get_enc_mode_from_page(struct page *page, int *enc_mode)
 {
-	/* Anonymous page */
-	if (!page || PageAnon(page))
+	struct address_space *mapping;
+
+	if (!page)
+		return;
+	page = compound_head(page);
+	/* MMC request buffers may be slab objects, not file-cache pages. */
+	if (PageSlab(page) || PageAnon(page))
 		return;
 
-	if (!page->mapping)
+	mapping = page_mapping(page);
+	if (!mapping)
 		return;
 
 #if defined(CONFIG_DW_MMC_FMP_ECRYPT_FS)
-	if (page->mapping->plain_text || page->index < 2)
+	if (mapping->plain_text || page->index < 2)
 		return;
 #endif
-	if (page->mapping->private_enc_mode == FMP_FILE_ENC_MODE)
+	if (mapping->private_enc_mode == FMP_FILE_ENC_MODE)
 		*enc_mode |= MMC_FILE_ENC_MODE;
 	return;
 }
