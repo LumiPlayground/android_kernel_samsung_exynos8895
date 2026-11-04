@@ -326,7 +326,10 @@ static void dedotify_versions(struct modversion_info *vers,
 		}
 }
 
-/* Undefined symbols which refer to .funcname, hack to funcname (or .TOC.) */
+/*
+ * Undefined symbols which refer to .funcname, hack to funcname. Make .TOC.
+ * seem to be defined (value set later).
+ */
 static void dedotify(Elf64_Sym *syms, unsigned int numsyms, char *strtab)
 {
 	unsigned int i;
@@ -351,7 +354,7 @@ static Elf64_Sym *find_dot_toc(Elf64_Shdr *sechdrs,
 	numsyms = sechdrs[symindex].sh_size / sizeof(Elf64_Sym);
 
 	for (i = 1; i < numsyms; i++) {
-		if (syms[i].st_shndx == SHN_UNDEF
+		if (syms[i].st_shndx == SHN_ABS
 		    && strcmp(strtab + syms[i].st_name, "TOC.") == 0)
 			return &syms[i];
 	}

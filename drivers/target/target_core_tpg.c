@@ -224,7 +224,6 @@ static void target_add_node_acl(struct se_node_acl *acl)
 
 	mutex_lock(&tpg->acl_node_mutex);
 	list_add_tail(&acl->acl_list, &tpg->acl_node_list);
-	tpg->num_node_acls++;
 	mutex_unlock(&tpg->acl_node_mutex);
 
 	pr_debug("%s_TPG[%hu] - Added %s ACL with TCQ Depth: %d for %s"

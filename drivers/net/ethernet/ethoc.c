@@ -678,7 +678,7 @@ static int ethoc_mdio_probe(struct net_device *dev)
 	int err;
 
 	if (priv->phy_id != -1)
-		phy = priv->mdio->phy_map[priv->phy_id];
+		phy = mdiobus_get_phy(priv->mdio, priv->phy_id);
 	else
 		phy = phy_find_first(priv->mdio);
 
@@ -767,7 +767,7 @@ static int ethoc_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 		if (mdio->phy_id >= PHY_MAX_ADDR)
 			return -ERANGE;
 
-		phy = priv->mdio->phy_map[mdio->phy_id];
+		phy = mdiobus_get_phy(priv->mdio, mdio->phy_id);
 		if (!phy)
 			return -ENODEV;
 	} else {
@@ -1016,7 +1016,6 @@ static int ethoc_probe(struct platform_device *pdev)
 	struct resource *mmio = NULL;
 	struct resource *mem = NULL;
 	struct ethoc *priv = NULL;
-	unsigned int phy;
 	int num_bd;
 	int ret = 0;
 	bool random_mac = false;
@@ -1207,19 +1206,10 @@ static int ethoc_probe(struct platform_device *pdev)
 	priv->mdio->write = ethoc_mdio_write;
 	priv->mdio->priv = priv;
 
-	priv->mdio->irq = kmalloc(sizeof(int) * PHY_MAX_ADDR, GFP_KERNEL);
-	if (!priv->mdio->irq) {
-		ret = -ENOMEM;
-		goto free_mdio;
-	}
-
-	for (phy = 0; phy < PHY_MAX_ADDR; phy++)
-		priv->mdio->irq[phy] = PHY_POLL;
-
 	ret = mdiobus_register(priv->mdio);
 	if (ret) {
 		dev_err(&netdev->dev, "failed to register MDIO bus\n");
-		goto free_mdio;
+		goto free;
 	}
 
 	ret = ethoc_mdio_probe(netdev);
@@ -1251,8 +1241,6 @@ error2:
 	netif_napi_del(&priv->napi);
 error:
 	mdiobus_unregister(priv->mdio);
-free_mdio:
-	kfree(priv->mdio->irq);
 	mdiobus_free(priv->mdio);
 free:
 	if (priv->clk)
@@ -1278,7 +1266,6 @@ static int ethoc_remove(struct platform_device *pdev)
 
 		if (priv->mdio) {
 			mdiobus_unregister(priv->mdio);
-			kfree(priv->mdio->irq);
 			mdiobus_free(priv->mdio);
 		}
 		if (priv->clk)

@@ -476,12 +476,15 @@ fail:
 	return err;
 }
 
-static const char *f2fs_follow_link(struct dentry *dentry, void **cookie)
+static const char *f2fs_get_link(struct dentry *dentry,
+				 struct inode *inode,
+				 struct delayed_call *done)
 {
-	const char *link = page_follow_link_light(dentry, cookie);
+	const char *link = page_get_link(dentry, inode, done);
 	if (!IS_ERR(link) && !*link) {
 		/* this is broken symlink case */
-		page_put_link(NULL, *cookie);
+		do_delayed_call(done);
+		clear_delayed_call(done);
 		link = ERR_PTR(-ENOENT);
 	}
 	return link;
@@ -1164,16 +1167,20 @@ static int f2fs_rename2(struct inode *old_dir, struct dentry *old_dentry,
 	return f2fs_rename(old_dir, old_dentry, new_dir, new_dentry, flags);
 }
 
-static const char *f2fs_encrypted_follow_link(struct dentry *dentry, void **cookie)
+static const char *f2fs_encrypted_get_link(struct dentry *dentry,
+					   struct inode *inode,
+					   struct delayed_call *done)
 {
 	struct page *cpage = NULL;
 	char *caddr, *paddr = NULL;
 	struct fscrypt_str cstr = FSTR_INIT(NULL, 0);
 	struct fscrypt_str pstr = FSTR_INIT(NULL, 0);
 	struct fscrypt_symlink_data *sd;
-	struct inode *inode = d_inode(dentry);
 	u32 max_size = inode->i_sb->s_blocksize;
 	int res;
+
+	if (!dentry)
+		return ERR_PTR(-ECHILD);
 
 	res = fscrypt_get_encryption_info(inode);
 	if (res)
@@ -1220,7 +1227,8 @@ static const char *f2fs_encrypted_follow_link(struct dentry *dentry, void **cook
 	paddr[pstr.len] = '\0';
 
 	put_page(cpage);
-	return *cookie = paddr;
+	set_delayed_call(done, kfree_link, paddr);
+	return paddr;
 errout:
 	fscrypt_fname_free_buffer(&pstr);
 	put_page(cpage);
@@ -1229,8 +1237,7 @@ errout:
 
 const struct inode_operations f2fs_encrypted_symlink_inode_operations = {
 	.readlink       = generic_readlink,
-	.follow_link	= f2fs_encrypted_follow_link,
-	.put_link	= kfree_put_link,
+	.get_link       = f2fs_encrypted_get_link,
 	.getattr	= f2fs_getattr,
 	.setattr	= f2fs_setattr,
 #ifdef CONFIG_F2FS_FS_XATTR
@@ -1266,8 +1273,7 @@ const struct inode_operations f2fs_dir_inode_operations = {
 
 const struct inode_operations f2fs_symlink_inode_operations = {
 	.readlink       = generic_readlink,
-	.follow_link    = f2fs_follow_link,
-	.put_link       = page_put_link,
+	.get_link       = f2fs_get_link,
 	.getattr	= f2fs_getattr,
 	.setattr	= f2fs_setattr,
 #ifdef CONFIG_F2FS_FS_XATTR

@@ -451,14 +451,13 @@ msg_full:
 
 int tipc_bclink_reset_stats(struct net *net)
 {
-	struct tipc_net *tn = net_generic(net, tipc_net_id);
-	struct tipc_link *bcl = tn->bcl;
+	struct tipc_link *l = tipc_bc_sndlink(net);
 
-	if (!bcl)
+	if (!l)
 		return -ENOPROTOOPT;
 
 	tipc_bcast_lock(net);
-	memset(&bcl->stats, 0, sizeof(bcl->stats));
+	tipc_link_reset_stats(l);
 	tipc_bcast_unlock(net);
 	return 0;
 }
@@ -532,9 +531,7 @@ enomem:
 
 void tipc_bcast_reinit(struct net *net)
 {
-	struct tipc_bc_base *b = tipc_bc_base(net);
-
-	msg_set_prevnode(b->link->pmsg, tipc_own_addr(net));
+	tipc_link_reinit(tipc_bc_sndlink(net), tipc_own_addr(net));
 }
 
 void tipc_bcast_stop(struct net *net)

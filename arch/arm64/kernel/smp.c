@@ -868,7 +868,6 @@ void tick_broadcast(const struct cpumask *mask)
 }
 #endif
 
-extern const struct cpumask *const cpu_online_mask;
 
 void smp_send_stop(void)
 {

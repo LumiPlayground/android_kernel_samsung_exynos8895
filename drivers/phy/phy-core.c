@@ -275,7 +275,7 @@ EXPORT_SYMBOL_GPL(phy_exit);
 
 int phy_tune(struct phy *phy, int phy_state)
 {
-	int ret;
+	int ret = 0;
 
 	if (!phy || !phy->ops->tune)
 		return 0;
