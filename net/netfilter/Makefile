@@ -66,8 +66,11 @@ obj-$(CONFIG_NF_NAT_TFTP) += nf_nat_tftp.o
 # SYNPROXY
 obj-$(CONFIG_NETFILTER_SYNPROXY) += nf_synproxy_core.o
 
+# generic packet duplication from netdev family
+obj-$(CONFIG_NF_DUP_NETDEV)	+= nf_dup_netdev.o
+
 # nf_tables
-nf_tables-objs += nf_tables_core.o nf_tables_api.o
+nf_tables-objs += nf_tables_core.o nf_tables_api.o nf_tables_trace.o
 nf_tables-objs += nft_immediate.o nft_cmp.o nft_lookup.o nft_dynset.o
 nf_tables-objs += nft_bitwise.o nft_byteorder.o nft_payload.o
 

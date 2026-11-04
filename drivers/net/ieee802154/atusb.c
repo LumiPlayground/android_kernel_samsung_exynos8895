@@ -323,8 +323,7 @@ static void atusb_free_urbs(struct atusb *atusb)
 		urb = usb_get_from_anchor(&atusb->idle_urbs);
 		if (!urb)
 			break;
-		if (urb->context)
-			kfree_skb(urb->context);
+		kfree_skb(urb->context);
 		usb_free_urb(urb);
 	}
 }
