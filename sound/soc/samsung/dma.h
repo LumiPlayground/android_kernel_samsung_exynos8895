@@ -13,6 +13,7 @@
 #define _S3C_AUDIO_H
 
 #include <sound/dmaengine_pcm.h>
+#include <linux/dmaengine.h>
 
 struct s3c_dma_params {
 	struct s3c2410_dma_client *client;	/* stream identifier */

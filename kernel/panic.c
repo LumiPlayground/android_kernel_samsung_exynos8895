@@ -70,6 +70,17 @@ void __weak panic_smp_self_stop(void)
 		cpu_relax();
 }
 
+/*
+ * Stop ourselves in NMI context if another CPU has already panicked. Arch code
+ * may override this to prepare for crash dumping, e.g. save regs info.
+ */
+void __weak nmi_panic_self_stop(struct pt_regs *regs)
+{
+	panic_smp_self_stop();
+}
+
+atomic_t panic_cpu = ATOMIC_INIT(PANIC_CPU_INVALID);
+
 /**
  *	panic - halt the system
  *	@fmt: The text string to print
@@ -80,11 +91,11 @@ void __weak panic_smp_self_stop(void)
  */
 void panic(const char *fmt, ...)
 {
-	static DEFINE_SPINLOCK(panic_lock);
 	static char buf[1024];
 	va_list args;
 	long i, i_next = 0;
 	int state = 0;
+	int old_cpu, this_cpu;
 
 	exynos_trace_stop();
 
@@ -98,7 +109,7 @@ void panic(const char *fmt, ...)
 	 * Disable local interrupts. This will prevent panic_smp_self_stop
 	 * from deadlocking the first cpu that invokes the panic, since
 	 * there is nothing to prevent an interrupt handler (that runs
-	 * after the panic_lock is acquired) from invoking panic again.
+	 * after setting panic_cpu) from invoking panic() again.
 	 */
 	local_irq_disable();
 
@@ -111,8 +122,15 @@ void panic(const char *fmt, ...)
 	 * multiple parallel invocations of panic, all other CPUs either
 	 * stop themself or will wait until they are stopped by the 1st CPU
 	 * with smp_send_stop().
+	 *
+	 * `old_cpu == PANIC_CPU_INVALID' means this is the 1st CPU which
+	 * comes here, so go ahead.
+	 * `old_cpu == this_cpu' means we came from nmi_panic() which sets
+	 * panic_cpu to this CPU.  In this case, this is also the 1st CPU.
 	 */
-	if (!spin_trylock(&panic_lock)) {
+	this_cpu = raw_smp_processor_id();
+	old_cpu = atomic_cmpxchg(&panic_cpu, PANIC_CPU_INVALID, this_cpu);
+	if (old_cpu != PANIC_CPU_INVALID && old_cpu != this_cpu) {
 		exynos_ss_hook_hardlockup_exit();
 		panic_smp_self_stop();
 	}
@@ -155,9 +173,11 @@ void panic(const char *fmt, ...)
 	 * everything else.
 	 * If we want to run this after calling panic_notifiers, pass
 	 * the "crash_kexec_post_notifiers" option to the kernel.
+	 *
+	 * Bypass the panic_cpu check and call __crash_kexec directly.
 	 */
 	if (!crash_kexec_post_notifiers)
-		crash_kexec(NULL);
+		__crash_kexec(NULL);
 
 	/*
 	 * Note smp_send_stop is the usual smp shutdown function, which
@@ -184,9 +204,11 @@ void panic(const char *fmt, ...)
 	 * panic_notifiers and dumping kmsg before kdump.
 	 * Note: since some panic_notifiers can make crashed kernel
 	 * more unstable, it can increase risks of the kdump failure too.
+	 *
+	 * Bypass the panic_cpu check and call __crash_kexec directly.
 	 */
 	if (crash_kexec_post_notifiers)
-		crash_kexec(NULL);
+		__crash_kexec(NULL);
 
 	bust_spinlocks(0);
 
