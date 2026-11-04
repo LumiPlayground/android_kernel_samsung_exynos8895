@@ -388,24 +388,56 @@ static void prepare_dma(struct s3c64xx_spi_dma_data *dma,
 
 }
 
+static void release_dma(struct s3c64xx_spi_driver_data *sdd)
+{
+	if (!sdd->ops)
+		return;
+
+	if (sdd->rx_dma.ch) {
+		sdd->ops->release((unsigned long)sdd->rx_dma.ch,
+				  &s3c64xx_spi_dma_client);
+		sdd->rx_dma.ch = NULL;
+	}
+	if (sdd->tx_dma.ch) {
+		sdd->ops->release((unsigned long)sdd->tx_dma.ch,
+				  &s3c64xx_spi_dma_client);
+		sdd->tx_dma.ch = NULL;
+	}
+}
+
 static int acquire_dma(struct s3c64xx_spi_driver_data *sdd)
 {
 	struct samsung_dma_req req;
 	struct device *dev = &sdd->pdev->dev;
+	int ret;
 
 	sdd->ops = samsung_dma_get_ops();
-
 	req.cap = DMA_SLAVE;
 	req.client = &s3c64xx_spi_dma_client;
 
-	if (sdd->rx_dma.ch == NULL)
+	if (!sdd->rx_dma.ch) {
 		sdd->rx_dma.ch = (void *)sdd->ops->request(sdd->rx_dma.dmach,
 							&req, dev, "rx");
-	if (sdd->tx_dma.ch == NULL)
+		if (IS_ERR_OR_NULL(sdd->rx_dma.ch)) {
+			ret = sdd->rx_dma.ch ? PTR_ERR(sdd->rx_dma.ch) : -ENODEV;
+			sdd->rx_dma.ch = NULL;
+			goto err;
+		}
+	}
+	if (!sdd->tx_dma.ch) {
 		sdd->tx_dma.ch = (void *)sdd->ops->request(sdd->tx_dma.dmach,
 							&req, dev, "tx");
-
-	return 1;
+		if (IS_ERR_OR_NULL(sdd->tx_dma.ch)) {
+			ret = sdd->tx_dma.ch ? PTR_ERR(sdd->tx_dma.ch) : -ENODEV;
+			sdd->tx_dma.ch = NULL;
+			goto err;
+		}
+	}
+	return 0;
+err:
+	dev_err(dev, "failed to acquire DMA channels: %d\n", ret);
+	release_dma(sdd);
+	return ret;
 }
 
 static void s3c64xx_spi_hwinit(struct s3c64xx_spi_driver_data *sdd, int channel);
@@ -414,22 +446,23 @@ static int s3c64xx_spi_prepare_transfer(struct spi_master *spi)
 {
 	struct s3c64xx_spi_driver_data *sdd = spi_master_get_devdata(spi);
 	struct s3c64xx_spi_info *sci = sdd->cntrlr_info;
-#ifdef CONFIG_PM
 	int ret;
-#endif
 
 #ifndef CONFIG_PM
 	if (sci->dma_mode == DMA_MODE) {
 		/* Acquire DMA channels */
-		while (!acquire_dma(sdd))
-			usleep_range(10000, 11000);
+		ret = acquire_dma(sdd);
+		if (ret)
+			return ret;
 	}
 #endif
 
 #ifdef CONFIG_PM
 	ret = pm_runtime_get_sync(&sdd->pdev->dev);
-	if(ret < 0)
+	if (ret < 0) {
+		pm_runtime_put_noidle(&sdd->pdev->dev);
 		return ret;
+	}
 #endif
 
 	if (sci->need_hw_init)
@@ -450,19 +483,7 @@ static int s3c64xx_spi_unprepare_transfer(struct spi_master *spi)
 
 	/* Free DMA channels */
 	if (sci->dma_mode == DMA_MODE) {
-	#ifdef CONFIG_ARM64
-		sdd->ops->release((unsigned long)sdd->rx_dma.ch,
-					&s3c64xx_spi_dma_client);
-		sdd->ops->release((unsigned long)sdd->tx_dma.ch,
-						&s3c64xx_spi_dma_client);
-	#else
-		sdd->ops->release((enum dma_ch)sdd->rx_dma.ch,
-						&s3c64xx_spi_dma_client);
-		sdd->ops->release((enum dma_ch)sdd->tx_dma.ch,
-						&s3c64xx_spi_dma_client);
-	#endif
-		sdd->rx_dma.ch = NULL;
-		sdd->tx_dma.ch = NULL;
+		release_dma(sdd);
 	}
 #endif
 
@@ -1198,7 +1219,11 @@ static int s3c64xx_spi_setup(struct spi_device *spi)
 	}
 
 #ifdef CONFIG_PM
-	pm_runtime_get_sync(&sdd->pdev->dev);
+	err = pm_runtime_get_sync(&sdd->pdev->dev);
+	if (err < 0) {
+		pm_runtime_put_noidle(&sdd->pdev->dev);
+		goto err_msgq;
+	}
 #endif
 
 	/* Check if we can provide the requested rate */
@@ -1807,19 +1832,7 @@ static int s3c64xx_spi_runtime_suspend(struct device *dev)
 
 	/* Free DMA channels */
 	if (sci->dma_mode == DMA_MODE && sdd->is_probed && sdd->ops != NULL) {
-	#ifdef CONFIG_ARM64
-		sdd->ops->release((unsigned long)sdd->rx_dma.ch,
-					&s3c64xx_spi_dma_client);
-		sdd->ops->release((unsigned long)sdd->tx_dma.ch,
-						&s3c64xx_spi_dma_client);
-	#else
-		sdd->ops->release((enum dma_ch)sdd->rx_dma.ch,
-						&s3c64xx_spi_dma_client);
-		sdd->ops->release((enum dma_ch)sdd->tx_dma.ch,
-						&s3c64xx_spi_dma_client);
-	#endif
-		sdd->rx_dma.ch = NULL;
-		sdd->tx_dma.ch = NULL;
+		release_dma(sdd);
 	}
 
 	s3c64xx_spi_pin_ctrl(dev, 0);
@@ -1832,13 +1845,17 @@ static int s3c64xx_spi_runtime_resume(struct device *dev)
 	struct spi_master *master = dev_get_drvdata(dev);
 	struct s3c64xx_spi_driver_data *sdd = spi_master_get_devdata(master);
 	struct s3c64xx_spi_info *sci = sdd->cntrlr_info;
+	int ret;
 
 	s3c64xx_spi_pin_ctrl(dev, 1);
 
 	if (sci->dma_mode == DMA_MODE && sdd->is_probed) {
 		/* Acquire DMA channels */
-		while (!acquire_dma(sdd))
-			usleep_range(10000, 11000);
+		ret = acquire_dma(sdd);
+		if (ret) {
+			s3c64xx_spi_pin_ctrl(dev, 0);
+			return ret;
+		}
 	}
 
 	if (sci->domain == DOMAIN_TOP) {
