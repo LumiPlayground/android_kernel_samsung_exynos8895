@@ -132,7 +132,7 @@ static DEFINE_SPINLOCK(siova_pool_lock);
 #define MAX_IOVA_ALIGNMENT	12
 static unsigned long find_first_fit_with_align(unsigned long *map,
 				unsigned long size, unsigned long start,
-				unsigned int nr, void *data)
+				unsigned int nr, void *data, struct gen_pool *pool)
 {
 	unsigned long align = ((*(unsigned long *)data) >> PAGE_SHIFT);
 

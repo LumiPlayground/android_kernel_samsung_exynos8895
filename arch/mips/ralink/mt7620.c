@@ -456,7 +456,10 @@ void __init ralink_clk_init(void)
 	ralink_clk_add("10000100.timer", periph_rate);
 	ralink_clk_add("10000120.watchdog", periph_rate);
 	ralink_clk_add("10000b00.spi", sys_rate);
+	ralink_clk_add("10000b40.spi", sys_rate);
 	ralink_clk_add("10000c00.uartlite", periph_rate);
+	ralink_clk_add("10000d00.uart1", periph_rate);
+	ralink_clk_add("10000e00.uart2", periph_rate);
 	ralink_clk_add("10180000.wmac", xtal_rate);
 
 	if (IS_ENABLED(CONFIG_USB) && !is_mt76x8()) {
@@ -572,7 +575,7 @@ void prom_soc_init(struct ralink_soc_info *soc_info)
 	}
 
 	snprintf(soc_info->sys_type, RAMIPS_SYS_TYPE_LEN,
-		"Ralink %s ver:%u eco:%u",
+		"MediaTek %s ver:%u eco:%u",
 		name,
 		(rev >> CHIP_REV_VER_SHIFT) & CHIP_REV_VER_MASK,
 		(rev & CHIP_REV_ECO_MASK));

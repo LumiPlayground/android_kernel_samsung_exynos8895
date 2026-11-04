@@ -20,6 +20,7 @@
 #include <linux/idr.h>
 #include <linux/log2.h>
 #include <linux/pm_runtime.h>
+#include <linux/badblocks.h>
 
 #ifdef CONFIG_BLOCK_SUPPORT_STLOG
 #include <linux/fslog.h>
@@ -694,6 +695,31 @@ void del_gendisk(struct gendisk *disk)
 	device_del(disk_to_dev(disk));
 }
 EXPORT_SYMBOL(del_gendisk);
+
+/* sysfs access to bad-blocks list. */
+static ssize_t disk_badblocks_show(struct device *dev,
+					struct device_attribute *attr,
+					char *page)
+{
+	struct gendisk *disk = dev_to_disk(dev);
+
+	if (!disk->bb)
+		return sprintf(page, "\n");
+
+	return badblocks_show(disk->bb, page, 0);
+}
+
+static ssize_t disk_badblocks_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *page, size_t len)
+{
+	struct gendisk *disk = dev_to_disk(dev);
+
+	if (!disk->bb)
+		return -ENXIO;
+
+	return badblocks_store(disk->bb, page, len, 0);
+}
 
 /**
  * get_gendisk - get partitioning information for a given device
@@ -1701,7 +1727,7 @@ static DEFINE_MUTEX(disk_events_mutex);
 static LIST_HEAD(disk_events);
 
 /* disable in-kernel polling by default */
-static unsigned long disk_events_dfl_poll_msecs	= 0;
+static unsigned long disk_events_dfl_poll_msecs;
 
 static unsigned long disk_events_poll_jiffies(struct gendisk *disk)
 {

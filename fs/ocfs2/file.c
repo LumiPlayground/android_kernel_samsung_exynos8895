@@ -1302,6 +1302,14 @@ int ocfs2_getattr(struct vfsmount *mnt,
 	}
 
 	generic_fillattr(inode, stat);
+	/*
+	 * If there is inline data in the inode, the inode will normally not
+	 * have data blocks allocated (it may have an external xattr block).
+	 * Report at least one sector for such files, so tools like tar, rsync,
+	 * others don't incorrectly think the file is completely sparse.
+	 */
+	if (unlikely(OCFS2_I(inode)->ip_dyn_features & OCFS2_INLINE_DATA_FL))
+		stat->blocks += (stat->size + 511)>>9;
 
 	/* We set the blksize from the cluster size for performance */
 	stat->blksize = osb->s_clustersize;
@@ -1878,7 +1886,7 @@ static int __ocfs2_change_file_space(struct file *file, struct inode *inode,
 	if (ocfs2_is_hard_readonly(osb) || ocfs2_is_soft_readonly(osb))
 		return -EROFS;
 
-	mutex_lock(&inode->i_mutex);
+	inode_lock(inode);
 
 	/*
 	 * This prevents concurrent writes on other nodes
@@ -1997,7 +2005,7 @@ out_rw_unlock:
 	ocfs2_rw_unlock(inode, 1);
 
 out:
-	mutex_unlock(&inode->i_mutex);
+	inode_unlock(inode);
 	return ret;
 }
 
@@ -2305,7 +2313,7 @@ static ssize_t ocfs2_file_write_iter(struct kiocb *iocb,
 	appending = iocb->ki_flags & IOCB_APPEND ? 1 : 0;
 	direct_io = iocb->ki_flags & IOCB_DIRECT ? 1 : 0;
 
-	mutex_lock(&inode->i_mutex);
+	inode_lock(inode);
 
 relock:
 	/*
@@ -2441,7 +2449,7 @@ out:
 		ocfs2_rw_unlock(inode, rw_level);
 
 out_mutex:
-	mutex_unlock(&inode->i_mutex);
+	inode_unlock(inode);
 
 	if (written)
 		ret = written;
@@ -2553,7 +2561,7 @@ static loff_t ocfs2_file_llseek(struct file *file, loff_t offset, int whence)
 	struct inode *inode = file->f_mapping->host;
 	int ret = 0;
 
-	mutex_lock(&inode->i_mutex);
+	inode_lock(inode);
 
 	switch (whence) {
 	case SEEK_SET:
@@ -2591,7 +2599,7 @@ static loff_t ocfs2_file_llseek(struct file *file, loff_t offset, int whence)
 	offset = vfs_setpos(file, offset, inode->i_sb->s_maxbytes);
 
 out:
-	mutex_unlock(&inode->i_mutex);
+	inode_unlock(inode);
 	if (ret)
 		return ret;
 	return offset;

@@ -3420,7 +3420,9 @@ static int reset_intel_82599_sfp_virtfn(struct pci_dev *dev, int probe)
 	return 0;
 }
 
-#include "../gpu/drm/i915/i915_reg.h"
+#define SOUTH_CHICKEN2		0xc2004
+#define PCH_PP_STATUS		0xc7200
+#define PCH_PP_CONTROL		0xc7204
 #define MSG_CTL			0x45010
 #define NSDE_PWR_STATE		0xd0100
 #define IGD_OPERATION_TIMEOUT	10000     /* set timeout 10 seconds */
@@ -3634,6 +3636,10 @@ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_TTI, 0x0642,
 /* https://bugs.gentoo.org/show_bug.cgi?id=497630 */
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_JMICRON,
 			 PCI_DEVICE_ID_JMICRON_JMB388_ESD,
+			 quirk_dma_func1_alias);
+/* https://bugzilla.kernel.org/show_bug.cgi?id=42679#c117 */
+DECLARE_PCI_FIXUP_HEADER(0x1c28, /* Lite-On */
+			 0x0122, /* Plextor M6E (Marvell 88SS9183)*/
 			 quirk_dma_func1_alias);
 
 /*

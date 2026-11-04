@@ -73,7 +73,7 @@ MODULE_PARM_DESC(log_ecn_error, "Log packets received with corrupted ECN");
 static int vxlan_net_id;
 static struct rtnl_link_ops vxlan_link_ops;
 
-static const u8 all_zeros_mac[ETH_ALEN];
+static const u8 all_zeros_mac[ETH_ALEN + 2];
 
 static int vxlan_sock_add(struct vxlan_dev *vxlan);
 
@@ -623,7 +623,7 @@ static void vxlan_notify_add_rx_port(struct vxlan_sock *vs)
 	int err;
 
 	if (sa_family == AF_INET) {
-		err = udp_add_offload(&vs->udp_offloads);
+		err = udp_add_offload(net, &vs->udp_offloads);
 		if (err)
 			pr_warn("vxlan: udp_add_offload failed with status %d\n", err);
 	}
@@ -933,8 +933,10 @@ static int vxlan_fdb_dump(struct sk_buff *skb, struct netlink_callback *cb,
 						     cb->nlh->nlmsg_seq,
 						     RTM_NEWNEIGH,
 						     NLM_F_MULTI, rd);
-				if (err < 0)
+				if (err < 0) {
+					cb->args[1] = err;
 					goto out;
+				}
 skip:
 				++idx;
 			}
@@ -1841,9 +1843,10 @@ static int vxlan_xmit_skb(struct rtable *rt, struct sock *sk, struct sk_buff *sk
 
 	skb_set_inner_protocol(skb, htons(ETH_P_TEB));
 
-	return udp_tunnel_xmit_skb(rt, sk, skb, src, dst, tos,
-				   ttl, df, src_port, dst_port, xnet,
-				   !(vxflags & VXLAN_F_UDP_CSUM));
+	udp_tunnel_xmit_skb(rt, sk, skb, src, dst, tos, ttl, df,
+			    src_port, dst_port, xnet,
+			    !(vxflags & VXLAN_F_UDP_CSUM));
+	return 0;
 }
 
 #if IS_ENABLED(CONFIG_IPV6)
@@ -2058,8 +2061,6 @@ static void vxlan_xmit_one(struct sk_buff *skb, struct net_device *dev,
 			skb = NULL;
 			goto rt_tx_error;
 		}
-
-		iptunnel_xmit_stats(err, &dev->stats, dev->tstats);
 #if IS_ENABLED(CONFIG_IPV6)
 	} else {
 		struct dst_entry *ndst;
@@ -2172,9 +2173,11 @@ static netdev_tx_t vxlan_xmit(struct sk_buff *skb, struct net_device *dev)
 #endif
 	}
 
-	if (vxlan->flags & VXLAN_F_COLLECT_METADATA &&
-	    info && info->mode & IP_TUNNEL_INFO_TX) {
-		vxlan_xmit_one(skb, dev, NULL, false);
+	if (vxlan->flags & VXLAN_F_COLLECT_METADATA) {
+		if (info && info->mode & IP_TUNNEL_INFO_TX)
+			vxlan_xmit_one(skb, dev, NULL, false);
+		else
+			kfree_skb(skb);
 		return NETDEV_TX_OK;
 	}
 
@@ -2547,6 +2550,7 @@ static void vxlan_setup(struct net_device *dev)
 	dev->hw_features |= NETIF_F_GSO_SOFTWARE;
 	dev->hw_features |= NETIF_F_HW_VLAN_CTAG_TX | NETIF_F_HW_VLAN_STAG_TX;
 	netif_keep_dst(dev);
+	dev->priv_flags &= ~IFF_TX_SKB_SHARING;
 	dev->priv_flags |= IFF_LIVE_ADDR_CHANGE | IFF_NO_QUEUE;
 
 	INIT_LIST_HEAD(&vxlan->next);

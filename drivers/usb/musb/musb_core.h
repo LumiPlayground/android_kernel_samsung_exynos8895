@@ -168,6 +168,7 @@ struct musb_io;
  * @adjust_channel_params: pre check for standard dma channel_program func
  * @pre_root_reset_end: called before the root usb port reset flag gets cleared
  * @post_root_reset_end: called after the root usb port reset flag gets cleared
+ * @phy_callback: optional callback function for the phy to call
  */
 struct musb_platform_ops {
 

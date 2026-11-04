@@ -1306,7 +1306,6 @@ static int s3c24xx_i2c_remove(struct platform_device *pdev)
 
 	clk_unprepare(i2c->clk);
 
-	pm_runtime_disable(&i2c->adap.dev);
 	pm_runtime_disable(&pdev->dev);
 
 	i2c_del_adapter(&i2c->adap);

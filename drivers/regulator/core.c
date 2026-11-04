@@ -2412,7 +2412,6 @@ static void regulator_disable_work(struct work_struct *work)
 int regulator_disable_deferred(struct regulator *regulator, int ms)
 {
 	struct regulator_dev *rdev = regulator->rdev;
-	int ret;
 
 	if (regulator->always_on)
 		return 0;
@@ -2424,13 +2423,9 @@ int regulator_disable_deferred(struct regulator *regulator, int ms)
 	rdev->deferred_disables++;
 	mutex_unlock(&rdev->mutex);
 
-	ret = queue_delayed_work(system_power_efficient_wq,
-				 &rdev->disable_work,
-				 msecs_to_jiffies(ms));
-	if (ret < 0)
-		return ret;
-	else
-		return 0;
+	queue_delayed_work(system_power_efficient_wq, &rdev->disable_work,
+			   msecs_to_jiffies(ms));
+	return 0;
 }
 EXPORT_SYMBOL_GPL(regulator_disable_deferred);
 
@@ -3495,8 +3490,10 @@ int regulator_bulk_get(struct device *dev, int num_consumers,
 		consumers[i].consumer = NULL;
 
 	for (i = 0; i < num_consumers; i++) {
-		consumers[i].consumer = regulator_get(dev,
-						      consumers[i].supply);
+		consumers[i].consumer = _regulator_get(dev,
+						       consumers[i].supply,
+						       false,
+						       !consumers[i].optional);
 		if (IS_ERR(consumers[i].consumer)) {
 			ret = PTR_ERR(consumers[i].consumer);
 			dev_err(dev, "Failed to get supply '%s': %d\n",
@@ -3752,7 +3749,7 @@ static umode_t regulator_attr_is_visible(struct kobject *kobj,
 					 struct attribute *attr, int idx)
 {
 	struct device *dev = kobj_to_dev(kobj);
-	struct regulator_dev *rdev = container_of(dev, struct regulator_dev, dev);
+	struct regulator_dev *rdev = dev_to_rdev(dev);
 	const struct regulator_ops *ops = rdev->desc->ops;
 	umode_t mode = attr->mode;
 

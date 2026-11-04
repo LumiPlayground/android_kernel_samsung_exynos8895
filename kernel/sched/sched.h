@@ -250,7 +250,12 @@ struct task_group {
 	unsigned long shares;
 
 #ifdef	CONFIG_SMP
-	atomic_long_t load_avg;
+	/*
+	 * load_avg can be heavily contended at clock tick time, so put
+	 * it in its own cacheline separated from the fields above which
+	 * will also be accessed at each tick.
+	 */
+	atomic_long_t load_avg ____cacheline_aligned;
 #endif
 #endif
 
@@ -1138,7 +1143,7 @@ static inline void finish_lock_switch(struct rq *rq, struct task_struct *prev)
 	 * In particular, the load of prev->state in finish_task_switch() must
 	 * happen before this.
 	 *
-	 * Pairs with the control dependency and rmb in try_to_wake_up().
+	 * Pairs with the smp_cond_acquire() in try_to_wake_up().
 	 */
 	smp_store_release(&prev->on_cpu, 0);
 #endif
@@ -1332,15 +1337,7 @@ extern void update_group_capacity(struct sched_domain *sd, int cpu);
 
 extern void trigger_load_balance(struct rq *rq, int cpu);
 
-extern void idle_enter_fair(struct rq *this_rq);
-extern void idle_exit_fair(struct rq *this_rq);
-
 extern void set_cpus_allowed_common(struct task_struct *p, const struct cpumask *new_mask);
-
-#else
-
-static inline void idle_enter_fair(struct rq *rq) { }
-static inline void idle_exit_fair(struct rq *rq) { }
 
 #endif
 
@@ -1974,3 +1971,6 @@ static inline unsigned long cpu_util(int cpu)
 }
 #endif
 #endif
+
+extern const int sched_prio_to_weight[40];
+extern const u32 sched_prio_to_wmult[40];

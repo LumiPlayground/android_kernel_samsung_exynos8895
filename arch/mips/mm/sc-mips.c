@@ -199,12 +199,6 @@ static inline int __init mips_sc_probe(void)
 	/* Mark as not present until probe completed */
 	c->scache.flags |= MIPS_CACHE_NOT_PRESENT;
 
-	/*
-	 * Do we need some platform specific probing before
-	 * we configure L2?
-	 */
-	platform_early_l2_init();
-
 	if (mips_cm_revision() >= CM_REV_CM3)
 		return mips_sc_probe_cm3();
 

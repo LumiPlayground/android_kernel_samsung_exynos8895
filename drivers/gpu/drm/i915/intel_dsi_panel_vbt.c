@@ -204,6 +204,9 @@ static const u8 *mipi_exec_gpio(struct intel_dsi *intel_dsi, const u8 *data)
 	struct drm_device *dev = intel_dsi->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
+	if (dev_priv->vbt.dsi.seq_version >= 3)
+		data++;
+
 	gpio = *data++;
 
 	/* pull up/down */

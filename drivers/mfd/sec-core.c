@@ -80,7 +80,7 @@ static struct mfd_cell s5m8767_devs[] = {
 
 static struct mfd_cell s2mps11_devs[] = {
 	{
-		.name = "s2mps11-pmic",
+		.name = "s2mps11-regulator",
 	}, {
 		.name = "s2m-rtc",
 	},

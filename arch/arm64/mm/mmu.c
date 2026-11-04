@@ -577,6 +577,9 @@ void __init paging_init(void)
 	map_kernel(pgd);
 	map_mem(pgd);
 
+	/* Ensure the zero page is visible to the page table walker */
+	dsb(ishst);
+
 	/*
 	 * We want to reuse the original swapper_pg_dir so we don't have to
 	 * communicate the new address to non-coherent secondaries in

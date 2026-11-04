@@ -17,8 +17,10 @@
 #include <asm/vvar.h>
 #include <asm/unistd.h>
 #include <asm/msr.h>
+#include <asm/pvclock.h>
 #include <linux/math64.h>
 #include <linux/time.h>
+#include <linux/kernel.h>
 
 #define gtod (&VVAR(vsyscall_gtod_data))
 
@@ -43,10 +45,7 @@ extern u8 pvclock_page
 
 #ifndef BUILD_VDSO32
 
-#include <linux/kernel.h>
-#include <asm/vsyscall.h>
-#include <asm/fixmap.h>
-#include <asm/pvclock.h>
+#ifndef BUILD_VDSO32
 
 notrace static long vdso_fallback_gettime(long clock, struct timespec *ts)
 {
@@ -169,15 +168,77 @@ notrace static long vdso_fallback_gtod(struct timeval *tv, struct timezone *tz)
 	return ret;
 }
 
+#endif
+
 #ifdef CONFIG_PARAVIRT_CLOCK
+static notrace const struct pvclock_vsyscall_time_info *get_pvti0(void)
+{
+	return (const struct pvclock_vsyscall_time_info *)&pvclock_page;
+}
 
 static notrace cycle_t vread_pvclock(int *mode)
 {
-	*mode = VCLOCK_NONE;
-	return 0;
-}
-#endif
+	const struct pvclock_vcpu_time_info *pvti = &get_pvti0()->pvti;
+	cycle_t ret;
+	u64 tsc, pvti_tsc;
+	u64 last, delta, pvti_system_time;
+	u32 version, pvti_tsc_to_system_mul, pvti_tsc_shift;
 
+	/*
+	 * Note: The kernel and hypervisor must guarantee that cpu ID
+	 * number maps 1:1 to per-CPU pvclock time info.
+	 *
+	 * Because the hypervisor is entirely unaware of guest userspace
+	 * preemption, it cannot guarantee that per-CPU pvclock time
+	 * info is updated if the underlying CPU changes or that that
+	 * version is increased whenever underlying CPU changes.
+	 *
+	 * On KVM, we are guaranteed that pvti updates for any vCPU are
+	 * atomic as seen by *all* vCPUs.  This is an even stronger
+	 * guarantee than we get with a normal seqlock.
+	 *
+	 * On Xen, we don't appear to have that guarantee, but Xen still
+	 * supplies a valid seqlock using the version field.
+	 *
+	 * We only do pvclock vdso timing at all if
+	 * PVCLOCK_TSC_STABLE_BIT is set, and we interpret that bit to
+	 * mean that all vCPUs have matching pvti and that the TSC is
+	 * synced, so we can just look at vCPU 0's pvti.
+	 */
+
+	do {
+		version = pvti->version;
+
+		smp_rmb();
+
+		if (unlikely(!(pvti->flags & PVCLOCK_TSC_STABLE_BIT))) {
+			*mode = VCLOCK_NONE;
+			return 0;
+		}
+
+		tsc = rdtsc_ordered();
+		pvti_tsc_to_system_mul = pvti->tsc_to_system_mul;
+		pvti_tsc_shift = pvti->tsc_shift;
+		pvti_system_time = pvti->system_time;
+		pvti_tsc = pvti->tsc_timestamp;
+
+		/* Make sure that the version double-check is last. */
+		smp_rmb();
+	} while (unlikely((version & 1) || version != pvti->version));
+
+	delta = tsc - pvti_tsc;
+	ret = pvti_system_time +
+		pvclock_scale_delta(delta, pvti_tsc_to_system_mul,
+				    pvti_tsc_shift);
+
+	/* refer to vread_tsc() comment for rationale */
+	last = gtod->cycle_last;
+
+	if (likely(ret >= last))
+		return ret;
+
+	return last;
+}
 #endif
 
 notrace static cycle_t vread_tsc(void)

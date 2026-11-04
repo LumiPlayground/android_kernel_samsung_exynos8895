@@ -1,6 +1,6 @@
 VERSION = 4
-PATCHLEVEL = 4
-SUBLEVEL = 111
+PATCHLEVEL = 5
+SUBLEVEL = 0
 EXTRAVERSION =
 NAME = Blurry Fish Butt
 
@@ -426,7 +426,7 @@ export MAKE AWK GENKSYMS INSTALLKERNEL PERL PYTHON UTS_MACHINE
 export HOSTCXX HOSTCXXFLAGS LDFLAGS_MODULE CHECK CHECKFLAGS
 
 export KBUILD_CPPFLAGS NOSTDINC_FLAGS LINUXINCLUDE OBJCOPYFLAGS LDFLAGS
-export KBUILD_CFLAGS CFLAGS_KERNEL CFLAGS_MODULE CFLAGS_GCOV CFLAGS_KCOV CFLAGS_KASAN
+export KBUILD_CFLAGS CFLAGS_KERNEL CFLAGS_MODULE CFLAGS_GCOV CFLAGS_KCOV CFLAGS_KASAN CFLAGS_UBSAN
 export KBUILD_AFLAGS AFLAGS_KERNEL AFLAGS_MODULE
 export KBUILD_AFLAGS_MODULE KBUILD_CFLAGS_MODULE KBUILD_LDFLAGS_MODULE
 export KBUILD_AFLAGS_KERNEL KBUILD_CFLAGS_KERNEL
@@ -476,9 +476,10 @@ asm-generic:
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.asm-generic \
 	            src=uapi/asm obj=arch/$(SRCARCH)/include/generated/uapi/asm
 
-export ANDROID_VERSION=90000
-KBUILD_CFLAGS += -DANDROID_VERSION=90000
-export ANDROID_MAJOR_VERSION=p
+ANDROID_VERSION ?= 100000
+ANDROID_MAJOR_VERSION ?= q
+export ANDROID_VERSION ANDROID_MAJOR_VERSION
+KBUILD_CFLAGS += -DANDROID_VERSION=$(ANDROID_VERSION)
 
 # To make sure we do not include .config for any of the *config targets
 # catch them early, and hand them over to scripts/kconfig/Makefile
@@ -837,6 +838,7 @@ KBUILD_ARFLAGS := $(call ar-option,D)
 
 include scripts/Makefile.kasan
 include scripts/Makefile.extrawarn
+include scripts/Makefile.ubsan
 
 # Add any arch overrides and user supplied CPPFLAGS, AFLAGS and CFLAGS as the
 # last assignments

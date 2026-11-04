@@ -2393,12 +2393,6 @@ static int dw_mci_command_complete(struct dw_mci *host, struct mmc_command *cmd)
 	else
 		cmd->error = 0;
 
-	if (cmd->error) {
-		/* newer ip versions need a delay between retries */
-		if (host->quirks & DW_MCI_QUIRK_RETRY_DELAY)
-			mdelay(20);
-	}
-
 	return cmd->error;
 }
 
@@ -3136,16 +3130,6 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 
 	status = mci_readl(host, RINTSTS);
 	pending = mci_readl(host, MINTSTS); /* read-only mask reg */
-
-	/*
-	 * DTO fix - version 2.10a and below, and only if internal DMA
-	 * is configured.
-	 */
-	if (host->quirks & DW_MCI_QUIRK_IDMAC_DTO) {
-		if (!pending &&
-		    ((mci_readl(host, STATUS) >> 17) & 0x1fff))
-			pending |= SDMMC_INT_DATA_OVER;
-	}
 
 	if (pending) {
 		if (pending & SDMMC_INT_HLE) {

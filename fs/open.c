@@ -58,7 +58,7 @@ int do_truncate2(struct vfsmount *mnt, struct dentry *dentry, loff_t length,
 	if (ret)
 		newattrs.ia_valid |= ret | ATTR_FORCE;
 
-	mutex_lock(&dentry->d_inode->i_mutex);
+	inode_lock(dentry->d_inode);
 	/* Note any delegations or leases have already been broken: */
 	ret = notify_change2(mnt, dentry, &newattrs, NULL);
 	mutex_unlock(&dentry->d_inode->i_mutex);
@@ -523,7 +523,7 @@ static int chmod_common(struct path *path, umode_t mode)
 	if (error)
 		return error;
 retry_deleg:
-	mutex_lock(&inode->i_mutex);
+	inode_lock(inode);
 	error = security_path_chmod(path, mode);
 	if (error)
 		goto out_unlock;
@@ -531,7 +531,7 @@ retry_deleg:
 	newattrs.ia_valid = ATTR_MODE | ATTR_CTIME;
 	error = notify_change2(path->mnt, path->dentry, &newattrs, &delegated_inode);
 out_unlock:
-	mutex_unlock(&inode->i_mutex);
+	inode_unlock(inode);
 	if (delegated_inode) {
 		error = break_deleg_wait(&delegated_inode);
 		if (!error)
@@ -606,7 +606,7 @@ retry_deleg:
 	if (!S_ISDIR(inode->i_mode))
 		newattrs.ia_valid |=
 			ATTR_KILL_SUID | ATTR_KILL_SGID | ATTR_KILL_PRIV;
-	mutex_lock(&inode->i_mutex);
+	inode_lock(inode);
 	error = security_path_chown(path, uid, gid);
 	if (!error)
 		error = notify_change2(path->mnt, path->dentry, &newattrs, &delegated_inode);
@@ -896,7 +896,7 @@ EXPORT_SYMBOL(dentry_open);
 static inline int build_open_flags(int flags, umode_t mode, struct open_flags *op)
 {
 	int lookup_flags = 0;
-	int acc_mode;
+	int acc_mode = ACC_MODE(flags);
 
 	/*
 	 * Clear out all open flags we don't know about so that we don't report
@@ -924,7 +924,6 @@ static inline int build_open_flags(int flags, umode_t mode, struct open_flags *o
 	if (flags & __O_TMPFILE) {
 		if ((flags & O_TMPFILE_MASK) != O_TMPFILE)
 			return -EINVAL;
-		acc_mode = MAY_OPEN | ACC_MODE(flags);
 		if (!(acc_mode & MAY_WRITE))
 			return -EINVAL;
 	} else if (flags & O_PATH) {
@@ -934,8 +933,6 @@ static inline int build_open_flags(int flags, umode_t mode, struct open_flags *o
 		 */
 		flags &= O_DIRECTORY | O_NOFOLLOW | O_PATH;
 		acc_mode = 0;
-	} else {
-		acc_mode = MAY_OPEN | ACC_MODE(flags);
 	}
 
 	op->open_flag = flags;

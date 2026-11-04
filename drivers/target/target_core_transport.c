@@ -713,15 +713,6 @@ void target_complete_cmd(struct se_cmd *cmd, u8 scsi_status)
 	}
 
 	/*
-	 * See if we are waiting to complete for an exception condition.
-	 */
-	if (cmd->transport_state & CMD_T_REQUEST_STOP) {
-		spin_unlock_irqrestore(&cmd->t_state_lock, flags);
-		complete(&cmd->task_stop_comp);
-		return;
-	}
-
-	/*
 	 * Check for case where an explicit ABORT_TASK has been received
 	 * and transport_wait_for_tasks() will be waiting for completion..
 	 */
@@ -749,7 +740,10 @@ void target_complete_cmd(struct se_cmd *cmd, u8 scsi_status)
 	cmd->transport_state |= (CMD_T_COMPLETE | CMD_T_ACTIVE);
 	spin_unlock_irqrestore(&cmd->t_state_lock, flags);
 
-	queue_work(target_completion_wq, &cmd->work);
+	if (cmd->se_cmd_flags & SCF_USE_CPUID)
+		queue_work_on(cmd->cpuid, target_completion_wq, &cmd->work);
+	else
+		queue_work(target_completion_wq, &cmd->work);
 }
 EXPORT_SYMBOL(target_complete_cmd);
 
@@ -1241,7 +1235,6 @@ void transport_init_se_cmd(
 	INIT_LIST_HEAD(&cmd->state_list);
 	init_completion(&cmd->t_transport_stop_comp);
 	init_completion(&cmd->cmd_wait_comp);
-	init_completion(&cmd->task_stop_comp);
 	spin_lock_init(&cmd->t_state_lock);
 	kref_init(&cmd->cmd_kref);
 	cmd->transport_state = CMD_T_DEV_ACTIVE;
@@ -1339,7 +1332,7 @@ EXPORT_SYMBOL(target_setup_cmd_from_cdb);
 
 /*
  * Used by fabric module frontends to queue tasks directly.
- * Many only be used from process context only
+ * May only be used from process context.
  */
 int transport_handle_cdb_direct(
 	struct se_cmd *cmd)
@@ -1458,6 +1451,12 @@ int target_submit_cmd_map_sgls(struct se_cmd *se_cmd, struct se_session *se_sess
 	 */
 	transport_init_se_cmd(se_cmd, se_tpg->se_tpg_tfo, se_sess,
 				data_length, data_dir, task_attr, sense);
+
+	if (flags & TARGET_SCF_USE_CPUID)
+		se_cmd->se_cmd_flags |= SCF_USE_CPUID;
+	else
+		se_cmd->cpuid = WORK_CPU_UNBOUND;
+
 	if (flags & TARGET_SCF_UNKNOWN_SIZE)
 		se_cmd->unknown_data_length = 1;
 	/*
@@ -1612,7 +1611,7 @@ static void target_complete_tmr_failure(struct work_struct *work)
 int target_submit_tmr(struct se_cmd *se_cmd, struct se_session *se_sess,
 		unsigned char *sense, u64 unpacked_lun,
 		void *fabric_tmr_ptr, unsigned char tm_type,
-		gfp_t gfp, unsigned int tag, int flags)
+		gfp_t gfp, u64 tag, int flags)
 {
 	struct se_portal_group *se_tpg;
 	int ret;
@@ -1654,33 +1653,6 @@ int target_submit_tmr(struct se_cmd *se_cmd, struct se_session *se_sess,
 	return 0;
 }
 EXPORT_SYMBOL(target_submit_tmr);
-
-/*
- * If the cmd is active, request it to be stopped and sleep until it
- * has completed.
- */
-bool target_stop_cmd(struct se_cmd *cmd, unsigned long *flags)
-	__releases(&cmd->t_state_lock)
-	__acquires(&cmd->t_state_lock)
-{
-	bool was_active = false;
-
-	if (cmd->transport_state & CMD_T_BUSY) {
-		cmd->transport_state |= CMD_T_REQUEST_STOP;
-		spin_unlock_irqrestore(&cmd->t_state_lock, *flags);
-
-		pr_debug("cmd %p waiting to complete\n", cmd);
-		wait_for_completion(&cmd->task_stop_comp);
-		pr_debug("cmd %p stopped successfully\n", cmd);
-
-		spin_lock_irqsave(&cmd->t_state_lock, *flags);
-		cmd->transport_state &= ~CMD_T_REQUEST_STOP;
-		cmd->transport_state &= ~CMD_T_BUSY;
-		was_active = true;
-	}
-
-	return was_active;
-}
 
 /*
  * Handle SAM-esque emulation for generic transport request failures.
@@ -2742,6 +2714,58 @@ void transport_clear_lun_ref(struct se_lun *lun)
 	 * to proceed with the remaining LUN shutdown.
 	 */
 	wait_for_completion(&lun->lun_shutdown_comp);
+}
+
+static bool
+__transport_wait_for_tasks(struct se_cmd *cmd, bool fabric_stop,
+			   bool *aborted, bool *tas, unsigned long *flags)
+	__releases(&cmd->t_state_lock)
+	__acquires(&cmd->t_state_lock)
+{
+
+	assert_spin_locked(&cmd->t_state_lock);
+	WARN_ON_ONCE(!irqs_disabled());
+
+	if (fabric_stop)
+		cmd->transport_state |= CMD_T_FABRIC_STOP;
+
+	if (cmd->transport_state & CMD_T_ABORTED)
+		*aborted = true;
+
+	if (cmd->transport_state & CMD_T_TAS)
+		*tas = true;
+
+	if (!(cmd->se_cmd_flags & SCF_SE_LUN_CMD) &&
+	    !(cmd->se_cmd_flags & SCF_SCSI_TMR_CDB))
+		return false;
+
+	if (!(cmd->se_cmd_flags & SCF_SUPPORTED_SAM_OPCODE) &&
+	    !(cmd->se_cmd_flags & SCF_SCSI_TMR_CDB))
+		return false;
+
+	if (!(cmd->transport_state & CMD_T_ACTIVE))
+		return false;
+
+	if (fabric_stop && *aborted)
+		return false;
+
+	cmd->transport_state |= CMD_T_STOP;
+
+	pr_debug("wait_for_tasks: Stopping %p ITT: 0x%08llx i_state: %d,"
+		 " t_state: %d, CMD_T_STOP\n", cmd, cmd->tag,
+		 cmd->se_tfo->get_cmd_state(cmd), cmd->t_state);
+
+	spin_unlock_irqrestore(&cmd->t_state_lock, *flags);
+
+	wait_for_completion(&cmd->t_transport_stop_comp);
+
+	spin_lock_irqsave(&cmd->t_state_lock, *flags);
+	cmd->transport_state &= ~(CMD_T_ACTIVE | CMD_T_STOP);
+
+	pr_debug("wait_for_tasks: Stopped wait_for_completion(&cmd->"
+		 "t_transport_stop_comp) for ITT: 0x%08llx\n", cmd->tag);
+
+	return true;
 }
 
 static bool

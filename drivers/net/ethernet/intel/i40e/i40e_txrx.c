@@ -328,7 +328,7 @@ static int i40e_add_del_fdir_tcpv4(struct i40e_vsi *vsi,
  * @fd_data: the flow director data required for the FDir descriptor
  * @add: true adds a filter, false removes it
  *
- * Always returns -EOPNOTSUPP
+ * Returns 0 if the filters were successfully added or removed
  **/
 static int i40e_add_del_fdir_sctpv4(struct i40e_vsi *vsi,
 				    struct i40e_fdir_filter *fd_data,
@@ -515,9 +515,6 @@ static void i40e_fd_handle_status(struct i40e_ring *rx_ring,
 				pf->auto_disable_flags |=
 							I40E_FLAG_FD_SB_ENABLED;
 			}
-		} else {
-			dev_info(&pdev->dev,
-				"FD filter programming failed due to incorrect filter parameters\n");
 		}
 	} else if (error == BIT(I40E_RX_PROG_STATUS_DESC_NO_FD_ENTRY_SHIFT)) {
 		if (I40E_DEBUG_FD & pf->hw.debug_mask)
@@ -1383,7 +1380,7 @@ static inline void i40e_rx_checksum(struct i40e_vsi *vsi,
 	if (rx_error & BIT(I40E_RX_DESC_ERROR_PPRS_SHIFT))
 		return;
 
-	/* If VXLAN traffic has an outer UDPv4 checksum we need to check
+	/* If VXLAN/GENEVE traffic has an outer UDPv4 checksum we need to check
 	 * it in the driver, hardware does not do it for us.
 	 * Since L3L4P bit was set we assume a valid IHL value (>=5)
 	 * so the total length of IPv4 header is IHL*4 bytes
@@ -1646,7 +1643,6 @@ static int i40e_clean_rx_irq_ps(struct i40e_ring *rx_ring, int budget)
 			continue;
 		}
 #endif
-		skb_mark_napi_id(skb, &rx_ring->q_vector->napi);
 		i40e_receive_skb(rx_ring, skb, vlan_tag);
 
 		rx_desc->wb.qword1.status_error_len = 0;
@@ -1877,7 +1873,6 @@ enable_int:
 		q_vector->itr_countdown--;
 	else
 		q_vector->itr_countdown = ITR_COUNTDOWN_START;
-
 }
 
 /**
@@ -1905,12 +1900,14 @@ int i40e_napi_poll(struct napi_struct *napi, int budget)
 		return 0;
 	}
 
+	/* Clear hung_detected bit */
+	clear_bit(I40E_Q_VECTOR_HUNG_DETECT, &q_vector->hung_detected);
 	/* Since the actual Tx work is minimal, we can give the Tx a larger
 	 * budget and be more aggressive about cleaning up the Tx descriptors.
 	 */
 	i40e_for_each_ring(ring, q_vector->tx) {
 		clean_complete &= i40e_clean_tx_irq(ring, vsi->work_limit);
-		arm_wb |= ring->arm_wb;
+		arm_wb = arm_wb || ring->arm_wb;
 		ring->arm_wb = false;
 	}
 
@@ -1939,8 +1936,10 @@ int i40e_napi_poll(struct napi_struct *napi, int budget)
 	/* If work not completed, return budget and polling will return */
 	if (!clean_complete) {
 tx_only:
-		if (arm_wb)
+		if (arm_wb) {
+			q_vector->tx.ring[0].tx_stats.tx_force_wb++;
 			i40e_force_wb(vsi, q_vector);
+		}
 		return budget;
 	}
 
@@ -2006,7 +2005,7 @@ static void i40e_atr(struct i40e_ring *tx_ring, struct sk_buff *skb,
 	if (!(tx_flags & (I40E_TX_FLAGS_IPV4 | I40E_TX_FLAGS_IPV6)))
 		return;
 
-	if (!(tx_flags & I40E_TX_FLAGS_VXLAN_TUNNEL)) {
+	if (!(tx_flags & I40E_TX_FLAGS_UDP_TUNNEL)) {
 		/* snag network header to get L4 type and address */
 		hdr.network = skb_network_header(skb);
 
@@ -2091,7 +2090,7 @@ static void i40e_atr(struct i40e_ring *tx_ring, struct sk_buff *skb,
 		     I40E_TXD_FLTR_QW1_FD_STATUS_SHIFT;
 
 	dtype_cmd |= I40E_TXD_FLTR_QW1_CNT_ENA_MASK;
-	if (!(tx_flags & I40E_TX_FLAGS_VXLAN_TUNNEL))
+	if (!(tx_flags & I40E_TX_FLAGS_UDP_TUNNEL))
 		dtype_cmd |=
 			((u32)I40E_FD_ATR_STAT_IDX(pf->hw.pf_id) <<
 			I40E_TXD_FLTR_QW1_CNTINDEX_SHIFT) &
@@ -2200,14 +2199,12 @@ out:
  * @tx_ring:  ptr to the ring to send
  * @skb:      ptr to the skb we're sending
  * @hdr_len:  ptr to the size of the packet header
- * @cd_type_cmd_tso_mss: ptr to u64 object
- * @cd_tunneling: ptr to context descriptor bits
+ * @cd_type_cmd_tso_mss: Quad Word 1
  *
  * Returns 0 if no TSO can happen, 1 if tso is going, or error
  **/
 static int i40e_tso(struct i40e_ring *tx_ring, struct sk_buff *skb,
-		    u8 *hdr_len, u64 *cd_type_cmd_tso_mss,
-		    u32 *cd_tunneling)
+		    u8 *hdr_len, u64 *cd_type_cmd_tso_mss)
 {
 	u32 cd_cmd, cd_tso_len, cd_mss;
 	struct ipv6hdr *ipv6h;
@@ -2260,7 +2257,7 @@ static int i40e_tso(struct i40e_ring *tx_ring, struct sk_buff *skb,
  * @tx_ring:  ptr to the ring to send
  * @skb:      ptr to the skb we're sending
  * @tx_flags: the collected send information
- * @cd_type_cmd_tso_mss: ptr to u64 object
+ * @cd_type_cmd_tso_mss: Quad Word 1
  *
  * Returns 0 if no Tx timestamp can happen and 1 if the timestamp will happen
  **/
@@ -2316,8 +2313,8 @@ static void i40e_tx_enable_csum(struct sk_buff *skb, u32 *tx_flags,
 	struct iphdr *this_ip_hdr;
 	u32 network_hdr_len;
 	u8 l4_hdr = 0;
-	struct udphdr *oudph;
-	struct iphdr *oiph;
+	struct udphdr *oudph = NULL;
+	struct iphdr *oiph = NULL;
 	u32 l4_tunnel = 0;
 
 	if (skb->encapsulation) {
@@ -2326,7 +2323,7 @@ static void i40e_tx_enable_csum(struct sk_buff *skb, u32 *tx_flags,
 			oudph = udp_hdr(skb);
 			oiph = ip_hdr(skb);
 			l4_tunnel = I40E_TXD_CTX_UDP_TUNNELING;
-			*tx_flags |= I40E_TX_FLAGS_VXLAN_TUNNEL;
+			*tx_flags |= I40E_TX_FLAGS_UDP_TUNNEL;
 			break;
 		case IPPROTO_GRE:
 			l4_tunnel = I40E_TXD_CTX_GRE_TUNNELING;
@@ -2820,6 +2817,9 @@ static netdev_tx_t i40e_xmit_frame_ring(struct sk_buff *skb,
 	int tsyn;
 	int tso;
 
+	/* prefetch the data, we'll need it later */
+	prefetch(skb->data);
+
 	if (0 == i40e_xmit_descriptor_count(skb, tx_ring))
 		return NETDEV_TX_BUSY;
 
@@ -2839,8 +2839,7 @@ static netdev_tx_t i40e_xmit_frame_ring(struct sk_buff *skb,
 	else if (protocol == htons(ETH_P_IPV6))
 		tx_flags |= I40E_TX_FLAGS_IPV6;
 
-	tso = i40e_tso(tx_ring, skb, &hdr_len,
-		       &cd_type_cmd_tso_mss, &cd_tunneling);
+	tso = i40e_tso(tx_ring, skb, &hdr_len, &cd_type_cmd_tso_mss);
 
 	if (tso < 0)
 		goto out_drop;

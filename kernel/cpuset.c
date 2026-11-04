@@ -51,6 +51,7 @@
 #include <linux/stat.h>
 #include <linux/string.h>
 #include <linux/time.h>
+#include <linux/time64.h>
 #include <linux/backing-dev.h>
 #include <linux/sort.h>
 
@@ -68,7 +69,7 @@ struct static_key cpusets_enabled_key __read_mostly = STATIC_KEY_INIT_FALSE;
 struct fmeter {
 	int cnt;		/* unprocessed events count */
 	int val;		/* most recent output value */
-	time_t time;		/* clock (secs) when val computed */
+	time64_t time;		/* clock (secs) when val computed */
 	spinlock_t lock;	/* guards read or write of above */
 };
 
@@ -1049,7 +1050,7 @@ static void cpuset_migrate_mm(struct mm_struct *mm, const nodemask_t *from,
 	}
 }
 
-static void cpuset_post_attach(void)
+void cpuset_post_attach_flush(void)
 {
 	flush_workqueue(cpuset_migrate_mm_wq);
 }
@@ -1431,7 +1432,7 @@ out:
  */
 
 #define FM_COEF 933		/* coefficient for half-life of 10 secs */
-#define FM_MAXTICKS ((time_t)99) /* useless computing more ticks than this */
+#define FM_MAXTICKS ((u32)99)   /* useless computing more ticks than this */
 #define FM_MAXCNT 1000000	/* limit cnt to avoid overflow */
 #define FM_SCALE 1000		/* faux fixed point scale */
 
@@ -1447,8 +1448,11 @@ static void fmeter_init(struct fmeter *fmp)
 /* Internal meter update - process cnt events and update value */
 static void fmeter_update(struct fmeter *fmp)
 {
-	time_t now = get_seconds();
-	time_t ticks = now - fmp->time;
+	time64_t now;
+	u32 ticks;
+
+	now = ktime_get_seconds();
+	ticks = now - fmp->time;
 
 	if (ticks == 0)
 		return;
@@ -2136,7 +2140,7 @@ static void cpuset_bind(struct cgroup_subsys_state *root_css)
  * which could have been changed by cpuset just after it inherits the
  * state from the parent and before it sits on the cgroup's task list.
  */
-void cpuset_fork(struct task_struct *task, void *priv)
+void cpuset_fork(struct task_struct *task)
 {
 	if (task_css_is_root(task, cpuset_cgrp_id))
 		return;
@@ -2171,7 +2175,6 @@ struct cgroup_subsys cpuset_cgrp_subsys = {
 	.allow_attach   = cpuset_allow_attach,
 	.cancel_attach	= cpuset_cancel_attach,
 	.attach		= cpuset_attach,
-	.post_attach	= cpuset_post_attach,
 	.bind		= cpuset_bind,
 	.fork		= cpuset_fork,
 	.legacy_cftypes	= files,

@@ -127,17 +127,24 @@ void i40evf_free_tx_resources(struct i40e_ring *tx_ring)
 }
 
 /**
- * i40e_get_head - Retrieve head from head writeback
- * @tx_ring:  tx ring to fetch head of
+ * i40evf_get_tx_pending - how many Tx descriptors not processed
+ * @tx_ring: the ring of descriptors
  *
- * Returns value of Tx ring head based on value stored
- * in head write-back location
+ * Since there is no access to the ring head register
+ * in XL710, we need to use our local copies
  **/
-static inline u32 i40e_get_head(struct i40e_ring *tx_ring)
+u32 i40evf_get_tx_pending(struct i40e_ring *ring)
 {
-	void *head = (struct i40e_tx_desc *)tx_ring->desc + tx_ring->count;
+	u32 head, tail;
 
-	return le32_to_cpu(*(volatile __le32 *)head);
+	head = i40e_get_head(ring);
+	tail = readl(ring->tail);
+
+	if (head != tail)
+		return (head < tail) ?
+			tail - head : (tail + ring->count - head);
+
+	return 0;
 }
 
 #define WB_STRIDE 0x3
@@ -404,7 +411,7 @@ static bool i40e_set_new_dynamic_itr(struct i40e_ring_container *rc)
 	return false;
 }
 
-/*
+/**
  * i40evf_setup_tx_descriptors - Allocate the Tx descriptors
  * @tx_ring: the tx ring to set up
  *
@@ -1085,7 +1092,6 @@ static int i40e_clean_rx_irq_ps(struct i40e_ring *rx_ring, int budget)
 			continue;
 		}
 #endif
-		skb_mark_napi_id(skb, &rx_ring->q_vector->napi);
 		i40e_receive_skb(rx_ring, skb, vlan_tag);
 
 		rx_desc->wb.qword1.status_error_len = 0;
@@ -1257,10 +1263,12 @@ static inline void i40e_update_enable_itr(struct i40e_vsi *vsi,
 		rx = i40e_set_new_dynamic_itr(&q_vector->rx);
 		rxval = i40e_buildreg_itr(I40E_RX_ITR, q_vector->rx.itr);
 	}
+
 	if (ITR_IS_DYNAMIC(vsi->tx_itr_setting)) {
 		tx = i40e_set_new_dynamic_itr(&q_vector->tx);
 		txval = i40e_buildreg_itr(I40E_TX_ITR, q_vector->tx.itr);
 	}
+
 	if (rx || tx) {
 		/* get the higher of the two ITR adjustments and
 		 * use the same value for both ITR registers
@@ -1296,7 +1304,6 @@ enable_int:
 		q_vector->itr_countdown--;
 	else
 		q_vector->itr_countdown = ITR_COUNTDOWN_START;
-
 }
 
 /**
@@ -1329,7 +1336,7 @@ int i40evf_napi_poll(struct napi_struct *napi, int budget)
 	 */
 	i40e_for_each_ring(ring, q_vector->tx) {
 		clean_complete &= i40e_clean_tx_irq(ring, vsi->work_limit);
-		arm_wb |= ring->arm_wb;
+		arm_wb = arm_wb || ring->arm_wb;
 		ring->arm_wb = false;
 	}
 
@@ -1358,8 +1365,10 @@ int i40evf_napi_poll(struct napi_struct *napi, int budget)
 	/* If work not completed, return budget and polling will return */
 	if (!clean_complete) {
 tx_only:
-		if (arm_wb)
+		if (arm_wb) {
+			q_vector->tx.ring[0].tx_stats.tx_force_wb++;
 			i40evf_force_wb(vsi, q_vector);
+		}
 		return budget;
 	}
 
@@ -1431,13 +1440,12 @@ out:
  * @tx_ring:  ptr to the ring to send
  * @skb:      ptr to the skb we're sending
  * @hdr_len:  ptr to the size of the packet header
- * @cd_tunneling: ptr to context descriptor bits
+ * @cd_type_cmd_tso_mss: Quad Word 1
  *
  * Returns 0 if no TSO can happen, 1 if tso is going, or error
  **/
 static int i40e_tso(struct i40e_ring *tx_ring, struct sk_buff *skb,
-		    u8 *hdr_len, u64 *cd_type_cmd_tso_mss,
-		    u32 *cd_tunneling)
+		    u8 *hdr_len, u64 *cd_type_cmd_tso_mss)
 {
 	u32 cd_cmd, cd_tso_len, cd_mss;
 	struct ipv6hdr *ipv6h;
@@ -1549,7 +1557,6 @@ static void i40e_tx_enable_csum(struct sk_buff *skb, u32 *tx_flags,
 			*tx_flags |= I40E_TX_FLAGS_IPV6;
 		}
 
-
 		if ((tx_ring->flags & I40E_TXR_FLAGS_OUTER_UDP_CSUM) &&
 		    (l4_tunnel == I40E_TXD_CTX_UDP_TUNNELING)        &&
 		    (*cd_tunneling & I40E_TXD_CTX_QW0_EXT_IP_MASK)) {
@@ -1648,7 +1655,7 @@ static void i40e_create_tx_ctx(struct i40e_ring *tx_ring,
 	context_desc->type_cmd_tso_mss = cpu_to_le64(cd_type_cmd_tso_mss);
 }
 
- /**
+/**
  * i40e_chk_linearize - Check if there are more than 8 fragments per packet
  * @skb:      send buffer
  * @tx_flags: collected send information
@@ -1997,6 +2004,9 @@ static netdev_tx_t i40e_xmit_frame_ring(struct sk_buff *skb,
 	u8 hdr_len = 0;
 	int tso;
 
+	/* prefetch the data, we'll need it later */
+	prefetch(skb->data);
+
 	if (0 == i40evf_xmit_descriptor_count(skb, tx_ring))
 		return NETDEV_TX_BUSY;
 
@@ -2016,8 +2026,7 @@ static netdev_tx_t i40e_xmit_frame_ring(struct sk_buff *skb,
 	else if (protocol == htons(ETH_P_IPV6))
 		tx_flags |= I40E_TX_FLAGS_IPV6;
 
-	tso = i40e_tso(tx_ring, skb, &hdr_len,
-		       &cd_type_cmd_tso_mss, &cd_tunneling);
+	tso = i40e_tso(tx_ring, skb, &hdr_len, &cd_type_cmd_tso_mss);
 
 	if (tso < 0)
 		goto out_drop;
@@ -2065,7 +2074,7 @@ out_drop:
 netdev_tx_t i40evf_xmit_frame(struct sk_buff *skb, struct net_device *netdev)
 {
 	struct i40evf_adapter *adapter = netdev_priv(netdev);
-	struct i40e_ring *tx_ring = adapter->tx_rings[skb->queue_mapping];
+	struct i40e_ring *tx_ring = &adapter->tx_rings[skb->queue_mapping];
 
 	/* hardware can't handle really short frames, hardware padding works
 	 * beyond this point

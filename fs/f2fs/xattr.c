@@ -25,36 +25,14 @@
 #include "f2fs.h"
 #include "xattr.h"
 
-static size_t f2fs_xattr_generic_list(const struct xattr_handler *handler,
-		struct dentry *dentry, char *list, size_t list_size,
-		const char *name, size_t len)
+static bool f2fs_xattr_user_list(struct dentry *dentry)
 {
-	struct f2fs_sb_info *sbi = F2FS_SB(dentry->d_sb);
-	int total_len, prefix_len;
+	return test_opt(F2FS_SB(dentry->d_sb), XATTR_USER);
+}
 
-	switch (handler->flags) {
-	case F2FS_XATTR_INDEX_USER:
-		if (!test_opt(sbi, XATTR_USER))
-			return -EOPNOTSUPP;
-		break;
-	case F2FS_XATTR_INDEX_TRUSTED:
-		if (!capable(CAP_SYS_ADMIN))
-			return -EPERM;
-		break;
-	case F2FS_XATTR_INDEX_SECURITY:
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	prefix_len = strlen(handler->prefix);
-	total_len = prefix_len + len + 1;
-	if (list && total_len <= list_size) {
-		memcpy(list, handler->prefix, prefix_len);
-		memcpy(list + prefix_len, name, len);
-		list[prefix_len + len] = '\0';
-	}
-	return total_len;
+static bool f2fs_xattr_trusted_list(struct dentry *dentry)
+{
+	return capable(CAP_SYS_ADMIN);
 }
 
 static int f2fs_xattr_generic_get(const struct xattr_handler *handler,
@@ -108,19 +86,6 @@ static int f2fs_xattr_generic_set(const struct xattr_handler *handler,
 
 	return f2fs_setxattr(d_inode(dentry), handler->flags, name,
 					value, size, NULL, flags);
-}
-
-static size_t f2fs_xattr_advise_list(const struct xattr_handler *handler,
-		struct dentry *dentry, char *list, size_t list_size,
-		const char *name, size_t len)
-{
-	const char *xname = F2FS_SYSTEM_ADVISE_PREFIX;
-	size_t size;
-
-	size = strlen(xname) + 1;
-	if (list && size <= list_size)
-		memcpy(list, xname, size);
-	return size;
 }
 
 static int f2fs_xattr_advise_get(const struct xattr_handler *handler,
@@ -183,7 +148,7 @@ int f2fs_init_security(struct inode *inode, struct inode *dir,
 const struct xattr_handler f2fs_xattr_user_handler = {
 	.prefix	= XATTR_USER_PREFIX,
 	.flags	= F2FS_XATTR_INDEX_USER,
-	.list	= f2fs_xattr_generic_list,
+	.list	= f2fs_xattr_user_list,
 	.get	= f2fs_xattr_generic_get,
 	.set	= f2fs_xattr_generic_set,
 };
@@ -191,7 +156,7 @@ const struct xattr_handler f2fs_xattr_user_handler = {
 const struct xattr_handler f2fs_xattr_trusted_handler = {
 	.prefix	= XATTR_TRUSTED_PREFIX,
 	.flags	= F2FS_XATTR_INDEX_TRUSTED,
-	.list	= f2fs_xattr_generic_list,
+	.list	= f2fs_xattr_trusted_list,
 	.get	= f2fs_xattr_generic_get,
 	.set	= f2fs_xattr_generic_set,
 };
@@ -199,7 +164,6 @@ const struct xattr_handler f2fs_xattr_trusted_handler = {
 const struct xattr_handler f2fs_xattr_advise_handler = {
 	.prefix = F2FS_SYSTEM_ADVISE_PREFIX,
 	.flags	= F2FS_XATTR_INDEX_ADVISE,
-	.list   = f2fs_xattr_advise_list,
 	.get    = f2fs_xattr_advise_get,
 	.set    = f2fs_xattr_advise_set,
 };
@@ -207,7 +171,6 @@ const struct xattr_handler f2fs_xattr_advise_handler = {
 const struct xattr_handler f2fs_xattr_security_handler = {
 	.prefix	= XATTR_SECURITY_PREFIX,
 	.flags	= F2FS_XATTR_INDEX_SECURITY,
-	.list	= f2fs_xattr_generic_list,
 	.get	= f2fs_xattr_generic_get,
 	.set	= f2fs_xattr_generic_set,
 };
@@ -568,12 +531,21 @@ ssize_t f2fs_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
 		const struct xattr_handler *handler =
 			f2fs_xattr_handler(entry->e_name_index);
 		size_t size;
+		const char *prefix;
 
 		if (!handler)
 			continue;
 
-		size = handler->list(handler, dentry, buffer, rest,
-				     entry->e_name, entry->e_name_len);
+		if (handler->list && !handler->list(dentry))
+			continue;
+		prefix = handler->prefix ? handler->prefix : handler->name;
+		size = strlen(prefix) + entry->e_name_len + 1;
+		if (buffer && size <= rest) {
+			memcpy(buffer, prefix, strlen(prefix));
+			memcpy(buffer + strlen(prefix), entry->e_name,
+			       entry->e_name_len);
+			buffer[size - 1] = '\0';
+		}
 		if (buffer && size > rest) {
 			error = -ERANGE;
 			goto cleanup;
