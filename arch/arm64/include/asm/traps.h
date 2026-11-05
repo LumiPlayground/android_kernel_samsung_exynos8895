@@ -55,4 +55,6 @@ static inline int in_exception_text(unsigned long ptr)
 	return in ? : __in_irqentry_text(ptr);
 }
 
+void arm64_notify_segfault(struct pt_regs *regs, unsigned long addr);
+
 #endif

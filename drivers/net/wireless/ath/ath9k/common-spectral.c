@@ -734,7 +734,7 @@ void ath9k_cmn_spectral_scan_trigger(struct ath_common *common,
 	struct ath_hw *ah = spec_priv->ah;
 	u32 rxfilter;
 
-	if (config_enabled(CONFIG_ATH9K_TX99))
+	if (IS_ENABLED(CONFIG_ATH9K_TX99))
 		return;
 
 	if (!ath9k_hw_ops(ah)->spectral_scan_trigger) {
@@ -809,7 +809,7 @@ static ssize_t write_file_spec_scan_ctl(struct file *file,
 	char buf[32];
 	ssize_t len;
 
-	if (config_enabled(CONFIG_ATH9K_TX99))
+	if (IS_ENABLED(CONFIG_ATH9K_TX99))
 		return -EOPNOTSUPP;
 
 	len = min(count, sizeof(buf) - 1);

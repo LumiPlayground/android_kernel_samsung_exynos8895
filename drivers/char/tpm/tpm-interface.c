@@ -319,7 +319,7 @@ unsigned long tpm_calc_ordinal_duration(struct tpm_chip *chip,
 		duration_idx = tpm_ordinal_duration[ordinal];
 
 	if (duration_idx != TPM_UNDEFINED)
-		duration = chip->vendor.duration[duration_idx];
+		duration = chip->duration[duration_idx];
 	if (duration <= 0)
 		return 2 * 60 * HZ;
 	else
@@ -360,7 +360,7 @@ ssize_t tpm_transmit(struct tpm_chip *chip, const u8 *buf, size_t bufsiz,
 		goto out;
 	}
 
-	if (chip->vendor.irq)
+	if (chip->flags & TPM_CHIP_FLAG_IRQ)
 		goto out_recv;
 
 	if (chip->flags & TPM_CHIP_FLAG_TPM2)
@@ -434,12 +434,11 @@ static const struct tpm_input_header tpm_getcap_header = {
 	.ordinal = TPM_ORD_GET_CAP
 };
 
-ssize_t tpm_getcap(struct device *dev, __be32 subcap_id, cap_t *cap,
+ssize_t tpm_getcap(struct tpm_chip *chip, __be32 subcap_id, cap_t *cap,
 		   const char *desc)
 {
 	struct tpm_cmd_t tpm_cmd;
 	int rc;
-	struct tpm_chip *chip = dev_get_drvdata(dev);
 
 	tpm_cmd.header.in = tpm_getcap_header;
 	if (subcap_id == CAP_VERSION_1_1 || subcap_id == CAP_VERSION_1_2) {
@@ -508,15 +507,15 @@ int tpm_get_timeouts(struct tpm_chip *chip)
 
 	if (chip->flags & TPM_CHIP_FLAG_TPM2) {
 		/* Fixed timeouts for TPM2 */
-		chip->vendor.timeout_a = msecs_to_jiffies(TPM2_TIMEOUT_A);
-		chip->vendor.timeout_b = msecs_to_jiffies(TPM2_TIMEOUT_B);
-		chip->vendor.timeout_c = msecs_to_jiffies(TPM2_TIMEOUT_C);
-		chip->vendor.timeout_d = msecs_to_jiffies(TPM2_TIMEOUT_D);
-		chip->vendor.duration[TPM_SHORT] =
+		chip->timeout_a = msecs_to_jiffies(TPM2_TIMEOUT_A);
+		chip->timeout_b = msecs_to_jiffies(TPM2_TIMEOUT_B);
+		chip->timeout_c = msecs_to_jiffies(TPM2_TIMEOUT_C);
+		chip->timeout_d = msecs_to_jiffies(TPM2_TIMEOUT_D);
+		chip->duration[TPM_SHORT] =
 		    msecs_to_jiffies(TPM2_DURATION_SHORT);
-		chip->vendor.duration[TPM_MEDIUM] =
+		chip->duration[TPM_MEDIUM] =
 		    msecs_to_jiffies(TPM2_DURATION_MEDIUM);
-		chip->vendor.duration[TPM_LONG] =
+		chip->duration[TPM_LONG] =
 		    msecs_to_jiffies(TPM2_DURATION_LONG);
 		return 0;
 	}
@@ -565,10 +564,10 @@ int tpm_get_timeouts(struct tpm_chip *chip)
 	 * of misreporting.
 	 */
 	if (chip->ops->update_timeouts != NULL)
-		chip->vendor.timeout_adjusted =
+		chip->timeout_adjusted =
 			chip->ops->update_timeouts(chip, new_timeout);
 
-	if (!chip->vendor.timeout_adjusted) {
+	if (!chip->timeout_adjusted) {
 		/* Don't overwrite default if value is 0 */
 		if (new_timeout[0] != 0 && new_timeout[0] < 1000) {
 			int i;
@@ -576,7 +575,7 @@ int tpm_get_timeouts(struct tpm_chip *chip)
 			/* timeouts in msec rather usec */
 			for (i = 0; i != ARRAY_SIZE(new_timeout); i++)
 				new_timeout[i] *= 1000;
-			chip->vendor.timeout_adjusted = true;
+			chip->timeout_adjusted = true;
 		}
 	}
 
@@ -590,10 +589,10 @@ int tpm_get_timeouts(struct tpm_chip *chip)
 			 old_timeout[3], new_timeout[3]);
 	}
 
-	chip->vendor.timeout_a = usecs_to_jiffies(new_timeout[0]);
-	chip->vendor.timeout_b = usecs_to_jiffies(new_timeout[1]);
-	chip->vendor.timeout_c = usecs_to_jiffies(new_timeout[2]);
-	chip->vendor.timeout_d = usecs_to_jiffies(new_timeout[3]);
+	chip->timeout_a = usecs_to_jiffies(new_timeout[0]);
+	chip->timeout_b = usecs_to_jiffies(new_timeout[1]);
+	chip->timeout_c = usecs_to_jiffies(new_timeout[2]);
+	chip->timeout_d = usecs_to_jiffies(new_timeout[3]);
 
 duration:
 	tpm_cmd.header.in = tpm_getcap_header;
@@ -612,11 +611,11 @@ duration:
 		return -EINVAL;
 
 	duration_cap = &tpm_cmd.params.getcap_out.cap.duration;
-	chip->vendor.duration[TPM_SHORT] =
+	chip->duration[TPM_SHORT] =
 	    usecs_to_jiffies(be32_to_cpu(duration_cap->tpm_short));
-	chip->vendor.duration[TPM_MEDIUM] =
+	chip->duration[TPM_MEDIUM] =
 	    usecs_to_jiffies(be32_to_cpu(duration_cap->tpm_medium));
-	chip->vendor.duration[TPM_LONG] =
+	chip->duration[TPM_LONG] =
 	    usecs_to_jiffies(be32_to_cpu(duration_cap->tpm_long));
 
 	/* The Broadcom BCM0102 chipset in a Dell Latitude D820 gets the above
@@ -848,6 +847,33 @@ int tpm_do_selftest(struct tpm_chip *chip)
 }
 EXPORT_SYMBOL_GPL(tpm_do_selftest);
 
+/**
+ * tpm1_auto_startup - Perform the standard automatic TPM initialization
+ *                     sequence
+ * @chip: TPM chip to use
+ *
+ * Returns 0 on success, < 0 in case of fatal error.
+ */
+int tpm1_auto_startup(struct tpm_chip *chip)
+{
+	int rc;
+
+	rc = tpm_get_timeouts(chip);
+	if (rc)
+		goto out;
+	rc = tpm_do_selftest(chip);
+	if (rc) {
+		dev_err(&chip->dev, "TPM self test failed\n");
+		goto out;
+	}
+
+	return rc;
+out:
+	if (rc > 0)
+		rc = -ENODEV;
+	return rc;
+}
+
 int tpm_send(u32 chip_num, void *cmd, size_t buflen)
 {
 	struct tpm_chip *chip;
@@ -894,7 +920,7 @@ int wait_for_tpm_stat(struct tpm_chip *chip, u8 mask, unsigned long timeout,
 
 	stop = jiffies + timeout;
 
-	if (chip->vendor.irq) {
+	if (chip->flags & TPM_CHIP_FLAG_IRQ) {
 again:
 		timeout = stop - jiffies;
 		if ((long)timeout <= 0)

@@ -112,6 +112,10 @@ static bool sticks_to_null;
 module_param(sticks_to_null, bool, S_IRUGO);
 MODULE_PARM_DESC(sticks_to_null, "Do not map sticks at all for unknown pads");
 
+static bool auto_poweroff = true;
+module_param(auto_poweroff, bool, S_IWUSR | S_IRUGO);
+MODULE_PARM_DESC(auto_poweroff, "Power off wireless controllers on suspend");
+
 static const struct xpad_device {
 	u16 idVendor;
 	u16 idProduct;

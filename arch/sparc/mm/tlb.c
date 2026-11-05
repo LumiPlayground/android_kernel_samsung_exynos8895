@@ -204,6 +204,9 @@ void set_pmd_at(struct mm_struct *mm, unsigned long addr,
 	}
 }
 
+/*
+ * This routine is only called when splitting a THP
+ */
 void pmdp_invalidate(struct vm_area_struct *vma, unsigned long address,
 		     pmd_t *pmdp)
 {
@@ -213,6 +216,15 @@ void pmdp_invalidate(struct vm_area_struct *vma, unsigned long address,
 
 	set_pmd_at(vma->vm_mm, address, pmdp, entry);
 	flush_tlb_range(vma, address, address + HPAGE_PMD_SIZE);
+
+	/*
+	 * set_pmd_at() will not be called in a way to decrement
+	 * thp_pte_count when splitting a THP, so do it now.
+	 * Sanity check pmd before doing the actual decrement.
+	 */
+	if ((pmd_val(entry) & _PAGE_PMD_HUGE) &&
+	    !is_huge_zero_page(pmd_page(entry)))
+		(vma->vm_mm)->context.thp_pte_count--;
 }
 
 void pgtable_trans_huge_deposit(struct mm_struct *mm, pmd_t *pmdp,

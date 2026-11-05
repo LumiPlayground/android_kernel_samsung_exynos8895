@@ -757,7 +757,7 @@ static const struct tpm_input_header tpm2_startup_header = {
  * returned it remarks a POSIX error code. If a positive number is returned
  * it remarks a TPM error.
  */
-int tpm2_startup(struct tpm_chip *chip, u16 startup_type)
+static int tpm2_startup(struct tpm_chip *chip, u16 startup_type)
 {
 	struct tpm2_cmd cmd;
 
@@ -767,7 +767,6 @@ int tpm2_startup(struct tpm_chip *chip, u16 startup_type)
 	return tpm_transmit_cmd(chip, &cmd, sizeof(cmd), 0,
 				"attempting to start the TPM");
 }
-EXPORT_SYMBOL_GPL(tpm2_startup);
 
 #define TPM2_SHUTDOWN_IN_SIZE \
 	(sizeof(struct tpm_input_header) + \
@@ -802,7 +801,6 @@ void tpm2_shutdown(struct tpm_chip *chip, u16 shutdown_type)
 		dev_warn(&chip->dev, "transmit returned %d while stopping the TPM",
 			 rc);
 }
-EXPORT_SYMBOL_GPL(tpm2_shutdown);
 
 /*
  * tpm2_calc_ordinal_duration() - maximum duration for a command
@@ -822,7 +820,7 @@ unsigned long tpm2_calc_ordinal_duration(struct tpm_chip *chip, u32 ordinal)
 		index = tpm2_ordinal_duration[ordinal - TPM2_CC_FIRST];
 
 	if (index != TPM_UNDEFINED)
-		duration = chip->vendor.duration[index];
+		duration = chip->duration[index];
 
 	if (duration <= 0)
 		duration = 2 * 60 * HZ;
@@ -884,7 +882,7 @@ static int tpm2_start_selftest(struct tpm_chip *chip, bool full)
  * returned it remarks a POSIX error code. If a positive number is returned
  * it remarks a TPM error.
  */
-int tpm2_do_selftest(struct tpm_chip *chip)
+static int tpm2_do_selftest(struct tpm_chip *chip)
 {
 	int rc;
 	unsigned int loops;
@@ -924,7 +922,6 @@ int tpm2_do_selftest(struct tpm_chip *chip)
 
 	return rc;
 }
-EXPORT_SYMBOL_GPL(tpm2_do_selftest);
 
 /**
  * tpm2_gen_interrupt() - generate an interrupt
@@ -972,3 +969,42 @@ int tpm2_probe(struct tpm_chip *chip)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(tpm2_probe);
+
+/**
+ * tpm2_auto_startup - Perform the standard automatic TPM initialization
+ *                     sequence
+ * @chip: TPM chip to use
+ *
+ * Returns 0 on success, < 0 in case of fatal error.
+ */
+int tpm2_auto_startup(struct tpm_chip *chip)
+{
+	int rc;
+
+	rc = tpm_get_timeouts(chip);
+	if (rc)
+		goto out;
+
+	rc = tpm2_do_selftest(chip);
+	if (rc != 0 && rc != TPM2_RC_INITIALIZE) {
+		dev_err(&chip->dev, "TPM self test failed\n");
+		goto out;
+	}
+
+	if (rc == TPM2_RC_INITIALIZE) {
+		rc = tpm2_startup(chip, TPM2_SU_CLEAR);
+		if (rc)
+			goto out;
+
+		rc = tpm2_do_selftest(chip);
+		if (rc) {
+			dev_err(&chip->dev, "TPM self test failed\n");
+			goto out;
+		}
+	}
+
+out:
+	if (rc > 0)
+		rc = -ENODEV;
+	return rc;
+}

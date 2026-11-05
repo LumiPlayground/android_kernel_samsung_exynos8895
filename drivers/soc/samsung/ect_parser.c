@@ -1909,8 +1909,7 @@ static int ect_dump_new_timing_parameter(struct seq_file *s, void *data)
 
 static int dump_open(struct inode *inode, struct file *file)
 {
-	const struct file_operations *ops = file->f_op;
-	struct ect_info *info = container_of(ops, struct ect_info, dump_ops);
+	struct ect_info *info = inode->i_private;
 
 	return single_open(file, info->dump, inode->i_private);
 }
@@ -2008,7 +2007,8 @@ static int ect_dump_init(void)
 	if (!d)
 		return -ENOMEM;
 
-	d = debugfs_create_file(ect_header_info.dump_node_name, S_IRUGO, root, NULL,
+	d = debugfs_create_file(ect_header_info.dump_node_name, S_IRUGO, root,
+				&ect_header_info,
 				&ect_header_info.dump_ops);
 	if (!d)
 		return -ENOMEM;
@@ -2017,7 +2017,8 @@ static int ect_dump_init(void)
 		if (ect_list[i].block_handle == NULL)
 			continue;
 
-		d = debugfs_create_file(ect_list[i].dump_node_name, S_IRUGO, root, NULL,
+		d = debugfs_create_file(ect_list[i].dump_node_name, S_IRUGO, root,
+					&ect_list[i],
 					&ect_list[i].dump_ops);
 		if (!d)
 			return -ENOMEM;

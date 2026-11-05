@@ -130,9 +130,10 @@ struct dentry_operations {
 	int (*d_revalidate)(struct dentry *, unsigned int);
 	int (*d_weak_revalidate)(struct dentry *, unsigned int);
 	int (*d_hash)(const struct dentry *, struct qstr *);
-	int (*d_compare)(const struct dentry *, const struct dentry *,
+	int (*d_compare)(const struct dentry *,
 			unsigned int, const char *, const struct qstr *);
 	int (*d_delete)(const struct dentry *);
+	int (*d_init)(struct dentry *);
 	void (*d_release)(struct dentry *);
 	void (*d_prune)(struct dentry *);
 	void (*d_iput)(struct dentry *, struct inode *);
@@ -140,7 +141,8 @@ struct dentry_operations {
 	struct vfsmount *(*d_automount)(struct path *);
 	int (*d_manage)(struct dentry *, bool);
 	struct inode *(*d_select_inode)(struct dentry *, unsigned);
-	struct dentry *(*d_real)(struct dentry *, struct inode *);
+	struct dentry *(*d_real)(struct dentry *, const struct inode *,
+				 unsigned int);
 	void (*d_canonical_path)(const struct path *, struct path *);
 } ____cacheline_aligned;
 
@@ -268,7 +270,7 @@ extern void d_rehash(struct dentry *);
  
 extern void d_add(struct dentry *, struct inode *);
 
-extern void dentry_update_name_case(struct dentry *, struct qstr *);
+extern void dentry_update_name_case(struct dentry *, const struct qstr *);
 
 /* used for rename() and baskets */
 extern void d_move(struct dentry *, struct dentry *);
@@ -561,23 +563,25 @@ static inline struct dentry *d_backing_dentry(struct dentry *upper)
 	return upper;
 }
 
-static inline struct dentry *d_real(struct dentry *dentry)
+/**
+ * d_real - Return the real dentry
+ * @dentry: the dentry to query
+ * @inode: inode to select the dentry from multiple layers (can be NULL)
+ * @flags: open flags to control copy-up behavior
+ *
+ * If dentry is on an union/overlay, then return the underlying, real dentry.
+ * Otherwise return the dentry itself.
+ *
+ * See also: Documentation/filesystems/vfs.txt
+ */
+static inline struct dentry *d_real(struct dentry *dentry,
+				    const struct inode *inode,
+				    unsigned int flags)
 {
 	if (unlikely(dentry->d_flags & DCACHE_OP_REAL))
-		return dentry->d_op->d_real(dentry, NULL);
+		return dentry->d_op->d_real(dentry, inode, flags);
 	else
 		return dentry;
-}
-
-static inline struct inode *vfs_select_inode(struct dentry *dentry,
-					     unsigned open_flags)
-{
-	struct inode *inode = d_inode(dentry);
-
-	if (inode && unlikely(dentry->d_flags & DCACHE_OP_SELECT_INODE))
-		inode = dentry->d_op->d_select_inode(dentry, open_flags);
-
-	return inode;
 }
 
 /**
@@ -589,7 +593,7 @@ static inline struct inode *vfs_select_inode(struct dentry *dentry,
  */
 static inline struct inode *d_real_inode(struct dentry *dentry)
 {
-	return d_backing_inode(d_real(dentry));
+	return d_backing_inode(d_real(dentry, NULL, 0));
 }
 
 struct name_snapshot {

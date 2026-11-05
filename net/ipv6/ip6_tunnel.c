@@ -1197,6 +1197,7 @@ ip4ip6_tnl_xmit(struct sk_buff *skb, struct net_device *dev)
 		encap_limit = t->parms.encap_limit;
 
 	memcpy(&fl6, &t->fl.u.ip6, sizeof(fl6));
+	fl6.flowi6_proto = IPPROTO_IPIP;
 
 	fl6.flowi6_uid = sock_net_uid(dev_net(dev), NULL);
 

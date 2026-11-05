@@ -105,6 +105,7 @@ extern bool oom_killer_disabled;
 extern bool oom_killer_disable(void);
 extern void oom_killer_enable(void);
 
+extern bool process_shares_mm(struct task_struct *p, struct mm_struct *mm);
 extern struct task_struct *find_lock_task_mm(struct task_struct *p);
 
 static inline bool task_will_free_mem(struct task_struct *task)

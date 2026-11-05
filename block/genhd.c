@@ -1806,7 +1806,6 @@ static void __disk_unblock_events(struct gendisk *disk, bool check_now)
 	 * slack to 25% and kick event check.
 	 */
 	intv = disk_events_poll_jiffies(disk);
-	set_timer_slack(&ev->dwork.timer, intv / 4);
 	if (check_now)
 		queue_delayed_work(system_freezable_power_efficient_wq,
 				&ev->dwork, 0);

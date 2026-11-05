@@ -30,12 +30,12 @@
 #define USER_DS 	MAKE_MM_SEG(TASK_SIZE_MAX)
 
 #define get_ds()	(KERNEL_DS)
-#define get_fs()	(current_thread_info()->addr_limit)
-#define set_fs(x)	(current_thread_info()->addr_limit = (x))
+#define get_fs()	(current->thread.addr_limit)
+#define set_fs(x)	(current->thread.addr_limit = (x))
 
 #define segment_eq(a, b)	((a).seg == (b).seg)
 
-#define user_addr_max() (current_thread_info()->addr_limit.seg)
+#define user_addr_max() (current->thread.addr_limit.seg)
 #define __addr_ok(addr) 	\
 	((unsigned long __force)(addr) < user_addr_max())
 
@@ -352,7 +352,26 @@ do {									\
 } while (0)
 
 #ifdef CONFIG_X86_32
-#define __get_user_asm_u64(x, ptr, retval, errret)	(x) = __get_user_bad()
+#define __get_user_asm_u64(x, ptr, retval, errret)			\
+({									\
+	__typeof__(ptr) __ptr = (ptr);					\
+	asm volatile(ASM_STAC "\n"					\
+		     "1:	movl %2,%%eax\n"			\
+		     "2:	movl %3,%%edx\n"			\
+		     "3: " ASM_CLAC "\n"				\
+		     ".section .fixup,\"ax\"\n"				\
+		     "4:	mov %4,%0\n"				\
+		     "	xorl %%eax,%%eax\n"				\
+		     "	xorl %%edx,%%edx\n"				\
+		     "	jmp 3b\n"					\
+		     ".previous\n"					\
+		     _ASM_EXTABLE(1b, 4b)				\
+		     _ASM_EXTABLE(2b, 4b)				\
+		     : "=r" (retval), "=A"(x)				\
+		     : "m" (__m(__ptr)), "m" __m(((u32 *)(__ptr)) + 1),	\
+		       "i" (errret), "0" (retval));			\
+})
+
 #define __get_user_asm_ex_u64(x, ptr)			(x) = __get_user_bad()
 #else
 #define __get_user_asm_u64(x, ptr, retval, errret) \
@@ -439,7 +458,7 @@ do {									\
 #define __get_user_nocheck(x, ptr, size)				\
 ({									\
 	int __gu_err;							\
-	unsigned long __gu_val;						\
+	__inttype(*(ptr)) __gu_val;					\
 	__uaccess_begin();						\
 	__get_user_size(__gu_val, (ptr), (size), __gu_err, -EFAULT);	\
 	__uaccess_end();						\
@@ -478,13 +497,13 @@ struct __large_struct { unsigned long buf[100]; };
  * uaccess_try and catch
  */
 #define uaccess_try	do {						\
-	current_thread_info()->uaccess_err = 0;				\
+	current->thread.uaccess_err = 0;				\
 	__uaccess_begin();						\
 	barrier();
 
 #define uaccess_catch(err)						\
 	__uaccess_end();						\
-	(err) |= (current_thread_info()->uaccess_err ? -EFAULT : 0);	\
+	(err) |= (current->thread.uaccess_err ? -EFAULT : 0);		\
 } while (0)
 
 /**
@@ -688,35 +707,10 @@ unsigned long __must_check _copy_from_user(void *to, const void __user *from,
 unsigned long __must_check _copy_to_user(void __user *to, const void *from,
 					 unsigned n);
 
-#ifdef CONFIG_DEBUG_STRICT_USER_COPY_CHECKS
-# define copy_user_diag __compiletime_error
-#else
-# define copy_user_diag __compiletime_warning
-#endif
+extern void __compiletime_error("usercopy buffer size is too small")
+__bad_copy_user(void);
 
-extern void copy_user_diag("copy_from_user() buffer size is too small")
-copy_from_user_overflow(void);
-extern void copy_user_diag("copy_to_user() buffer size is too small")
-copy_to_user_overflow(void) __asm__("copy_from_user_overflow");
-
-#undef copy_user_diag
-
-#ifdef CONFIG_DEBUG_STRICT_USER_COPY_CHECKS
-
-extern void
-__compiletime_warning("copy_from_user() buffer size is not provably correct")
-__copy_from_user_overflow(void) __asm__("copy_from_user_overflow");
-#define __copy_from_user_overflow(size, count) __copy_from_user_overflow()
-
-extern void
-__compiletime_warning("copy_to_user() buffer size is not provably correct")
-__copy_to_user_overflow(void) __asm__("copy_from_user_overflow");
-#define __copy_to_user_overflow(size, count) __copy_to_user_overflow()
-
-#else
-
-static inline void
-__copy_from_user_overflow(int size, unsigned long count)
+static inline void copy_user_overflow(int size, unsigned long count)
 {
 	WARN(1, "Buffer overflow detected (%d < %lu)!\n", size, count);
 }
@@ -758,7 +752,7 @@ copy_from_user(void *to, const void __user *from, unsigned long n)
 	} else if (__builtin_constant_p(n))
 		copy_from_user_overflow();
 	else
-		__copy_from_user_overflow(sz, n);
+		__bad_copy_user();
 
 	return n;
 }
@@ -779,13 +773,10 @@ copy_to_user(void __user *to, const void *from, unsigned long n)
 	} else if (__builtin_constant_p(n))
 		copy_to_user_overflow();
 	else
-		__copy_to_user_overflow(sz, n);
+		__bad_copy_user();
 
 	return n;
 }
-
-#undef __copy_from_user_overflow
-#undef __copy_to_user_overflow
 
 /*
  * The "unsafe" user accesses aren't really "unsafe", but the naming
