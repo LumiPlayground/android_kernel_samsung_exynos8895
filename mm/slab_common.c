@@ -109,8 +109,12 @@ void __kmem_cache_free_bulk(struct kmem_cache *s, size_t nr, void **p)
 {
 	size_t i;
 
-	for (i = 0; i < nr; i++)
-		kmem_cache_free(s, p[i]);
+	for (i = 0; i < nr; i++) {
+		if (s)
+			kmem_cache_free(s, p[i]);
+		else
+			kfree(p[i]);
+	}
 }
 
 int __kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t nr,
@@ -441,7 +445,7 @@ out_unlock:
 			panic("kmem_cache_create: Failed to create slab '%s'. Error %d\n",
 				name, err);
 		else {
-			printk(KERN_WARNING "kmem_cache_create(%s) failed with error %d",
+			pr_warn("kmem_cache_create(%s) failed with error %d\n",
 				name, err);
 			dump_stack();
 		}
@@ -512,7 +516,7 @@ void memcg_create_kmem_cache(struct mem_cgroup *memcg,
 	 * The memory cgroup could have been offlined while the cache
 	 * creation work was pending.
 	 */
-	if (!memcg_kmem_online(memcg))
+	if (memcg->kmem_state != KMEM_ONLINE)
 		goto out_unlock;
 
 	idx = memcg_cache_id(memcg);

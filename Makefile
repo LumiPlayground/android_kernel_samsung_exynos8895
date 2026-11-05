@@ -1,8 +1,8 @@
 VERSION = 4
-PATCHLEVEL = 5
+PATCHLEVEL = 6
 SUBLEVEL = 0
 EXTRAVERSION =
-NAME = Blurry Fish Butt
+NAME = Charred Weasel
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
@@ -833,6 +833,9 @@ KBUILD_CFLAGS   += $(call cc-option,-Werror=strict-prototypes)
 # Prohibit date/time macros, which would make the build non-deterministic
 KBUILD_CFLAGS   += $(call cc-option,-Werror=date-time)
 
+# enforce correct pointer usage
+KBUILD_CFLAGS   += $(call cc-option,-Werror=incompatible-pointer-types)
+
 # use the deterministic mode of AR if available
 KBUILD_ARFLAGS := $(call ar-option,D)
 
@@ -1055,7 +1058,22 @@ prepare0: archprepare
 	$(Q)$(MAKE) $(build)=.
 
 # All the preparing..
-prepare: prepare0
+prepare: prepare0 prepare-objtool
+
+ifdef CONFIG_STACK_VALIDATION
+  has_libelf := $(call try-run,\
+		echo "int main() {}" | $(HOSTCC) -xc -o /dev/null -lelf -,1,0)
+  ifeq ($(has_libelf),1)
+    objtool_target := tools/objtool FORCE
+  else
+    $(warning "Cannot use CONFIG_STACK_VALIDATION, please install libelf-dev or elfutils-libelf-devel")
+    SKIP_STACK_VALIDATION := 1
+    export SKIP_STACK_VALIDATION
+  endif
+endif
+
+PHONY += prepare-objtool
+prepare-objtool: $(objtool_target)
 
 # Generate some files
 # ---------------------------------------------------------------------------
@@ -1148,6 +1166,14 @@ kselftest:
 
 kselftest-clean:
 	$(Q)$(MAKE) -C tools/testing/selftests clean
+
+PHONY += kselftest-merge
+kselftest-merge:
+	$(if $(wildcard $(objtree)/.config),, $(error No .config exists, config your kernel first!))
+	$(Q)$(CONFIG_SHELL) $(srctree)/scripts/kconfig/merge_config.sh \
+		-m $(objtree)/.config \
+		$(srctree)/tools/testing/selftests/*/config
+	+$(Q)$(MAKE) -f $(srctree)/Makefile olddefconfig
 
 # ---------------------------------------------------------------------------
 # Modules
@@ -1359,6 +1385,8 @@ help:
 	@echo  '                    Build, install, and boot kernel before'
 	@echo  '                    running kselftest on it'
 	@echo  '  kselftest-clean - Remove all generated kselftest files'
+	@echo  '  kselftest-merge - Merge all the config dependencies of kselftest to existed'
+	@echo  '                    .config.'
 	@echo  ''
 	@echo  'Kernel packaging:'
 	@$(MAKE) $(build)=$(package-dir) help

@@ -902,6 +902,34 @@ void ion_unmap_kernel(struct ion_client *client, struct ion_handle *handle)
 }
 EXPORT_SYMBOL(ion_unmap_kernel);
 
+static struct mutex debugfs_mutex;
+static struct rb_root *ion_root_client;
+static int is_client_alive(struct ion_client *client)
+{
+	struct rb_node *node;
+	struct ion_client *tmp;
+	struct ion_device *dev;
+
+	node = ion_root_client->rb_node;
+	dev = container_of(ion_root_client, struct ion_device, clients);
+
+	down_read(&dev->lock);
+	while (node) {
+		tmp = rb_entry(node, struct ion_client, node);
+		if (client < tmp) {
+			node = node->rb_left;
+		} else if (client > tmp) {
+			node = node->rb_right;
+		} else {
+			up_read(&dev->lock);
+			return 1;
+		}
+	}
+
+	up_read(&dev->lock);
+	return 0;
+}
+
 static int ion_debug_client_show(struct seq_file *s, void *unused)
 {
 	struct ion_client *client = s->private;
@@ -1109,6 +1137,7 @@ void ion_client_destroy(struct ion_client *client)
 	kfree(client->display_name);
 	kfree(client->name);
 	kfree(client);
+	mutex_unlock(&debugfs_mutex);
 }
 EXPORT_SYMBOL(ion_client_destroy);
 
@@ -1375,8 +1404,7 @@ static void ion_dma_buf_kunmap(struct dma_buf *dmabuf, unsigned long offset,
 {
 }
 
-static int ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf, size_t start,
-					size_t len,
+static int ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
 					enum dma_data_direction direction)
 {
 	struct ion_buffer *buffer = dmabuf->priv;
@@ -1394,15 +1422,16 @@ static int ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf, size_t start,
 	return PTR_ERR_OR_ZERO(vaddr);
 }
 
-static void ion_dma_buf_end_cpu_access(struct dma_buf *dmabuf, size_t start,
-				       size_t len,
-				       enum dma_data_direction direction)
+static int ion_dma_buf_end_cpu_access(struct dma_buf *dmabuf,
+				      enum dma_data_direction direction)
 {
 	struct ion_buffer *buffer = dmabuf->priv;
 
 	mutex_lock(&buffer->lock);
 	ion_buffer_kmap_put(buffer);
 	mutex_unlock(&buffer->lock);
+
+	return 0;
 }
 
 static void ion_dma_buf_set_privflag(struct dma_buf *dmabuf)
@@ -1496,22 +1525,18 @@ int ion_share_dma_buf_fd(struct ion_client *client, struct ion_handle *handle)
 }
 EXPORT_SYMBOL(ion_share_dma_buf_fd);
 
-struct ion_handle *ion_import_dma_buf(struct ion_client *client, int fd)
+struct ion_handle *ion_import_dma_buf(struct ion_client *client,
+				      struct dma_buf *dmabuf)
 {
-	struct dma_buf *dmabuf;
 	struct ion_buffer *buffer;
 	struct ion_handle *handle;
 	int ret;
 
-	dmabuf = dma_buf_get(fd);
-	if (IS_ERR(dmabuf))
-		return ERR_CAST(dmabuf);
 	/* if this memory came from ion */
 
 	if (dmabuf->ops != &dma_buf_ops) {
 		pr_err("%s: can not import dmabuf from another exporter\n",
 		       __func__);
-		dma_buf_put(dmabuf);
 		return ERR_PTR(-EINVAL);
 	}
 	buffer = dmabuf->priv;
@@ -1539,7 +1564,6 @@ struct ion_handle *ion_import_dma_buf(struct ion_client *client, int fd)
 	}
 
 end:
-	dma_buf_put(dmabuf);
 	return handle;
 }
 EXPORT_SYMBOL(ion_import_dma_buf);
@@ -1933,6 +1957,8 @@ static int ion_debug_heap_show(struct seq_file *s, void *unused)
 				   client->pid, size);
 		}
 	}
+	mutex_unlock(&debugfs_mutex);
+
 	seq_puts(s, "----------------------------------------------------\n");
 	seq_puts(s, "orphaned allocations (info is from last known client):\n");
 	mutex_lock(&dev->buffer_lock);
@@ -1988,7 +2014,7 @@ static int debug_shrink_set(void *data, u64 val)
 	struct shrink_control sc;
 	int objs;
 
-	sc.gfp_mask = -1;
+	sc.gfp_mask = GFP_HIGHUSER;
 	sc.nr_to_scan = val;
 
 	if (!val) {
@@ -2006,7 +2032,7 @@ static int debug_shrink_get(void *data, u64 *val)
 	struct shrink_control sc;
 	int objs;
 
-	sc.gfp_mask = -1;
+	sc.gfp_mask = GFP_HIGHUSER;
 	sc.nr_to_scan = 0;
 
 	objs = heap->shrinker.count_objects(&heap->shrinker, &sc);

@@ -305,7 +305,7 @@ struct ecryptfs_crypt_stat {
 	unsigned int extent_mask;
 	struct ecryptfs_mount_crypt_stat *mount_crypt_stat;
 	struct crypto_ablkcipher *tfm;
-	struct crypto_hash *hash_tfm; /* Crypto context for generating
+	struct crypto_shash *hash_tfm; /* Crypto context for generating
 				       * the initialization vectors */
 	unsigned char cipher[ECRYPTFS_MAX_CIPHER_NAME_SIZE + 1];
 	unsigned char key[ECRYPTFS_MAX_KEY_BYTES];

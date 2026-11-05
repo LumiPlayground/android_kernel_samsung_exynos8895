@@ -9,7 +9,11 @@
 UTS_MACHINE := arc
 
 ifeq ($(CROSS_COMPILE),)
+ifndef CONFIG_CPU_BIG_ENDIAN
 CROSS_COMPILE := arc-linux-
+else
+CROSS_COMPILE := arceb-linux-
+endif
 endif
 
 KBUILD_DEFCONFIG := nsim_700_defconfig
@@ -70,7 +74,9 @@ endif
 ifndef CONFIG_CC_OPTIMIZE_FOR_SIZE
 # Generic build system uses -O2, we want -O3
 # Note: No need to add to cflags-y as that happens anyways
-ARCH_CFLAGS += -O3
+#
+# Disable the false maybe-uninitialized warings gcc spits out at -O3
+ARCH_CFLAGS += -O3 $(call cc-disable-warning,maybe-uninitialized,)
 endif
 
 # small data is default for elf32 tool-chain. If not usable, disable it

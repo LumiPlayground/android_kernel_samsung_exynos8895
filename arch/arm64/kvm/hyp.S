@@ -17,7 +17,9 @@
 
 #include <linux/linkage.h>
 
+#include <asm/alternative.h>
 #include <asm/assembler.h>
+#include <asm/cpufeature.h>
 
 /*
  * u64 __kvm_call_hyp(void *hypfn, ...);

@@ -3423,7 +3423,7 @@ static void __sched notrace __schedule(bool preempt)
 			if (prev->flags & PF_WQ_WORKER) {
 				struct task_struct *to_wakeup;
 
-				to_wakeup = wq_worker_sleeping(prev, cpu);
+				to_wakeup = wq_worker_sleeping(prev);
 				if (to_wakeup)
 					try_to_wake_up_local(to_wakeup);
 			}
@@ -7569,7 +7569,7 @@ static int cpuset_cpu_inactive(struct notifier_block *nfb, unsigned long action,
 	int cpus;
 
 	switch (action) {
-	case CPU_DOWN_LATE_PREPARE:
+	case CPU_DOWN_PREPARE:
 		rcu_read_lock_sched();
 		dl_b = dl_bw_of(cpu);
 

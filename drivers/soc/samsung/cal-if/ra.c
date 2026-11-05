@@ -36,7 +36,7 @@ static int ra_wait_done(void __iomem *reg,
 
 static unsigned int ra_get_fixed_rate(struct cmucal_clk *clk)
 {
-	struct cmucal_clk_fixed_rate *frate = to_clk_fixed_rate(clk);
+	struct cmucal_clk_fixed_rate *frate = to_cal_clk_fixed_rate(clk);
 	void __iomem *offset;
 	unsigned int rate;
 
@@ -55,7 +55,7 @@ static unsigned int ra_get_fixed_rate(struct cmucal_clk *clk)
 
 static unsigned int ra_get_fixed_factor(struct cmucal_clk *clk)
 {
-	struct cmucal_clk_fixed_factor *ffacor = to_clk_fixed_factor(clk);
+	struct cmucal_clk_fixed_factor *ffacor = to_cal_clk_fixed_factor(clk);
 
 	return ffacor->ratio;
 }
@@ -205,7 +205,7 @@ static int ra_set_mux_rate(struct cmucal_clk *clk, unsigned int rate)
 	if (rate == 0)
 		return ret;
 
-	mux = to_clk_mux(clk);
+	mux = to_cal_clk_mux(clk);
 
 	for (i = 0; i < mux->num_parents; i++) {
 		p_rate = ra_recalc_rate(mux->pid[i]);
@@ -1028,7 +1028,7 @@ struct cmucal_clk *ra_get_parent(unsigned int id)
 			parent = cmucal_get_node(clk->pid);
 		break;
 	case MUX_TYPE:
-		mux = to_clk_mux(clk);
+		mux = to_cal_clk_mux(clk);
 		val = ra_get_div_mux(clk);
 		parent = cmucal_get_node(mux->pid[val]);
 		break;

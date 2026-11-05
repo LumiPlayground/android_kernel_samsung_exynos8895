@@ -72,7 +72,7 @@ extern int sysctl_protected_hardlinks;
 struct buffer_head;
 typedef int (get_block_t)(struct inode *inode, sector_t iblock,
 			struct buffer_head *bh_result, int create);
-typedef void (dio_iodone_t)(struct kiocb *iocb, loff_t offset,
+typedef int (dio_iodone_t)(struct kiocb *iocb, loff_t offset,
 			ssize_t bytes, void *private);
 typedef void (dax_iodone_t)(struct buffer_head *bh_map, int uptodate);
 
@@ -329,6 +329,7 @@ struct writeback_control;
 #define IOCB_EVENTFD		(1 << 0)
 #define IOCB_APPEND		(1 << 1)
 #define IOCB_DIRECT		(1 << 2)
+#define IOCB_HIPRI		(1 << 3)
 
 struct kiocb {
 	struct file		*ki_filp;
@@ -458,7 +459,7 @@ struct address_space {
 	unsigned long           key_length;     /* key length */
 	char                    *alg;           /* algorithm */
 	pgoff_t                 sensitive_data_index;   /* data starts here */
-	struct crypto_hash      *hash_tfm;      /* hash transform */
+	struct crypto_shash     *hash_tfm;      /* hash transform */
 #ifdef CONFIG_CRYPTO_FIPS
 	bool                    cc_enable;      /* cc flag */
 #endif
@@ -957,7 +958,7 @@ static inline struct file *get_file(struct file *f)
 /* Page cache limit. The filesystems should put that into their s_maxbytes 
    limits, otherwise bad things can happen in VM. */ 
 #if BITS_PER_LONG==32
-#define MAX_LFS_FILESIZE	(((loff_t)PAGE_CACHE_SIZE << (BITS_PER_LONG-1))-1) 
+#define MAX_LFS_FILESIZE	(((loff_t)PAGE_SIZE << (BITS_PER_LONG-1))-1)
 #elif BITS_PER_LONG==64
 #define MAX_LFS_FILESIZE 	((loff_t)0x7fffffffffffffffLL)
 #endif
@@ -1595,11 +1596,6 @@ extern int vfs_rename2(struct vfsmount *, struct inode *, struct dentry *, struc
 extern int vfs_whiteout(struct inode *, struct dentry *);
 
 /*
- * VFS dentry helper functions.
- */
-extern void dentry_unhash(struct dentry *dentry);
-
-/*
  * VFS file helper functions.
  */
 extern void inode_init_owner(struct inode *inode, const struct inode *dir,
@@ -1767,9 +1763,9 @@ extern ssize_t __vfs_write(struct file *, const char __user *, size_t, loff_t *)
 extern ssize_t vfs_read(struct file *, char __user *, size_t, loff_t *);
 extern ssize_t vfs_write(struct file *, const char __user *, size_t, loff_t *);
 extern ssize_t vfs_readv(struct file *, const struct iovec __user *,
-		unsigned long, loff_t *);
+		unsigned long, loff_t *, int);
 extern ssize_t vfs_writev(struct file *, const struct iovec __user *,
-		unsigned long, loff_t *);
+		unsigned long, loff_t *, int);
 extern ssize_t vfs_copy_file_range(struct file *, loff_t , struct file *,
 				   loff_t, size_t, unsigned int);
 extern int vfs_clone_file_range(struct file *file_in, loff_t pos_in,
@@ -2129,7 +2125,7 @@ extern int generic_update_time(struct inode *, struct timespec *, int);
 /* /sys/fs */
 extern struct kobject *fs_kobj;
 
-#define MAX_RW_COUNT (INT_MAX & PAGE_CACHE_MASK)
+#define MAX_RW_COUNT (INT_MAX & PAGE_MASK)
 
 #ifdef CONFIG_MANDATORY_FILE_LOCKING
 extern int locks_mandatory_locked(struct file *);
@@ -2649,7 +2645,22 @@ static inline void i_readcount_inc(struct inode *inode)
 #endif
 extern int do_pipe_flags(int *, int);
 
+enum kernel_read_file_id {
+	READING_FIRMWARE = 1,
+	READING_MODULE,
+	READING_KEXEC_IMAGE,
+	READING_KEXEC_INITRAMFS,
+	READING_POLICY,
+	READING_MAX_ID
+};
+
 extern int kernel_read(struct file *, loff_t, char *, unsigned long);
+extern int kernel_read_file(struct file *, void **, loff_t *, loff_t,
+			    enum kernel_read_file_id);
+extern int kernel_read_file_from_path(char *, void **, loff_t *, loff_t,
+				      enum kernel_read_file_id);
+extern int kernel_read_file_from_fd(int, void **, loff_t *, loff_t,
+				    enum kernel_read_file_id);
 extern ssize_t kernel_write(struct file *, const char *, size_t, loff_t);
 extern ssize_t __kernel_write(struct file *, const char *, size_t, loff_t *);
 extern struct file * open_exec(const char *);

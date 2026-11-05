@@ -1068,7 +1068,6 @@ static int ipu_add_client_devices(struct ipu_soc *ipu, unsigned long ipu_base)
 			goto err_register;
 		}
 
-		pdev->dev.of_node = of_node;
 		pdev->dev.parent = dev;
 
 		reg->pdata.of_node = of_node;

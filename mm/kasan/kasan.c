@@ -475,6 +475,13 @@ void kasan_poison_object_data(struct kmem_cache *cache, void *object)
 	kasan_poison_shadow(object,
 			round_up(cache->object_size, KASAN_SHADOW_SCALE_SIZE),
 			KASAN_KMALLOC_REDZONE);
+#ifdef CONFIG_SLAB
+	if (cache->flags & SLAB_KASAN) {
+		struct kasan_alloc_meta *alloc_info =
+			get_alloc_info(cache, object);
+		alloc_info->state = KASAN_STATE_INIT;
+	}
+#endif
 }
 
 static inline int in_irqentry_text(unsigned long ptr)
@@ -562,6 +569,17 @@ static void kasan_poison_slab_free(struct kmem_cache *cache, void *object)
 	/* RCU slabs could be legally used after free within the RCU period */
 	if (unlikely(cache->flags & SLAB_DESTROY_BY_RCU))
 		return;
+
+#ifdef CONFIG_SLAB
+	if (cache->flags & SLAB_KASAN) {
+		struct kasan_free_meta *free_info =
+			get_free_info(cache, object);
+		struct kasan_alloc_meta *alloc_info =
+			get_alloc_info(cache, object);
+		alloc_info->state = KASAN_STATE_FREE;
+		set_track(&free_info->track, GFP_NOWAIT);
+	}
+#endif
 
 	kasan_poison_shadow(object, rounded_up_size, KASAN_KMALLOC_FREE);
 }

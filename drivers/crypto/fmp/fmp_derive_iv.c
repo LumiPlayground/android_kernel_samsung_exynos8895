@@ -10,6 +10,7 @@
  */
 
 #include <linux/crypto.h>
+#include <crypto/hash.h>
 #include <linux/scatterlist.h>
 #include <linux/errno.h>
 #include <linux/err.h>
@@ -20,106 +21,32 @@
 #define DEFAULT_HASH			"md5"
 #define SHA256_HASH			"sha256-fmp"
 
-static DEFINE_SPINLOCK(fmp_tfm_lock);
-
-int calculate_sha256(struct crypto_hash *hash_tfm, char *dst, char *src, int len)
+static int calculate_hash(struct crypto_shash *tfm, char *dst,
+			  char *src, int len)
 {
-	int ret = -1;
-	unsigned long flag;
-	struct scatterlist sg;
-	struct hash_desc desc = {
-		.tfm = hash_tfm,
-		.flags = 0
-	};
+	/* The encrypted mapping owns a preallocated transform. */
+	if (!tfm || len < 0)
+		return -EINVAL;
+	{
+		SHASH_DESC_ON_STACK(desc, tfm);
+		int ret;
 
-	spin_lock_irqsave(&fmp_tfm_lock, flag);
-	sg_init_one(&sg, (u8 *)src, len);
-
-	if (!desc.tfm) {
-		desc.tfm = crypto_alloc_hash(SHA256_HASH, 0,
-					     CRYPTO_ALG_ASYNC);
-		if (IS_ERR(desc.tfm)) {
-			printk(KERN_ERR "%s: Error attemping to allocate crypto context\n", __func__);
-			goto out;
-		}
-		hash_tfm = desc.tfm;
+		desc->tfm = tfm;
+		desc->flags = 0;
+		ret = crypto_shash_digest(desc, (u8 *)src, len, (u8 *)dst);
+		memzero_explicit(desc, sizeof(*desc) + crypto_shash_descsize(tfm));
+		return ret;
 	}
-
-	ret = crypto_hash_init(&desc);
-	if (ret) {
-		printk(KERN_ERR
-		       "%s: Error initializing crypto hash; ret = [%d]\n",
-		       __func__, ret);
-		goto out;
-	}
-	ret = crypto_hash_update(&desc, &sg, len);
-	if (ret) {
-		printk(KERN_ERR
-		       "%s: Error updating crypto hash; ret = [%d]\n",
-		       __func__, ret);
-		goto out;
-	}
-	ret = crypto_hash_final(&desc, dst);
-	if (ret) {
-		printk(KERN_ERR
-		       "%s: Error finalizing crypto hash; ret = [%d]\n",
-		       __func__, ret);
-		goto out;
-	}
-
-out:
-	spin_unlock_irqrestore(&fmp_tfm_lock, flag);
-	return ret;
 }
 
-int calculate_md5(struct crypto_hash *hash_tfm, char *dst, char *src, int len)
+int calculate_sha256(struct crypto_shash *hash_tfm, char *dst, char *src, int len)
 {
-	int ret = -1;
-	unsigned long flag;
-	struct scatterlist sg;
-	struct hash_desc desc = {
-		.tfm = hash_tfm,
-		.flags = 0
-	};
+	return calculate_hash(hash_tfm, dst, src, len);
+}
 
-	spin_lock_irqsave(&fmp_tfm_lock, flag);
-	sg_init_one(&sg, (u8 *)src, len);
-
-	if (!desc.tfm) {
-		desc.tfm = crypto_alloc_hash(DEFAULT_HASH, 0,
-					     CRYPTO_ALG_ASYNC);
-		if (IS_ERR(desc.tfm)) {
-			printk(KERN_ERR "%s: Error attemping to allocate crypto context\n", __func__);
-			goto out;
-		}
-		hash_tfm = desc.tfm;
-	}
-
-	ret = crypto_hash_init(&desc);
-	if (ret) {
-		printk(KERN_ERR
-		       "%s: Error initializing crypto hash; ret = [%d]\n",
-		       __func__, ret);
-		goto out;
-	}
-	ret = crypto_hash_update(&desc, &sg, len);
-	if (ret) {
-		printk(KERN_ERR
-		       "%s: Error updating crypto hash; ret = [%d]\n",
-		       __func__, ret);
-		goto out;
-	}
-	ret = crypto_hash_final(&desc, dst);
-	if (ret) {
-		printk(KERN_ERR
-		       "%s: Error finalizing crypto hash; ret = [%d]\n",
-		       __func__, ret);
-		goto out;
-	}
-
-out:
-	spin_unlock_irqrestore(&fmp_tfm_lock, flag);
-	return ret;
+int calculate_md5(struct crypto_shash *hash_tfm, char *dst, char *src, int len)
+{
+	return calculate_hash(hash_tfm, dst, src, len);
 }
 
 int file_enc_derive_iv(struct address_space *mapping, loff_t offset, char *extent_iv)

@@ -18,6 +18,8 @@
 
 #include "efistub.h"
 
+bool __nokaslr;
+
 static int efi_secureboot_enabled(efi_system_table_t *sys_table_arg)
 {
 	static efi_guid_t const var_guid = EFI_GLOBAL_VARIABLE_GUID;
@@ -189,6 +191,10 @@ unsigned long efi_entry(void *handle, efi_system_table_t *sys_table,
 		goto fail;
 
 	pr_efi(sys_table, "Booting Linux Kernel...\n");
+
+	status = check_platform_features(sys_table);
+	if (status != EFI_SUCCESS)
+		goto fail;
 
 	/*
 	 * Get a handle to the loaded image protocol.  This is used to get

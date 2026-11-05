@@ -98,7 +98,7 @@ struct crypt_iv_operations {
 };
 
 struct iv_essiv_private {
-	struct crypto_hash *hash_tfm;
+	struct crypto_shash *hash_tfm;
 	u8 *salt;
 };
 
@@ -277,34 +277,26 @@ static int crypt_iv_plain64_gen(struct crypt_config *cc, u8 *iv,
 static int crypt_iv_essiv_init(struct crypt_config *cc)
 {
 	struct iv_essiv_private *essiv = &cc->iv_gen_private.essiv;
-	struct hash_desc desc;
-	struct scatterlist sg;
+	SHASH_DESC_ON_STACK(desc, essiv->hash_tfm);
 	struct crypto_cipher *essiv_tfm;
 	int err;
 
-	sg_init_one(&sg, cc->key, cc->key_size);
-	desc.tfm = essiv->hash_tfm;
-	desc.flags = CRYPTO_TFM_REQ_MAY_SLEEP;
-
-	err = crypto_hash_digest(&desc, &sg, cc->key_size, essiv->salt);
+	desc->tfm = essiv->hash_tfm;
+	desc->flags = CRYPTO_TFM_REQ_MAY_SLEEP;
+	err = crypto_shash_digest(desc, cc->key, cc->key_size, essiv->salt);
+	memzero_explicit(desc, sizeof(*desc) + crypto_shash_descsize(essiv->hash_tfm));
 	if (err)
 		return err;
-
 	essiv_tfm = cc->iv_private;
-
-	err = crypto_cipher_setkey(essiv_tfm, essiv->salt,
-			    crypto_hash_digestsize(essiv->hash_tfm));
-	if (err)
-		return err;
-
-	return 0;
+	return crypto_cipher_setkey(essiv_tfm, essiv->salt,
+				    crypto_shash_digestsize(essiv->hash_tfm));
 }
 
 /* Wipe salt and reset key derived from volume key */
 static int crypt_iv_essiv_wipe(struct crypt_config *cc)
 {
 	struct iv_essiv_private *essiv = &cc->iv_gen_private.essiv;
-	unsigned salt_size = crypto_hash_digestsize(essiv->hash_tfm);
+	unsigned salt_size = crypto_shash_digestsize(essiv->hash_tfm);
 	struct crypto_cipher *essiv_tfm;
 	int r, err = 0;
 
@@ -356,7 +348,7 @@ static void crypt_iv_essiv_dtr(struct crypt_config *cc)
 	struct crypto_cipher *essiv_tfm;
 	struct iv_essiv_private *essiv = &cc->iv_gen_private.essiv;
 
-	crypto_free_hash(essiv->hash_tfm);
+	crypto_free_shash(essiv->hash_tfm);
 	essiv->hash_tfm = NULL;
 
 	kzfree(essiv->salt);
@@ -374,7 +366,7 @@ static int crypt_iv_essiv_ctr(struct crypt_config *cc, struct dm_target *ti,
 			      const char *opts)
 {
 	struct crypto_cipher *essiv_tfm = NULL;
-	struct crypto_hash *hash_tfm = NULL;
+	struct crypto_shash *hash_tfm = NULL;
 	u8 *salt = NULL;
 	int err;
 
@@ -384,14 +376,14 @@ static int crypt_iv_essiv_ctr(struct crypt_config *cc, struct dm_target *ti,
 	}
 
 	/* Allocate hash algorithm */
-	hash_tfm = crypto_alloc_hash(opts, 0, CRYPTO_ALG_ASYNC);
+	hash_tfm = crypto_alloc_shash(opts, 0, 0);
 	if (IS_ERR(hash_tfm)) {
 		ti->error = "Error initializing ESSIV hash";
 		err = PTR_ERR(hash_tfm);
 		goto bad;
 	}
 
-	salt = kzalloc(crypto_hash_digestsize(hash_tfm), GFP_KERNEL);
+	salt = kzalloc(crypto_shash_digestsize(hash_tfm), GFP_KERNEL);
 	if (!salt) {
 		ti->error = "Error kmallocing salt storage in ESSIV";
 		err = -ENOMEM;
@@ -402,7 +394,7 @@ static int crypt_iv_essiv_ctr(struct crypt_config *cc, struct dm_target *ti,
 	cc->iv_gen_private.essiv.hash_tfm = hash_tfm;
 
 	essiv_tfm = setup_essiv_cpu(cc, ti, salt,
-				crypto_hash_digestsize(hash_tfm));
+				crypto_shash_digestsize(hash_tfm));
 	if (IS_ERR(essiv_tfm)) {
 		crypt_iv_essiv_dtr(cc);
 		return PTR_ERR(essiv_tfm);
@@ -413,7 +405,7 @@ static int crypt_iv_essiv_ctr(struct crypt_config *cc, struct dm_target *ti,
 
 bad:
 	if (hash_tfm && !IS_ERR(hash_tfm))
-		crypto_free_hash(hash_tfm);
+		crypto_free_shash(hash_tfm);
 	kfree(salt);
 	return err;
 }
@@ -1900,7 +1892,7 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		goto bad;
 
 	if (cc->hw_fmp) {
-		cc->per_bio_data_size = ti->per_bio_data_size =
+		cc->per_bio_data_size = ti->per_io_data_size =
 			ALIGN(sizeof(struct dm_crypt_io), ARCH_KMALLOC_MINALIGN);
 	} else {
 		cc->dmreq_start = sizeof(struct ablkcipher_request);
@@ -1928,7 +1920,7 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 			goto bad;
 		}
 
-		cc->per_bio_data_size = ti->per_bio_data_size =
+		cc->per_bio_data_size = ti->per_io_data_size =
 			ALIGN(sizeof(struct dm_crypt_io) + cc->dmreq_start +
 			      sizeof(struct dm_crypt_request) + iv_size_padding + cc->iv_size,
 			      ARCH_KMALLOC_MINALIGN);

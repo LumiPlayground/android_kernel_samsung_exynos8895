@@ -1,6 +1,9 @@
+# Recent Exynos platforms should just select COMMON_CLK_SAMSUNG:
 config COMMON_CLK_SAMSUNG
-	bool
-	select COMMON_CLK
+	bool "Samsung Exynos clock controller support" if COMPILE_TEST
+	# Clocks on ARM64 SoCs (e.g. Exynos5433, Exynos7) are chosen by
+	# EXYNOS_ARM64_COMMON_CLK to avoid building them on ARMv7:
+	select EXYNOS_ARM64_COMMON_CLK if ARM64 && ARCH_EXYNOS
 
 config COMPOSITE_CLK_SAMSUNG
 	bool
@@ -8,7 +11,7 @@ config COMPOSITE_CLK_SAMSUNG
 	depends on ARCH_EXYNOS8 || ARCH_EXYNOS7
 
 config S3C2410_COMMON_CLK
-	bool
+	bool "Samsung S3C2410 clock controller support" if COMPILE_TEST
 	select COMMON_CLK_SAMSUNG
 	help
 	  Build the s3c2410 clock driver based on the common clock framework.
@@ -22,10 +25,9 @@ config S3C2410_COMMON_DCLK
 	  framework.
 
 config S3C2412_COMMON_CLK
-	bool
+	bool "Samsung S3C2412 clock controller support" if COMPILE_TEST
 	select COMMON_CLK_SAMSUNG
 
 config S3C2443_COMMON_CLK
-	bool
+	bool "Samsung S3C2443 clock controller support" if COMPILE_TEST
 	select COMMON_CLK_SAMSUNG
-

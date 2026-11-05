@@ -229,7 +229,11 @@ struct tpm_chip *tpmm_chip_alloc(struct device *dev,
 	chip->cdev.owner = dev->driver->owner;
 	chip->cdev.kobj.parent = &chip->dev.kobj;
 
-	devm_add_action(dev, (void (*)(void *)) put_device, &chip->dev);
+	rc = devm_add_action(dev, (void (*)(void *)) put_device, &chip->dev);
+	if (rc) {
+		put_device(&chip->dev);
+		return ERR_PTR(rc);
+	}
 
 	return chip;
 }
@@ -272,16 +276,6 @@ static void tpm_del_char_device(struct tpm_chip *chip)
 {
 	cdev_del(&chip->cdev);
 	device_del(&chip->dev);
-
-	/* Make the chip unavailable. */
-	mutex_lock(&idr_lock);
-	idr_replace(&dev_nums_idr, NULL, chip->dev_num);
-	mutex_unlock(&idr_lock);
-
-	/* Make the driver uncallable. */
-	down_write(&chip->ops_sem);
-	chip->ops = NULL;
-	up_write(&chip->ops_sem);
 }
 
 static int tpm1_chip_register(struct tpm_chip *chip)
