@@ -13,13 +13,7 @@ static int early_page_poison_param(char *buf)
 {
 	if (!buf)
 		return -EINVAL;
-
-	if (strcmp(buf, "on") == 0)
-		want_page_poisoning = true;
-	else if (strcmp(buf, "off") == 0)
-		want_page_poisoning = false;
-
-	return 0;
+	return strtobool(buf, &want_page_poisoning);
 }
 early_param("page_poison", early_page_poison_param);
 
@@ -80,7 +74,7 @@ bool page_is_poisoned(struct page *page)
 	struct page_ext *page_ext;
 
 	page_ext = lookup_page_ext(page);
-	if (!page_ext)
+	if (unlikely(!page_ext))
 		return false;
 	return test_bit(PAGE_EXT_DEBUG_POISON, &page_ext->flags);
 }

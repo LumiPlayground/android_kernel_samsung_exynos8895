@@ -1351,7 +1351,7 @@ static int ecryptfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
 }
 
 int
-ecryptfs_setxattr(struct dentry *dentry, const char *name, const void *value,
+ecryptfs_setxattr(struct dentry *dentry, struct inode *inode, const char *name, const void *value,
 		  size_t size, int flags)
 {
 	int rc = 0;
@@ -1408,7 +1408,7 @@ ecryptfs_getxattr_lower(struct dentry *lower_dentry, const char *name,
 		goto out;
 	}
 	inode_lock(d_inode(lower_dentry));
-	rc = d_inode(lower_dentry)->i_op->getxattr(lower_dentry, name, value,
+	rc = d_inode(lower_dentry)->i_op->getxattr(lower_dentry, d_inode(lower_dentry), name, value,
 						   size);
 	inode_unlock(d_inode(lower_dentry));
 out:
@@ -1416,7 +1416,7 @@ out:
 }
 
 static ssize_t
-ecryptfs_getxattr(struct dentry *dentry, const char *name, void *value,
+ecryptfs_getxattr(struct dentry *dentry, struct inode *inode, const char *name, void *value,
 		  size_t size)
 {
 #ifdef CONFIG_DLP
@@ -1509,7 +1509,7 @@ static int ecryptfs_removexattr(struct dentry *dentry, const char *name)
 	}
 #endif
 
-	mutex_lock(&d_inode(lower_dentry)->i_mutex);
+	inode_lock(d_inode(lower_dentry));
 	rc = d_inode(lower_dentry)->i_op->removexattr(lower_dentry, name);
 	inode_unlock(d_inode(lower_dentry));
 out:

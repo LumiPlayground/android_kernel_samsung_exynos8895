@@ -1114,15 +1114,15 @@ enum emulation_result kvm_mips_emulate_CP0(uint32_t inst, uint32_t *opc,
 					kvm_read_c0_guest_ebase(cop0));
 			} else if (rd == MIPS_CP0_TLB_HI && sel == 0) {
 				uint32_t nasid =
-					vcpu->arch.gprs[rt] & ASID_MASK;
+					vcpu->arch.gprs[rt] & KVM_ENTRYHI_ASID;
 				if ((KSEGX(vcpu->arch.gprs[rt]) != CKSEG0) &&
 				    ((kvm_read_c0_guest_entryhi(cop0) &
-				      ASID_MASK) != nasid)) {
+				      KVM_ENTRYHI_ASID) != nasid)) {
 					kvm_debug("MTCz, change ASID from %#lx to %#lx\n",
 						kvm_read_c0_guest_entryhi(cop0)
-						& ASID_MASK,
+						& KVM_ENTRYHI_ASID,
 						vcpu->arch.gprs[rt]
-						& ASID_MASK);
+						& KVM_ENTRYHI_ASID);
 
 					preempt_disable();
 					/* Blow away the shadow host TLBs */
@@ -1692,11 +1692,12 @@ enum emulation_result kvm_mips_emulate_cache(uint32_t inst, uint32_t *opc,
 		 */
 		index = kvm_mips_guest_tlb_lookup(vcpu, (va & VPN2_MASK) |
 						  (kvm_read_c0_guest_entryhi
-						   (cop0) & ASID_MASK));
+						   (cop0) & KVM_ENTRYHI_ASID));
 
 		if (index < 0) {
 			vcpu->arch.host_cp0_entryhi = (va & VPN2_MASK);
 			vcpu->arch.host_cp0_badvaddr = va;
+			vcpu->arch.pc = curr_pc;
 			er = kvm_mips_emulate_tlbmiss_ld(cause, NULL, run,
 							 vcpu);
 			preempt_enable();
@@ -1708,6 +1709,8 @@ enum emulation_result kvm_mips_emulate_cache(uint32_t inst, uint32_t *opc,
 			 * invalid exception to the guest
 			 */
 			if (!TLB_IS_VALID(*tlb, va)) {
+				vcpu->arch.host_cp0_badvaddr = va;
+				vcpu->arch.pc = curr_pc;
 				er = kvm_mips_emulate_tlbinv_ld(cause, NULL,
 								run, vcpu);
 				preempt_enable();
@@ -1732,7 +1735,7 @@ enum emulation_result kvm_mips_emulate_cache(uint32_t inst, uint32_t *opc,
 			cache, op, base, arch->gprs[base], offset);
 		er = EMULATE_FAIL;
 		preempt_enable();
-		goto dont_update_pc;
+		goto done;
 
 	}
 
@@ -1760,16 +1763,20 @@ skip_fault:
 		kvm_err("NO-OP CACHE (cache: %#x, op: %#x, base[%d]: %#lx, offset: %#x\n",
 			cache, op, base, arch->gprs[base], offset);
 		er = EMULATE_FAIL;
-		preempt_enable();
-		goto dont_update_pc;
 	}
 
 	preempt_enable();
+done:
+	/* Rollback PC only if emulation was unsuccessful */
+	if (er == EMULATE_FAIL)
+		vcpu->arch.pc = curr_pc;
 
 dont_update_pc:
-	/* Rollback PC */
-	vcpu->arch.pc = curr_pc;
-done:
+	/*
+	 * This is for exceptions whose emulation updates the PC, so do not
+	 * overwrite the PC under any circumstances
+	 */
+
 	return er;
 }
 
@@ -1863,7 +1870,7 @@ enum emulation_result kvm_mips_emulate_tlbmiss_ld(unsigned long cause,
 	struct mips_coproc *cop0 = vcpu->arch.cop0;
 	struct kvm_vcpu_arch *arch = &vcpu->arch;
 	unsigned long entryhi = (vcpu->arch.  host_cp0_badvaddr & VPN2_MASK) |
-				(kvm_read_c0_guest_entryhi(cop0) & ASID_MASK);
+			(kvm_read_c0_guest_entryhi(cop0) & KVM_ENTRYHI_ASID);
 
 	if ((kvm_read_c0_guest_status(cop0) & ST0_EXL) == 0) {
 		/* save old pc */
@@ -1910,7 +1917,7 @@ enum emulation_result kvm_mips_emulate_tlbinv_ld(unsigned long cause,
 	struct kvm_vcpu_arch *arch = &vcpu->arch;
 	unsigned long entryhi =
 		(vcpu->arch.host_cp0_badvaddr & VPN2_MASK) |
-		(kvm_read_c0_guest_entryhi(cop0) & ASID_MASK);
+		(kvm_read_c0_guest_entryhi(cop0) & KVM_ENTRYHI_ASID);
 
 	if ((kvm_read_c0_guest_status(cop0) & ST0_EXL) == 0) {
 		/* save old pc */
@@ -1955,7 +1962,7 @@ enum emulation_result kvm_mips_emulate_tlbmiss_st(unsigned long cause,
 	struct mips_coproc *cop0 = vcpu->arch.cop0;
 	struct kvm_vcpu_arch *arch = &vcpu->arch;
 	unsigned long entryhi = (vcpu->arch.host_cp0_badvaddr & VPN2_MASK) |
-				(kvm_read_c0_guest_entryhi(cop0) & ASID_MASK);
+			(kvm_read_c0_guest_entryhi(cop0) & KVM_ENTRYHI_ASID);
 
 	if ((kvm_read_c0_guest_status(cop0) & ST0_EXL) == 0) {
 		/* save old pc */
@@ -1999,7 +2006,7 @@ enum emulation_result kvm_mips_emulate_tlbinv_st(unsigned long cause,
 	struct mips_coproc *cop0 = vcpu->arch.cop0;
 	struct kvm_vcpu_arch *arch = &vcpu->arch;
 	unsigned long entryhi = (vcpu->arch.host_cp0_badvaddr & VPN2_MASK) |
-		(kvm_read_c0_guest_entryhi(cop0) & ASID_MASK);
+		(kvm_read_c0_guest_entryhi(cop0) & KVM_ENTRYHI_ASID);
 
 	if ((kvm_read_c0_guest_status(cop0) & ST0_EXL) == 0) {
 		/* save old pc */
@@ -2044,7 +2051,7 @@ enum emulation_result kvm_mips_handle_tlbmod(unsigned long cause, uint32_t *opc,
 #ifdef DEBUG
 	struct mips_coproc *cop0 = vcpu->arch.cop0;
 	unsigned long entryhi = (vcpu->arch.host_cp0_badvaddr & VPN2_MASK) |
-				(kvm_read_c0_guest_entryhi(cop0) & ASID_MASK);
+			(kvm_read_c0_guest_entryhi(cop0) & KVM_ENTRYHI_ASID);
 	int index;
 
 	/* If address not in the guest TLB, then we are in trouble */
@@ -2071,7 +2078,7 @@ enum emulation_result kvm_mips_emulate_tlbmod(unsigned long cause,
 {
 	struct mips_coproc *cop0 = vcpu->arch.cop0;
 	unsigned long entryhi = (vcpu->arch.host_cp0_badvaddr & VPN2_MASK) |
-				(kvm_read_c0_guest_entryhi(cop0) & ASID_MASK);
+			(kvm_read_c0_guest_entryhi(cop0) & KVM_ENTRYHI_ASID);
 	struct kvm_vcpu_arch *arch = &vcpu->arch;
 
 	if ((kvm_read_c0_guest_status(cop0) & ST0_EXL) == 0) {
@@ -2640,7 +2647,8 @@ enum emulation_result kvm_mips_handle_tlbmiss(unsigned long cause,
 	 */
 	index = kvm_mips_guest_tlb_lookup(vcpu,
 		      (va & VPN2_MASK) |
-		      (kvm_read_c0_guest_entryhi(vcpu->arch.cop0) & ASID_MASK));
+		      (kvm_read_c0_guest_entryhi(vcpu->arch.cop0) &
+		       KVM_ENTRYHI_ASID));
 	if (index < 0) {
 		if (exccode == EXCCODE_TLBL) {
 			er = kvm_mips_emulate_tlbmiss_ld(cause, opc, run, vcpu);

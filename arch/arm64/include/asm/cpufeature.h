@@ -186,6 +186,13 @@ static inline bool cpu_supports_mixed_endian_el0(void)
 	return id_aa64mmfr0_mixed_endian_el0(read_cpuid(SYS_ID_AA64MMFR0_EL1));
 }
 
+static inline bool system_supports_32bit_el0(void)
+{
+	return cpuid_feature_extract_unsigned_field(
+		read_system_reg(SYS_ID_AA64PFR0_EL1), ID_AA64PFR0_EL0_SHIFT) ==
+		ID_AA64PFR0_EL0_32BIT_64BIT;
+}
+
 static inline bool system_supports_mixed_endian_el0(void)
 {
 	return id_aa64mmfr0_mixed_endian_el0(read_system_reg(SYS_ID_AA64MMFR0_EL1));

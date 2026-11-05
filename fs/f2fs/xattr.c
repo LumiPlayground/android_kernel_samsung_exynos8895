@@ -26,10 +26,10 @@
 #include "xattr.h"
 
 static int f2fs_xattr_generic_get(const struct xattr_handler *handler,
-		struct dentry *dentry, const char *name, void *buffer,
-		size_t size)
+		struct dentry *unused, struct inode *inode,
+		const char *name, void *buffer, size_t size)
 {
-	struct f2fs_sb_info *sbi = F2FS_SB(dentry->d_sb);
+	struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
 
 	switch (handler->flags) {
 	case F2FS_XATTR_INDEX_USER:
@@ -45,15 +45,16 @@ static int f2fs_xattr_generic_get(const struct xattr_handler *handler,
 	default:
 		return -EINVAL;
 	}
-	return f2fs_getxattr(d_inode(dentry), handler->flags, name,
+	return f2fs_getxattr(inode, handler->flags, name,
 			     buffer, size, NULL);
 }
 
 static int f2fs_xattr_generic_set(const struct xattr_handler *handler,
-		struct dentry *dentry, const char *name, const void *value,
+		struct dentry *unused, struct inode *inode,
+		const char *name, const void *value,
 		size_t size, int flags)
 {
-	struct f2fs_sb_info *sbi = F2FS_SB(dentry->d_sb);
+	struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
 
 	switch (handler->flags) {
 	case F2FS_XATTR_INDEX_USER:
@@ -70,7 +71,7 @@ static int f2fs_xattr_generic_set(const struct xattr_handler *handler,
 		return -EINVAL;
 	}
 
-	return f2fs_setxattr(d_inode(dentry), handler->flags, name,
+	return f2fs_setxattr(inode, handler->flags, name,
 					value, size, NULL, flags);
 }
 
@@ -87,23 +88,19 @@ static bool f2fs_xattr_trusted_list(struct dentry *dentry)
 }
 
 static int f2fs_xattr_advise_get(const struct xattr_handler *handler,
-		struct dentry *dentry, const char *name, void *buffer,
-		size_t size)
+		struct dentry *unused, struct inode *inode,
+		const char *name, void *buffer, size_t size)
 {
-	struct inode *inode = d_inode(dentry);
-
-
 	if (buffer)
 		*((char *)buffer) = F2FS_I(inode)->i_advise;
 	return sizeof(char);
 }
 
 static int f2fs_xattr_advise_set(const struct xattr_handler *handler,
-		struct dentry *dentry, const char *name, const void *value,
+		struct dentry *unused, struct inode *inode,
+		const char *name, const void *value,
 		size_t size, int flags)
 {
-	struct inode *inode = d_inode(dentry);
-
 	if (!inode_owner_or_capable(inode))
 		return -EPERM;
 	if (value == NULL)
