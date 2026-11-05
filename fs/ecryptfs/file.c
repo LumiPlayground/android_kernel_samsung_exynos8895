@@ -516,7 +516,7 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 #endif
 
 		dlp_len = ecryptfs_dentry->d_inode->i_op->getxattr(
-			ecryptfs_dentry,
+			ecryptfs_dentry, d_inode(ecryptfs_dentry),
 			KNOX_DLP_XATTR_NAME,
 			&dlp_data, sizeof(dlp_data));
 

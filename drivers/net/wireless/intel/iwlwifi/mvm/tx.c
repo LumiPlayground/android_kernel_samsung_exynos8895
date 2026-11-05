@@ -67,6 +67,7 @@
 #include <linux/etherdevice.h>
 #include <linux/tcp.h>
 #include <net/ip.h>
+#include <net/ipv6.h>
 
 #include "iwl-trans.h"
 #include "iwl-eeprom-parse.h"
@@ -98,6 +99,111 @@ iwl_mvm_bar_check_trigger(struct iwl_mvm *mvm, const u8 *addr,
 				    addr, tid, ssn);
 }
 
+#define OPT_HDR(type, skb, off) \
+	(type *)(skb_network_header(skb) + (off))
+
+static void iwl_mvm_tx_csum(struct iwl_mvm *mvm, struct sk_buff *skb,
+			    struct ieee80211_hdr *hdr,
+			    struct ieee80211_tx_info *info,
+			    struct iwl_tx_cmd *tx_cmd)
+{
+#if IS_ENABLED(CONFIG_INET)
+	u16 mh_len = ieee80211_hdrlen(hdr->frame_control);
+	u16 offload_assist = le16_to_cpu(tx_cmd->offload_assist);
+	u8 protocol = 0;
+
+	/*
+	 * Do not compute checksum if already computed or if transport will
+	 * compute it
+	 */
+	if (skb->ip_summed != CHECKSUM_PARTIAL || IWL_MVM_SW_TX_CSUM_OFFLOAD)
+		return;
+
+	/* We do not expect to be requested to csum stuff we do not support */
+	if (WARN_ONCE(!(mvm->hw->netdev_features & IWL_TX_CSUM_NETIF_FLAGS) ||
+		      (skb->protocol != htons(ETH_P_IP) &&
+		       skb->protocol != htons(ETH_P_IPV6)),
+		      "No support for requested checksum\n")) {
+		skb_checksum_help(skb);
+		return;
+	}
+
+	if (skb->protocol == htons(ETH_P_IP)) {
+		protocol = ip_hdr(skb)->protocol;
+	} else {
+#if IS_ENABLED(CONFIG_IPV6)
+		struct ipv6hdr *ipv6h =
+			(struct ipv6hdr *)skb_network_header(skb);
+		unsigned int off = sizeof(*ipv6h);
+
+		protocol = ipv6h->nexthdr;
+		while (protocol != NEXTHDR_NONE && ipv6_ext_hdr(protocol)) {
+			/* only supported extension headers */
+			if (protocol != NEXTHDR_ROUTING &&
+			    protocol != NEXTHDR_HOP &&
+			    protocol != NEXTHDR_DEST &&
+			    protocol != NEXTHDR_FRAGMENT) {
+				skb_checksum_help(skb);
+				return;
+			}
+
+			if (protocol == NEXTHDR_FRAGMENT) {
+				struct frag_hdr *hp =
+					OPT_HDR(struct frag_hdr, skb, off);
+
+				protocol = hp->nexthdr;
+				off += sizeof(struct frag_hdr);
+			} else {
+				struct ipv6_opt_hdr *hp =
+					OPT_HDR(struct ipv6_opt_hdr, skb, off);
+
+				protocol = hp->nexthdr;
+				off += ipv6_optlen(hp);
+			}
+		}
+		/* if we get here - protocol now should be TCP/UDP */
+#endif
+	}
+
+	if (protocol != IPPROTO_TCP && protocol != IPPROTO_UDP) {
+		WARN_ON_ONCE(1);
+		skb_checksum_help(skb);
+		return;
+	}
+
+	/* enable L4 csum */
+	offload_assist |= BIT(TX_CMD_OFFLD_L4_EN);
+
+	/*
+	 * Set offset to IP header (snap).
+	 * We don't support tunneling so no need to take care of inner header.
+	 * Size is in words.
+	 */
+	offload_assist |= (4 << TX_CMD_OFFLD_IP_HDR);
+
+	/* Do IPv4 csum for AMSDU only (no IP csum for Ipv6) */
+	if (skb->protocol == htons(ETH_P_IP) &&
+	    (offload_assist & BIT(TX_CMD_OFFLD_AMSDU))) {
+		ip_hdr(skb)->check = 0;
+		offload_assist |= BIT(TX_CMD_OFFLD_L3_EN);
+	}
+
+	/* reset UDP/TCP header csum */
+	if (protocol == IPPROTO_TCP)
+		tcp_hdr(skb)->check = 0;
+	else
+		udp_hdr(skb)->check = 0;
+
+	/* mac header len should include IV, size is in words */
+	if (info->control.hw_key)
+		mh_len += info->control.hw_key->iv_len;
+	mh_len /= 2;
+	offload_assist |= mh_len << TX_CMD_OFFLD_MH_SIZE;
+
+	tx_cmd->offload_assist = cpu_to_le16(offload_assist);
+#endif
+}
+
 /*
  * Sets most of the Tx cmd's fields
  */
@@ -127,6 +233,9 @@ void iwl_mvm_set_tx_cmd(struct iwl_mvm *mvm, struct sk_buff *skb,
 		u8 *qc = ieee80211_get_qos_ctl(hdr);
 		tx_cmd->tid_tspec = qc[0] & 0xf;
 		tx_flags &= ~TX_CMD_FLG_SEQ_CTL;
+		if (*qc & IEEE80211_QOS_CTL_A_MSDU_PRESENT)
+			tx_cmd->offload_assist |=
+				cpu_to_le16(BIT(TX_CMD_OFFLD_AMSDU));
 	} else if (ieee80211_is_back_req(fc)) {
 		struct ieee80211_bar *bar = (void *)skb->data;
 		u16 control = le16_to_cpu(bar->control);
@@ -187,9 +296,15 @@ void iwl_mvm_set_tx_cmd(struct iwl_mvm *mvm, struct sk_buff *skb,
 	/* Total # bytes to be transmitted */
 	tx_cmd->len = cpu_to_le16((u16)skb->len +
 		(uintptr_t)skb_info->driver_data[0]);
-	tx_cmd->next_frame_len = 0;
 	tx_cmd->life_time = cpu_to_le32(TX_CMD_LIFE_TIME_INFINITE);
 	tx_cmd->sta_id = sta_id;
+
+	/* padding is inserted later in transport */
+	if (ieee80211_hdrlen(fc) % 4 &&
+	    !(tx_cmd->offload_assist & cpu_to_le16(BIT(TX_CMD_OFFLD_AMSDU))))
+		tx_cmd->offload_assist |= cpu_to_le16(BIT(TX_CMD_OFFLD_PAD));
+
+	iwl_mvm_tx_csum(mvm, skb, hdr, info, tx_cmd);
 }
 
 /*
@@ -245,7 +360,7 @@ void iwl_mvm_set_tx_cmd_rate(struct iwl_mvm *mvm, struct iwl_tx_cmd *tx_cmd,
 				&mvm->nvm_data->bands[info->band], sta);
 
 	/* For 5 GHZ band, remap mac80211 rate indices into driver indices */
-	if (info->band == IEEE80211_BAND_5GHZ)
+	if (info->band == NL80211_BAND_5GHZ)
 		rate_idx += IWL_FIRST_OFDM_RATE;
 
 	/* For 2.4 GHZ band, check that there is no need to remap */
@@ -258,7 +373,7 @@ void iwl_mvm_set_tx_cmd_rate(struct iwl_mvm *mvm, struct iwl_tx_cmd *tx_cmd,
 		iwl_mvm_next_antenna(mvm, iwl_mvm_get_valid_tx_ant(mvm),
 				     mvm->mgmt_last_antenna_idx);
 
-	if (info->band == IEEE80211_BAND_2GHZ &&
+	if (info->band == NL80211_BAND_2GHZ &&
 	    !iwl_mvm_bt_coex_is_shared_ant_avail(mvm))
 		rate_flags = mvm->cfg->non_shared_ant << RATE_MCS_ANT_POS;
 	else
@@ -360,6 +475,21 @@ iwl_mvm_set_tx_params(struct iwl_mvm *mvm, struct sk_buff *skb,
 	return dev_cmd;
 }
 
+static int iwl_mvm_get_ctrl_vif_queue(struct iwl_mvm *mvm,
+				      struct ieee80211_tx_info *info, __le16 fc)
+{
+	if (iwl_mvm_is_dqa_supported(mvm)) {
+		if (info->control.vif->type == NL80211_IFTYPE_AP &&
+		    ieee80211_is_probe_resp(fc))
+			return IWL_MVM_DQA_AP_PROBE_RESP_QUEUE;
+		else if (ieee80211_is_mgmt(fc) &&
+			 info->control.vif->type == NL80211_IFTYPE_P2P_DEVICE)
+			return IWL_MVM_DQA_P2P_DEVICE_QUEUE;
+	}
+
+	return info->hw_queue;
+}
+
 int iwl_mvm_tx_skb_non_sta(struct iwl_mvm *mvm, struct sk_buff *skb)
 {
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
@@ -369,6 +499,7 @@ int iwl_mvm_tx_skb_non_sta(struct iwl_mvm *mvm, struct sk_buff *skb)
 	struct iwl_tx_cmd *tx_cmd;
 	u8 sta_id;
 	int hdrlen = ieee80211_hdrlen(hdr->frame_control);
+	int queue;
 
 	memcpy(&info, skb->cb, sizeof(info));
 
@@ -393,6 +524,8 @@ int iwl_mvm_tx_skb_non_sta(struct iwl_mvm *mvm, struct sk_buff *skb)
 	    info.control.vif->type == NL80211_IFTYPE_STATION)
 		IEEE80211_SKB_CB(skb)->hw_queue = mvm->aux_queue;
 
+	queue = info.hw_queue;
+
 	/*
 	 * If the interface on which the frame is sent is the P2P_DEVICE
 	 * or an AP/GO interface use the broadcast station associated
@@ -408,10 +541,12 @@ int iwl_mvm_tx_skb_non_sta(struct iwl_mvm *mvm, struct sk_buff *skb)
 			iwl_mvm_vif_from_mac80211(info.control.vif);
 
 		if (info.control.vif->type == NL80211_IFTYPE_P2P_DEVICE ||
-		    info.control.vif->type == NL80211_IFTYPE_AP)
+		    info.control.vif->type == NL80211_IFTYPE_AP) {
 			sta_id = mvmvif->bcast_sta.sta_id;
-		else if (info.control.vif->type == NL80211_IFTYPE_STATION &&
-			 is_multicast_ether_addr(hdr->addr1)) {
+			queue = iwl_mvm_get_ctrl_vif_queue(mvm, &info,
+							   hdr->frame_control);
+		} else if (info.control.vif->type == NL80211_IFTYPE_STATION &&
+			   is_multicast_ether_addr(hdr->addr1)) {
 			u8 ap_sta_id = ACCESS_ONCE(mvmvif->ap_sta_id);
 
 			if (ap_sta_id != IWL_MVM_STATION_COUNT)
@@ -419,7 +554,7 @@ int iwl_mvm_tx_skb_non_sta(struct iwl_mvm *mvm, struct sk_buff *skb)
 		}
 	}
 
-	IWL_DEBUG_TX(mvm, "station Id %d, queue=%d\n", sta_id, info.hw_queue);
+	IWL_DEBUG_TX(mvm, "station Id %d, queue=%d\n", sta_id, queue);
 
 	dev_cmd = iwl_mvm_set_tx_params(mvm, skb, &info, hdrlen, NULL, sta_id);
 	if (!dev_cmd)
@@ -430,7 +565,7 @@ int iwl_mvm_tx_skb_non_sta(struct iwl_mvm *mvm, struct sk_buff *skb)
 	/* Copy MAC header from skb into command buffer */
 	memcpy(tx_cmd->hdr, hdr, hdrlen);
 
-	if (iwl_trans_tx(mvm->trans, skb, dev_cmd, info.hw_queue)) {
+	if (iwl_trans_tx(mvm->trans, skb, dev_cmd, queue)) {
 		iwl_trans_free_tx_cmd(mvm->trans, dev_cmd);
 		return -1;
 	}
@@ -462,7 +597,7 @@ static int iwl_mvm_tx_mpdu(struct iwl_mvm *mvm, struct sk_buff *skb,
 	u16 seq_number = 0;
 	u8 tid = IWL_MAX_TID_COUNT;
 	u8 txq_id = info->hw_queue;
-	bool is_data_qos = false, is_ampdu = false;
+	bool is_ampdu = false;
 	int hdrlen;
 
 	mvmsta = iwl_mvm_sta_from_mac80211(sta);
@@ -503,8 +638,15 @@ static int iwl_mvm_tx_mpdu(struct iwl_mvm *mvm, struct sk_buff *skb,
 		seq_number &= IEEE80211_SCTL_SEQ;
 		hdr->seq_ctrl &= cpu_to_le16(IEEE80211_SCTL_FRAG);
 		hdr->seq_ctrl |= cpu_to_le16(seq_number);
-		is_data_qos = true;
 		is_ampdu = info->flags & IEEE80211_TX_CTL_AMPDU;
+	} else if (iwl_mvm_is_dqa_supported(mvm) &&
+		   (ieee80211_is_qos_nullfunc(fc) ||
+		    ieee80211_is_nullfunc(fc))) {
+		/*
+		 * nullfunc frames should go to the MGMT queue regardless of QOS
+		 */
+		tid = IWL_MAX_TID_COUNT;
+		txq_id = mvmsta->tid_data[tid].txq_id;
 	}
 
 	/* Copy MAC header from skb into command buffer */
@@ -525,18 +667,36 @@ static int iwl_mvm_tx_mpdu(struct iwl_mvm *mvm, struct sk_buff *skb,
 		txq_id = mvmsta->tid_data[tid].txq_id;
 	}
 
+	if (iwl_mvm_is_dqa_supported(mvm)) {
+		if (unlikely(mvmsta->tid_data[tid].txq_id ==
+			     IEEE80211_INVAL_HW_QUEUE)) {
+			iwl_mvm_tx_add_stream(mvm, mvmsta, tid, skb);
+
+			/*
+			 * The frame is now deferred, and the worker scheduled
+			 * will re-allocate it, so we can free it for now.
+			 */
+			iwl_trans_free_tx_cmd(mvm->trans, dev_cmd);
+			spin_unlock(&mvmsta->lock);
+			return 0;
+		}
+
+		txq_id = mvmsta->tid_data[tid].txq_id;
+	}
+
 	IWL_DEBUG_TX(mvm, "TX to [%d|%d] Q:%d - seq: 0x%x\n", mvmsta->sta_id,
 		     tid, txq_id, IEEE80211_SEQ_TO_SN(seq_number));
 
 	if (iwl_trans_tx(mvm->trans, skb, dev_cmd, txq_id))
 		goto drop_unlock_sta;
 
-	if (is_data_qos && !ieee80211_has_morefrags(fc))
+	if (tid < IWL_MAX_TID_COUNT && !ieee80211_has_morefrags(fc))
 		mvmsta->tid_data[tid].seq_number = seq_number + 0x10;
 
 	spin_unlock(&mvmsta->lock);
 
-	if (txq_id < mvm->first_agg_queue)
+	/* Increase pending frames count if this isn't AMPDU */
+	if (!is_ampdu)
 		atomic_inc(&mvm->pending_frames[mvmsta->sta_id]);
 
 	return 0;
@@ -689,7 +849,7 @@ const char *iwl_mvm_get_tx_fail_reason(u32 status)
 #endif /* CONFIG_IWLWIFI_DEBUG */
 
 void iwl_mvm_hwrate_to_tx_rate(u32 rate_n_flags,
-			       enum ieee80211_band band,
+			       enum nl80211_band band,
 			       struct ieee80211_tx_rate *r)
 {
 	if (rate_n_flags & RATE_HT_MCS_GF_MSK)
@@ -784,6 +944,7 @@ static void iwl_mvm_rx_tx_cmd_single(struct iwl_mvm *mvm,
 	u8 skb_freed = 0;
 	u16 next_reclaimed, seq_ctl;
 	bool is_ndp = false;
+	bool txq_agg = false; /* Is this TXQ aggregated */
 
 	__skb_queue_head_init(&skbs);
 
@@ -914,6 +1075,8 @@ static void iwl_mvm_rx_tx_cmd_single(struct iwl_mvm *mvm,
 			bool send_eosp_ndp = false;
 
 			spin_lock_bh(&mvmsta->lock);
+			txq_agg = (mvmsta->tid_data[tid].state == IWL_AGG_ON);
+
 			if (!is_ndp) {
 				tid_data->next_reclaimed = next_reclaimed;
 				IWL_DEBUG_TX_REPLY(mvm,
@@ -969,11 +1132,11 @@ static void iwl_mvm_rx_tx_cmd_single(struct iwl_mvm *mvm,
 	 * If the txq is not an AMPDU queue, there is no chance we freed
 	 * several skbs. Check that out...
 	 */
-	if (txq_id >= mvm->first_agg_queue)
+	if (txq_agg)
 		goto out;
 
 	/* We can't free more than one frame at once on a shared queue */
-	WARN_ON(skb_freed > 1);
+	WARN_ON(!iwl_mvm_is_dqa_supported(mvm) && (skb_freed > 1));
 
 	/* If we have still frames for this STA nothing to do here */
 	if (!atomic_sub_and_test(skb_freed, &mvm->pending_frames[sta_id]))
@@ -1067,9 +1230,12 @@ static void iwl_mvm_rx_tx_cmd_agg(struct iwl_mvm *mvm,
 	int sta_id = IWL_MVM_TX_RES_GET_RA(tx_resp->ra_tid);
 	int tid = IWL_MVM_TX_RES_GET_TID(tx_resp->ra_tid);
 	u16 sequence = le16_to_cpu(pkt->hdr.sequence);
-	struct ieee80211_sta *sta;
+	struct iwl_mvm_sta *mvmsta;
+	int queue = SEQ_TO_QUEUE(sequence);
 
-	if (WARN_ON_ONCE(SEQ_TO_QUEUE(sequence) < mvm->first_agg_queue))
+	if (WARN_ON_ONCE(queue < mvm->first_agg_queue &&
+			 (!iwl_mvm_is_dqa_supported(mvm) ||
+			  (queue != IWL_MVM_DQA_BSS_CLIENT_QUEUE))))
 		return;
 
 	if (WARN_ON_ONCE(tid == IWL_TID_NON_QOS))
@@ -1079,10 +1245,9 @@ static void iwl_mvm_rx_tx_cmd_agg(struct iwl_mvm *mvm,
 
 	rcu_read_lock();
 
-	sta = rcu_dereference(mvm->fw_id_to_mac_id[sta_id]);
+	mvmsta = iwl_mvm_sta_from_staid_rcu(mvm, sta_id);
 
-	if (!WARN_ON_ONCE(IS_ERR_OR_NULL(sta))) {
-		struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
+	if (!WARN_ON_ONCE(!mvmsta)) {
 		mvmsta->tid_data[tid].rate_n_flags =
 			le32_to_cpu(tx_resp->initial_rate);
 		mvmsta->tid_data[tid].tx_time =

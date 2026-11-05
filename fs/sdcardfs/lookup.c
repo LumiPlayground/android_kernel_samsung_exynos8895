@@ -361,10 +361,10 @@ put_name:
 	if (err && err != -ENOENT)
 		goto out;
 
-	mutex_lock(&lower_dir_dentry->d_inode->i_mutex);
+	inode_lock(lower_dir_dentry->d_inode);
 	lower_dentry = lookup_one_len(dentry->d_name.name, lower_dir_dentry,
 						dentry->d_name.len);
-	mutex_unlock(&lower_dir_dentry->d_inode->i_mutex);
+	inode_unlock(lower_dir_dentry->d_inode);
 	if (unlikely(IS_ERR(lower_dentry))) {
 		err =  PTR_ERR(lower_dentry);
 		goto out;

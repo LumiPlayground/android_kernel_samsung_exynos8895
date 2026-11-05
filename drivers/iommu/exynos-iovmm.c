@@ -528,8 +528,10 @@ dma_addr_t exynos_iovmm_map_userptr(struct device *dev, unsigned long vaddr,
 		prot |= IOMMU_PFNMAP;
 
 	/* non-cached user mapping should be treated as non-shareable mapping */
-	if ((pgprot_writecombine(vma->vm_page_prot) == vma->vm_page_prot) ||
-		(pgprot_noncached(vma->vm_page_prot) == vma->vm_page_prot))
+	if ((pgprot_val(pgprot_writecombine(vma->vm_page_prot)) ==
+	     pgprot_val(vma->vm_page_prot)) ||
+		(pgprot_val(pgprot_noncached(vma->vm_page_prot)) ==
+	     pgprot_val(vma->vm_page_prot)))
 		prot &= ~IOMMU_CACHE;
 
 	while (eaddr > vma->vm_end) {

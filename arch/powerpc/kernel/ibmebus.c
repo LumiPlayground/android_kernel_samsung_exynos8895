@@ -416,7 +416,7 @@ static ssize_t modalias_show(struct device *dev,
 	return len+1;
 }
 
-struct device_attribute ibmebus_bus_device_attrs[] = {
+static struct device_attribute ibmebus_bus_device_attrs[] = {
 	__ATTR_RO(devspec),
 	__ATTR_RO(name),
 	__ATTR_RO(modalias),
