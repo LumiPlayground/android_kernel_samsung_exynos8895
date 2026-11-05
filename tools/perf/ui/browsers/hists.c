@@ -1606,9 +1606,8 @@ static int hists_browser__scnprintf_hierarchy_headers(struct hist_browser *brows
 
 			ret = fmt->header(fmt, &dummy_hpp, hists_to_evsel(hists));
 			dummy_hpp.buf[ret] = '\0';
-			rtrim(dummy_hpp.buf);
 
-			start = ltrim(dummy_hpp.buf);
+			start = trim(dummy_hpp.buf);
 			ret = strlen(start);
 
 			if (start != dummy_hpp.buf)
@@ -1896,11 +1895,10 @@ static int hist_browser__fprintf_entry(struct hist_browser *browser,
 	bool first = true;
 	int ret;
 
-	if (symbol_conf.use_callchain)
+	if (symbol_conf.use_callchain) {
 		folded_sign = hist_entry__folded(he);
-
-	if (symbol_conf.use_callchain)
 		printed += fprintf(fp, "%c ", folded_sign);
+	}
 
 	hists__for_each_format(browser->hists, fmt) {
 		if (perf_hpp__should_skip(fmt, he->hists))
@@ -2136,7 +2134,7 @@ static int hists__browser_title(struct hists *hists,
 		printed += snprintf(bf + printed, size - printed,
 				    ", UID: %s", hists->uid_filter_str);
 	if (thread) {
-		if (sort__has_thread) {
+		if (hists__has(hists, thread)) {
 			printed += scnprintf(bf + printed, size - printed,
 				    ", Thread: %s(%d)",
 				     (thread->comm_set ? thread__comm_str(thread) : ""),
@@ -2321,7 +2319,8 @@ do_zoom_thread(struct hist_browser *browser, struct popup_action *act)
 {
 	struct thread *thread = act->thread;
 
-	if ((!sort__has_thread && !sort__has_comm) || thread == NULL)
+	if ((!hists__has(browser->hists, thread) &&
+	     !hists__has(browser->hists, comm)) || thread == NULL)
 		return 0;
 
 	if (browser->hists->thread_filter) {
@@ -2330,7 +2329,7 @@ do_zoom_thread(struct hist_browser *browser, struct popup_action *act)
 		thread__zput(browser->hists->thread_filter);
 		ui_helpline__pop();
 	} else {
-		if (sort__has_thread) {
+		if (hists__has(browser->hists, thread)) {
 			ui_helpline__fpush("To zoom out press ESC or ENTER + \"Zoom out of %s(%d) thread\"",
 					   thread->comm_set ? thread__comm_str(thread) : "",
 					   thread->tid);
@@ -2355,10 +2354,11 @@ add_thread_opt(struct hist_browser *browser, struct popup_action *act,
 {
 	int ret;
 
-	if ((!sort__has_thread && !sort__has_comm) || thread == NULL)
+	if ((!hists__has(browser->hists, thread) &&
+	     !hists__has(browser->hists, comm)) || thread == NULL)
 		return 0;
 
-	if (sort__has_thread) {
+	if (hists__has(browser->hists, thread)) {
 		ret = asprintf(optstr, "Zoom %s %s(%d) thread",
 			       browser->hists->thread_filter ? "out of" : "into",
 			       thread->comm_set ? thread__comm_str(thread) : "",
@@ -2381,7 +2381,7 @@ do_zoom_dso(struct hist_browser *browser, struct popup_action *act)
 {
 	struct map *map = act->ms.map;
 
-	if (!sort__has_dso || map == NULL)
+	if (!hists__has(browser->hists, dso) || map == NULL)
 		return 0;
 
 	if (browser->hists->dso_filter) {
@@ -2408,7 +2408,7 @@ static int
 add_dso_opt(struct hist_browser *browser, struct popup_action *act,
 	    char **optstr, struct map *map)
 {
-	if (!sort__has_dso || map == NULL)
+	if (!hists__has(browser->hists, dso) || map == NULL)
 		return 0;
 
 	if (asprintf(optstr, "Zoom %s %s DSO",
@@ -2430,10 +2430,10 @@ do_browse_map(struct hist_browser *browser __maybe_unused,
 }
 
 static int
-add_map_opt(struct hist_browser *browser __maybe_unused,
+add_map_opt(struct hist_browser *browser,
 	    struct popup_action *act, char **optstr, struct map *map)
 {
-	if (!sort__has_dso || map == NULL)
+	if (!hists__has(browser->hists, dso) || map == NULL)
 		return 0;
 
 	if (asprintf(optstr, "Browse map details") < 0)
@@ -2535,7 +2535,7 @@ add_exit_opt(struct hist_browser *browser __maybe_unused,
 static int
 do_zoom_socket(struct hist_browser *browser, struct popup_action *act)
 {
-	if (!sort__has_socket || act->socket < 0)
+	if (!hists__has(browser->hists, socket) || act->socket < 0)
 		return 0;
 
 	if (browser->hists->socket_filter > -1) {
@@ -2557,7 +2557,7 @@ static int
 add_socket_opt(struct hist_browser *browser, struct popup_action *act,
 	       char **optstr, int socket_id)
 {
-	if (!sort__has_socket || socket_id < 0)
+	if (!hists__has(browser->hists, socket) || socket_id < 0)
 		return 0;
 
 	if (asprintf(optstr, "Zoom %s Processor Socket %d",
@@ -2748,7 +2748,7 @@ static int perf_evsel__hists_browse(struct perf_evsel *evsel, int nr_events,
 			 */
 			goto out_free_stack;
 		case 'a':
-			if (!sort__has_sym) {
+			if (!hists__has(hists, sym)) {
 				ui_browser__warning(&browser->b, delay_secs * 2,
 			"Annotation is only available for symbolic views, "
 			"include \"sym*\" in --sort to use it.");
@@ -2911,7 +2911,7 @@ static int perf_evsel__hists_browse(struct perf_evsel *evsel, int nr_events,
 			continue;
 		}
 
-		if (!sort__has_sym || browser->selection == NULL)
+		if (!hists__has(hists, sym) || browser->selection == NULL)
 			goto skip_annotation;
 
 		if (sort__mode == SORT_MODE__BRANCH) {
@@ -2955,7 +2955,7 @@ skip_annotation:
 			goto skip_scripting;
 
 		if (browser->he_selection) {
-			if (sort__has_thread && thread) {
+			if (hists__has(hists, thread) && thread) {
 				nr_options += add_script_opt(browser,
 							     &actions[nr_options],
 							     &options[nr_options],
@@ -2970,7 +2970,7 @@ skip_annotation:
 			 *
 			 * See hist_browser__show_entry.
 			 */
-			if (sort__has_sym && browser->selection->sym) {
+			if (hists__has(hists, sym) && browser->selection->sym) {
 				nr_options += add_script_opt(browser,
 							     &actions[nr_options],
 							     &options[nr_options],

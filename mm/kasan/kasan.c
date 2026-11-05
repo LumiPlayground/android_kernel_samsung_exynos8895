@@ -458,6 +458,11 @@ size_t kasan_metadata_size(struct kmem_cache *cache)
 		sizeof(struct kasan_free_meta) : 0);
 }
 
+void kasan_cache_destroy(struct kmem_cache *cache)
+{
+	quarantine_remove_cache(cache);
+}
+
 void kasan_poison_slab(struct page *page)
 {
 	kasan_poison_shadow(page_address(page),
@@ -569,17 +574,6 @@ static void kasan_poison_slab_free(struct kmem_cache *cache, void *object)
 	/* RCU slabs could be legally used after free within the RCU period */
 	if (unlikely(cache->flags & SLAB_DESTROY_BY_RCU))
 		return;
-
-#ifdef CONFIG_SLAB
-	if (cache->flags & SLAB_KASAN) {
-		struct kasan_free_meta *free_info =
-			get_free_info(cache, object);
-		struct kasan_alloc_meta *alloc_info =
-			get_alloc_info(cache, object);
-		alloc_info->state = KASAN_STATE_FREE;
-		set_track(&free_info->track, GFP_NOWAIT);
-	}
-#endif
 
 	kasan_poison_shadow(object, rounded_up_size, KASAN_KMALLOC_FREE);
 }

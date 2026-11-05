@@ -1265,7 +1265,7 @@ static int decon_import_buffer(struct decon_device *decon, int idx,
 
 	regs->plane_cnt[idx] = dpu_get_plane_cnt(config->format);
 	for (i = 0; i < regs->plane_cnt[idx]; ++i) {
-		handle = ion_import_dma_buf(decon->ion_client, config->fd_idma[i]);
+		handle = ion_import_dma_buf_fd(decon->ion_client, config->fd_idma[i]);
 		if (IS_ERR(handle)) {
 			decon_err("failed to import fd:%d\n", config->fd_idma[i]);
 			ret = PTR_ERR(handle);

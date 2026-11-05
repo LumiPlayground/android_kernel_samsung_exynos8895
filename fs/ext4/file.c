@@ -174,7 +174,7 @@ ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	if (ret > 0) {
 		ssize_t err;
 
-		err = generic_write_sync(file, iocb->ki_pos - ret, ret);
+		err = generic_write_sync(iocb, ret);
 		if (err < 0)
 			ret = err;
 	}
@@ -570,7 +570,7 @@ static loff_t ext4_seek_data(struct file *file, loff_t offset, loff_t maxsize)
 
 	isize = i_size_read(inode);
 	if (offset < 0 || offset >= isize) {
-		mutex_unlock(&inode->i_mutex);
+		inode_unlock(inode);
 		return -ENXIO;
 	}
 
@@ -643,7 +643,7 @@ static loff_t ext4_seek_hole(struct file *file, loff_t offset, loff_t maxsize)
 
 	isize = i_size_read(inode);
 	if (offset < 0 || offset >= isize) {
-		mutex_unlock(&inode->i_mutex);
+		inode_unlock(inode);
 		return -ENXIO;
 	}
 

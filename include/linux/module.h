@@ -456,7 +456,11 @@ struct module {
 #endif
 
 #ifdef CONFIG_LIVEPATCH
+	bool klp; /* Is this a livepatch module? */
 	bool klp_alive;
+
+	/* Elf information */
+	struct klp_modinfo *klp_info;
 #endif
 
 #ifdef CONFIG_MODULE_UNLOAD
@@ -629,6 +633,18 @@ static inline bool module_requested_async_probing(struct module *module)
 {
 	return module && module->async_probe_requested;
 }
+
+#ifdef CONFIG_LIVEPATCH
+static inline bool is_livepatch_module(struct module *mod)
+{
+	return mod->klp;
+}
+#else /* !CONFIG_LIVEPATCH */
+static inline bool is_livepatch_module(struct module *mod)
+{
+	return false;
+}
+#endif /* CONFIG_LIVEPATCH */
 
 #else /* !CONFIG_MODULES... */
 

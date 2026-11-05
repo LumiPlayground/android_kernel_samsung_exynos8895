@@ -110,12 +110,12 @@ void setup_sdfat_xattr_handler(struct super_block *sb)
 	sb->s_xattr = sdfat_xattr_handlers;
 }
 #else /* LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0) */
-int sdfat_setxattr(struct dentry *dentry, const char *name, const void *value, size_t size, int flags)
+int sdfat_setxattr(struct dentry *dentry, struct inode *inode, const char *name, const void *value, size_t size, int flags)
 {
 	return __sdfat_xattr_check_support(name);
 }
 
-ssize_t sdfat_getxattr(struct dentry *dentry, const char *name, void *value, size_t size)
+ssize_t sdfat_getxattr(struct dentry *dentry, struct inode *inode, const char *name, void *value, size_t size)
 {
 	return __sdfat_getxattr(name, value, size);
 }
