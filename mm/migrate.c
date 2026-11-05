@@ -1108,6 +1108,8 @@ static ICE_noinline int unmap_and_move(new_page_t get_new_page,
 	}
 
 	rc = __unmap_and_move(page, newpage, force, mode);
+	if (rc == MIGRATEPAGE_SUCCESS)
+		set_page_owner_migrate_reason(newpage, reason);
 
 out:
 	if (rc != -EAGAIN) {

@@ -47,7 +47,7 @@ static struct kmem_cache *hashtable_entry_cachep;
 
 static unsigned int full_name_case_hash(const unsigned char *name, unsigned int len)
 {
-	unsigned long hash = init_name_hash();
+	unsigned long hash = init_name_hash(NULL);
 
 	while (len--)
 		hash = partial_name_hash(tolower(*name++), hash);

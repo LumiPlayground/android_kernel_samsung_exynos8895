@@ -194,6 +194,7 @@ struct verifier_env {
 	struct verifier_state_list **explored_states; /* search pruning optimization */
 	struct bpf_map *used_maps[MAX_USED_MAPS]; /* array of map's used by eBPF program */
 	u32 used_map_cnt;		/* number of used maps */
+	u32 id_gen;			/* used to generate unique reg IDs */
 	bool allow_ptr_leaks;
 };
 
@@ -664,6 +665,16 @@ static int check_map_access(struct verifier_env *env, u32 regno, int off,
 
 #define MAX_PACKET_OFF 0xffff
 
+static bool may_write_pkt_data(enum bpf_prog_type type)
+{
+	switch (type) {
+	case BPF_PROG_TYPE_XDP:
+		return true;
+	default:
+		return false;
+	}
+}
+
 static int check_packet_access(struct verifier_env *env, u32 regno, int off,
 			       int size)
 {
@@ -724,6 +735,7 @@ static int check_ptr_alignment(struct verifier_env *env, struct reg_state *reg,
 	switch (env->prog->type) {
 	case BPF_PROG_TYPE_SCHED_CLS:
 	case BPF_PROG_TYPE_SCHED_ACT:
+	case BPF_PROG_TYPE_XDP:
 		break;
 	default:
 		verbose("verifier is misconfigured\n");
@@ -816,8 +828,13 @@ static int check_mem_access(struct verifier_env *env, u32 regno, int off,
 			err = check_stack_read(state, off, size, value_regno);
 		}
 	} else if (state->regs[regno].type == PTR_TO_PACKET) {
-		if (t == BPF_WRITE) {
+		if (t == BPF_WRITE && !may_write_pkt_data(env->prog->type)) {
 			verbose("cannot write into packet\n");
+			return -EACCES;
+		}
+		if (t == BPF_WRITE && value_regno >= 0 &&
+		    is_pointer_value(env, value_regno)) {
+			verbose("R%d leaks addr into packet\n", value_regno);
 			return -EACCES;
 		}
 		err = check_packet_access(env, regno, off, size);
@@ -1285,7 +1302,7 @@ add_imm:
 		/* dst_reg stays as pkt_ptr type and since some positive
 		 * integer value was added to the pointer, increment its 'id'
 		 */
-		dst_reg->id++;
+		dst_reg->id = ++env->id_gen;
 
 		/* something was added to pkt_ptr, set range and off to zero */
 		dst_reg->off = 0;

@@ -7525,9 +7525,11 @@ struct lb_env {
  */
 static void move_task(struct task_struct *p, struct lb_env *env)
 {
+	p->on_rq = TASK_ON_RQ_MIGRATING;
 	deactivate_task(env->src_rq, p, 0);
 	set_task_cpu(p, env->dst_cpu);
 	activate_task(env->dst_rq, p, 0);
+	p->on_rq = TASK_ON_RQ_QUEUED;
 	check_preempt_curr(env->dst_rq, p, 0);
 }
 #endif

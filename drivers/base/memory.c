@@ -391,6 +391,7 @@ static ssize_t show_valid_zones(struct device *dev,
 	unsigned long valid_start, valid_end;
 	unsigned long nr_pages = PAGES_PER_SECTION * sections_per_block;
 	struct zone *zone;
+	int zone_shift = 0;
 
 	start_pfn = section_nr_to_pfn(mem->start_section_nr);
 	end_pfn = start_pfn + nr_pages;
@@ -415,7 +416,9 @@ static ssize_t show_valid_zones(struct device *dev,
 					zone->name, (zone - 1)->name);
 	}
 
-	return sprintf(buf, "%s\n", zone->name);
+	strcat(buf, "\n");
+
+	return strlen(buf);
 }
 static DEVICE_ATTR(valid_zones, 0444, show_valid_zones, NULL);
 #endif

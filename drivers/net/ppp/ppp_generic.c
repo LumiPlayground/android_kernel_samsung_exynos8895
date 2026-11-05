@@ -1313,12 +1313,11 @@ ppp_get_stats64(struct net_device *dev, struct rtnl_link_stats64 *stats64)
 	return stats64;
 }
 
-static struct lock_class_key ppp_tx_busylock;
 static int ppp_dev_init(struct net_device *dev)
 {
 	struct ppp *ppp;
 
-	dev->qdisc_tx_busylock = &ppp_tx_busylock;
+	netdev_lockdep_set_classes(dev);
 
 	ppp = netdev_priv(dev);
 	/* Let the netdevice take a reference on the ppp file. This ensures

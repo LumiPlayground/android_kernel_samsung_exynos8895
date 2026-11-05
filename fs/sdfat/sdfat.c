@@ -216,8 +216,7 @@ static int setattr_prepare(struct dentry *dentry, struct iattr *attr)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 8, 0)
 static inline void __sdfat_submit_bio_write(struct bio *bio)
 {
-	bio_set_op_attrs(bio, REQ_OP_WRITE, 0);
-	submit_bio(bio);
+	submit_bio(WRITE, bio);
 }
 
 static inline unsigned int __sdfat_full_name_hash(const struct dentry *dentry, const char *name, unsigned int len)

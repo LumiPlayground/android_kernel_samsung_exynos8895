@@ -528,8 +528,8 @@ static void s3c24xx_serial_stop_rx(struct uart_port *port)
 	if (rx_enabled(port)) {
 		dbg("s3c24xx_serial_stop_rx: port=%p\n", port);
 		if (s3c24xx_serial_has_interrupt_mask(port))
-			__set_bit(S3C64XX_UINTM_RXD,
-				portaddrl(port, S3C64XX_UINTM));
+			s3c24xx_set_bit(port, S3C64XX_UINTM_RXD,
+					S3C64XX_UINTM);
 		else
 			disable_irq_nosync(ourport->rx_irq);
 		rx_enabled(port) = 0;
@@ -2112,8 +2112,6 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	probe_index++;
-
 	dbg("%s: initialising port %p...\n", __func__, ourport);
 
 #ifdef CONFIG_ARM_EXYNOS_DEVFREQ
@@ -2262,6 +2260,8 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 
 	ourport->dbg_mode = 0;
 
+
+	probe_index++;
 
 	return 0;
 }

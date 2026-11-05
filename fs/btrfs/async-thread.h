@@ -21,6 +21,7 @@
 #define __BTRFS_ASYNC_THREAD_
 #include <linux/workqueue.h>
 
+struct btrfs_fs_info;
 struct btrfs_workqueue;
 /* Internal use only */
 struct __btrfs_workqueue;
@@ -67,7 +68,8 @@ BTRFS_WORK_HELPER_PROTO(scrubnc_helper);
 BTRFS_WORK_HELPER_PROTO(scrubparity_helper);
 
 
-struct btrfs_workqueue *btrfs_alloc_workqueue(const char *name,
+struct btrfs_workqueue *btrfs_alloc_workqueue(struct btrfs_fs_info *fs_info,
+					      const char *name,
 					      unsigned int flags,
 					      int limit_active,
 					      int thresh);

@@ -66,9 +66,8 @@ void fsnotify_destroy_group(struct fsnotify_group *group)
 	 */
 	fsnotify_group_stop_queueing(group);
 
-	/* clear all inode marks for this group */
-	fsnotify_clear_marks_by_group_flags(group,
-		FSNOTIFY_MARK_FLAG_INODE | FSNOTIFY_MARK_FLAG_VFSMOUNT);
+	/* clear all inode marks for this group, attach them to destroy_list */
+	fsnotify_detach_group_marks(group);
 
 	/*
 	 * Wait for fsnotify_mark_srcu period to end and free all marks in

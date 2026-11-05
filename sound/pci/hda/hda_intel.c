@@ -916,10 +916,10 @@ static int azx_resume(struct device *dev)
 	if (chip->disabled || hda->init_failed || !chip->running)
 		return 0;
 
-	if (chip->driver_caps & AZX_DCAPS_I915_POWERWELL
-		&& hda->need_i915_power) {
-		snd_hdac_display_power(azx_bus(chip), true);
-		snd_hdac_i915_set_bclk(azx_bus(chip));
+	if (chip->driver_caps & AZX_DCAPS_I915_POWERWELL) {
+		snd_hdac_display_power(bus, true);
+		if (hda->need_i915_power)
+			snd_hdac_i915_set_bclk(bus);
 	}
 
 	if (chip->msi)
@@ -1023,15 +1023,9 @@ static int azx_runtime_resume(struct device *dev)
 		return 0;
 
 	if (chip->driver_caps & AZX_DCAPS_I915_POWERWELL) {
-		bus = azx_bus(chip);
-		if (hda->need_i915_power) {
-			snd_hdac_display_power(bus, true);
+		snd_hdac_display_power(bus, true);
+		if (hda->need_i915_power)
 			snd_hdac_i915_set_bclk(bus);
-		} else {
-			/* toggle codec wakeup bit for STATESTS read */
-			snd_hdac_set_codec_wakeup(bus, true);
-			snd_hdac_set_codec_wakeup(bus, false);
-		}
 	}
 
 	/* Read STATESTS before controller reset */

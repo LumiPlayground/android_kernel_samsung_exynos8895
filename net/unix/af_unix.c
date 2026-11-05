@@ -769,6 +769,7 @@ static struct sock *unix_create1(struct net *net, struct socket *sock, int kern)
 	lockdep_set_class(&sk->sk_receive_queue.lock,
 				&af_unix_sk_receive_queue_lock_key);
 
+	sk->sk_allocation	= GFP_KERNEL_ACCOUNT;
 	sk->sk_write_space	= unix_write_space;
 	sk->sk_max_ack_backlog	= net->unx.sysctl_max_dgram_qlen;
 	sk->sk_destruct		= unix_sock_destructor;
@@ -2134,7 +2135,7 @@ static int unix_dgram_recvmsg(struct socket *sock, struct msghdr *msg,
 	} while (timeo &&
 		 !__skb_wait_for_more_packets(sk, &err, &timeo, last));
 
-	if (!skb) { /* implies readlock unlocked */
+	if (!skb) { /* implies iolock unlocked */
 		unix_state_lock(sk);
 		/* Signal EOF on disconnected non-blocking SEQPACKET socket. */
 		if (sk->sk_type == SOCK_SEQPACKET && err == -EAGAIN &&
