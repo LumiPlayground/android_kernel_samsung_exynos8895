@@ -5124,9 +5124,13 @@ static int abox_runtime_suspend(struct device *dev)
 
 static int abox_runtime_resume(struct device *dev)
 {
+	int ret;
+
 	dev_info(dev, "%s\n", __func__);
 
-	return abox_enable(dev);
+	ret = abox_enable(dev);
+	/* Firmware arrives asynchronously; the register interface is ready. */
+	return ret == -EAGAIN ? 0 : ret;
 }
 
 static int abox_suspend(struct device *dev)
