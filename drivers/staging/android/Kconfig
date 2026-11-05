@@ -58,7 +58,7 @@ config SYNC
 	  synchronization built into devices like GPUs.
 
 config SW_SYNC
-	bool "Software synchronization objects"
+	bool "Software synchronization framework"
 	default n
 	depends on SYNC
 	---help---

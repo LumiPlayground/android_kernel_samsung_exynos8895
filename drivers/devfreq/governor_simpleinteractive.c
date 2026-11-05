@@ -231,11 +231,11 @@ out:
 #ifdef CONFIG_EXYNOS_WD_DVFS
 	if (df->profile->get_dev_status) {
 		unsigned long expires = jiffies;
-		mod_timer_pinned(&data->freq_timer, expires +
+		mod_timer(&data->freq_timer, expires +
 			msecs_to_jiffies(data->min_sample_time * 2));
 		if (*freq > df->min_freq) {
 			/* timer is bound to cpu0 */
-			mod_timer_pinned(&data->freq_slack_timer, expires +
+			mod_timer(&data->freq_slack_timer, expires +
 					 msecs_to_jiffies(data->hold_sample_time));
 		} else if (timer_pending(&data->freq_slack_timer)) {
 			del_timer(&data->freq_slack_timer);
@@ -309,11 +309,11 @@ static int devfreq_simple_interactive_register_notifier(struct devfreq *df)
 	data->freq_timer.data = (unsigned long)data;
 	data->freq_timer.function = simple_interactive_timer;
 #ifdef CONFIG_EXYNOS_WD_DVFS
-	init_timer_deferrable(&data->freq_timer);
+	init_timer_pinned_deferrable(&data->freq_timer);
 	data->freq_slack_timer.function = simple_interactive_nop_timer;
-	init_timer(&data->freq_slack_timer);
+	init_timer_pinned(&data->freq_slack_timer);
 #else
-	init_timer(&data->freq_timer);
+	init_timer_pinned(&data->freq_timer);
 #endif
 
 	data->change_freq_task = kthread_create(devfreq_change_freq_task, df, "simpleinteractive");

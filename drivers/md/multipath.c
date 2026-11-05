@@ -141,7 +141,7 @@ static void multipath_make_request(struct mddev *mddev, struct bio * bio)
 	return;
 }
 
-static void multipath_status (struct seq_file *seq, struct mddev *mddev)
+static void multipath_status(struct seq_file *seq, struct mddev *mddev)
 {
 	struct mpconf *conf = mddev->private;
 	int i;

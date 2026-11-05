@@ -24,7 +24,7 @@
  * (host controller _Structural_ parameters)
  * see EHCI spec, Table 2-4 for each value
  */
-static void dbg_hcs_params (struct ehci_hcd *ehci, char *label)
+static void dbg_hcs_params(struct ehci_hcd *ehci, char *label)
 {
 	u32	params = ehci_readl(ehci, &ehci->caps->hcs_params);
 
@@ -68,7 +68,7 @@ static inline void dbg_hcs_params (struct ehci_hcd *ehci, char *label) {}
  * (host controller _Capability_ parameters)
  * see EHCI Spec, Table 2-5 for each value
  * */
-static void dbg_hcc_params (struct ehci_hcd *ehci, char *label)
+static void dbg_hcc_params(struct ehci_hcd *ehci, char *label)
 {
 	u32	params = ehci_readl(ehci, &ehci->caps->hcc_params);
 
@@ -1054,7 +1054,7 @@ static int debug_registers_open(struct inode *inode, struct file *file)
 	return file->private_data ? 0 : -ENOMEM;
 }
 
-static inline void create_debug_files (struct ehci_hcd *ehci)
+static inline void create_debug_files(struct ehci_hcd *ehci)
 {
 	struct usb_bus *bus = &ehci_to_hcd(ehci)->self;
 
@@ -1084,7 +1084,7 @@ file_error:
 	debugfs_remove_recursive(ehci->debug_dir);
 }
 
-static inline void remove_debug_files (struct ehci_hcd *ehci)
+static inline void remove_debug_files(struct ehci_hcd *ehci)
 {
 	debugfs_remove_recursive(ehci->debug_dir);
 }

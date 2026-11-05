@@ -573,7 +573,7 @@ static struct notifier_block nb_hardlockup_block = {
 	.notifier_call = exynos4_mct_hardlockup_handler,
 };
 
-static void __init exynos4_timer_resources(struct device_node *np, void __iomem *base)
+static int __init exynos4_timer_resources(struct device_node *np, void __iomem *base)
 {
 	int err;
 	struct mct_clock_event_device *mevt = this_cpu_ptr(&percpu_mct_tick);
@@ -611,15 +611,17 @@ static void __init exynos4_timer_resources(struct device_node *np, void __iomem 
 
 	/* Immediately configure the timer on the boot CPU */
 	exynos4_local_timer_setup(mevt);
-	return;
+	return 0;
 
 out_irq:
 	free_percpu_irq(mct_irqs[MCT_L0_IRQ], &percpu_mct_tick);
+	return err;
 }
 
-static void __init mct_init_dt(struct device_node *np, unsigned int int_type)
+static int __init mct_init_dt(struct device_node *np, unsigned int int_type)
 {
 	u32 nr_irqs, i;
+	int ret;
 
 	mct_int_type = int_type;
 
@@ -641,22 +643,25 @@ static void __init mct_init_dt(struct device_node *np, unsigned int int_type)
 	for (i = MCT_L0_IRQ; i < nr_irqs; i++)
 		mct_irqs[i] = irq_of_parse_and_map(np, i);
 
-	exynos4_timer_resources(np, of_iomap(np, 0));
+	ret = exynos4_timer_resources(np, of_iomap(np, 0));
+	if (ret)
+		return ret;
 	exynos4_clocksource_init();
 	exynos4_clockevent_init();
 
 #ifdef CONFIG_SEC_BOOTSTAT
 	sec_bootstat_mct_start(exynos4_read_count_64());
 #endif
+	return 0;
 }
 
 
-static void __init mct_init_spi(struct device_node *np)
+static int __init mct_init_spi(struct device_node *np)
 {
 	return mct_init_dt(np, MCT_INT_SPI);
 }
 
-static void __init mct_init_ppi(struct device_node *np)
+static int __init mct_init_ppi(struct device_node *np)
 {
 	return mct_init_dt(np, MCT_INT_PPI);
 }

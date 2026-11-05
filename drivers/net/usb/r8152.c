@@ -7409,6 +7409,10 @@ static int rtl8152_probe(struct usb_interface *intf,
 	tp->speed = tp->mii.supports_gmii ? SPEED_1000 : SPEED_100;
 	tp->duplex = DUPLEX_FULL;
 
+	tp->autoneg = AUTONEG_ENABLE;
+	tp->speed = tp->mii.supports_gmii ? SPEED_1000 : SPEED_100;
+	tp->duplex = DUPLEX_FULL;
+
 	intf->needs_remote_wakeup = 1;
 
 	tp->rtl_ops.init(tp);

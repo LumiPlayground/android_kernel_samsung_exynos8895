@@ -139,7 +139,6 @@ static int ping_v6_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 	pfh.family = AF_INET6;
 
 	ipc6.hlimit = ip6_sk_dst_hoplimit(np, &fl6, dst);
-	ipc6.tclass = np->tclass;
 	ipc6.dontfrag = np->dontfrag;
 	ipc6.opt = NULL;
 

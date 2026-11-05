@@ -1203,19 +1203,27 @@ static int samsung_pinctrl_probe(struct platform_device *pdev)
 
 	drvdata->pinctrl = devm_pinctrl_get(dev);
 	if (IS_ERR(drvdata->pinctrl)) {
-		dev_err(dev, "could not get pinctrl\n");
-		return PTR_ERR(drvdata->pinctrl);
+		ret = PTR_ERR(drvdata->pinctrl);
+		if (ret != -ENODEV) {
+			dev_err(dev, "could not get pinctrl\n");
+			samsung_gpiolib_unregister(pdev, drvdata);
+			return ret;
+		}
+
+		/* A controller need not have consumer states of its own. */
+		drvdata->pins_default = ERR_PTR(-ENODEV);
+		drvdata->pins_sleep = ERR_PTR(-ENODEV);
+	} else {
+		drvdata->pins_default = pinctrl_lookup_state(drvdata->pinctrl,
+						     PINCTRL_STATE_DEFAULT);
+		if (IS_ERR(drvdata->pins_default))
+			dev_dbg(dev, "could not get default pinstate\n");
+
+		drvdata->pins_sleep = pinctrl_lookup_state(drvdata->pinctrl,
+						   PINCTRL_STATE_SLEEP);
+		if (IS_ERR(drvdata->pins_sleep))
+			dev_dbg(dev, "could not get sleep pinstate\n");
 	}
-
-	drvdata->pins_default = pinctrl_lookup_state(drvdata->pinctrl,
-						 PINCTRL_STATE_DEFAULT);
-	if (IS_ERR(drvdata->pins_default))
-		dev_dbg(dev, "could not get default pinstate\n");
-
-	drvdata->pins_sleep = pinctrl_lookup_state(drvdata->pinctrl,
-					      PINCTRL_STATE_SLEEP);
-	if (IS_ERR(drvdata->pins_sleep))
-		dev_dbg(dev, "could not get sleep pinstate\n");
 
 	if (ctrl->eint_gpio_init)
 		ctrl->eint_gpio_init(drvdata);
@@ -1345,7 +1353,8 @@ static void samsung_pinctrl_resume_dev(struct samsung_pinctrl_drv_data *drvdata)
 	}
 
 	/* For changing state without writing register. */
-	drvdata->pinctrl->state = drvdata->pins_default;
+	if (!IS_ERR(drvdata->pinctrl))
+		drvdata->pinctrl->state = drvdata->pins_default;
 }
 
 /**
