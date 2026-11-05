@@ -80,6 +80,8 @@ config FILE_LOCKING
 
 source "fs/crypto/Kconfig"
 
+source "fs/crypto/Kconfig"
+
 source "fs/notify/Kconfig"
 
 source "fs/quota/Kconfig"
@@ -204,6 +206,7 @@ menuconfig MISC_FILESYSTEMS
 
 if MISC_FILESYSTEMS
 
+source "fs/orangefs/Kconfig"
 source "fs/adfs/Kconfig"
 source "fs/affs/Kconfig"
 source "fs/ecryptfs/Kconfig"

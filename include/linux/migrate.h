@@ -24,8 +24,12 @@ enum migrate_reason {
 	MR_MEMPOLICY_MBIND,
 	MR_NUMA_MISPLACED,
 	MR_CMA,
-	MR_HPA
+	MR_HPA,
+	MR_TYPES
 };
+
+/* In mm/debug.c; also keep sync with include/trace/events/migrate.h */
+extern char *migrate_reason_names[MR_TYPES];
 
 #ifdef CONFIG_MIGRATION
 

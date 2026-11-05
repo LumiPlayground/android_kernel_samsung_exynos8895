@@ -528,12 +528,12 @@ struct cmucal_clkout {
 		.kdiv	=	(_k),			\
 	}
 
-#define to_clk_fixed_rate(_clk)		container_of(_clk, struct cmucal_clk_fixed_rate, clk)
-#define to_clk_fixed_factor(_clk)	container_of(_clk, struct cmucal_clk_fixed_factor, clk)
+#define to_cal_clk_fixed_rate(_clk)		container_of(_clk, struct cmucal_clk_fixed_rate, clk)
+#define to_cal_clk_fixed_factor(_clk)	container_of(_clk, struct cmucal_clk_fixed_factor, clk)
 #define to_clk_pll(_clk)		container_of(_clk, struct cmucal_pll, clk)
-#define to_clk_mux(_clk)		container_of(_clk, struct cmucal_mux, clk)
+#define to_cal_clk_mux(_clk)		container_of(_clk, struct cmucal_mux, clk)
 #define to_clk_div(_clk)		container_of(_clk, struct cmucal_div, clk)
-#define to_clk_gate(_clk)		container_of(_clk, struct cmucal_gate, clk)
+#define to_cal_clk_gate(_clk)		container_of(_clk, struct cmucal_gate, clk)
 #define to_clkout(_clk)			container_of(_clk, struct cmucal_clkout, clk)
 
 extern unsigned int cmucal_get_list_size(unsigned int type);

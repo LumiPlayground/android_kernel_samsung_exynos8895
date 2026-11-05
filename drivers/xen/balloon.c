@@ -42,7 +42,6 @@
 #include <linux/kernel.h>
 #include <linux/sched.h>
 #include <linux/errno.h>
-#include <linux/module.h>
 #include <linux/mm.h>
 #include <linux/bootmem.h>
 #include <linux/pagemap.h>
@@ -151,6 +150,8 @@ static DECLARE_WAIT_QUEUE_HEAD(balloon_wq);
 /* Main work function, always executed in process context. */
 static void balloon_process(struct work_struct *work);
 static DECLARE_DELAYED_WORK(balloon_worker, balloon_process);
+
+static void release_memory_resource(struct resource *resource);
 
 /* When ballooning out (allocating memory to return to Xen) we don't really
    want the kernel to try too hard since that can trigger the oom killer. */
@@ -270,7 +271,7 @@ static struct resource *additional_memory_resource(phys_addr_t size)
 		return NULL;
 
 	res->name = "System RAM";
-	res->flags = IORESOURCE_MEM | IORESOURCE_BUSY;
+	res->flags = IORESOURCE_SYSTEM_RAM | IORESOURCE_BUSY;
 
 	ret = allocate_resource(&iomem_resource, res,
 				size, 0, -1,
@@ -352,7 +353,16 @@ static enum bp_state reserve_additional_memory(void)
 	}
 #endif
 
-	rc = add_memory_resource(nid, resource);
+	/*
+	 * add_memory_resource() will call online_pages() which in its turn
+	 * will call xen_online_page() callback causing deadlock if we don't
+	 * release balloon_mutex here. Unlocking here is safe because the
+	 * callers drop the mutex before trying again.
+	 */
+	mutex_unlock(&balloon_mutex);
+	rc = add_memory_resource(nid, resource, memhp_auto_online);
+	mutex_lock(&balloon_mutex);
+
 	if (rc) {
 		pr_warn("Cannot add additional memory (%i)\n", rc);
 		goto err;
@@ -765,7 +775,4 @@ static int __init balloon_init(void)
 
 	return 0;
 }
-
 subsys_initcall(balloon_init);
-
-MODULE_LICENSE("GPL");

@@ -1555,6 +1555,7 @@ static int vsock_stream_sendmsg(struct socket *sock, struct msghdr *msg,
 	if (err < 0)
 		goto out;
 
+
 	while (total_written < len) {
 		ssize_t written;
 

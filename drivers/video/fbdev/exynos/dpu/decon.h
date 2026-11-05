@@ -791,6 +791,8 @@ struct dpu_size_info {
 	u32 h_out;
 };
 
+#define ACQUIRE_FENCE_LEN 40
+
 #ifdef CONFIG_DECON_EVENT_LOG
 /**
  * Display Subsystem event management status.
@@ -866,7 +868,6 @@ typedef enum dpu_event_type {
 } dpu_event_t;
 
 /* Related with Fence */
-#define ACQUIRE_FENCE_LEN 40
 #define RELEASE_FENCE_LEN 32
 
 struct disp_log_fence {
@@ -952,8 +953,8 @@ void decon_destroy_debugfs(struct decon_device *decon);
 #define DPU_EVENT_LOG_FENCE(...) do { } while (0)
 #define DPU_EVENT_LOG_CMD(...) do { } while(0)
 #define DPU_EVENT_SHOW(...) do { } while(0)
-#define decon_create_debugfs(...) do { } while(0)
-#define decon_destroy_debugfs(..) do { } while(0)
+#define decon_create_debugfs(...) (0)
+#define decon_destroy_debugfs(...) do { } while(0)
 #endif
 
 struct decon_resources {

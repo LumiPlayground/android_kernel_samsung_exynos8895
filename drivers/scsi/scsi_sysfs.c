@@ -82,6 +82,35 @@ const char *scsi_host_state_name(enum scsi_host_state state)
 	return name;
 }
 
+#ifdef CONFIG_SCSI_DH
+static const struct {
+	unsigned char	value;
+	char		*name;
+} sdev_access_states[] = {
+	{ SCSI_ACCESS_STATE_OPTIMAL, "active/optimized" },
+	{ SCSI_ACCESS_STATE_ACTIVE, "active/non-optimized" },
+	{ SCSI_ACCESS_STATE_STANDBY, "standby" },
+	{ SCSI_ACCESS_STATE_UNAVAILABLE, "unavailable" },
+	{ SCSI_ACCESS_STATE_LBA, "lba-dependent" },
+	{ SCSI_ACCESS_STATE_OFFLINE, "offline" },
+	{ SCSI_ACCESS_STATE_TRANSITIONING, "transitioning" },
+};
+
+static const char *scsi_access_state_name(unsigned char state)
+{
+	int i;
+	char *name = NULL;
+
+	for (i = 0; i < ARRAY_SIZE(sdev_access_states); i++) {
+		if (sdev_access_states[i].value == state) {
+			name = sdev_access_states[i].name;
+			break;
+		}
+	}
+	return name;
+}
+#endif
+
 static int check_set(unsigned long long *val, char *src)
 {
 	char *last;
@@ -200,7 +229,7 @@ show_shost_state(struct device *dev, struct device_attribute *attr, char *buf)
 }
 
 /* DEVICE_ATTR(state) clashes with dev_attr_state for sdev */
-struct device_attribute dev_attr_hstate =
+static struct device_attribute dev_attr_hstate =
 	__ATTR(state, S_IRUGO | S_IWUSR, show_shost_state, store_shost_state);
 
 static ssize_t
@@ -386,7 +415,7 @@ static struct attribute *scsi_sysfs_shost_attrs[] = {
 	NULL
 };
 
-struct attribute_group scsi_shost_attr_group = {
+static struct attribute_group scsi_shost_attr_group = {
 	.attrs =	scsi_sysfs_shost_attrs,
 };
 
@@ -985,6 +1014,43 @@ sdev_store_dh_state(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR(dh_state, S_IRUGO | S_IWUSR, sdev_show_dh_state,
 		   sdev_store_dh_state);
+
+static ssize_t
+sdev_show_access_state(struct device *dev,
+		       struct device_attribute *attr,
+		       char *buf)
+{
+	struct scsi_device *sdev = to_scsi_device(dev);
+	unsigned char access_state;
+	const char *access_state_name;
+
+	if (!sdev->handler)
+		return -EINVAL;
+
+	access_state = (sdev->access_state & SCSI_ACCESS_STATE_MASK);
+	access_state_name = scsi_access_state_name(access_state);
+
+	return sprintf(buf, "%s\n",
+		       access_state_name ? access_state_name : "unknown");
+}
+static DEVICE_ATTR(access_state, S_IRUGO, sdev_show_access_state, NULL);
+
+static ssize_t
+sdev_show_preferred_path(struct device *dev,
+			 struct device_attribute *attr,
+			 char *buf)
+{
+	struct scsi_device *sdev = to_scsi_device(dev);
+
+	if (!sdev->handler)
+		return -EINVAL;
+
+	if (sdev->access_state & SCSI_ACCESS_STATE_PREFERRED)
+		return sprintf(buf, "1\n");
+	else
+		return sprintf(buf, "0\n");
+}
+static DEVICE_ATTR(preferred_path, S_IRUGO, sdev_show_preferred_path, NULL);
 #endif
 
 static ssize_t
@@ -1032,7 +1098,31 @@ static umode_t scsi_sdev_attr_is_visible(struct kobject *kobj,
 	    !sdev->host->hostt->change_queue_depth)
 		return 0;
 
+#ifdef CONFIG_SCSI_DH
+	if (attr == &dev_attr_access_state.attr &&
+	    !sdev->handler)
+		return 0;
+	if (attr == &dev_attr_preferred_path.attr &&
+	    !sdev->handler)
+		return 0;
+#endif
 	return attr->mode;
+}
+
+static umode_t scsi_sdev_bin_attr_is_visible(struct kobject *kobj,
+					     struct bin_attribute *attr, int i)
+{
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct scsi_device *sdev = to_scsi_device(dev);
+
+
+	if (attr == &dev_attr_vpd_pg80 && !sdev->vpd_pg80)
+		return 0;
+
+	if (attr == &dev_attr_vpd_pg83 && !sdev->vpd_pg83)
+		return 0;
+
+	return S_IRUGO;
 }
 
 /* Default template for device attributes.  May NOT be modified */
@@ -1059,6 +1149,8 @@ static struct attribute *scsi_sdev_attrs[] = {
 	&dev_attr_wwid.attr,
 #ifdef CONFIG_SCSI_DH
 	&dev_attr_dh_state.attr,
+	&dev_attr_access_state.attr,
+	&dev_attr_preferred_path.attr,
 #endif
 	&dev_attr_queue_ramp_up_period.attr,
 	REF_EVT(media_change),
@@ -1080,6 +1172,7 @@ static struct attribute_group scsi_sdev_attr_group = {
 	.attrs =	scsi_sdev_attrs,
 	.bin_attrs =	scsi_sdev_bin_attrs,
 	.is_visible =	scsi_sdev_attr_is_visible,
+	.is_bin_visible = scsi_sdev_bin_attr_is_visible,
 };
 
 static const struct attribute_group *scsi_sdev_attr_groups[] = {
@@ -1136,13 +1229,6 @@ int scsi_sysfs_add_sdev(struct scsi_device *sdev)
 
 	scsi_autopm_get_device(sdev);
 
-	error = device_add(&sdev->sdev_gendev);
-	if (error) {
-		sdev_printk(KERN_INFO, sdev,
-				"failed to add device: %d\n", error);
-		return error;
-	}
-
 	error = scsi_dh_add_device(sdev);
 	if (error)
 		/*
@@ -1150,6 +1236,14 @@ int scsi_sysfs_add_sdev(struct scsi_device *sdev)
 		 */
 		sdev_printk(KERN_INFO, sdev,
 				"failed to add device handler: %d\n", error);
+
+	error = device_add(&sdev->sdev_gendev);
+	if (error) {
+		sdev_printk(KERN_INFO, sdev,
+				"failed to add device: %d\n", error);
+		scsi_dh_remove_device(sdev);
+		return error;
+	}
 
 	error = device_add(&sdev->sdev_dev);
 	if (error) {

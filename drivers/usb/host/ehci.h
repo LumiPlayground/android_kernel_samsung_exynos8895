@@ -271,11 +271,11 @@ struct ehci_hcd {			/* one per controller */
 };
 
 /* convert between an HCD pointer and the corresponding EHCI_HCD */
-static inline struct ehci_hcd *hcd_to_ehci (struct usb_hcd *hcd)
+static inline struct ehci_hcd *hcd_to_ehci(struct usb_hcd *hcd)
 {
 	return (struct ehci_hcd *) (hcd->hcd_priv);
 }
-static inline struct usb_hcd *ehci_to_hcd (struct ehci_hcd *ehci)
+static inline struct usb_hcd *ehci_to_hcd(struct ehci_hcd *ehci)
 {
 	return container_of ((void *) ehci, struct usb_hcd, hcd_priv);
 }
@@ -809,7 +809,7 @@ static inline void set_ohci_hcfs(struct ehci_hcd *ehci, int operational)
 #define ehci_big_endian_desc(e)		((e)->big_endian_desc)
 
 /* cpu to ehci */
-static inline __hc32 cpu_to_hc32 (const struct ehci_hcd *ehci, const u32 x)
+static inline __hc32 cpu_to_hc32(const struct ehci_hcd *ehci, const u32 x)
 {
 	return ehci_big_endian_desc(ehci)
 		? (__force __hc32)cpu_to_be32(x)
@@ -817,14 +817,14 @@ static inline __hc32 cpu_to_hc32 (const struct ehci_hcd *ehci, const u32 x)
 }
 
 /* ehci to cpu */
-static inline u32 hc32_to_cpu (const struct ehci_hcd *ehci, const __hc32 x)
+static inline u32 hc32_to_cpu(const struct ehci_hcd *ehci, const __hc32 x)
 {
 	return ehci_big_endian_desc(ehci)
 		? be32_to_cpu((__force __be32)x)
 		: le32_to_cpu((__force __le32)x);
 }
 
-static inline u32 hc32_to_cpup (const struct ehci_hcd *ehci, const __hc32 *x)
+static inline u32 hc32_to_cpup(const struct ehci_hcd *ehci, const __hc32 *x)
 {
 	return ehci_big_endian_desc(ehci)
 		? be32_to_cpup((__force __be32 *)x)
@@ -834,18 +834,18 @@ static inline u32 hc32_to_cpup (const struct ehci_hcd *ehci, const __hc32 *x)
 #else
 
 /* cpu to ehci */
-static inline __hc32 cpu_to_hc32 (const struct ehci_hcd *ehci, const u32 x)
+static inline __hc32 cpu_to_hc32(const struct ehci_hcd *ehci, const u32 x)
 {
 	return cpu_to_le32(x);
 }
 
 /* ehci to cpu */
-static inline u32 hc32_to_cpu (const struct ehci_hcd *ehci, const __hc32 x)
+static inline u32 hc32_to_cpu(const struct ehci_hcd *ehci, const __hc32 x)
 {
 	return le32_to_cpu(x);
 }
 
-static inline u32 hc32_to_cpup (const struct ehci_hcd *ehci, const __hc32 *x)
+static inline u32 hc32_to_cpup(const struct ehci_hcd *ehci, const __hc32 *x)
 {
 	return le32_to_cpup(x);
 }

@@ -34,7 +34,7 @@
  * pre-calculated schedule data to make appending to the queue be quick.
  */
 
-static int ehci_get_frame (struct usb_hcd *hcd);
+static int ehci_get_frame(struct usb_hcd *hcd);
 
 /*
  * periodic_next_shadow - return "next" pointer on shadow list
@@ -73,7 +73,7 @@ shadow_next_periodic(struct ehci_hcd *ehci, union ehci_shadow *periodic,
 }
 
 /* caller must hold ehci->lock */
-static void periodic_unlink (struct ehci_hcd *ehci, unsigned frame, void *ptr)
+static void periodic_unlink(struct ehci_hcd *ehci, unsigned frame, void *ptr)
 {
 	union ehci_shadow	*prev_p = &ehci->pshadow[frame];
 	__hc32			*hw_p = &ehci->periodic[frame];
@@ -375,7 +375,7 @@ static inline void carryover_tt_bandwidth(unsigned short tt_usecs[8])
  * limit of 16, specified in USB 2.0 spec section 11.18.4 requirement #4,
  * since proper scheduling limits ssplits to less than 16 per uframe.
  */
-static int tt_available (
+static int tt_available(
 	struct ehci_hcd		*ehci,
 	struct ehci_per_sched	*ps,
 	struct ehci_tt		*tt,
@@ -435,7 +435,7 @@ static int tt_available (
  * for a periodic transfer starting at the specified frame, using
  * all the uframes in the mask.
  */
-static int tt_no_collision (
+static int tt_no_collision(
 	struct ehci_hcd		*ehci,
 	unsigned		period,
 	struct usb_device	*dev,
@@ -763,7 +763,7 @@ static void end_unlink_intr(struct ehci_hcd *ehci, struct ehci_qh *qh)
 
 /*-------------------------------------------------------------------------*/
 
-static int check_period (
+static int check_period(
 	struct ehci_hcd *ehci,
 	unsigned	frame,
 	unsigned	uframe,
@@ -789,7 +789,7 @@ static int check_period (
 	return 1;
 }
 
-static int check_intr_schedule (
+static int check_intr_schedule(
 	struct ehci_hcd		*ehci,
 	unsigned		frame,
 	unsigned		uframe,
@@ -925,7 +925,7 @@ done:
 	return status;
 }
 
-static int intr_submit (
+static int intr_submit(
 	struct ehci_hcd		*ehci,
 	struct urb		*urb,
 	struct list_head	*qtd_list,
@@ -1936,7 +1936,7 @@ done:
 
 /*-------------------------------------------------------------------------*/
 
-static int itd_submit (struct ehci_hcd *ehci, struct urb *urb,
+static int itd_submit(struct ehci_hcd *ehci, struct urb *urb,
 	gfp_t mem_flags)
 {
 	int			status = -EINVAL;
@@ -2316,7 +2316,7 @@ done:
 }
 
 
-static int sitd_submit (struct ehci_hcd *ehci, struct urb *urb,
+static int sitd_submit(struct ehci_hcd *ehci, struct urb *urb,
 	gfp_t mem_flags)
 {
 	int			status = -EINVAL;

@@ -399,13 +399,8 @@ static int pty_common_install(struct tty_driver *driver, struct tty_struct *tty,
 	if (legacy) {
 		/* We always use new tty termios data so we can do this
 		   the easy way .. */
-		retval = tty_init_termios(tty);
-		if (retval)
-			goto err_deinit_tty;
-
-		retval = tty_init_termios(o_tty);
-		if (retval)
-			goto err_free_termios;
+		tty_init_termios(tty);
+		tty_init_termios(o_tty);
 
 		driver->other->ttys[idx] = o_tty;
 		driver->ttys[idx] = tty;
@@ -437,12 +432,6 @@ static int pty_common_install(struct tty_driver *driver, struct tty_struct *tty,
 	tty->count++;
 	o_tty->count++;
 	return 0;
-err_free_termios:
-	if (legacy)
-		tty_free_termios(tty);
-err_deinit_tty:
-	deinitialize_tty_struct(o_tty);
-	free_tty_struct(o_tty);
 err_put_module:
 	module_put(driver->other->owner);
 err:
@@ -630,7 +619,7 @@ static int pty_unix98_ioctl(struct tty_struct *tty,
  */
 
 static struct tty_struct *ptm_unix98_lookup(struct tty_driver *driver,
-		struct inode *ptm_inode, int idx)
+		struct file *file, int idx)
 {
 	/* Master must be open via /dev/ptmx */
 	return ERR_PTR(-EIO);
@@ -646,12 +635,12 @@ static struct tty_struct *ptm_unix98_lookup(struct tty_driver *driver,
  */
 
 static struct tty_struct *pts_unix98_lookup(struct tty_driver *driver,
-		struct inode *pts_inode, int idx)
+		struct file *file, int idx)
 {
 	struct tty_struct *tty;
 
 	mutex_lock(&devpts_mutex);
-	tty = devpts_get_priv(pts_inode);
+	tty = devpts_get_priv(file_inode(file));
 	mutex_unlock(&devpts_mutex);
 	/* Master must be open before slave */
 	if (!tty)
@@ -667,12 +656,8 @@ static int pty_unix98_install(struct tty_driver *driver, struct tty_struct *tty)
 	return pty_common_install(driver, tty, false);
 }
 
-static void pty_unix98_remove(struct tty_driver *driver, struct tty_struct *tty)
-{
-}
-
 /* this is called once with whichever end is closed last */
-static void pty_unix98_shutdown(struct tty_struct *tty)
+static void pty_unix98_remove(struct tty_driver *driver, struct tty_struct *tty)
 {
 	struct pts_fs_info *fsi;
 
@@ -697,7 +682,6 @@ static const struct tty_operations ptm_unix98_ops = {
 	.unthrottle = pty_unthrottle,
 	.ioctl = pty_unix98_ioctl,
 	.resize = pty_resize,
-	.shutdown = pty_unix98_shutdown,
 	.cleanup = pty_cleanup
 };
 
@@ -715,7 +699,6 @@ static const struct tty_operations pty_unix98_ops = {
 	.set_termios = pty_set_termios,
 	.start = pty_start,
 	.stop = pty_stop,
-	.shutdown = pty_unix98_shutdown,
 	.cleanup = pty_cleanup,
 };
 

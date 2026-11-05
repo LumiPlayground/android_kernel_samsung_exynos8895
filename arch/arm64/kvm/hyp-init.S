@@ -87,7 +87,7 @@ __do_hyp_init:
 #endif
 	/*
 	 * Read the PARange bits from ID_AA64MMFR0_EL1 and set the PS bits in
-	 * TCR_EL2 and VTCR_EL2.
+	 * TCR_EL2.
 	 */
 	mrs	x5, ID_AA64MMFR0_EL1
 	bfi	x4, x5, #16, #3

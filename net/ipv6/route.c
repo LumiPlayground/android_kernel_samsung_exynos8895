@@ -337,9 +337,9 @@ static struct rt6_info *__ip6_dst_alloc(struct net *net,
 	return rt;
 }
 
-static struct rt6_info *ip6_dst_alloc(struct net *net,
-				      struct net_device *dev,
-				      int flags)
+struct rt6_info *ip6_dst_alloc(struct net *net,
+			       struct net_device *dev,
+			       int flags)
 {
 	struct rt6_info *rt = __ip6_dst_alloc(net, dev, flags);
 
@@ -363,6 +363,7 @@ static struct rt6_info *ip6_dst_alloc(struct net *net,
 
 	return rt;
 }
+EXPORT_SYMBOL(ip6_dst_alloc);
 
 static void ip6_dst_destroy(struct dst_entry *dst)
 {
@@ -1420,6 +1421,8 @@ EXPORT_SYMBOL_GPL(ip6_update_pmtu);
 
 void ip6_sk_update_pmtu(struct sk_buff *skb, struct sock *sk, __be32 mtu)
 {
+	struct dst_entry *dst;
+
 	ip6_update_pmtu(skb, sock_net(sk), mtu,
 			sk->sk_bound_dev_if, sk->sk_mark, sk->sk_uid);
 }

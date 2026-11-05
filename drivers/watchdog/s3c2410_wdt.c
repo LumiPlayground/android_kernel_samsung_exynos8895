@@ -51,6 +51,8 @@
 #define S3C2410_WTCLRINT		0x0C
 #define S3C2410_WTCNT_MAX     (0xFFFF)
 
+#define S3C2410_WTCNT_MAXCNT	0xffff
+
 #define S3C2410_WTCON_RSTEN	(1 << 0)
 #define S3C2410_WTCON_INTEN	(1 << 2)
 #define S3C2410_WTCON_ENABLE	(1 << 5)
@@ -60,6 +62,8 @@
 #define S3C2410_WTCON_DIV64	(2 << 3)
 #define S3C2410_WTCON_DIV128	(3 << 3)
 #define S3C2410_WTCON_DIVMAX  (128)
+
+#define S3C2410_WTCON_MAXDIV	0x80
 
 #define S3C2410_WTCON_PRESCALE(x)	((x) << 8)
 #define S3C2410_WTCON_PRESCALE_MASK	(0xff << 8)
@@ -219,6 +223,14 @@ do {							\
 } while (0)
 
 /* functions */
+
+static inline unsigned int s3c2410wdt_max_timeout(struct clk *clock)
+{
+	unsigned long freq = clk_get_rate(clock);
+
+	return S3C2410_WTCNT_MAXCNT / (freq / (S3C2410_WTCON_PRESCALE_MAX + 1)
+				       / S3C2410_WTCON_MAXDIV);
+}
 
 static inline struct s3c2410_wdt *freq_to_wdt(struct notifier_block *nb)
 {
@@ -781,6 +793,9 @@ static int s3c2410wdt_probe(struct platform_device *pdev)
 		dev_err(dev, "failed to enable gate clock\n");
 		return ret;
 	}
+
+	wdt->wdt_device.min_timeout = 1;
+	wdt->wdt_device.max_timeout = s3c2410wdt_max_timeout(wdt->rate_clock);
 
 	ret = s3c2410wdt_cpufreq_register(wdt);
 	if (ret < 0) {

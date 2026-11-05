@@ -30,6 +30,7 @@
 #include <linux/key.h>
 #include <linux/random.h>
 #include <linux/crypto.h>
+#include <crypto/hash.h>
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #ifdef CONFIG_ECRYPTFS_FEK_INTEGRITY
@@ -654,8 +655,8 @@ struct ecryptfs_write_tag_70_packet_silly_stack {
 	char iv[ECRYPTFS_MAX_IV_BYTES];
 	char hash[ECRYPTFS_TAG_70_DIGEST_SIZE];
 	char tmp_hash[ECRYPTFS_TAG_70_DIGEST_SIZE];
-	struct hash_desc hash_desc;
-	struct scatterlist hash_sg;
+	struct crypto_shash *hash_tfm;
+	struct shash_desc *hash_desc;
 };
 
 /**
@@ -678,7 +679,7 @@ ecryptfs_write_tag_70_packet(char *dest, size_t *remaining_bytes,
 	struct key *auth_tok_key = NULL;
 	int rc = 0;
 
-	s = kmalloc(sizeof(*s), GFP_KERNEL);
+	s = kzalloc(sizeof(*s), GFP_KERNEL);
 	if (!s) {
 		printk(KERN_ERR "%s: Out of memory whilst trying to kmalloc "
 		       "[%zd] bytes of kernel memory\n", __func__, sizeof(*s));
@@ -793,40 +794,36 @@ ecryptfs_write_tag_70_packet(char *dest, size_t *remaining_bytes,
 		       "password tokens\n", __func__);
 		goto out_free_unlock;
 	}
-	sg_init_one(
-		&s->hash_sg,
-		(u8 *)s->auth_tok->token.password.session_key_encryption_key,
-		s->auth_tok->token.password.session_key_encryption_key_bytes);
-	s->hash_desc.flags = CRYPTO_TFM_REQ_MAY_SLEEP;
-	s->hash_desc.tfm = crypto_alloc_hash(ECRYPTFS_TAG_70_DIGEST, 0,
-					     CRYPTO_ALG_ASYNC);
-	if (IS_ERR(s->hash_desc.tfm)) {
-			rc = PTR_ERR(s->hash_desc.tfm);
+	s->hash_tfm = crypto_alloc_shash(ECRYPTFS_TAG_70_DIGEST, 0, 0);
+	if (IS_ERR(s->hash_tfm)) {
+			rc = PTR_ERR(s->hash_tfm);
 			printk(KERN_ERR "%s: Error attempting to "
 			       "allocate hash crypto context; rc = [%d]\n",
 			       __func__, rc);
 			goto out_free_unlock;
 	}
-	rc = crypto_hash_init(&s->hash_desc);
-	if (rc) {
-		printk(KERN_ERR
-		       "%s: Error initializing crypto hash; rc = [%d]\n",
-		       __func__, rc);
+
+	s->hash_desc = kmalloc(sizeof(*s->hash_desc) +
+			       crypto_shash_descsize(s->hash_tfm), GFP_KERNEL);
+	if (!s->hash_desc) {
+		printk(KERN_ERR "%s: Out of kernel memory whilst attempting to "
+		       "kmalloc [%zd] bytes\n", __func__,
+		       sizeof(*s->hash_desc) +
+		       crypto_shash_descsize(s->hash_tfm));
+		rc = -ENOMEM;
 		goto out_release_free_unlock;
 	}
-	rc = crypto_hash_update(
-		&s->hash_desc, &s->hash_sg,
-		s->auth_tok->token.password.session_key_encryption_key_bytes);
+
+	s->hash_desc->tfm = s->hash_tfm;
+	s->hash_desc->flags = CRYPTO_TFM_REQ_MAY_SLEEP;
+
+	rc = crypto_shash_digest(s->hash_desc,
+				 (u8 *)s->auth_tok->token.password.session_key_encryption_key,
+				 s->auth_tok->token.password.session_key_encryption_key_bytes,
+				 s->hash);
 	if (rc) {
 		printk(KERN_ERR
-		       "%s: Error updating crypto hash; rc = [%d]\n",
-		       __func__, rc);
-		goto out_release_free_unlock;
-	}
-	rc = crypto_hash_final(&s->hash_desc, s->hash);
-	if (rc) {
-		printk(KERN_ERR
-		       "%s: Error finalizing crypto hash; rc = [%d]\n",
+		       "%s: Error computing crypto hash; rc = [%d]\n",
 		       __func__, rc);
 		goto out_release_free_unlock;
 	}
@@ -835,27 +832,12 @@ ecryptfs_write_tag_70_packet(char *dest, size_t *remaining_bytes,
 			s->hash[(s->j % ECRYPTFS_TAG_70_DIGEST_SIZE)];
 		if ((s->j % ECRYPTFS_TAG_70_DIGEST_SIZE)
 		    == (ECRYPTFS_TAG_70_DIGEST_SIZE - 1)) {
-			sg_init_one(&s->hash_sg, (u8 *)s->hash,
-				    ECRYPTFS_TAG_70_DIGEST_SIZE);
-			rc = crypto_hash_init(&s->hash_desc);
+			rc = crypto_shash_digest(s->hash_desc, (u8 *)s->hash,
+						ECRYPTFS_TAG_70_DIGEST_SIZE,
+						s->tmp_hash);
 			if (rc) {
 				printk(KERN_ERR
-				       "%s: Error initializing crypto hash; "
-				       "rc = [%d]\n", __func__, rc);
-				goto out_release_free_unlock;
-			}
-			rc = crypto_hash_update(&s->hash_desc, &s->hash_sg,
-						ECRYPTFS_TAG_70_DIGEST_SIZE);
-			if (rc) {
-				printk(KERN_ERR
-				       "%s: Error updating crypto hash; "
-				       "rc = [%d]\n", __func__, rc);
-				goto out_release_free_unlock;
-			}
-			rc = crypto_hash_final(&s->hash_desc, s->tmp_hash);
-			if (rc) {
-				printk(KERN_ERR
-				       "%s: Error finalizing crypto hash; "
+				       "%s: Error computing crypto hash; "
 				       "rc = [%d]\n", __func__, rc);
 				goto out_release_free_unlock;
 			}
@@ -916,7 +898,7 @@ ecryptfs_write_tag_70_packet(char *dest, size_t *remaining_bytes,
 	(*packet_size) = s->i;
 	(*remaining_bytes) -= (*packet_size);
 out_release_free_unlock:
-	crypto_free_hash(s->hash_desc.tfm);
+	crypto_free_shash(s->hash_tfm);
 out_free_unlock:
 	kzfree(s->block_aligned_filename);
 out_unlock:
@@ -926,6 +908,8 @@ out:
 		up_write(&(auth_tok_key->sem));
 		key_put(auth_tok_key);
 	}
+	if (s)
+		kzfree(s->hash_desc);
 	kfree(s);
 	return rc;
 }

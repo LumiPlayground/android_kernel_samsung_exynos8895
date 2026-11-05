@@ -66,6 +66,7 @@ show up in /proc/sys/kernel:
 - printk_delay
 - printk_ratelimit
 - printk_ratelimit_burst
+- pty                         ==> Documentation/filesystems/devpts.txt
 - randomize_va_space
 - real-root-dev               ==> Documentation/initrd.txt
 - reboot-cmd                  [ SPARC only ]
@@ -772,6 +773,14 @@ of POSIX realtime (queued) signals that can be outstanding
 in the system.
 
 rtsig-nr shows the number of RT signals currently queued.
+
+==============================================================
+
+sched_schedstats:
+
+Enables/disables scheduler statistics. Enabling this feature
+incurs a small amount of overhead in the scheduler but is
+useful for debugging and performance tuning.
 
 ==============================================================
 

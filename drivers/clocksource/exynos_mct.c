@@ -325,6 +325,7 @@ static struct clock_event_device mct_comp_device = {
 	.set_state_periodic	= mct_set_state_periodic,
 	.set_state_shutdown	= mct_set_state_shutdown,
 	.set_state_oneshot	= mct_set_state_shutdown,
+	.set_state_oneshot_stopped = mct_set_state_shutdown,
 	.tick_resume		= mct_set_state_shutdown,
 };
 

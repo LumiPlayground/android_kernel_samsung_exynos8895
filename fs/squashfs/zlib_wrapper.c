@@ -70,7 +70,7 @@ static int zlib_uncompress(struct squashfs_sb_info *msblk, void *strm,
 	int zlib_err, zlib_init = 0, k = 0;
 	z_stream *stream = strm;
 
-	stream->avail_out = PAGE_CACHE_SIZE;
+	stream->avail_out = PAGE_SIZE;
 	stream->next_out = squashfs_first_page(output);
 	stream->avail_in = 0;
 

@@ -1094,6 +1094,14 @@ static int netlink_getname(struct socket *sock, struct sockaddr *addr,
 	return 0;
 }
 
+static int netlink_ioctl(struct socket *sock, unsigned int cmd,
+			 unsigned long arg)
+{
+	/* try to hand this ioctl down to the NIC drivers.
+	 */
+	return -ENOIOCTLCMD;
+}
+
 static struct sock *netlink_getsockbyportid(struct sock *ssk, u32 portid)
 {
 	struct sock *sock;
@@ -2144,14 +2152,13 @@ static int netlink_dump(struct sock *sk)
 
 	if (alloc_min_size < nlk->max_recvmsg_len) {
 		alloc_size = nlk->max_recvmsg_len;
-		skb = netlink_alloc_skb(sk, alloc_size, nlk->portid,
+		skb = alloc_skb(alloc_size,
 					(GFP_KERNEL & ~__GFP_DIRECT_RECLAIM) |
 					__GFP_NOWARN | __GFP_NORETRY);
 	}
 	if (!skb) {
 		alloc_size = alloc_min_size;
-		skb = netlink_alloc_skb(sk, alloc_size, nlk->portid,
-					GFP_KERNEL);
+		skb = alloc_skb(alloc_size, GFP_KERNEL);
 	}
 	if (!skb)
 		goto errout_skb;
@@ -2298,8 +2305,7 @@ void netlink_ack(struct sk_buff *in_skb, struct nlmsghdr *nlh, int err)
 	if (!(nlk->flags & NETLINK_F_CAP_ACK) && err)
 		payload += nlmsg_len(nlh);
 
-	skb = netlink_alloc_skb(in_skb->sk, nlmsg_total_size(payload),
-				NETLINK_CB(in_skb).portid, GFP_KERNEL);
+	skb = nlmsg_new(payload, GFP_KERNEL);
 	if (!skb) {
 		struct sock *sk;
 

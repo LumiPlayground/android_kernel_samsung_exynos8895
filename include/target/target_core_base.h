@@ -144,12 +144,6 @@ enum se_cmd_flags_table {
 	SCF_TASK_ATTR_SET		= 0x01000000,
 };
 
-/* struct se_dev_entry->lun_flags and struct se_lun->lun_access */
-enum transport_lunflags_table {
-	TRANSPORT_LUNFLAGS_READ_ONLY		= 0x01,
-	TRANSPORT_LUNFLAGS_READ_WRITE		= 0x02,
-};
-
 /*
  * Used by transport_send_check_condition_and_sense()
  * to signal which ASC/ASCQ sense payload should be built.
@@ -563,7 +557,6 @@ struct se_node_acl {
 	struct config_group	acl_auth_group;
 	struct config_group	acl_param_group;
 	struct config_group	acl_fabric_stat_group;
-	struct config_group	*acl_default_groups[5];
 	struct list_head	acl_list;
 	struct list_head	acl_sess_list;
 	struct completion	acl_free_comp;
@@ -637,11 +630,10 @@ struct se_lun_acl {
 };
 
 struct se_dev_entry {
-	/* See transport_lunflags_table */
 	u64			mapped_lun;
 	u64			pr_res_key;
 	u64			creation_time;
-	u32			lun_flags;
+	bool			lun_access_ro;
 	u32			attach_count;
 	atomic_long_t		total_cmds;
 	atomic_long_t		read_bytes;
@@ -892,7 +884,6 @@ struct se_portal_group {
 	const struct target_core_fabric_ops *se_tpg_tfo;
 	struct se_wwn		*se_tpg_wwn;
 	struct config_group	tpg_group;
-	struct config_group	*tpg_default_groups[7];
 	struct config_group	tpg_lun_group;
 	struct config_group	tpg_np_group;
 	struct config_group	tpg_acl_group;
@@ -928,7 +919,6 @@ static inline struct se_portal_group *param_to_tpg(struct config_item *item)
 struct se_wwn {
 	struct target_fabric_configfs *wwn_tf;
 	struct config_group	wwn_group;
-	struct config_group	*wwn_default_groups[2];
 	struct config_group	fabric_stat_group;
 };
 

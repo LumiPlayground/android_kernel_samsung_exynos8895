@@ -2913,7 +2913,7 @@ static int sd_revalidate_disk(struct gendisk *disk)
 #endif
 		sd_read_capacity(sdkp, buffer);
 
-		if (sd_try_extended_inquiry(sdp)) {
+		if (scsi_device_supports_vpd(sdp)) {
 			sd_read_block_provisioning(sdkp);
 			sd_read_block_limits(sdkp);
 			sd_read_block_characteristics(sdkp);
