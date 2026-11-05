@@ -1173,13 +1173,13 @@ static int is_connected_input_ep(struct snd_soc_dapm_widget *widget,
 int snd_soc_dapm_connected_output_ep(struct snd_soc_dapm_widget *widget,
 	struct list_head *list)
 {
-	return is_connected_output_ep(widget, list);
+	return is_connected_output_ep(widget, list, NULL);
 }
 
 int snd_soc_dapm_connected_input_ep(struct snd_soc_dapm_widget *widget,
 	struct list_head *list)
 {
-	return is_connected_input_ep(widget, list);
+	return is_connected_input_ep(widget, list, NULL);
 }
 
 /**
