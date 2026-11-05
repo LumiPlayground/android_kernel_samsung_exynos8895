@@ -1045,7 +1045,7 @@ static int __init add_pcie_port(struct pcie_port *pp,
 		return -ENODEV;
 	}
 	ret = devm_request_irq(&pdev->dev, pp->irq, exynos_pcie_irq_handler,
-				IRQF_SHARED, "exynos-pcie", pp);
+				IRQF_SHARED | IRQF_TRIGGER_HIGH, "exynos-pcie", pp);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to request irq\n");
 		return ret;
