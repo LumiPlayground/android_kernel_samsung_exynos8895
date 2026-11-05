@@ -873,7 +873,7 @@ TRACE_EVENT(ext4_sync_file_enter,
 	TP_fast_assign(
 		struct dentry *dentry = file->f_path.dentry;
 
-		__entry->dev		= d_inode(dentry)->i_sb->s_dev;
+		__entry->dev		= dentry->d_sb->s_dev;
 		__entry->ino		= d_inode(dentry)->i_ino;
 		__entry->datasync	= datasync;
 		__entry->parent		= d_inode(dentry->d_parent)->i_ino;
@@ -1455,7 +1455,7 @@ TRACE_EVENT(ext4_unlink_enter,
 	),
 
 	TP_fast_assign(
-		__entry->dev		= d_inode(dentry)->i_sb->s_dev;
+		__entry->dev		= dentry->d_sb->s_dev;
 		__entry->ino		= d_inode(dentry)->i_ino;
 		__entry->parent		= parent->i_ino;
 		__entry->size		= d_inode(dentry)->i_size;
@@ -1481,7 +1481,7 @@ TRACE_EVENT(ext4_unlink_exit,
 	),
 
 	TP_fast_assign(
-		__entry->dev		= d_inode(dentry)->i_sb->s_dev;
+		__entry->dev		= dentry->d_sb->s_dev;
 		__entry->ino		= d_inode(dentry)->i_ino;
 		__entry->ret		= ret;
 		memcpy(__entry->d_name, dentry->d_name.name, EXT4_NAME_LEN);

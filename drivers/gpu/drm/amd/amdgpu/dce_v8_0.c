@@ -233,10 +233,13 @@ static void dce_v8_0_pageflip_interrupt_fini(struct amdgpu_device *adev)
  * surface base address.
  */
 static void dce_v8_0_page_flip(struct amdgpu_device *adev,
-			      int crtc_id, u64 crtc_base)
+			       int crtc_id, u64 crtc_base, bool async)
 {
 	struct amdgpu_crtc *amdgpu_crtc = adev->mode_info.crtcs[crtc_id];
 
+	/* flip at hsync for async, default is vsync */
+	WREG32(mmGRPH_FLIP_CONTROL + amdgpu_crtc->crtc_offset, async ?
+	       GRPH_FLIP_CONTROL__GRPH_SURFACE_UPDATE_H_RETRACE_EN_MASK : 0);
 	/* update the primary scanout addresses */
 	WREG32(mmGRPH_PRIMARY_SURFACE_ADDRESS_HIGH + amdgpu_crtc->crtc_offset,
 	       upper_32_bits(crtc_base));
@@ -2016,7 +2019,7 @@ static int dce_v8_0_crtc_do_set_base(struct drm_crtc *crtc,
 	uint32_t fb_format, fb_pitch_pixels;
 	u32 fb_swap = (GRPH_ENDIAN_NONE << GRPH_SWAP_CNTL__GRPH_ENDIAN_SWAP__SHIFT);
 	u32 pipe_config;
-	u32 tmp, viewport_w, viewport_h;
+	u32 viewport_w, viewport_h;
 	int r;
 	bool bypass_lut = false;
 
@@ -2152,6 +2155,11 @@ static int dce_v8_0_crtc_do_set_base(struct drm_crtc *crtc,
 
 	dce_v8_0_vga_enable(crtc, false);
 
+	/* Make sure surface address is updated at vertical blank rather than
+	 * horizontal blank
+	 */
+	WREG32(mmGRPH_FLIP_CONTROL + amdgpu_crtc->crtc_offset, 0);
+
 	WREG32(mmGRPH_PRIMARY_SURFACE_ADDRESS_HIGH + amdgpu_crtc->crtc_offset,
 	       upper_32_bits(fb_location));
 	WREG32(mmGRPH_SECONDARY_SURFACE_ADDRESS_HIGH + amdgpu_crtc->crtc_offset,
@@ -2198,12 +2206,6 @@ static int dce_v8_0_crtc_do_set_base(struct drm_crtc *crtc,
 	viewport_h = (crtc->mode.vdisplay + 1) & ~1;
 	WREG32(mmVIEWPORT_SIZE + amdgpu_crtc->crtc_offset,
 	       (viewport_w << 16) | viewport_h);
-
-	/* pageflip setup */
-	/* make sure flip is at vb rather than hb */
-	tmp = RREG32(mmGRPH_FLIP_CONTROL + amdgpu_crtc->crtc_offset);
-	tmp &= ~GRPH_FLIP_CONTROL__GRPH_SURFACE_UPDATE_H_RETRACE_EN_MASK;
-	WREG32(mmGRPH_FLIP_CONTROL + amdgpu_crtc->crtc_offset, tmp);
 
 	/* set pageflip to happen only at start of vblank interval (front porch) */
 	WREG32(mmMASTER_UPDATE_MODE + amdgpu_crtc->crtc_offset, 3);
@@ -2516,7 +2518,7 @@ static int dce_v8_0_crtc_cursor_set2(struct drm_crtc *crtc,
 		return -EINVAL;
 	}
 
-	obj = drm_gem_object_lookup(crtc->dev, file_priv, handle);
+	obj = drm_gem_object_lookup(file_priv, handle);
 	if (!obj) {
 		DRM_ERROR("Cannot find cursor object %x for crtc %d\n", handle, amdgpu_crtc->crtc_id);
 		return -ENOENT;
@@ -2919,6 +2921,8 @@ static int dce_v8_0_sw_init(void *handle)
 
 	adev->ddev->mode_config.funcs = &amdgpu_mode_funcs;
 
+	adev->ddev->mode_config.async_page_flip = true;
+
 	adev->ddev->mode_config.max_width = 16384;
 	adev->ddev->mode_config.max_height = 16384;
 
@@ -3055,14 +3059,6 @@ static int dce_v8_0_wait_for_idle(void *handle)
 	return 0;
 }
 
-static void dce_v8_0_print_status(void *handle)
-{
-	struct amdgpu_device *adev = (struct amdgpu_device *)handle;
-
-	dev_info(adev->dev, "DCE 8.x registers\n");
-	/* XXX todo */
-}
-
 static int dce_v8_0_soft_reset(void *handle)
 {
 	u32 srbm_soft_reset = 0, tmp;
@@ -3072,8 +3068,6 @@ static int dce_v8_0_soft_reset(void *handle)
 		srbm_soft_reset |= SRBM_SOFT_RESET__SOFT_RESET_DC_MASK;
 
 	if (srbm_soft_reset) {
-		dce_v8_0_print_status((void *)adev);
-
 		tmp = RREG32(mmSRBM_SOFT_RESET);
 		tmp |= srbm_soft_reset;
 		dev_info(adev->dev, "SRBM_SOFT_RESET=0x%08X\n", tmp);
@@ -3088,7 +3082,6 @@ static int dce_v8_0_soft_reset(void *handle)
 
 		/* Wait a little for things to settle down */
 		udelay(50);
-		dce_v8_0_print_status((void *)adev);
 	}
 	return 0;
 }
@@ -3396,7 +3389,7 @@ static int dce_v8_0_pageflip_irq(struct amdgpu_device *adev,
 
 	/* wakeup usersapce */
 	if (works->event)
-		drm_send_vblank_event(adev->ddev, crtc_id, works->event);
+		drm_crtc_send_vblank_event(&amdgpu_crtc->base, works->event);
 
 	spin_unlock_irqrestore(&adev->ddev->event_lock, flags);
 
@@ -3448,6 +3441,7 @@ static int dce_v8_0_set_powergating_state(void *handle,
 }
 
 const struct amd_ip_funcs dce_v8_0_ip_funcs = {
+	.name = "dce_v8_0",
 	.early_init = dce_v8_0_early_init,
 	.late_init = NULL,
 	.sw_init = dce_v8_0_sw_init,
@@ -3459,7 +3453,6 @@ const struct amd_ip_funcs dce_v8_0_ip_funcs = {
 	.is_idle = dce_v8_0_is_idle,
 	.wait_for_idle = dce_v8_0_wait_for_idle,
 	.soft_reset = dce_v8_0_soft_reset,
-	.print_status = dce_v8_0_print_status,
 	.set_clockgating_state = dce_v8_0_set_clockgating_state,
 	.set_powergating_state = dce_v8_0_set_powergating_state,
 };

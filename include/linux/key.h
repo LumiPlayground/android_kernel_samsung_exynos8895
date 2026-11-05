@@ -209,6 +209,20 @@ struct key {
 			struct assoc_array keys;
 		};
 	};
+
+	/* This is set on a keyring to restrict the addition of a link to a key
+	 * to it.  If this method isn't provided then it is assumed that the
+	 * keyring is open to any addition.  It is ignored for non-keyring
+	 * keys.
+	 *
+	 * This is intended for use with rings of trusted keys whereby addition
+	 * to the keyring needs to be controlled.  KEY_ALLOC_BYPASS_RESTRICTION
+	 * overrides this, allowing the kernel to add extra keys without
+	 * restriction.
+	 */
+	int (*restrict_link)(struct key *keyring,
+			     const struct key_type *type,
+			     const union key_payload *payload);
 };
 
 extern struct key *key_alloc(struct key_type *type,
@@ -216,7 +230,10 @@ extern struct key *key_alloc(struct key_type *type,
 			     kuid_t uid, kgid_t gid,
 			     const struct cred *cred,
 			     key_perm_t perm,
-			     unsigned long flags);
+			     unsigned long flags,
+			     int (*restrict_link)(struct key *,
+						  const struct key_type *,
+						  const union key_payload *));
 
 
 #define KEY_ALLOC_IN_QUOTA	0x0000	/* add to quota, reject if would overrun */
@@ -225,6 +242,7 @@ extern struct key *key_alloc(struct key_type *type,
 #define KEY_ALLOC_TRUSTED	0x0004	/* Key should be flagged as trusted */
 #define KEY_ALLOC_UID_KEYRING	0x0010	/* allocating a user or user session keyring */
 #define KEY_ALLOC_BUILT_IN	0x0008	/* Key is built into kernel */
+#define KEY_ALLOC_BYPASS_RESTRICTION 0x0020 /* Override restricted keyring check */
 
 extern void key_revoke(struct key *key);
 extern void key_invalidate(struct key *key);
@@ -293,7 +311,14 @@ extern struct key *keyring_alloc(const char *description, kuid_t uid, kgid_t gid
 				 const struct cred *cred,
 				 key_perm_t perm,
 				 unsigned long flags,
+				 int (*restrict_link)(struct key *,
+						      const struct key_type *,
+						      const union key_payload *),
 				 struct key *dest);
+
+extern int restrict_link_reject(struct key *keyring,
+				const struct key_type *type,
+				const union key_payload *payload);
 
 extern int keyring_clear(struct key *keyring);
 

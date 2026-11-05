@@ -2064,11 +2064,5 @@ void s390_reset_system(void)
 	S390_lowcore.program_new_psw.addr =
 		(unsigned long) s390_base_pgm_handler;
 
-	/* Store status at absolute zero */
-	store_status();
-
-	/* Call function before reset */
-	if (fn_pre)
-		fn_pre();
 	do_reset_calls();
 }

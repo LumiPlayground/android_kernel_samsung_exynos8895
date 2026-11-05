@@ -822,9 +822,6 @@ struct ib_cq *mlx5_ib_create_cq(struct ib_device *ibdev,
 	int eqn;
 	int err;
 
-	if (attr->flags)
-		return ERR_PTR(-EINVAL);
-
 	if (entries < 0 ||
 	    (entries > (1 << MLX5_CAP_GEN(dev->mdev, log_max_cq_sz))))
 		return ERR_PTR(-EINVAL);
@@ -882,7 +879,10 @@ struct ib_cq *mlx5_ib_create_cq(struct ib_device *ibdev,
 
 	mlx5_ib_dbg(dev, "cqn 0x%x\n", cq->mcq.cqn);
 	cq->mcq.irqn = irqn;
-	cq->mcq.comp  = mlx5_ib_cq_comp;
+	if (context)
+		cq->mcq.tasklet_ctx.comp = mlx5_ib_cq_comp;
+	else
+		cq->mcq.comp  = mlx5_ib_cq_comp;
 	cq->mcq.event = mlx5_ib_cq_event;
 
 	INIT_LIST_HEAD(&cq->wc_list);

@@ -188,7 +188,7 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 
 		data.fd = fd_info.fd;
-		ion_handle = ion_import_dma_buf(client, data.fd);
+		ion_handle = ion_import_dma_buf_fd(client, data.fd);
 		pr_debug("%s: fd from user space = %d\n",
 				__func__, fd_info.fd);
 		if (IS_ERR(ion_handle)) {

@@ -550,7 +550,7 @@ static struct iva_mem_map *iva_mem_import_ion_buf(struct iva_proc *proc,
 	}
 
 	/* create handle in space of our client */
-	handle = ion_import_dma_buf(iva->ion_client, import_fd);
+	handle = ion_import_dma_buf_fd(iva->ion_client, import_fd);
 	if (IS_ERR(handle)) {
 		dev_err(dev, "%s() fail to import handle with fd"
 				"(%d), ret(%ld)\n",

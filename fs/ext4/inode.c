@@ -3417,11 +3417,11 @@ static ssize_t ext4_ext_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 	BUG_ON(ext4_encrypted_inode(inode) && S_ISREG(inode->i_mode));
 #endif
 	if (IS_DAX(inode))
-		ret = dax_do_io(iocb, inode, iter, offset, get_block_func,
+		ret = dax_do_io(iocb, inode, iter, get_block_func,
 				ext4_end_io_dio, dio_flags);
 	else
 		ret = __blockdev_direct_IO(iocb, inode,
-					   inode->i_sb->s_bdev, iter, offset,
+					   inode->i_sb->s_bdev, iter,
 					   get_block_func,
 					   ext4_end_io_dio, NULL, dio_flags);
 
@@ -3470,9 +3470,9 @@ retake_lock:
 	return ret;
 }
 
-static ssize_t ext4_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
-			      loff_t offset)
+static ssize_t ext4_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 {
+	loff_t offset = iocb->ki_pos;
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
 	size_t count = iov_iter_count(iter);
@@ -3829,7 +3829,7 @@ int ext4_update_disksize_before_punch(struct inode *inode, loff_t offset,
 	handle_t *handle;
 	loff_t size = i_size_read(inode);
 
-	WARN_ON(!mutex_is_locked(&inode->i_mutex));
+	WARN_ON(!inode_is_locked(inode));
 	if (offset > size || offset + len < size)
 		return 0;
 

@@ -782,10 +782,10 @@ static void *vb2_ion_get_userptr(void *alloc_ctx, unsigned long vaddr,
 		}
 	}
 
-	if ((pgprot_noncached(buf->vma->vm_page_prot)
-				== buf->vma->vm_page_prot)
-			|| (pgprot_writecombine(buf->vma->vm_page_prot)
-				== buf->vma->vm_page_prot))
+	if ((pgprot_val(pgprot_noncached(buf->vma->vm_page_prot))
+				== pgprot_val(buf->vma->vm_page_prot))
+			|| (pgprot_val(pgprot_writecombine(buf->vma->vm_page_prot))
+				== pgprot_val(buf->vma->vm_page_prot)))
 		buf->cached = false;
 	else
 		buf->cached = true;

@@ -9,8 +9,8 @@
 #include <linux/uaccess.h>
 
 static int
-security_get(const struct xattr_handler *handler, struct dentry *dentry,
-	     const char *name, void *buffer, size_t size)
+security_get(const struct xattr_handler *handler, struct dentry *unused,
+	     struct inode *inode, const char *name, void *buffer, size_t size)
 {
 	if (IS_PRIVATE(d_inode(dentry)))
 		return -EPERM;
@@ -21,8 +21,9 @@ security_get(const struct xattr_handler *handler, struct dentry *dentry,
 }
 
 static int
-security_set(const struct xattr_handler *handler, struct dentry *dentry,
-	     const char *name, const void *buffer, size_t size, int flags)
+security_set(const struct xattr_handler *handler, struct dentry *unused,
+	     struct inode *inode, const char *name, const void *buffer,
+	     size_t size, int flags)
 {
 	if (IS_PRIVATE(d_inode(dentry)))
 		return -EPERM;

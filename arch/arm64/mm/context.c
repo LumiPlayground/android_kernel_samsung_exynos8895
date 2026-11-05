@@ -84,8 +84,7 @@ void verify_cpu_asid_bits(void)
 		 */
 		pr_crit("CPU%d: smaller ASID size(%u) than boot CPU (%u)\n",
 				smp_processor_id(), asid, asid_bits);
-		update_cpu_boot_status(CPU_PANIC_KERNEL);
-		cpu_park_loop();
+		cpu_panic_kernel();
 	}
 }
 
@@ -189,7 +188,7 @@ static u64 new_context(struct mm_struct *mm, unsigned int cpu)
 						 &asid_generation);
 	flush_context(cpu);
 
-	/* We have at least 1 ASID per CPU, so this will always succeed */
+	/* We have more ASIDs than CPUs, so this will always succeed */
 	asid = find_next_zero_bit(asid_map, NUM_USER_ASIDS, 1);
 
 set_asid:

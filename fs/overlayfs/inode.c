@@ -59,19 +59,30 @@ int ovl_setattr(struct dentry *dentry, struct iattr *attr)
 	if (err)
 		goto out;
 
+	if (attr->ia_valid & ATTR_SIZE) {
+		struct inode *realinode = d_inode(ovl_dentry_real(dentry));
+
+		err = -ETXTBSY;
+		if (atomic_read(&realinode->i_writecount) < 0)
+			goto out_drop_write;
+	}
+
 	err = ovl_copy_up(dentry);
 	if (!err) {
+		struct inode *winode = NULL;
+
 		upperdentry = ovl_dentry_upper(dentry);
 
 		if (attr->ia_valid & (ATTR_KILL_SUID|ATTR_KILL_SGID))
 			attr->ia_valid &= ~ATTR_MODE;
 
-		mutex_lock(&upperdentry->d_inode->i_mutex);
+		inode_lock(upperdentry->d_inode);
 		err = notify_change(upperdentry, attr, NULL);
 		if (!err)
 			ovl_copyattr(upperdentry->d_inode, dentry->d_inode);
-		mutex_unlock(&upperdentry->d_inode->i_mutex);
+		inode_unlock(upperdentry->d_inode);
 	}
+out_drop_write:
 	ovl_drop_write(dentry);
 out:
 	return err;
@@ -124,16 +135,18 @@ int ovl_permission(struct inode *inode, int mask)
 
 		err = vfs_getattr(&realpath, &stat);
 		if (err)
-			return err;
+			goto out_dput;
 
+		err = -ESTALE;
 		if ((stat.mode ^ inode->i_mode) & S_IFMT)
-			return -ESTALE;
+			goto out_dput;
 
 		inode->i_mode = stat.mode;
 		inode->i_uid = stat.uid;
 		inode->i_gid = stat.gid;
 
-		return generic_permission(inode, mask);
+		err = generic_permission(inode, mask);
+		goto out_dput;
 	}
 
 	/* Careful in RCU walk mode */
@@ -213,8 +226,9 @@ bool ovl_is_private_xattr(const char *name)
 	return strncmp(name, OVL_XATTR_PRE_NAME, OVL_XATTR_PRE_LEN) == 0;
 }
 
-int ovl_setxattr(struct dentry *dentry, const char *name,
-		 const void *value, size_t size, int flags)
+int ovl_setxattr(struct dentry *dentry, struct inode *inode,
+		 const char *name, const void *value,
+		 size_t size, int flags)
 {
 	int err;
 	struct dentry *upperdentry;
@@ -240,40 +254,26 @@ out:
 	return err;
 }
 
-static bool ovl_need_xattr_filter(struct dentry *dentry,
-				  enum ovl_path_type type)
+ssize_t ovl_getxattr(struct dentry *dentry, struct inode *inode,
+		     const char *name, void *value, size_t size)
 {
-	if ((type & (__OVL_PATH_PURE | __OVL_PATH_UPPER)) == __OVL_PATH_UPPER)
-		return S_ISDIR(dentry->d_inode->i_mode);
-	else
-		return false;
-}
+	struct dentry *realdentry = ovl_dentry_real(dentry);
 
-ssize_t ovl_getxattr(struct dentry *dentry, const char *name,
-		     void *value, size_t size)
-{
-	struct path realpath;
-	enum ovl_path_type type = ovl_path_real(dentry, &realpath);
-
-	if (ovl_need_xattr_filter(dentry, type) && ovl_is_private_xattr(name))
+	if (ovl_is_private_xattr(name))
 		return -ENODATA;
 
-	return vfs_getxattr(realpath.dentry, name, value, size);
+	return vfs_getxattr(realdentry, name, value, size);
 }
 
 ssize_t ovl_listxattr(struct dentry *dentry, char *list, size_t size)
 {
-	struct path realpath;
-	enum ovl_path_type type = ovl_path_real(dentry, &realpath);
+	struct dentry *realdentry = ovl_dentry_real(dentry);
 	ssize_t res;
 	size_t len;
 	char *s;
 
-	res = vfs_listxattr(realpath.dentry, list, size);
+	res = vfs_listxattr(realdentry, list, size);
 	if (res <= 0 || size == 0)
-		return res;
-
-	if (!ovl_need_xattr_filter(dentry, type))
 		return res;
 
 	/* filter out private xattrs */
@@ -307,7 +307,7 @@ int ovl_removexattr(struct dentry *dentry, const char *name)
 		goto out;
 
 	err = -ENODATA;
-	if (ovl_need_xattr_filter(dentry, type) && ovl_is_private_xattr(name))
+	if (ovl_is_private_xattr(name))
 		goto out_drop_write;
 
 	if (!OVL_TYPE_UPPER(type)) {

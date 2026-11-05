@@ -252,12 +252,12 @@ static inline unsigned long __sdfat_init_name_hash(const struct dentry *unused)
 #else /* LINUX_VERSION_CODE < KERNEL_VERSION(4, 4, 21) */
 static inline void inode_lock(struct inode *inode)
 {
-	       mutex_lock(&inode->i_mutex);
+	       inode_lock(inode);
 }
 
 static inline void inode_unlock(struct inode *inode)
 {
-	       mutex_unlock(&inode->i_mutex);
+	       inode_unlock(inode);
 }
 #endif
 

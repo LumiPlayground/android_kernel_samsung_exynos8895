@@ -8,8 +8,8 @@
 #include <linux/uaccess.h>
 
 static int
-trusted_get(const struct xattr_handler *handler, struct dentry *dentry,
-	    const char *name, void *buffer, size_t size)
+trusted_get(const struct xattr_handler *handler, struct dentry *unused,
+	    struct inode *inode, const char *name, void *buffer, size_t size)
 {
 	if (!capable(CAP_SYS_ADMIN) || IS_PRIVATE(d_inode(dentry)))
 		return -EPERM;
@@ -20,8 +20,9 @@ trusted_get(const struct xattr_handler *handler, struct dentry *dentry,
 }
 
 static int
-trusted_set(const struct xattr_handler *handler, struct dentry *dentry,
-	    const char *name, const void *buffer, size_t size, int flags)
+trusted_set(const struct xattr_handler *handler, struct dentry *unused,
+	    struct inode *inode, const char *name, const void *buffer,
+	    size_t size, int flags)
 {
 	if (!capable(CAP_SYS_ADMIN) || IS_PRIVATE(d_inode(dentry)))
 		return -EPERM;

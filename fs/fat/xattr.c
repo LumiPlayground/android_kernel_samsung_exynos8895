@@ -10,13 +10,13 @@
 
 static const char default_xattr[] = CONFIG_FAT_VIRTUAL_XATTR_SELINUX_LABEL;
 
-int fat_setxattr(struct dentry *dentry, const char *name, const void *value, size_t size, int flags) {
+int fat_setxattr(struct dentry *dentry, struct inode *inode, const char *name, const void *value, size_t size, int flags) {
 	if (!name || strcmp(name, "security.selinux"))
 		return -EOPNOTSUPP;
 	return 0;
 }
 
-ssize_t fat_getxattr(struct dentry *dentry, const char *name, void *value, size_t size) {
+ssize_t fat_getxattr(struct dentry *dentry, struct inode *inode, const char *name, void *value, size_t size) {
 	if (!name || strcmp(name, "security.selinux"))
 		return -EOPNOTSUPP;
 	if (size > strlen(default_xattr)+1 && value)

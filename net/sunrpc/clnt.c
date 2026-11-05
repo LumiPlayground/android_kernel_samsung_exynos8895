@@ -457,10 +457,21 @@ static struct rpc_clnt *rpc_create_xprt(struct rpc_create_args *args,
 	struct rpc_clnt *clnt = NULL;
 	struct rpc_xprt_switch *xps;
 
-	xps = xprt_switch_alloc(xprt, GFP_KERNEL);
-	if (xps == NULL)
-		return ERR_PTR(-ENOMEM);
-
+	if (args->bc_xprt && args->bc_xprt->xpt_bc_xps) {
+		WARN_ON(args->protocol != XPRT_TRANSPORT_BC_TCP);
+		xps = args->bc_xprt->xpt_bc_xps;
+		xprt_switch_get(xps);
+	} else {
+		xps = xprt_switch_alloc(xprt, GFP_KERNEL);
+		if (xps == NULL) {
+			xprt_put(xprt);
+			return ERR_PTR(-ENOMEM);
+		}
+		if (xprt->bc_xprt) {
+			xprt_switch_get(xps);
+			xprt->bc_xprt->xpt_bc_xps = xps;
+		}
+	}
 	clnt = rpc_new_client(args, xps, xprt, NULL);
 	if (IS_ERR(clnt))
 		return clnt;
@@ -1425,6 +1436,23 @@ size_t rpc_max_payload(struct rpc_clnt *clnt)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(rpc_max_payload);
+
+/**
+ * rpc_max_bc_payload - Get maximum backchannel payload size, in bytes
+ * @clnt: RPC client to query
+ */
+size_t rpc_max_bc_payload(struct rpc_clnt *clnt)
+{
+	struct rpc_xprt *xprt;
+	size_t ret;
+
+	rcu_read_lock();
+	xprt = rcu_dereference(clnt->cl_xprt);
+	ret = xprt->ops->bc_maxpayload(xprt);
+	rcu_read_unlock();
+	return ret;
+}
+EXPORT_SYMBOL_GPL(rpc_max_bc_payload);
 
 /**
  * rpc_get_timeout - Get timeout for transport in units of HZ

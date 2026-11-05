@@ -473,6 +473,9 @@ static void exynos_pcie_setup_rc(struct pcie_port *pp)
 	exynos_pcie_wr_own_conf(pp, PCI_DEVICE_ID, 2,
 			    PCI_DEVICE_ID_EXYNOS + exynos_pcie->ch_num);
 
+	/* Identify the root port as a PCI bridge before the initial scan. */
+	exynos_pcie_wr_own_conf(pp, PCI_CLASS_DEVICE, 2, PCI_CLASS_BRIDGE_PCI);
+
 	/* set max link width & speed : Gen2, Lane1 */
 	exynos_pcie_rd_own_conf(pp, exp_cap_off + PCI_EXP_LNKCAP, 4, &val);
 	val &= ~(PCI_EXP_LNKCAP_L1EL|PCI_EXP_LNKCAP_MLW|PCI_EXP_LNKCAP_SLS);

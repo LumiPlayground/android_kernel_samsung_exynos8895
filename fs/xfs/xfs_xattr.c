@@ -32,11 +32,11 @@
 
 
 static int
-xfs_xattr_get(const struct xattr_handler *handler, struct dentry *dentry,
-		const char *name, void *value, size_t size)
+xfs_xattr_get(const struct xattr_handler *handler, struct dentry *unused,
+		struct inode *inode, const char *name, void *value, size_t size)
 {
 	int xflags = handler->flags;
-	struct xfs_inode *ip = XFS_I(d_inode(dentry));
+	struct xfs_inode *ip = XFS_I(inode);
 	int error, asize = size;
 
 	/* Convert Linux syscall to XFS internal ATTR flags */
@@ -74,11 +74,12 @@ xfs_forget_acl(
 }
 
 static int
-xfs_xattr_set(const struct xattr_handler *handler, struct dentry *dentry,
-		const char *name, const void *value, size_t size, int flags)
+xfs_xattr_set(const struct xattr_handler *handler, struct dentry *unused,
+		struct inode *inode, const char *name, const void *value,
+		size_t size, int flags)
 {
 	int			xflags = handler->flags;
-	struct xfs_inode	*ip = XFS_I(d_inode(dentry));
+	struct xfs_inode	*ip = XFS_I(inode);
 	int			error;
 
 	/* Convert Linux syscall to XFS internal ATTR flags */
@@ -92,7 +93,7 @@ xfs_xattr_set(const struct xattr_handler *handler, struct dentry *dentry,
 	error = xfs_attr_set(ip, (unsigned char *)name,
 				(void *)value, size, xflags);
 	if (!error)
-		xfs_forget_acl(d_inode(dentry), name, xflags);
+		xfs_forget_acl(inode, name, xflags);
 
 	return error;
 }
@@ -146,7 +147,7 @@ __xfs_xattr_put_listent(
 	arraytop = context->count + prefix_len + namelen + 1;
 	if (arraytop > context->firstu) {
 		context->count = -1;	/* insufficient space */
-		return 1;
+		return 0;
 	}
 	offset = (char *)context->alist + context->count;
 	strncpy(offset, prefix, prefix_len);
@@ -166,8 +167,7 @@ xfs_xattr_put_listent(
 	int		flags,
 	unsigned char	*name,
 	int		namelen,
-	int		valuelen,
-	unsigned char	*value)
+	int		valuelen)
 {
 	char *prefix;
 	int prefix_len;

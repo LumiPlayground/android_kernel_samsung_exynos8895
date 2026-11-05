@@ -54,7 +54,7 @@ void cpuset_init_current_mems_allowed(void);
 int cpuset_nodemask_valid_mems_allowed(nodemask_t *nodemask);
 extern int is_top_task(struct task_struct *p);
 
-extern int __cpuset_node_allowed(int node, gfp_t gfp_mask);
+extern bool __cpuset_node_allowed(int node, gfp_t gfp_mask);
 
 static inline int cpuset_node_allowed(int node, gfp_t gfp_mask)
 {

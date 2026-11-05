@@ -79,7 +79,7 @@ int s5p_mfc_mem_get_user_shared_handle(struct s5p_mfc_ctx *ctx,
 	int ret = 0;
 
 	handle->ion_handle =
-		ion_import_dma_buf(dev->mfc_ion_client, handle->fd);
+		ion_import_dma_buf_fd(dev->mfc_ion_client, handle->fd);
 	if (IS_ERR(handle->ion_handle)) {
 		mfc_err_ctx("Failed to import fd\n");
 		ret = PTR_ERR(handle->ion_handle);
