@@ -2278,8 +2278,9 @@ static inline void uvcg_init_group(struct config_group *g,
 				   const char *name,
 				   struct config_item_type *type)
 {
-	g->default_groups = default_groups;
 	config_group_init_type_name(g, name, type);
+	while (*default_groups)
+		configfs_add_default_group(*default_groups++, g);
 }
 
 int uvcg_attach_configfs(struct f_uvc_opts *opts)

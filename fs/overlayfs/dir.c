@@ -716,7 +716,6 @@ static int ovl_rename2(struct inode *olddir, struct dentry *old,
 	struct dentry *trap;
 	bool old_opaque;
 	bool new_opaque;
-	bool new_create = false;
 	bool cleanup_whiteout = false;
 	bool overwrite = !(flags & RENAME_EXCHANGE);
 	bool is_dir = d_is_dir(old);

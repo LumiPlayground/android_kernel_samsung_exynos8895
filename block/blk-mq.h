@@ -55,6 +55,7 @@ extern int blk_mq_hw_queue_to_node(unsigned int *map, unsigned int);
  */
 extern int blk_mq_sysfs_register(struct request_queue *q);
 extern void blk_mq_sysfs_unregister(struct request_queue *q);
+extern void blk_mq_hctx_kobj_init(struct blk_mq_hw_ctx *hctx);
 
 extern void blk_mq_rq_timed_out(struct request *req, bool reserved);
 
@@ -117,3 +118,6 @@ static inline bool blk_mq_hw_queue_mapped(struct blk_mq_hw_ctx *hctx)
 }
 
 #endif
+
+int blk_mq_update_queue_map(unsigned int *map, unsigned int nr_queues,
+			    const struct cpumask *online_mask);

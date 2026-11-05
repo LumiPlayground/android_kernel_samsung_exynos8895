@@ -192,7 +192,6 @@ static inline void update_cpu_load_nohz(int active) { }
 #endif
 
 extern unsigned long get_parent_ip(unsigned long addr);
-
 extern void dump_cpu_task(int cpu);
 
 struct seq_file;
@@ -446,6 +445,7 @@ extern signed long schedule_timeout(signed long timeout);
 extern signed long schedule_timeout_interruptible(signed long timeout);
 extern signed long schedule_timeout_killable(signed long timeout);
 extern signed long schedule_timeout_uninterruptible(signed long timeout);
+extern signed long schedule_timeout_idle(signed long timeout);
 asmlinkage void schedule(void);
 extern void schedule_preempt_disabled(void);
 
@@ -738,6 +738,10 @@ struct signal_struct {
 	/* Earliest-expiration cache. */
 	struct task_cputime cputime_expires;
 
+#ifdef CONFIG_NO_HZ_FULL
+	atomic_t tick_dep_mask;
+#endif
+
 	struct list_head cpu_timers[3];
 
 	struct pid *tty_old_pgrp;
@@ -794,7 +798,6 @@ struct signal_struct {
 #endif
 #ifdef CONFIG_AUDIT
 	unsigned audit_tty;
-	unsigned audit_tty_log_passwd;
 	struct tty_audit_buf *tty_audit_buf;
 #endif
 
@@ -948,6 +951,10 @@ static inline int sched_info_on(void)
 	return 0;
 #endif
 }
+
+#ifdef CONFIG_SCHEDSTATS
+void force_schedstat_enabled(void);
+#endif
 
 enum cpu_idle_type {
 	CPU_IDLE,
@@ -1720,6 +1727,10 @@ struct task_struct {
 		VTIME_SYS,
 	} vtime_snap_whence;
 #endif
+
+#ifdef CONFIG_NO_HZ_FULL
+	atomic_t tick_dep_mask;
+#endif
 	unsigned long nvcsw, nivcsw; /* context switch counts */
 	u64 start_time;		/* monotonic time in nsec */
 	u64 real_start_time;	/* boot based time in nsec */
@@ -1963,8 +1974,8 @@ struct task_struct {
 	 * time slack values; these are used to round up poll() and
 	 * select() etc timeout values. These are in nanoseconds.
 	 */
-	unsigned long timer_slack_ns;
-	unsigned long default_timer_slack_ns;
+	u64 timer_slack_ns;
+	u64 default_timer_slack_ns;
 
 #ifdef CONFIG_KASAN
 	unsigned int kasan_depth;
@@ -2022,6 +2033,9 @@ struct task_struct {
 	unsigned long	task_state_change;
 #endif
 	int pagefault_disabled;
+#ifdef CONFIG_MMU
+	struct task_struct *oom_reaper_list;
+#endif
 /* CPU-specific state of this task */
 	struct thread_struct thread;
 /*
@@ -2556,10 +2570,7 @@ static inline void wake_up_nohz_cpu(int cpu) { }
 #endif
 
 #ifdef CONFIG_NO_HZ_FULL
-extern bool sched_can_stop_tick(void);
 extern u64 scheduler_tick_max_deferment(void);
-#else
-static inline bool sched_can_stop_tick(void) { return false; }
 #endif
 
 #ifdef CONFIG_SCHED_AUTOGROUP
@@ -3094,10 +3105,18 @@ static inline unsigned long stack_not_used(struct task_struct *p)
 	unsigned long *n = end_of_stack(p);
 
 	do { 	/* Skip over canary */
+# ifdef CONFIG_STACK_GROWSUP
+		n--;
+# else
 		n++;
+# endif
 	} while (!*n);
 
+# ifdef CONFIG_STACK_GROWSUP
+	return (unsigned long)end_of_stack(p) - (unsigned long)n;
+# else
 	return (unsigned long)n - (unsigned long)end_of_stack(p);
+# endif
 }
 #endif
 extern void set_task_stack_end_magic(struct task_struct *tsk);

@@ -171,17 +171,16 @@ static int valid_batchbuffer_addr(struct goldfish_pipe_dev *dev,
 static int setup_access_params_addr(struct platform_device *pdev,
 					struct goldfish_pipe_dev *dev)
 {
-	u64 paddr;
+	dma_addr_t dma_handle;
 	struct access_params *aps;
 
-	aps = devm_kzalloc(&pdev->dev, sizeof(struct access_params), GFP_KERNEL);
+	aps = dmam_alloc_coherent(&pdev->dev, sizeof(struct access_params),
+				  &dma_handle, GFP_KERNEL);
 	if (!aps)
-		return -1;
+		return -ENOMEM;
 
-	/* FIXME */
-	paddr = __pa(aps);
-	writel((u32)(paddr >> 32), dev->base + PIPE_REG_PARAMS_ADDR_HIGH);
-	writel((u32)paddr, dev->base + PIPE_REG_PARAMS_ADDR_LOW);
+	writel(upper_32_bits(dma_handle), dev->base + PIPE_REG_PARAMS_ADDR_HIGH);
+	writel(lower_32_bits(dma_handle), dev->base + PIPE_REG_PARAMS_ADDR_LOW);
 
 	if (valid_batchbuffer_addr(dev, aps)) {
 		dev->aps = aps;
@@ -220,7 +219,7 @@ static int access_with_param(struct goldfish_pipe_dev *dev, const int cmd,
 }
 
 static ssize_t goldfish_pipe_read_write(struct file *filp, char __user *buffer,
-				    size_t bufflen, int is_write)
+				       size_t bufflen, int is_write)
 {
 	unsigned long irq_flags;
 	struct goldfish_pipe *pipe = filp->private_data;

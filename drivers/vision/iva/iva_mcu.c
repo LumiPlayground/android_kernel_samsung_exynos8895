@@ -392,8 +392,7 @@ int32_t iva_mcu_boot_file(struct iva_dev_data *iva,
 	}
 
 	if (mcu_bin->flag & MCU_BIN_ION) {
-		if (dma_buf_begin_cpu_access(mcu_bin->dmabuf,
-				0, VMCU_MEM_SIZE, 0)) {
+		if (dma_buf_begin_cpu_access(mcu_bin->dmabuf, DMA_BIDIRECTIONAL)) {
 			ret = -ENOMEM;
 			goto err_mcu_file;
 		}
@@ -401,8 +400,7 @@ int32_t iva_mcu_boot_file(struct iva_dev_data *iva,
 		mcu_bin->bin = dma_buf_kmap(mcu_bin->dmabuf, 0);
 		if (!mcu_bin->bin) {
 			dev_err(dev, "%s() fail to kmap ion\n", __func__);
-			dma_buf_end_cpu_access(mcu_bin->dmabuf, 0,
-					VMCU_MEM_SIZE, 0);
+			dma_buf_end_cpu_access(mcu_bin->dmabuf, DMA_BIDIRECTIONAL);
 			ret = -ENOMEM;
 			goto err_mcu_file;
 		}
@@ -432,7 +430,7 @@ err_ion_kmap:
 	if (mcu_bin->flag & MCU_BIN_ION) {
 		if (mcu_bin->bin) {
 			dma_buf_kunmap(mcu_bin->dmabuf, 0, mcu_bin->bin);
-			dma_buf_end_cpu_access(mcu_bin->dmabuf, 0, VMCU_MEM_SIZE, 0);
+			dma_buf_end_cpu_access(mcu_bin->dmabuf, DMA_BIDIRECTIONAL);
 			mcu_bin->bin = NULL;
 		}
 	}

@@ -414,6 +414,8 @@ sun4v_chip_type:
 	cmp	%g2, 'T'
 	be,pt	%xcc, 70f
 	 cmp	%g2, 'M'
+	be,pt	%xcc, 70f
+	 cmp	%g2, 'S'
 	bne,pn	%xcc, 49f
 	 nop
 
@@ -433,6 +435,9 @@ sun4v_chip_type:
 	cmp	%g2, '7'
 	be,pt	%xcc, 5f
 	 mov	SUN4V_CHIP_SPARC_M7, %g4
+	cmp	%g2, 'N'
+	be,pt	%xcc, 5f
+	 mov	SUN4V_CHIP_SPARC_SN, %g4
 	ba,pt	%xcc, 49f
 	 nop
 
@@ -593,6 +598,9 @@ niagara_tlb_fixup:
 	cmp	%g1, SUN4V_CHIP_SPARC_M7
 	be,pt	%xcc, niagara4_patch
 	 nop
+	cmp	%g1, SUN4V_CHIP_SPARC_SN
+	be,pt	%xcc, niagara4_patch
+	 nop
 
 	call	generic_patch_copyops
 	 nop
@@ -689,14 +697,6 @@ tlb_fixup_done:
 	or	%o1, %lo(_end), %o1
 	call	__bzero
 	 sub	%o1, %o0, %o1
-
-#ifdef CONFIG_LOCKDEP
-	/* We have this call this super early, as even prom_init can grab
-	 * spinlocks and thus call into the lockdep code.
-	 */
-	call	lockdep_init
-	 nop
-#endif
 
 	call	prom_init
 	 mov	%l7, %o0			! OpenPROM cif handler

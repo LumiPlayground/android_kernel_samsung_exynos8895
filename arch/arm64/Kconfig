@@ -248,8 +248,6 @@ config PCI_SYSCALL
 	def_bool PCI
 
 source "drivers/pci/Kconfig"
-source "drivers/pci/pcie/Kconfig"
-source "drivers/pci/hotplug/Kconfig"
 
 endmenu
 
@@ -916,7 +914,22 @@ config ARM64_LSE_ATOMICS
 	  not support these instructions and requires the kernel to be
 	  built with binutils >= 2.25.
 
+config ARM64_VHE
+	bool "Enable support for Virtualization Host Extensions (VHE)"
+	default y
+	help
+	  Virtualization Host Extensions (VHE) allow the kernel to run
+	  directly at EL2 (instead of EL1) on processors that support
+	  it. This leads to better performance for KVM, as they reduce
+	  the cost of the world switch.
+
+	  Selecting this option allows the VHE feature to be detected
+	  at runtime, and does not affect processors that do not
+	  implement this feature.
+
 endmenu
+
+menu "ARMv8.2 architectural features"
 
 config ARM64_UAO
 	bool "Enable support for User Access Override (UAO)"
@@ -938,6 +951,8 @@ config ARM64_UAO
 	  The feature is detected at runtime, the kernel will use the
 	  regular load/store instructions if the cpu does not implement the
 	  feature.
+
+endmenu
 
 config ARM64_MODULE_CMODEL_LARGE
 	bool

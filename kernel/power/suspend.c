@@ -250,7 +250,7 @@ static int suspend_test(int level)
 {
 #ifdef CONFIG_PM_DEBUG
 	if (pm_test_level == level) {
-		printk(KERN_INFO "suspend debug: Waiting for %d second(s).\n",
+		pr_info("suspend debug: Waiting for %d second(s).\n",
 				pm_test_delay);
 		mdelay(pm_test_delay * 1000);
 		return 1;
@@ -505,8 +505,7 @@ static int enter_state(suspend_state_t state)
 	if (state == PM_SUSPEND_FREEZE) {
 #ifdef CONFIG_PM_DEBUG
 		if (pm_test_level != TEST_NONE && pm_test_level <= TEST_CPUS) {
-			pr_warning("PM: Unsupported test mode for suspend to idle,"
-				   "please choose none/freezer/devices/platform.\n");
+			pr_warn("PM: Unsupported test mode for suspend to idle, please choose none/freezer/devices/platform.\n");
 			return -EAGAIN;
 		}
 #endif

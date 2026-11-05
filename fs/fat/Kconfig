@@ -93,7 +93,8 @@ config FAT_DEFAULT_IOCHARSET
 	  that most of your FAT filesystems use, and can be overridden
 	  with the "iocharset" mount option for FAT filesystems.
 	  Note that "utf8" is not recommended for FAT filesystems.
-	  If unsure, you shouldn't set "utf8" here.
+	  If unsure, you shouldn't set "utf8" here - select the next option
+	  instead if you would like to use UTF-8 encoded file names by default.
 	  See <file:Documentation/filesystems/vfat.txt> for more information.
 
 	  Enable any character sets you need in File Systems/Native Language

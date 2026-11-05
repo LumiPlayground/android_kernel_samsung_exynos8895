@@ -1735,11 +1735,8 @@ static int vmci_transport_dgram_dequeue(struct vsock_sock *vsk,
 	/* Retrieve the head sk_buff from the socket's receive queue. */
 	err = 0;
 	skb = skb_recv_datagram(&vsk->sk, flags, noblock, &err);
-	if (err)
-		return err;
-
 	if (!skb)
-		return -EAGAIN;
+		return err;
 
 	dg = (struct vmci_datagram *)skb->data;
 	if (!dg)

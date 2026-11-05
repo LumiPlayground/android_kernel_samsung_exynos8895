@@ -175,7 +175,7 @@ static void seq_print_vma_name(struct seq_file *m, struct vm_area_struct *vma)
 		long pages_pinned;
 		struct page *page;
 
-		pages_pinned = get_user_pages(current, mm, page_start_vaddr,
+		pages_pinned = get_user_pages_remote(current, mm, page_start_vaddr,
 				1, 0, 0, &page, NULL);
 		if (pages_pinned < 1) {
 			seq_puts(m, "<fault>]");
@@ -631,7 +631,7 @@ static void smaps_pte_entry(pte_t *pte, unsigned long addr,
 		if (radix_tree_exceptional_entry(page))
 			mss->swap += PAGE_SIZE;
 		else
-			page_cache_release(page);
+			put_page(page);
 
 		return;
 	}
@@ -738,11 +738,20 @@ static void show_smap_vma_flags(struct seq_file *m, struct vm_area_struct *vma)
 		[ilog2(VM_MERGEABLE)]	= "mg",
 		[ilog2(VM_UFFD_MISSING)]= "um",
 		[ilog2(VM_UFFD_WP)]	= "uw",
+#ifdef CONFIG_X86_INTEL_MEMORY_PROTECTION_KEYS
+		/* These come out via ProtectionKey: */
+		[ilog2(VM_PKEY_BIT0)]	= "",
+		[ilog2(VM_PKEY_BIT1)]	= "",
+		[ilog2(VM_PKEY_BIT2)]	= "",
+		[ilog2(VM_PKEY_BIT3)]	= "",
+#endif
 	};
 	size_t i;
 
 	seq_puts(m, "VmFlags: ");
 	for (i = 0; i < BITS_PER_LONG; i++) {
+		if (!mnemonics[i][0])
+			continue;
 		if (vma->vm_flags & (1UL << i)) {
 			seq_printf(m, "%c%c ",
 				   mnemonics[i][0], mnemonics[i][1]);
@@ -779,6 +788,10 @@ static int smaps_hugetlb_range(pte_t *pte, unsigned long hmask,
 	return 0;
 }
 #endif /* HUGETLB_PAGE */
+
+void __weak arch_show_smap(struct seq_file *m, struct vm_area_struct *vma)
+{
+}
 
 static int show_smap(struct seq_file *m, void *v, int is_pid)
 {
@@ -867,6 +880,7 @@ static int show_smap(struct seq_file *m, void *v, int is_pid)
 		   (vma->vm_flags & VM_LOCKED) ?
 			(unsigned long)(mss.pss >> (10 + PSS_SHIFT)) : 0);
 
+	arch_show_smap(m, vma);
 	show_smap_vma_flags(m, vma);
 	m_cache_vma(m, vma);
 	return 0;

@@ -196,6 +196,7 @@ static bool fl_destroy(struct tcf_proto *tp, bool force)
 		return false;
 
 	list_for_each_entry_safe(f, next, &head->filters, list) {
+		fl_hw_destroy_filter(tp, (unsigned long)f);
 		list_del_rcu(&f->list);
 		call_rcu(&f->rcu, fl_destroy_filter);
 	}
@@ -480,6 +481,7 @@ static int fl_change(struct net *net, struct sk_buff *in_skb,
 	struct cls_fl_filter *fnew;
 	struct nlattr *tb[TCA_FLOWER_MAX + 1];
 	struct fl_flow_mask mask = {};
+	u32 flags = 0;
 	int err;
 
 	if (!tca[TCA_OPTIONS])
@@ -507,6 +509,9 @@ static int fl_change(struct net *net, struct sk_buff *in_skb,
 	}
 	fnew->handle = handle;
 
+	if (tb[TCA_FLOWER_FLAGS])
+		flags = nla_get_u32(tb[TCA_FLOWER_FLAGS]);
+
 	err = fl_set_parms(net, tp, fnew, &mask, base, tb, tca[TCA_RATE], ovr);
 	if (err)
 		goto errout;
@@ -519,9 +524,20 @@ static int fl_change(struct net *net, struct sk_buff *in_skb,
 				     head->ht_params);
 	if (err)
 		goto errout;
-	if (fold)
+
+	fl_hw_replace_filter(tp,
+			     &head->dissector,
+			     &mask.key,
+			     &fnew->key,
+			     &fnew->exts,
+			     (unsigned long)fnew,
+			     flags);
+
+	if (fold) {
 		rhashtable_remove_fast(&head->ht, &fold->ht_node,
 				       head->ht_params);
+		fl_hw_destroy_filter(tp, (unsigned long)fold);
+	}
 
 	*arg = (unsigned long) fnew;
 
@@ -548,6 +564,7 @@ static int fl_delete(struct tcf_proto *tp, unsigned long arg)
 	rhashtable_remove_fast(&head->ht, &f->ht_node,
 			       head->ht_params);
 	list_del_rcu(&f->list);
+	fl_hw_destroy_filter(tp, (unsigned long)f);
 	tcf_unbind_filter(tp, &f->res);
 	call_rcu(&f->rcu, fl_destroy_filter);
 	return 0;

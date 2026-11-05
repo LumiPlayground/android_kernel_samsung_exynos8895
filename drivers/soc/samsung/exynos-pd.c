@@ -260,8 +260,9 @@ static void exynos_pd_genpd_init(struct exynos_pm_domain *pd, int state)
 	pd->genpd.power_on = exynos_pd_power_on;
 
 	/* pd power on/off latency is less than 1ms */
-	pd->genpd.power_on_latency_ns = 1000000;
-	pd->genpd.power_off_latency_ns = 1000000;
+	pd->genpd.state_count = 1;
+	pd->genpd.states[0].power_on_latency_ns = 1000000;
+	pd->genpd.states[0].power_off_latency_ns = 1000000;
 
 	pm_genpd_init(&pd->genpd, NULL, state ? false : true);
 }

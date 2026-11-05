@@ -31,6 +31,7 @@
 #include <linux/key.h>
 #include <linux/namei.h>
 #include <linux/crypto.h>
+#include <crypto/hash.h>
 #include <linux/file.h>
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
@@ -203,6 +204,19 @@ void ecryptfs_from_hex(char *dst, char *src, int dst_size)
 	}
 }
 
+static int ecryptfs_hash_digest(struct crypto_shash *tfm, char *src,
+				int len, char *dst)
+{
+	SHASH_DESC_ON_STACK(desc, tfm);
+	int ret;
+
+	desc->tfm = tfm;
+	desc->flags = CRYPTO_TFM_REQ_MAY_SLEEP;
+	ret = crypto_shash_digest(desc, (u8 *)src, len, (u8 *)dst);
+	memzero_explicit(desc, sizeof(*desc) + crypto_shash_descsize(tfm));
+	return ret;
+}
+
 #ifdef CONFIG_CRYPTO_FIPS
 /**
  * ecryptfs_calculate_sha256 - calculates the sha256 of @src
@@ -218,45 +232,26 @@ static int ecryptfs_calculate_sha256(char *dst,
 				  struct ecryptfs_crypt_stat *crypt_stat,
 				  char *src, int len)
 {
-	struct scatterlist sg;
-	struct hash_desc desc = {
-		.tfm = crypt_stat->hash_tfm,
-		.flags = CRYPTO_TFM_REQ_MAY_SLEEP
-	};
+	struct crypto_shash *tfm;
 	int rc = 0;
 
 	mutex_lock(&crypt_stat->cs_hash_tfm_mutex);
-	sg_init_one(&sg, (u8 *)src, len);
-	if (!desc.tfm) {
-		desc.tfm = crypto_alloc_hash(ECRYPTFS_SHA256_HASH, 0,
-					     CRYPTO_ALG_ASYNC);
-		if (IS_ERR(desc.tfm)) {
-			rc = PTR_ERR(desc.tfm);
+	tfm = crypt_stat->hash_tfm;
+	if (!tfm) {
+		tfm = crypto_alloc_shash(ECRYPTFS_SHA256_HASH, 0, 0);
+		if (IS_ERR(tfm)) {
+			rc = PTR_ERR(tfm);
 			ecryptfs_printk(KERN_ERR, "Error attempting to "
 					"allocate crypto context; rc = [%d]\n",
 					rc);
 			goto out;
 		}
-		crypt_stat->hash_tfm = desc.tfm;
+		crypt_stat->hash_tfm = tfm;
 	}
-	rc = crypto_hash_init(&desc);
+	rc = ecryptfs_hash_digest(tfm, src, len, dst);
 	if (rc) {
 		printk(KERN_ERR
-		       "%s: Error initializing crypto hash; rc = [%d]\n",
-		       __func__, rc);
-		goto out;
-	}
-	rc = crypto_hash_update(&desc, &sg, len);
-	if (rc) {
-		printk(KERN_ERR
-		       "%s: Error updating crypto hash; rc = [%d]\n",
-		       __func__, rc);
-		goto out;
-	}
-	rc = crypto_hash_final(&desc, dst);
-	if (rc) {
-		printk(KERN_ERR
-		       "%s: Error finalizing crypto hash; rc = [%d]\n",
+		       "%s: Error computing crypto hash; rc = [%d]\n",
 		       __func__, rc);
 		goto out;
 	}
@@ -280,45 +275,26 @@ static int ecryptfs_calculate_md5(char *dst,
 				  struct ecryptfs_crypt_stat *crypt_stat,
 				  char *src, int len)
 {
-	struct scatterlist sg;
-	struct hash_desc desc = {
-		.tfm = crypt_stat->hash_tfm,
-		.flags = CRYPTO_TFM_REQ_MAY_SLEEP
-	};
+	struct crypto_shash *tfm;
 	int rc = 0;
 
 	mutex_lock(&crypt_stat->cs_hash_tfm_mutex);
-	sg_init_one(&sg, (u8 *)src, len);
-	if (!desc.tfm) {
-		desc.tfm = crypto_alloc_hash(ECRYPTFS_DEFAULT_HASH, 0,
-					     CRYPTO_ALG_ASYNC);
-		if (IS_ERR(desc.tfm)) {
-			rc = PTR_ERR(desc.tfm);
+	tfm = crypt_stat->hash_tfm;
+	if (!tfm) {
+		tfm = crypto_alloc_shash(ECRYPTFS_DEFAULT_HASH, 0, 0);
+		if (IS_ERR(tfm)) {
+			rc = PTR_ERR(tfm);
 			ecryptfs_printk(KERN_ERR, "Error attempting to "
 					"allocate crypto context; rc = [%d]\n",
 					rc);
 			goto out;
 		}
-		crypt_stat->hash_tfm = desc.tfm;
+		crypt_stat->hash_tfm = tfm;
 	}
-	rc = crypto_hash_init(&desc);
+	rc = ecryptfs_hash_digest(tfm, src, len, dst);
 	if (rc) {
 		printk(KERN_ERR
-		       "%s: Error initializing crypto hash; rc = [%d]\n",
-		       __func__, rc);
-		goto out;
-	}
-	rc = crypto_hash_update(&desc, &sg, len);
-	if (rc) {
-		printk(KERN_ERR
-		       "%s: Error updating crypto hash; rc = [%d]\n",
-		       __func__, rc);
-		goto out;
-	}
-	rc = crypto_hash_final(&desc, dst);
-	if (rc) {
-		printk(KERN_ERR
-		       "%s: Error finalizing crypto hash; rc = [%d]\n",
+		       "%s: Error computing crypto hash; rc = [%d]\n",
 		       __func__, rc);
 		goto out;
 	}
@@ -437,7 +413,7 @@ void ecryptfs_destroy_crypt_stat(struct ecryptfs_crypt_stat *crypt_stat)
 	if (crypt_stat->tfm)
 		crypto_free_ablkcipher(crypt_stat->tfm);
 	if (crypt_stat->hash_tfm)
-		crypto_free_hash(crypt_stat->hash_tfm);
+		crypto_free_shash(crypt_stat->hash_tfm);
 	list_for_each_entry_safe(key_sig, key_sig_tmp,
 				 &crypt_stat->keysig_list, crypt_stat_list) {
 		list_del(&key_sig->crypt_stat_list);

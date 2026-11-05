@@ -68,6 +68,11 @@ struct kasan_cache {
 	int free_meta_offset;
 };
 
+struct kasan_cache {
+	int alloc_meta_offset;
+	int free_meta_offset;
+};
+
 int kasan_module_alloc(void *addr, size_t size);
 void kasan_free_shadow(const struct vm_struct *vm);
 

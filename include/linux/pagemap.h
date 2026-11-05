@@ -187,7 +187,7 @@ static inline int page_cache_get_speculative(struct page *page)
 	 * SMP requires.
 	 */
 	VM_BUG_ON_PAGE(page_count(page) == 0, page);
-	atomic_inc(&page->_count);
+	page_ref_inc(page);
 
 #else
 	if (unlikely(!get_page_unless_zero(page))) {
@@ -216,28 +216,15 @@ static inline int page_cache_add_speculative(struct page *page, int count)
 	VM_BUG_ON(!in_atomic());
 # endif
 	VM_BUG_ON_PAGE(page_count(page) == 0, page);
-	atomic_add(count, &page->_count);
+	page_ref_add(page, count);
 
 #else
-	if (unlikely(!atomic_add_unless(&page->_count, count, 0)))
+	if (unlikely(!page_ref_add_unless(page, count, 0)))
 		return 0;
 #endif
 	VM_BUG_ON_PAGE(PageCompound(page) && page != compound_head(page), page);
 
 	return 1;
-}
-
-static inline int page_freeze_refs(struct page *page, int count)
-{
-	return likely(atomic_cmpxchg(&page->_count, count, 0) == count);
-}
-
-static inline void page_unfreeze_refs(struct page *page, int count)
-{
-	VM_BUG_ON_PAGE(page_count(page) != 0, page);
-	VM_BUG_ON(count == 0);
-
-	atomic_set(&page->_count, count);
 }
 
 #ifdef CONFIG_NUMA
@@ -425,13 +412,13 @@ static inline pgoff_t page_to_pgoff(struct page *page)
 		return page->index << compound_order(page);
 
 	if (likely(!PageTransTail(page)))
-		return page->index << (PAGE_CACHE_SHIFT - PAGE_SHIFT);
+		return page->index;
 
 	/*
 	 *  We don't initialize ->index for tail pages: calculate based on
 	 *  head page
 	 */
-	pgoff = compound_head(page)->index << (PAGE_CACHE_SHIFT - PAGE_SHIFT);
+	pgoff = compound_head(page)->index;
 	pgoff += page - compound_head(page);
 	return pgoff;
 }
@@ -441,12 +428,12 @@ static inline pgoff_t page_to_pgoff(struct page *page)
  */
 static inline loff_t page_offset(struct page *page)
 {
-	return ((loff_t)page->index) << PAGE_CACHE_SHIFT;
+	return ((loff_t)page->index) << PAGE_SHIFT;
 }
 
 static inline loff_t page_file_offset(struct page *page)
 {
-	return ((loff_t)page_file_index(page)) << PAGE_CACHE_SHIFT;
+	return ((loff_t)page_file_index(page)) << PAGE_SHIFT;
 }
 
 extern pgoff_t linear_hugepage_index(struct vm_area_struct *vma,
@@ -460,7 +447,7 @@ static inline pgoff_t linear_page_index(struct vm_area_struct *vma,
 		return linear_hugepage_index(vma, address);
 	pgoff = (address - vma->vm_start) >> PAGE_SHIFT;
 	pgoff += vma->vm_pgoff;
-	return pgoff >> (PAGE_CACHE_SHIFT - PAGE_SHIFT);
+	return pgoff;
 }
 
 extern void __lock_page(struct page *page);
@@ -570,8 +557,7 @@ extern void add_page_wait_queue(struct page *page, wait_queue_t *waiter);
 /*
  * Fault a userspace page into pagetables.  Return non-zero on a fault.
  *
- * This assumes that two userspace pages are always sufficient.  That's
- * not true if PAGE_CACHE_SIZE > PAGE_SIZE.
+ * This assumes that two userspace pages are always sufficient.
  */
 static inline int fault_in_pages_writeable(char __user *uaddr, int size)
 {
@@ -685,8 +671,7 @@ int add_to_page_cache_locked(struct page *page, struct address_space *mapping,
 int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 				pgoff_t index, gfp_t gfp_mask);
 extern void delete_from_page_cache(struct page *page);
-extern void __delete_from_page_cache(struct page *page, void *shadow,
-				     struct mem_cgroup *memcg);
+extern void __delete_from_page_cache(struct page *page, void *shadow);
 int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask);
 
 /*
@@ -707,8 +692,8 @@ static inline int add_to_page_cache(struct page *page,
 
 static inline unsigned long dir_pages(struct inode *inode)
 {
-	return (unsigned long)(inode->i_size + PAGE_CACHE_SIZE - 1) >>
-			       PAGE_CACHE_SHIFT;
+	return (unsigned long)(inode->i_size + PAGE_SIZE - 1) >>
+			       PAGE_SHIFT;
 }
 
 #endif /* _LINUX_PAGEMAP_H */
