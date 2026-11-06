@@ -466,7 +466,8 @@ int sensor_ak7371_actuator_probe(struct i2c_client *client,
 	struct device *dev;
 	struct device_node *dnode;
 
-	BUG_ON(!fimc_is_dev);
+	if (!fimc_is_dev)
+		return -EPROBE_DEFER;
 	BUG_ON(!client);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);

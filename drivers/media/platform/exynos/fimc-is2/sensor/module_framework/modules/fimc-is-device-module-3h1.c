@@ -169,7 +169,8 @@ int sensor_module_3h1_probe(struct platform_device *pdev)
 	struct device *dev;
 	struct pinctrl_state *s;
 
-	BUG_ON(!fimc_is_dev);
+	if (!fimc_is_dev)
+		return -EPROBE_DEFER;
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
