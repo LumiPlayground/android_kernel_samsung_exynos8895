@@ -44,6 +44,7 @@ bool kthread_should_stop(void);
 bool kthread_should_park(void);
 bool kthread_freezable_should_stop(bool *was_frozen);
 void *kthread_data(struct task_struct *k);
+void *kthread_probe_data(struct task_struct *k);
 void *probe_kthread_data(struct task_struct *k);
 int kthread_park(struct task_struct *k);
 void kthread_unpark(struct task_struct *k);
@@ -133,4 +134,9 @@ void flush_kthread_worker(struct kthread_worker *worker);
 
 bool kthread_cancel_work_sync(struct kthread_work *work);
 
+#define kthread_init_worker init_kthread_worker
+#define kthread_init_work init_kthread_work
+#define kthread_queue_work queue_kthread_work
+#define kthread_flush_work flush_kthread_work
+#define kthread_flush_worker flush_kthread_worker
 #endif /* _LINUX_KTHREAD_H */

@@ -13,7 +13,6 @@
 #include <linux/err.h>
 #include <linux/ktime.h>
 #include <linux/kvm_host.h>
-#include <linux/module.h>
 #include <linux/vmalloc.h>
 #include <linux/fs.h>
 #include <linux/bootmem.h>
@@ -861,7 +860,7 @@ static void kvm_mips_invalidate_guest_tlb(struct kvm_vcpu *vcpu,
 	bool user;
 
 	/* No need to flush for entries which are already invalid */
-	if (!((tlb->tlb_lo0 | tlb->tlb_lo1) & MIPS3_PG_V))
+	if (!((tlb->tlb_lo[0] | tlb->tlb_lo[1]) & ENTRYLO_V))
 		return;
 	/* User address space doesn't need flushing for KSeg2/3 changes */
 	user = tlb->tlb_hi < KVM_GUEST_KSEG0;
@@ -1162,23 +1161,30 @@ enum emulation_result kvm_mips_emulate_CP0(union mips_instruction inst,
 			} else if (rd == MIPS_CP0_TLB_HI && sel == 0) {
 				u32 nasid =
 					vcpu->arch.gprs[rt] & KVM_ENTRYHI_ASID;
-				if ((KSEGX(vcpu->arch.gprs[rt]) != CKSEG0) &&
-				    ((kvm_read_c0_guest_entryhi(cop0) &
+				if (((kvm_read_c0_guest_entryhi(cop0) &
 				      KVM_ENTRYHI_ASID) != nasid)) {
 					trace_kvm_asid_change(vcpu,
 						kvm_read_c0_guest_entryhi(cop0)
 							& KVM_ENTRYHI_ASID,
 						nasid);
 
+					/*
+					 * Regenerate/invalidate kernel MMU
+					 * context.
+					 * The user MMU context will be
+					 * regenerated lazily on re-entry to
+					 * guest user if the guest ASID actually
+					 * changes.
+					 */
 					preempt_disable();
-					/* Blow away the shadow host TLBs */
-					kvm_mips_flush_host_tlb(1);
 					cpu = smp_processor_id();
+					kvm_get_new_mmu_context(&vcpu->arch.guest_kernel_mm,
+								cpu, vcpu);
+					vcpu->arch.guest_kernel_asid[cpu] =
+						vcpu->arch.guest_kernel_mm.context.asid[cpu];
 					for_each_possible_cpu(i)
-						if (i != cpu) {
-							vcpu->arch.guest_user_asid[i] = 0;
+						if (i != cpu)
 							vcpu->arch.guest_kernel_asid[i] = 0;
-						}
 					preempt_enable();
 				}
 				kvm_write_c0_guest_entryhi(cop0,
@@ -1523,8 +1529,8 @@ enum emulation_result kvm_mips_emulate_load(union mips_instruction inst,
 {
 	enum emulation_result er = EMULATE_DO_MMIO;
 	unsigned long curr_pc;
-	int32_t op, base, rt, offset;
-	uint32_t bytes;
+	u32 op, rt;
+	u32 bytes;
 
 	rt = inst.i_format.rt;
 	op = inst.i_format.opcode;
@@ -1746,8 +1752,7 @@ enum emulation_result kvm_mips_emulate_cache(union mips_instruction inst,
 			 * We fault an entry from the guest tlb to the
 			 * shadow host TLB
 			 */
-			if (kvm_mips_handle_mapped_seg_tlb_fault(vcpu, tlb,
-								 NULL, NULL)) {
+			if (kvm_mips_handle_mapped_seg_tlb_fault(vcpu, tlb)) {
 				kvm_err("%s: handling mapped seg tlb fault for %lx, index: %u, vcpu: %p, ASID: %#lx\n",
 					__func__, va, index, vcpu,
 					read_c0_entryhi());
@@ -2721,8 +2726,7 @@ enum emulation_result kvm_mips_handle_tlbmiss(u32 cause,
 			 * OK we have a Guest TLB entry, now inject it into the
 			 * shadow host TLB
 			 */
-			if (kvm_mips_handle_mapped_seg_tlb_fault(vcpu, tlb,
-								 NULL, NULL)) {
+			if (kvm_mips_handle_mapped_seg_tlb_fault(vcpu, tlb)) {
 				kvm_err("%s: handling mapped seg tlb fault for %lx, index: %u, vcpu: %p, ASID: %#lx\n",
 					__func__, va, index, vcpu,
 					read_c0_entryhi());

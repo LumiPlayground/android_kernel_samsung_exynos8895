@@ -63,7 +63,7 @@ extern void __init files_maxfiles_init(void);
 
 extern struct files_stat_struct files_stat;
 extern unsigned long get_max_files(void);
-extern int sysctl_nr_open;
+extern unsigned int sysctl_nr_open;
 extern struct inodes_stat_t inodes_stat;
 extern int leases_enable, lease_break_time;
 extern int sysctl_protected_symlinks;
@@ -329,6 +329,7 @@ struct writeback_control;
 #define IOCB_HIPRI		(1 << 3)
 #define IOCB_DSYNC		(1 << 4)
 #define IOCB_SYNC		(1 << 5)
+#define IOCB_WRITE		(1 << 6)
 
 struct kiocb {
 	struct file		*ki_filp;
@@ -617,6 +618,7 @@ is_uncached_acl(struct posix_acl *acl)
 #define IOP_FASTPERM	0x0001
 #define IOP_LOOKUP	0x0002
 #define IOP_NOFOLLOW	0x0004
+#define IOP_XATTR	0x0008
 
 /*
  * Keep mostly read-only and often accessed (especially for
@@ -1489,6 +1491,7 @@ static inline void i_gid_write(struct inode *inode, gid_t gid)
 }
 
 extern struct timespec current_fs_time(struct super_block *sb);
+extern struct timespec current_time(struct inode *inode);
 
 /*
  * Snapshotting support.
@@ -1779,12 +1782,7 @@ struct inode_operations {
 	int (*setattr) (struct dentry *, struct iattr *);
 	int (*setattr2) (struct vfsmount *, struct dentry *, struct iattr *);
 	int (*getattr) (struct vfsmount *mnt, struct dentry *, struct kstat *);
-	int (*setxattr) (struct dentry *, struct inode *,
-			 const char *, const void *, size_t, int);
-	ssize_t (*getxattr) (struct dentry *, struct inode *,
-			     const char *, void *, size_t);
 	ssize_t (*listxattr) (struct dentry *, char *, size_t);
-	int (*removexattr) (struct dentry *, const char *);
 	int (*fiemap)(struct inode *, struct fiemap_extent_info *, u64 start,
 		      u64 len);
 	int (*update_time)(struct inode *, struct timespec *, int);
@@ -2124,10 +2122,19 @@ struct super_block *sget(struct file_system_type *type,
 			int (*test)(struct super_block *,void *),
 			int (*set)(struct super_block *,void *),
 			int flags, void *data);
-extern struct dentry *mount_pseudo(struct file_system_type *, char *,
-	const struct super_operations *ops,
-	const struct dentry_operations *dops,
-	unsigned long);
+extern struct dentry *mount_pseudo_xattr(struct file_system_type *, char *,
+					 const struct super_operations *ops,
+					 const struct xattr_handler **xattr,
+					 const struct dentry_operations *dops,
+					 unsigned long);
+
+static inline struct dentry *
+mount_pseudo(struct file_system_type *fs_type, char *name,
+	     const struct super_operations *ops,
+	     const struct dentry_operations *dops, unsigned long magic)
+{
+	return mount_pseudo_xattr(fs_type, name, ops, NULL, dops, magic);
+}
 
 /* Alas, no aliases. Too much hassle with bringing module.h everywhere */
 #define fops_get(fops) \
@@ -3046,6 +3053,7 @@ extern int buffer_migrate_page(struct address_space *,
 #endif
 
 extern int inode_change_ok(const struct inode *, struct iattr *);
+extern int setattr_prepare(struct dentry *, struct iattr *);
 extern int inode_newsize_ok(const struct inode *, loff_t offset);
 extern void setattr_copy(struct inode *inode, const struct iattr *attr);
 
@@ -3242,4 +3250,7 @@ static inline bool dir_relax_shared(struct inode *inode)
 extern bool path_noexec(const struct path *path);
 extern void inode_nohighmem(struct inode *inode);
 
+struct dentry *mount_pseudo_xattr(struct file_system_type *, char *,
+	const struct super_operations *, const struct xattr_handler **,
+	const struct dentry_operations *, unsigned long);
 #endif /* _LINUX_FS_H */

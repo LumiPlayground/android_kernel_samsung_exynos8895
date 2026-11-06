@@ -265,14 +265,14 @@ static struct smack_known *smk_fetch(const char *name, struct inode *ip,
 	char *buffer;
 	struct smack_known *skp = NULL;
 
-	if (ip->i_op->getxattr == NULL)
+	if (!(ip->i_opflags & IOP_XATTR))
 		return ERR_PTR(-EOPNOTSUPP);
 
 	buffer = kzalloc(SMK_LONGLABEL, GFP_KERNEL);
 	if (buffer == NULL)
 		return ERR_PTR(-ENOMEM);
 
-	rc = ip->i_op->getxattr(dp, ip, name, buffer, SMK_LONGLABEL);
+	rc = __vfs_getxattr(dp, ip, name, buffer, SMK_LONGLABEL);
 	if (rc < 0)
 		skp = ERR_PTR(rc);
 	else if (rc == 0)
@@ -1852,14 +1852,14 @@ static int smack_file_send_sigiotask(struct task_struct *tsk,
 
 	/* we don't log here as rc can be overriden */
 	skp = file->f_security;
-	rc = smk_access(skp, tkp, MAY_WRITE, NULL);
-	rc = smk_bu_note("sigiotask", skp, tkp, MAY_WRITE, rc);
+	rc = smk_access(skp, tkp, MAY_DELIVER, NULL);
+	rc = smk_bu_note("sigiotask", skp, tkp, MAY_DELIVER, rc);
 	if (rc != 0 && has_capability(tsk, CAP_MAC_OVERRIDE))
 		rc = 0;
 
 	smk_ad_init(&ad, __func__, LSM_AUDIT_DATA_TASK);
 	smk_ad_setfield_u_tsk(&ad, tsk);
-	smack_log(skp->smk_known, tkp->smk_known, MAY_WRITE, rc, &ad);
+	smack_log(skp->smk_known, tkp->smk_known, MAY_DELIVER, rc, &ad);
 	return rc;
 }
 
@@ -2260,8 +2260,8 @@ static int smack_task_kill(struct task_struct *p, struct siginfo *info,
 	 * can write the receiver.
 	 */
 	if (secid == 0) {
-		rc = smk_curacc(tkp, MAY_WRITE, &ad);
-		rc = smk_bu_task(p, MAY_WRITE, rc);
+		rc = smk_curacc(tkp, MAY_DELIVER, &ad);
+		rc = smk_bu_task(p, MAY_DELIVER, rc);
 		return rc;
 	}
 	/*
@@ -2270,8 +2270,8 @@ static int smack_task_kill(struct task_struct *p, struct siginfo *info,
 	 * we can't take privilege into account.
 	 */
 	skp = smack_from_secid(secid);
-	rc = smk_access(skp, tkp, MAY_WRITE, &ad);
-	rc = smk_bu_note("USB signal", skp, tkp, MAY_WRITE, rc);
+	rc = smk_access(skp, tkp, MAY_DELIVER, &ad);
+	rc = smk_bu_note("USB signal", skp, tkp, MAY_DELIVER, rc);
 	return rc;
 }
 
@@ -3515,8 +3515,8 @@ static void smack_d_instantiate(struct dentry *opt_dentry, struct inode *inode)
 		 * It would be curious if the label of the task
 		 * does not match that assigned.
 		 */
-		if (inode->i_op->getxattr == NULL)
-			break;
+		if (!(inode->i_opflags & IOP_XATTR))
+		        break;
 		/*
 		 * Get the dentry for xattr.
 		 */
@@ -3540,12 +3540,12 @@ static void smack_d_instantiate(struct dentry *opt_dentry, struct inode *inode)
 			 */
 			if (isp->smk_flags & SMK_INODE_CHANGED) {
 				isp->smk_flags &= ~SMK_INODE_CHANGED;
-				rc = inode->i_op->setxattr(dp, inode,
+				rc = __vfs_setxattr(dp, inode,
 					XATTR_NAME_SMACKTRANSMUTE,
 					TRANS_TRUE, TRANS_TRUE_SIZE,
 					0);
 			} else {
-				rc = inode->i_op->getxattr(dp, inode,
+				rc = __vfs_getxattr(dp, inode,
 					XATTR_NAME_SMACKTRANSMUTE, trattr,
 					TRANS_TRUE_SIZE);
 				if (rc >= 0 && strncmp(trattr, TRANS_TRUE,

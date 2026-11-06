@@ -98,6 +98,7 @@ static void udp_dump(struct udp_table *table, struct sk_buff *skb,
 		     struct netlink_callback *cb,
 		     const struct inet_diag_req_v2 *r, struct nlattr *bc)
 {
+	bool net_admin = netlink_net_capable(cb->skb, CAP_NET_ADMIN);
 	struct net *net = sock_net(skb->sk);
 	bool net_admin = netlink_net_capable(cb->skb, CAP_NET_ADMIN);
 

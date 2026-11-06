@@ -969,7 +969,6 @@ config SENSORS_LM73
 config SENSORS_LM75
 	tristate "National Semiconductor LM75 and compatibles"
 	depends on I2C
-	depends on THERMAL || !THERMAL_OF
 	select REGMAP_I2C
 	help
 	  If you say yes here you get support for one common type of
@@ -1119,6 +1118,7 @@ config SENSORS_LM95241
 config SENSORS_LM95245
 	tristate "National Semiconductor LM95245 and compatibles"
 	depends on I2C
+	select REGMAP_I2C
 	help
 	  If you say yes here you get support for LM95235 and LM95245
 	  temperature sensor chips.
@@ -1572,7 +1572,6 @@ config SENSORS_THMC50
 config SENSORS_TMP102
 	tristate "Texas Instruments TMP102"
 	depends on I2C
-	depends on THERMAL || !THERMAL_OF
 	select REGMAP_I2C
 	help
 	  If you say yes here you get support for Texas Instruments TMP102

@@ -96,8 +96,7 @@ static inline long gup_local(struct mm_struct *mm, uintptr_t start,
 	/* ExySp */
 	flags |= FOLL_CMA;
 
-	return get_user_pages_remote(NULL, mm, start, nr_pages, write, 0, pages,
-				     NULL);
+	return get_user_pages_remote(NULL, mm, start, nr_pages, ((write) ? FOLL_WRITE : 0) | ((0) ? FOLL_FORCE : 0), pages, NULL);
 }
 #elif KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE
 static inline long gup_local(struct mm_struct *mm, uintptr_t start,
@@ -128,8 +127,7 @@ static inline long gup_local(struct mm_struct *mm, uintptr_t start,
 	/* ExySp */
 	flags |= FOLL_CMA;
 
-	return get_user_pages_remote(NULL, mm, start, nr_pages, flags, pages,
-				     NULL, NULL);
+	return get_user_pages_remote(NULL, mm, start, nr_pages, ((flags) ? FOLL_WRITE : 0) | ((pages) ? FOLL_FORCE : 0), NULL, NULL);
 }
 #endif
 

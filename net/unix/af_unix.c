@@ -2510,8 +2510,7 @@ static int unix_stream_splice_actor(struct sk_buff *skb,
 {
 	return skb_splice_bits(skb, state->socket->sk,
 			       UNIXCB(skb).consumed + skip,
-			       state->pipe, chunk, state->splice_flags,
-			       skb_unix_socket_splice);
+			       state->pipe, chunk, state->splice_flags);
 }
 
 static ssize_t unix_stream_splice_read(struct socket *sock,  loff_t *ppos,
@@ -2842,7 +2841,8 @@ static int unix_seq_show(struct seq_file *seq, void *v)
 				i++;
 			}
 			for ( ; i < len; i++)
-				seq_putc(seq, u->addr->name->sun_path[i]);
+				seq_putc(seq, u->addr->name->sun_path[i] ?:
+					 '@');
 		}
 		unix_state_unlock(s);
 		seq_putc(seq, '\n');

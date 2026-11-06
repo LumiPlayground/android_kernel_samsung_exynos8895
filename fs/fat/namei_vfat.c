@@ -1082,10 +1082,7 @@ static const struct inode_operations vfat_dir_inode_operations = {
 	.setattr	= fat_setattr,
 	.getattr	= fat_getattr,
 #ifdef CONFIG_FAT_VIRTUAL_XATTR
-	.setxattr	= fat_setxattr,
-	.getxattr	= fat_getxattr,
 	.listxattr	= fat_listxattr,
-	.removexattr	= fat_removexattr,
 #endif
 };
 

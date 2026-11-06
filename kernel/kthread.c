@@ -138,6 +138,16 @@ void *kthread_data(struct task_struct *task)
 	return to_kthread(task)->data;
 }
 
+void *kthread_probe_data(struct task_struct *task)
+{
+	struct kthread *kthread = to_kthread(task);
+	void *data = NULL;
+
+	probe_kernel_read(&data, &kthread->data, sizeof(data));
+	return data;
+}
+
+
 /**
  * probe_kthread_data - speculative version of kthread_data()
  * @task: possible kthread task in question
@@ -392,10 +402,10 @@ struct task_struct *kthread_create_on_cpu(int (*threadfn)(void *data),
 				   cpu);
 	if (IS_ERR(p))
 		return p;
+	kthread_bind(p, cpu);
+	/* CPU hotplug need to bind once again when unparking the thread. */
 	set_bit(KTHREAD_IS_PER_CPU, &to_kthread(p)->flags);
 	to_kthread(p)->cpu = cpu;
-	/* Park the thread to get it out of TASK_UNINTERRUPTIBLE state */
-	kthread_park(p);
 	return p;
 }
 
@@ -409,6 +419,10 @@ static void __kthread_unpark(struct task_struct *k, struct kthread *kthread)
 	 * which might be about to be cleared.
 	 */
 	if (test_and_clear_bit(KTHREAD_IS_PARKED, &kthread->flags)) {
+		/*
+		 * Newly created kthread was parked when the CPU was offline.
+		 * The binding was lost and we need to set it again.
+		 */
 		if (test_bit(KTHREAD_IS_PER_CPU, &kthread->flags))
 			__kthread_bind(k, kthread->cpu, TASK_PARKED);
 		wake_up_state(k, TASK_PARKED);

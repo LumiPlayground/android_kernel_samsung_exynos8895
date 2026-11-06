@@ -81,6 +81,23 @@
 
 #define ESR_ELx_IL		(UL(1) << 25)
 #define ESR_ELx_ISS_MASK	(ESR_ELx_IL - 1)
+
+/* ISS field definitions shared by different classes */
+#define ESR_ELx_WNR		(UL(1) << 6)
+
+/* Shared ISS field definitions for Data/Instruction aborts */
+#define ESR_ELx_EA		(UL(1) << 9)
+#define ESR_ELx_S1PTW		(UL(1) << 7)
+
+/* Shared ISS fault status code(IFSC/DFSC) for Data/Instruction aborts */
+#define ESR_ELx_FSC		(0x3F)
+#define ESR_ELx_FSC_TYPE	(0x3C)
+#define ESR_ELx_FSC_EXTABT	(0x10)
+#define ESR_ELx_FSC_ACCESS	(0x08)
+#define ESR_ELx_FSC_FAULT	(0x04)
+#define ESR_ELx_FSC_PERM	(0x0C)
+
+/* ISS field definitions for Data Aborts */
 #define ESR_ELx_ISV		(UL(1) << 24)
 #define ESR_ELx_SAS_SHIFT	(22)
 #define ESR_ELx_SAS		(UL(3) << ESR_ELx_SAS_SHIFT)
@@ -89,16 +106,9 @@
 #define ESR_ELx_SRT_MASK	(UL(0x1F) << ESR_ELx_SRT_SHIFT)
 #define ESR_ELx_SF 		(UL(1) << 15)
 #define ESR_ELx_AR 		(UL(1) << 14)
-#define ESR_ELx_EA 		(UL(1) << 9)
 #define ESR_ELx_CM 		(UL(1) << 8)
-#define ESR_ELx_S1PTW 		(UL(1) << 7)
-#define ESR_ELx_WNR		(UL(1) << 6)
-#define ESR_ELx_FSC		(0x3F)
-#define ESR_ELx_FSC_TYPE	(0x3C)
-#define ESR_ELx_FSC_EXTABT	(0x10)
-#define ESR_ELx_FSC_ACCESS	(0x08)
-#define ESR_ELx_FSC_FAULT	(0x04)
-#define ESR_ELx_FSC_PERM	(0x0C)
+
+/* ISS field definitions for exceptions taken in to Hyp */
 #define ESR_ELx_CV		(UL(1) << 24)
 #define ESR_ELx_COND_SHIFT	(20)
 #define ESR_ELx_COND_MASK	(UL(0xF) << ESR_ELx_COND_SHIFT)

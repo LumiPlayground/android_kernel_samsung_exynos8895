@@ -1622,6 +1622,9 @@ int fat_fill_super(struct super_block *sb, void *data, int silent, int isvfat,
 	sb->s_flags |= MS_NODIRATIME;
 	sb->s_magic = MSDOS_SUPER_MAGIC;
 	sb->s_op = &fat_sops;
+#ifdef CONFIG_FAT_VIRTUAL_XATTR
+	sb->s_xattr = fat_xattr_handlers;
+#endif
 	sb->s_export_op = &fat_export_ops;
 	mutex_init(&sbi->nfs_build_inode_lock);
 	ratelimit_state_init(&sbi->ratelimit, DEFAULT_RATELIMIT_INTERVAL,

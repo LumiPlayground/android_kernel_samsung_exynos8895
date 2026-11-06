@@ -425,6 +425,7 @@ extern const struct export_operations fat_export_ops;
 extern const struct export_operations fat_export_ops_nostale;
 
 /* fat/xattr.c */
+extern const struct xattr_handler *fat_xattr_handlers[];
 extern int fat_setxattr(struct dentry *dentry, struct inode *inode, const char *name,
 				const void *value, size_t size, int flags);
 extern ssize_t fat_getxattr(struct dentry *dentry, struct inode *inode, const char *name,

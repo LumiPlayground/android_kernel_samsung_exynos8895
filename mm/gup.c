@@ -1096,12 +1096,13 @@ EXPORT_SYMBOL(get_user_pages_unlocked);
  */
 long get_user_pages_remote(struct task_struct *tsk, struct mm_struct *mm,
 		unsigned long start, unsigned long nr_pages,
-		int write, int force, struct page **pages,
+		unsigned int gup_flags, struct page **pages,
 		struct vm_area_struct **vmas)
 {
-	return __get_user_pages_locked(tsk, mm, start, nr_pages, write, force,
+	return __get_user_pages_locked(tsk, mm, start, nr_pages, !!(gup_flags & FOLL_WRITE),
+				       !!(gup_flags & FOLL_FORCE),
 				       pages, vmas, NULL, false,
-				       FOLL_TOUCH | FOLL_REMOTE);
+				       gup_flags | FOLL_TOUCH | FOLL_REMOTE);
 }
 EXPORT_SYMBOL(get_user_pages_remote);
 
@@ -1112,12 +1113,13 @@ EXPORT_SYMBOL(get_user_pages_remote);
  * obviously don't pass FOLL_REMOTE in here.
  */
 long get_user_pages(unsigned long start, unsigned long nr_pages,
-		int write, int force, struct page **pages,
+		unsigned int gup_flags, struct page **pages,
 		struct vm_area_struct **vmas)
 {
 	return __get_user_pages_locked(current, current->mm, start, nr_pages,
-				       write, force, pages, vmas, NULL, false,
-				       FOLL_TOUCH);
+				       !!(gup_flags & FOLL_WRITE),
+				       !!(gup_flags & FOLL_FORCE), pages, vmas, NULL, false,
+				       gup_flags | FOLL_TOUCH);
 }
 EXPORT_SYMBOL(get_user_pages);
 

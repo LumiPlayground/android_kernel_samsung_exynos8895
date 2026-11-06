@@ -33,3 +33,30 @@ int fat_removexattr(struct dentry *dentry, const char *name) {
 		return -EOPNOTSUPP;
 	return 0;
 }
+
+static int fat_xattr_get(const struct xattr_handler *handler,
+		struct dentry *dentry, struct inode *inode,
+		const char *name, void *value, size_t size)
+{
+	return fat_getxattr(dentry, inode, XATTR_NAME_SELINUX, value, size);
+}
+
+static int fat_xattr_set(const struct xattr_handler *handler,
+		struct dentry *dentry, struct inode *inode,
+		const char *name, const void *value, size_t size, int flags)
+{
+	if (!value)
+		return fat_removexattr(dentry, XATTR_NAME_SELINUX);
+	return fat_setxattr(dentry, inode, XATTR_NAME_SELINUX, value, size, flags);
+}
+
+static const struct xattr_handler fat_xattr_handler = {
+	.name = XATTR_NAME_SELINUX,
+	.get = fat_xattr_get,
+	.set = fat_xattr_set,
+};
+
+const struct xattr_handler *fat_xattr_handlers[] = {
+	&fat_xattr_handler,
+	NULL
+};

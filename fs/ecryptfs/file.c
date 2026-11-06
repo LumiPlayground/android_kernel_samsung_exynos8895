@@ -24,6 +24,7 @@
  */
 
 #include <linux/file.h>
+#include <linux/xattr.h>
 #include <linux/poll.h>
 #include <linux/slab.h>
 #include <linux/mount.h>
@@ -515,7 +516,7 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 				__func__, ecryptfs_dentry->d_name.name, inode->i_ino, crypt_stat->flags);
 #endif
 
-		dlp_len = ecryptfs_dentry->d_inode->i_op->getxattr(
+		dlp_len = __vfs_getxattr(
 			ecryptfs_dentry, d_inode(ecryptfs_dentry),
 			KNOX_DLP_XATTR_NAME,
 			&dlp_data, sizeof(dlp_data));

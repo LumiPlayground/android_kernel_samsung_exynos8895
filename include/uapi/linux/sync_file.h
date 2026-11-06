@@ -89,7 +89,7 @@ struct sync_fence_info_data {
 #define SYNC_IOC_MERGE		_IOWR(SYNC_IOC_MAGIC, 3, struct sync_merge_data)
 
 /**
- * DOC: SYNC_IOC_FENCE_INFO - get detailed information on a fence
+ * DOC: SYNC_IOC_FILE_INFO - get detailed information on a sync_file
  *
  * Takes a struct sync_fence_info_data with extra space allocated for pt_info.
  * Caller should write the size of the buffer into len.  On return, len is

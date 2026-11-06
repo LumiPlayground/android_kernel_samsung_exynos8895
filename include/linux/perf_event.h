@@ -516,6 +516,7 @@ typedef void (*perf_overflow_handler_t)(struct perf_event *,
  * PERF_EV_CAP_SOFTWARE: Is a software event.
  */
 #define PERF_EV_CAP_SOFTWARE		BIT(0)
+#define PERF_EV_CAP_READ_ACTIVE_PKG	BIT(1)
 
 #define SWEVENT_HLIST_BITS		8
 #define SWEVENT_HLIST_SIZE		(1 << SWEVENT_HLIST_BITS)
@@ -781,6 +782,9 @@ struct perf_cpu_context {
 #ifdef CONFIG_CGROUP_PERF
 	struct perf_cgroup		*cgrp;
 #endif
+	struct list_head sched_cb_entry;
+	int sched_cb_usage;
+
 };
 
 struct perf_output_handle {

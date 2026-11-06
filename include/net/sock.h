@@ -2302,5 +2302,15 @@ static inline gfp_t sk_gfp_atomic(const struct sock *sk, gfp_t gfp_mask)
 {
 	return GFP_ATOMIC | (sk->sk_allocation & __GFP_MEMALLOC);
 }
+static inline int sk_under_cgroup_hierarchy(struct sock *sk,
+					    struct cgroup *ancestor)
+{
+#ifdef CONFIG_SOCK_CGROUP_DATA
+	return cgroup_is_descendant(sock_cgroup_ptr(&sk->sk_cgrp_data),
+				    ancestor);
+#else
+	return -ENOTSUPP;
+#endif
+}
 
 #endif	/* _SOCK_H */

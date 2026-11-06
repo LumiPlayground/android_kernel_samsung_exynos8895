@@ -890,4 +890,6 @@ extern int is_file_ext_match(struct ecryptfs_mount_crypt_stat *mcs,
 			     char *str);
 #endif
 
+extern const struct xattr_handler *ecryptfs_xattr_handlers[];
+
 #endif /* #ifndef ECRYPTFS_KERNEL_H */

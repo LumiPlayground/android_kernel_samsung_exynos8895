@@ -110,7 +110,8 @@ static size_t inet_sk_attr_size(void)
 
 int inet_diag_msg_attrs_fill(struct sock *sk, struct sk_buff *skb,
 			     struct inet_diag_msg *r, int ext,
-			     struct user_namespace *user_ns)
+			     struct user_namespace *user_ns,
+			     bool net_admin)
 {
 	const struct inet_sock *inet = inet_sk(sk);
 
@@ -177,7 +178,7 @@ int inet_sk_diag_fill(struct sock *sk, struct inet_connection_sock *icsk,
 	r->idiag_timer = 0;
 	r->idiag_retrans = 0;
 
-	if (inet_diag_msg_attrs_fill(sk, skb, r, ext, user_ns))
+	if (inet_diag_msg_attrs_fill(sk, skb, r, ext, user_ns, net_admin))
 		goto errout;
 
 	if (net_admin && nla_put_u32(skb, INET_DIAG_MARK, sk->sk_mark))

@@ -888,7 +888,8 @@ static void sdhci_prepare_data(struct sdhci_host *host, struct mmc_command *cmd)
 static inline bool sdhci_auto_cmd12(struct sdhci_host *host,
 				    struct mmc_request *mrq)
 {
-	return !mrq->sbc && (host->flags & SDHCI_AUTO_CMD12);
+	return !mrq->sbc && (host->flags & SDHCI_AUTO_CMD12) &&
+	       !mrq->cap_cmd_during_tfr;
 }
 
 static void sdhci_set_transfer_mode(struct sdhci_host *host,
@@ -1031,9 +1032,18 @@ static void sdhci_finish_data(struct sdhci_host *host)
 			sdhci_do_reset(host, SDHCI_RESET_DATA);
 		}
 
-		/* Avoid triggering warning in sdhci_send_command() */
-		host->cmd = NULL;
-		sdhci_send_command(host, data->stop);
+		/*
+		 * 'cap_cmd_during_tfr' request must not use the command line
+		 * after mmc_command_done() has been called. It is upper layer's
+		 * responsibility to send the stop command if required.
+		 */
+		if (data->mrq->cap_cmd_during_tfr) {
+			sdhci_finish_mrq(host, data->mrq);
+		} else {
+			/* Avoid triggering warning in sdhci_send_command() */
+			host->cmd = NULL;
+			sdhci_send_command(host, data->stop);
+		}
 	} else {
 		sdhci_finish_mrq(host, data->mrq);
 	}
@@ -1066,6 +1076,10 @@ void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
 
 	/* Initially, a command has no error */
 	cmd->error = 0;
+
+	if ((host->quirks2 & SDHCI_QUIRK2_STOP_WITH_TC) &&
+	    cmd->opcode == MMC_STOP_TRANSMISSION)
+		cmd->flags |= MMC_RSP_BUSY;
 
 	/* Wait max 10 ms */
 	timeout = 10;
@@ -1164,6 +1178,9 @@ static void sdhci_finish_command(struct sdhci_host *host)
 			cmd->resp[0] = sdhci_readl(host, SDHCI_RESPONSE);
 		}
 	}
+
+	if (cmd->mrq->cap_cmd_during_tfr && cmd == cmd->mrq->cmd)
+		mmc_command_done(host->mmc, cmd->mrq);
 
 	/*
 	 * The host can send and interrupt when the busy state has
@@ -1379,8 +1396,8 @@ static void sdhci_set_power_reg(struct sdhci_host *host, unsigned char mode,
 		sdhci_writeb(host, 0, SDHCI_POWER_CONTROL);
 }
 
-void sdhci_set_power(struct sdhci_host *host, unsigned char mode,
-		     unsigned short vdd)
+void sdhci_set_power_noreg(struct sdhci_host *host, unsigned char mode,
+			   unsigned short vdd)
 {
 	u8 pwr = 0;
 
@@ -1444,20 +1461,17 @@ void sdhci_set_power(struct sdhci_host *host, unsigned char mode,
 			mdelay(10);
 	}
 }
-EXPORT_SYMBOL_GPL(sdhci_set_power);
+EXPORT_SYMBOL_GPL(sdhci_set_power_noreg);
 
-static void __sdhci_set_power(struct sdhci_host *host, unsigned char mode,
-			      unsigned short vdd)
+void sdhci_set_power(struct sdhci_host *host, unsigned char mode,
+		     unsigned short vdd)
 {
-	struct mmc_host *mmc = host->mmc;
-
-	if (host->ops->set_power)
-		host->ops->set_power(host, mode, vdd);
-	else if (!IS_ERR(mmc->supply.vmmc))
-		sdhci_set_power_reg(host, mode, vdd);
+	if (IS_ERR(host->mmc->supply.vmmc))
+		sdhci_set_power_noreg(host, mode, vdd);
 	else
-		sdhci_set_power(host, mode, vdd);
+		sdhci_set_power_reg(host, mode, vdd);
 }
+EXPORT_SYMBOL_GPL(sdhci_set_power);
 
 /*****************************************************************************\
  *                                                                           *
@@ -1598,7 +1612,10 @@ static void sdhci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		}
 	}
 
-	__sdhci_set_power(host, ios->power_mode, ios->vdd);
+	if (host->ops->set_power)
+		host->ops->set_power(host, ios->power_mode, ios->vdd);
+	else
+		sdhci_set_power(host, ios->power_mode, ios->vdd);
 
 	if (host->ops->platform_send_init_74_clocks)
 		host->ops->platform_send_init_74_clocks(host, ios->power_mode);
@@ -2064,13 +2081,17 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 
 		spin_unlock_irqrestore(&host->lock, flags);
 		/* Wait for Buffer Read Ready interrupt */
-		wait_event_interruptible_timeout(host->buf_ready_int,
+		wait_event_timeout(host->buf_ready_int,
 					(host->tuning_done == 1),
 					msecs_to_jiffies(50));
 		spin_lock_irqsave(&host->lock, flags);
 
 		if (!host->tuning_done) {
 			pr_info(DRIVER_NAME ": Timeout waiting for Buffer Read Ready interrupt during tuning procedure, falling back to fixed sampling clock\n");
+
+			sdhci_do_reset(host, SDHCI_RESET_CMD);
+			sdhci_do_reset(host, SDHCI_RESET_DATA);
+
 			ctrl = sdhci_readw(host, SDHCI_HOST_CONTROL2);
 			ctrl &= ~SDHCI_CTRL_TUNED_CLK;
 			ctrl &= ~SDHCI_CTRL_EXEC_TUNING;
@@ -2291,10 +2312,8 @@ static bool sdhci_request_done(struct sdhci_host *host)
 
 	for (i = 0; i < SDHCI_MAX_MRQS; i++) {
 		mrq = host->mrqs_done[i];
-		if (mrq) {
-			host->mrqs_done[i] = NULL;
+		if (mrq)
 			break;
-		}
 	}
 
 	if (!mrq) {
@@ -2325,6 +2344,17 @@ static bool sdhci_request_done(struct sdhci_host *host)
 	 * upon error conditions.
 	 */
 	if (sdhci_needs_reset(host, mrq)) {
+		/*
+		 * Do not finish until command and data lines are available for
+		 * reset. Note there can only be one other mrq, so it cannot
+		 * also be in mrqs_done, otherwise host->cmd and host->data_cmd
+		 * would both be null.
+		 */
+		if (host->cmd || host->data_cmd) {
+			spin_unlock_irqrestore(&host->lock, flags);
+			return true;
+		}
+
 		/* Some controllers need this kick or reset won't work here */
 		if (host->quirks & SDHCI_QUIRK_CLOCK_BEFORE_RESET)
 			/* This is to force an update */
@@ -2332,16 +2362,16 @@ static bool sdhci_request_done(struct sdhci_host *host)
 
 		/* Spec says we should do both at the same time, but Ricoh
 		   controllers do not like that. */
-		if (!host->cmd)
-			sdhci_do_reset(host, SDHCI_RESET_CMD);
-		if (!host->data_cmd)
-			sdhci_do_reset(host, SDHCI_RESET_DATA);
+		sdhci_do_reset(host, SDHCI_RESET_CMD);
+		sdhci_do_reset(host, SDHCI_RESET_DATA);
 
 		host->pending_reset = false;
 	}
 
 	if (!sdhci_has_requests(host))
 		sdhci_led_deactivate(host);
+
+	host->mrqs_done[i] = NULL;
 
 	mmiowb();
 	spin_unlock_irqrestore(&host->lock, flags);
@@ -2418,7 +2448,7 @@ static void sdhci_timeout_data_timer(unsigned long data)
  *                                                                           *
 \*****************************************************************************/
 
-static void sdhci_cmd_irq(struct sdhci_host *host, u32 intmask, u32 *mask)
+static void sdhci_cmd_irq(struct sdhci_host *host, u32 intmask)
 {
 	if (!host->cmd) {
 		/*
@@ -2461,11 +2491,6 @@ static void sdhci_cmd_irq(struct sdhci_host *host, u32 intmask, u32 *mask)
 		sdhci_finish_mrq(host, host->cmd->mrq);
 		return;
 	}
-
-	if ((host->quirks2 & SDHCI_QUIRK2_STOP_WITH_TC) &&
-	    !(host->cmd->flags & MMC_RSP_BUSY) && !host->data &&
-	    host->cmd->opcode == MMC_STOP_TRANSMISSION)
-		*mask &= ~SDHCI_INT_DATA_END;
 
 	if (intmask & SDHCI_INT_RESPONSE)
 		sdhci_finish_command(host);
@@ -2522,9 +2547,6 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 	if (!host->data) {
 		struct mmc_command *data_cmd = host->data_cmd;
 
-		if (data_cmd)
-			host->data_cmd = NULL;
-
 		/*
 		 * The "data complete" interrupt is also used to
 		 * indicate that a busy state has ended. See comment
@@ -2532,11 +2554,13 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 		 */
 		if (data_cmd && (data_cmd->flags & MMC_RSP_BUSY)) {
 			if (intmask & SDHCI_INT_DATA_TIMEOUT) {
+				host->data_cmd = NULL;
 				data_cmd->error = -ETIMEDOUT;
 				sdhci_finish_mrq(host, data_cmd->mrq);
 				return;
 			}
 			if (intmask & SDHCI_INT_DATA_END) {
+				host->data_cmd = NULL;
 				/*
 				 * Some cards handle busy-end interrupt
 				 * before the command completed, so make
@@ -2689,8 +2713,7 @@ static irqreturn_t sdhci_irq(int irq, void *dev_id)
 		}
 
 		if (intmask & SDHCI_INT_CMD_MASK)
-			sdhci_cmd_irq(host, intmask & SDHCI_INT_CMD_MASK,
-				      &intmask);
+			sdhci_cmd_irq(host, intmask & SDHCI_INT_CMD_MASK);
 
 		if (intmask & SDHCI_INT_DATA_MASK)
 			sdhci_data_irq(host, intmask & SDHCI_INT_DATA_MASK);
@@ -2920,6 +2943,10 @@ int sdhci_runtime_resume_host(struct sdhci_host *host)
 		sdhci_enable_preset_value(host, true);
 		spin_unlock_irqrestore(&host->lock, flags);
 	}
+
+	if ((mmc->caps2 & MMC_CAP2_HS400_ES) &&
+	    mmc->ops->hs400_enhanced_strobe)
+		mmc->ops->hs400_enhanced_strobe(mmc, &mmc->ios);
 
 	spin_lock_irqsave(&host->lock, flags);
 
