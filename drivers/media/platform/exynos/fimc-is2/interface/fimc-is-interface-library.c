@@ -1995,7 +1995,7 @@ int fimc_is_memory_attribute_nxrw(struct fimc_is_memory_attribute *attribute)
 {
 	int ret;
 
-	if (attribute->state != PTE_RDONLY) {
+	if (pgprot_val(attribute->state) != PTE_RDONLY) {
 		err_lib("memory attribute state is wrong!!");
 		return -EINVAL;
 	}
@@ -2018,7 +2018,7 @@ int fimc_is_memory_attribute_nxrw(struct fimc_is_memory_attribute *attribute)
 		goto memory_excutable;
 	}
 
-	attribute->state = PTE_WRITE;
+	attribute->state = __pgprot(PTE_WRITE);
 
 	return 0;
 
@@ -2035,7 +2035,7 @@ int fimc_is_memory_attribute_rox(struct fimc_is_memory_attribute *attribute)
 {
 	int ret;
 
-	if (attribute->state != PTE_WRITE) {
+	if (pgprot_val(attribute->state) != PTE_WRITE) {
 		err_lib("memory attribute state is wrong!!");
 		return -EINVAL;
 	}
@@ -2058,7 +2058,7 @@ int fimc_is_memory_attribute_rox(struct fimc_is_memory_attribute *attribute)
 		return ret;
 	}
 
-	attribute->state = PTE_RDONLY;
+	attribute->state = __pgprot(PTE_RDONLY);
 
 	return 0;
 }
@@ -2077,8 +2077,8 @@ int fimc_is_load_ddk_bin(int loadType)
 	ulong lib_isp = DDK_LIB_ADDR;
 	ulong lib_vra = VRA_LIB_ADDR;
 	struct fimc_is_memory_attribute memory_attribute[] = {
-		{PTE_RDONLY, PFN_UP(LIB_VRA_CODE_SIZE), lib_vra},
-		{PTE_RDONLY, PFN_UP(LIB_ISP_CODE_SIZE), lib_isp}
+		{__pgprot(PTE_RDONLY), PFN_UP(LIB_VRA_CODE_SIZE), lib_vra},
+		{__pgprot(PTE_RDONLY), PFN_UP(LIB_ISP_CODE_SIZE), lib_isp}
 	};
 
 #ifdef USE_ONE_BINARY
@@ -2196,8 +2196,8 @@ int fimc_is_load_vra_bin(int loadType)
 	ulong lib_isp = DDK_LIB_ADDR;
 	ulong lib_vra = VRA_LIB_ADDR;
 	struct fimc_is_memory_attribute memory_attribute[] = {
-		{PTE_RDONLY, PFN_UP(LIB_VRA_CODE_SIZE), lib_vra},
-		{PTE_RDONLY, PFN_UP(LIB_ISP_CODE_SIZE), lib_isp}
+		{__pgprot(PTE_RDONLY), PFN_UP(LIB_VRA_CODE_SIZE), lib_vra},
+		{__pgprot(PTE_RDONLY), PFN_UP(LIB_ISP_CODE_SIZE), lib_isp}
 	};
 
 	/* load VRA library */
@@ -2253,7 +2253,7 @@ int fimc_is_load_rta_bin(int loadType)
 	os_system_func_t os_system_funcs[100];
 	ulong lib_rta = RTA_LIB_ADDR;
 	struct fimc_is_memory_attribute rta_memory_attribute = {
-		PTE_RDONLY, PFN_UP(LIB_RTA_CODE_SIZE), lib_rta};
+		__pgprot(PTE_RDONLY), PFN_UP(LIB_RTA_CODE_SIZE), lib_rta};
 
 	/* load RTA library */
 	ret = fimc_is_memory_attribute_nxrw(&rta_memory_attribute);
