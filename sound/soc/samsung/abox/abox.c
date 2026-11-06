@@ -5135,26 +5135,16 @@ static int abox_runtime_resume(struct device *dev)
 
 static int abox_suspend(struct device *dev)
 {
-	struct abox_data *data = dev_get_drvdata(dev);
-
 	dev_info(dev, "%s\n", __func__);
-
-	if (data->enabled)
-		return 0;
-
-	return abox_disable(dev);
+	/* nothing to do */
+	return 0;
 }
 
 static int abox_resume(struct device *dev)
 {
-	struct abox_data *data = dev_get_drvdata(dev);
-
 	dev_info(dev, "%s\n", __func__);
-
-	if (data->enabled)
-		return 0;
-
-	return abox_enable(dev);
+	/* nothing to do */
+	return 0;
 }
 
 static void abox_request_iva_firmware(struct abox_data *data)
@@ -5223,19 +5213,73 @@ static void abox_complete_sram_firmware_request(const struct firmware *fw,
 		abox_complete_dram_firmware_request);
 }
 
+static int abox_print_power_usage(struct device *dev, void *data)
+{
+	dev_dbg(dev, "%s\n", __func__);
+
+	if (pm_runtime_enabled(dev) && pm_runtime_active(dev)) {
+		dev_info(dev, "usage_count:%d\n",
+				atomic_read(&dev->power.usage_count));
+		device_for_each_child(dev, data, abox_print_power_usage);
+	}
+
+	return 0;
+}
+
 static int abox_pm_notifier(struct notifier_block *nb,
 		unsigned long action, void *nb_data)
 {
 	struct abox_data *data = container_of(nb, struct abox_data, pm_nb);
+	struct device *dev = &data->pdev->dev;
+	int ret;
 
-	dev_dbg(&data->pdev->dev, "%s(%lu)\n", __func__, action);
+	dev_info(&data->pdev->dev, "%s(%lu)\n", __func__, action);
 
 	switch (action) {
 	case PM_SUSPEND_PREPARE:
-		pm_runtime_put_sync(&data->pdev->dev);
+		if (data->audio_mode != MODE_IN_CALL) {
+			enum calliope_state state;
+
+			pm_runtime_barrier(dev);
+			state = data->calliope_state;
+			if (state == CALLIOPE_ENABLING) {
+				dev_info(dev, "calliope state: %d\n", state);
+				return NOTIFY_BAD;
+			}
+			abox_clear_cpu_gear_requests(dev, data);
+			flush_work(&data->change_cpu_gear_work);
+			ret = pm_runtime_put_sync(dev);
+			if (ret < 0) {
+				pm_runtime_get(dev);
+				dev_info(dev, "runtime put sync: %d\n", ret);
+				abox_print_power_usage(dev, NULL);
+				return NOTIFY_BAD;
+			} else if (ret == 0 && atomic_read(&dev->power.usage_count) > 0) {
+				dev_info(dev, "runtime put sync: %d uc(%d)\n",
+						ret, atomic_read(&dev->power.usage_count));
+				pm_runtime_get(dev);
+				abox_print_power_usage(dev, NULL);
+				return NOTIFY_BAD;
+			}
+			ret = pm_runtime_suspend(dev);
+			if (ret < 0) {
+				dev_info(dev, "runtime suspend: %d\n", ret);
+				abox_print_power_usage(dev, NULL);
+				return NOTIFY_BAD;
+			}
+			atomic_set(&data->suspend_state, 1);
+			dev_info(dev, "(%d)s suspend_state: %d\n", __LINE__,
+					atomic_read(&data->suspend_state));
+		} else
+			dev_info(dev, "abox is not clearable\n");
 		break;
 	case PM_POST_SUSPEND:
-		pm_runtime_get_sync(&data->pdev->dev);
+			dev_info(dev, "(%d)r suspend_state: %d\n", __LINE__,
+					atomic_read(&data->suspend_state));
+			if (atomic_read(&data->suspend_state) == 1) {
+				pm_runtime_get_sync(&data->pdev->dev);
+				atomic_set(&data->suspend_state, 0);
+			}
 		break;
 	}
 	return NOTIFY_OK;
@@ -5351,6 +5395,7 @@ static int samsung_abox_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	platform_set_drvdata(pdev, data);
 	data->pdev = pdev;
+	atomic_set(&data->suspend_state, 0);
 	p_abox_data = data;
 
 	init_waitqueue_head(&data->ipc_wait_queue);
