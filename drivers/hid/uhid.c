@@ -795,6 +795,7 @@ static struct miscdevice uhid_misc = {
 	.minor		= UHID_MINOR,
 	.name		= UHID_NAME,
 };
+module_misc_device(uhid_misc);
 
 static int fb_state_change(struct notifier_block *nb,
     unsigned long val, void *data)

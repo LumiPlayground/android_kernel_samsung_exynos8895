@@ -159,9 +159,7 @@ finish_or_fault:
  *   slab page or a secondary page from a compound page
  * - don't permit access to VMAs that don't support it, such as I/O mappings
  */
-long get_user_pages(unsigned long start, unsigned long nr_pages,
-		    int write, int force, struct page **pages,
-		    struct vm_area_struct **vmas)
+long get_user_pages(unsigned long start, unsigned long nr_pages, ((int write) ? FOLL_WRITE : 0) | ((int force) ? FOLL_FORCE : 0), struct page **pages, struct vm_area_struct **vmas)
 {
 	int flags = 0;
 
@@ -179,7 +177,7 @@ long get_user_pages_locked(unsigned long start, unsigned long nr_pages,
 			    int write, int force, struct page **pages,
 			    int *locked)
 {
-	return get_user_pages(start, nr_pages, write, force, pages, NULL);
+	return get_user_pages(start, nr_pages, ((write) ? FOLL_WRITE : 0) | ((force) ? FOLL_FORCE : 0), pages, NULL);
 }
 EXPORT_SYMBOL(get_user_pages_locked);
 

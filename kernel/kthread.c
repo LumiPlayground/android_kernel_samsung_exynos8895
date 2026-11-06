@@ -138,6 +138,16 @@ void *kthread_data(struct task_struct *task)
 	return to_kthread(task)->data;
 }
 
+void *kthread_probe_data(struct task_struct *task)
+{
+	struct kthread *kthread = to_kthread(task);
+	void *data = NULL;
+
+	probe_kernel_read(&data, &kthread->data, sizeof(data));
+	return data;
+}
+
+
 /**
  * probe_kthread_data - speculative version of kthread_data()
  * @task: possible kthread task in question

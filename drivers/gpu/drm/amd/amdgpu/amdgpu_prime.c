@@ -74,6 +74,7 @@ amdgpu_gem_prime_import_sg_table(struct drm_device *dev,
 	if (ret)
 		return ERR_PTR(ret);
 
+	bo->prime_shared_count = 1;
 	return &bo->gem_base;
 }
 

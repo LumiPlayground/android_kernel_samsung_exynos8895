@@ -91,6 +91,7 @@ static int __afu_open(struct inode *inode, struct file *file, bool master)
 
 	pr_devel("afu_open pe: %i\n", ctx->pe);
 	file->private_data = ctx;
+	cxl_ctx_get();
 
 	/* indicate success */
 	rc = 0;
@@ -154,8 +155,11 @@ static long afu_ioctl_start_work(struct cxl_context *ctx,
 
 	/* Do this outside the status_mutex to avoid a circular dependency with
 	 * the locking in cxl_mmap_fault() */
-	if (copy_from_user(&work, uwork, sizeof(work)))
-		return -EFAULT;
+	if (copy_from_user(&work, uwork,
+			   sizeof(struct cxl_ioctl_start_work))) {
+		rc = -EFAULT;
+		goto out;
+	}
 
 	mutex_lock(&ctx->status_mutex);
 	if (ctx->status != OPENED) {
@@ -190,6 +194,16 @@ static long afu_ioctl_start_work(struct cxl_context *ctx,
 	ctx->mmio_err_ff = !!(work.flags & CXL_START_WORK_ERR_FF);
 
 	/*
+	 * Increment the mapped context count for adapter. This also checks
+	 * if adapter_context_lock is taken.
+	 */
+	rc = cxl_adapter_context_get(ctx->afu->adapter);
+	if (rc) {
+		afu_release_irqs(ctx, ctx);
+		goto out;
+	}
+
+	/*
 	 * We grab the PID here and not in the file open to allow for the case
 	 * where a process (master, some daemon, etc) has opened the chardev on
 	 * behalf of another process, so the AFU's mm gets bound to the process
@@ -201,18 +215,16 @@ static long afu_ioctl_start_work(struct cxl_context *ctx,
 	ctx->pid = get_task_pid(current, PIDTYPE_PID);
 	ctx->glpid = get_task_pid(current->group_leader, PIDTYPE_PID);
 
-	/*
-	 * Increment driver use count. Enables global TLBIs for hash
-	 * and callbacks to handle the segment table
-	 */
-	cxl_ctx_get();
 
 	trace_cxl_attach(ctx, work.work_element_descriptor, work.num_interrupts, amr);
 
 	if ((rc = cxl_ops->attach_process(ctx, false, work.work_element_descriptor,
 							amr))) {
 		afu_release_irqs(ctx, ctx);
-		cxl_ctx_put();
+		cxl_adapter_context_put(ctx->afu->adapter);
+		put_pid(ctx->glpid);
+		put_pid(ctx->pid);
+		ctx->glpid = ctx->pid = NULL;
 		goto out;
 	}
 

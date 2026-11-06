@@ -1203,8 +1203,7 @@ static int vendor_mac_passthru_addr_read(struct r8152 *tp, struct sockaddr *sa)
 		return -ENODEV;
 	if (obj->type != ACPI_TYPE_BUFFER || obj->string.length != 0x17) {
 		netif_warn(tp, probe, tp->netdev,
-			   "Invalid buffer when reading pass-thru MAC addr: "
-			   "(%d, %d)\n",
+			   "Invalid buffer for pass-thru MAC addr: (%d, %d)\n",
 			   obj->type, obj->string.length);
 		goto amacout;
 	}
@@ -1217,8 +1216,8 @@ static int vendor_mac_passthru_addr_read(struct r8152 *tp, struct sockaddr *sa)
 	ret = hex2bin(buf, obj->string.pointer + 9, 6);
 	if (!(ret == 0 && is_valid_ether_addr(buf))) {
 		netif_warn(tp, probe, tp->netdev,
-			   "Invalid MAC when reading pass-thru MAC addr: "
-			   "%d, %pM\n", ret, buf);
+			   "Invalid MAC for pass-thru MAC addr: %d, %pM\n",
+			   ret, buf);
 		ret = -EINVAL;
 		goto amacout;
 	}
@@ -1238,9 +1237,9 @@ static int set_ethernet_addr(struct r8152 *tp)
 	struct sockaddr sa;
 	int ret;
 
-	if (tp->version == RTL_VER_01)
+	if (tp->version == RTL_VER_01) {
 		ret = pla_ocp_read(tp, PLA_IDR, 8, sa.sa_data);
-	else {
+	} else {
 		/* if this is not an RTL8153-AD, no eFuse mac pass thru set,
 		 * or system doesn't provide valid _SB.AMAC this will be
 		 * be expected to non-zero
@@ -1926,7 +1925,7 @@ static u8 r8152_rx_csum(struct r8152 *tp, struct rx_desc *rx_desc)
 	u8 checksum = CHECKSUM_NONE;
 	u32 opts2, opts3;
 
-	if (tp->version == RTL_VER_01)
+	if (tp->version == RTL_VER_01 || tp->version == RTL_VER_02)
 		goto return_result;
 
 	opts2 = le32_to_cpu(rx_desc->opts2);
@@ -1941,7 +1940,7 @@ static u8 r8152_rx_csum(struct r8152 *tp, struct rx_desc *rx_desc)
 			checksum = CHECKSUM_NONE;
 		else
 			checksum = CHECKSUM_UNNECESSARY;
-	} else if (RD_IPV6_CS) {
+	} else if (opts2 & RD_IPV6_CS) {
 		if ((opts2 & RD_UDP_CS) && !(opts3 & UDPF))
 			checksum = CHECKSUM_UNNECESSARY;
 		else if ((opts2 & RD_TCP_CS) && !(opts3 & TCPF))
@@ -5748,10 +5747,8 @@ static int rtl8152_open(struct net_device *netdev)
 	pr_info("%s : memory allocation success!\n", __func__);
 
 	res = usb_autopm_get_interface(tp->intf);
-	if (res < 0) {
-		free_all_mem(tp);
-		goto out;
-	}
+	if (res < 0)
+		goto out_free;
 
 	mutex_lock(&tp->control);
 
@@ -5767,15 +5764,19 @@ static int rtl8152_open(struct net_device *netdev)
 			netif_device_detach(tp->netdev);
 		netif_warn(tp, ifup, netdev, "intr_urb submit failed: %d\n",
 			   res);
-		free_all_mem(tp);
-	} else {
-		napi_enable(&tp->napi);
+		goto out_unlock;
 	}
+	napi_enable(&tp->napi);
 
 	mutex_unlock(&tp->control);
 
 	usb_autopm_put_interface(tp->intf);
 
+out_unlock:
+	mutex_unlock(&tp->control);
+	usb_autopm_put_interface(tp->intf);
+out_free:
+	free_all_mem(tp);
 out:
 	pr_info("%s : end of function!\n", __func__);
 	return res;
@@ -6828,7 +6829,7 @@ static int rtl8152_set_coalesce(struct net_device *netdev,
 	return ret;
 }
 
-static struct ethtool_ops ops = {
+static const struct ethtool_ops ops = {
 	.get_drvinfo = rtl8152_get_drvinfo,
 	.get_settings = rtl8152_get_settings,
 	.set_settings = rtl8152_set_settings,

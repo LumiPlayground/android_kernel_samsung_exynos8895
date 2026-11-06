@@ -203,6 +203,7 @@
  * TCR flags.
  */
 #define TCR_T0SZ_OFFSET		0
+#define TCR_T0SZ_MASK		(((UL(1) << TCR_TxSZ_WIDTH) - 1) << TCR_T0SZ_OFFSET)
 #define TCR_T1SZ_OFFSET		16
 #define TCR_T0SZ(x)		((UL(64) - (x)) << TCR_T0SZ_OFFSET)
 #define TCR_T1SZ(x)		((UL(64) - (x)) << TCR_T1SZ_OFFSET)

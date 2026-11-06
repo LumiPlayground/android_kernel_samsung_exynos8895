@@ -2002,6 +2002,8 @@ static int sctp_sendmsg(struct sock *sk, struct msghdr *msg, size_t msg_len)
 
 	/* Now send the (possibly) fragmented message. */
 	list_for_each_entry(chunk, &datamsg->chunks, frag_list) {
+		sctp_chunk_hold(chunk);
+
 		/* Do accounting for the write space.  */
 		sctp_set_owner_w(chunk);
 
@@ -2014,13 +2016,15 @@ static int sctp_sendmsg(struct sock *sk, struct msghdr *msg, size_t msg_len)
 	 * breaks.
 	 */
 	err = sctp_primitive_SEND(net, asoc, datamsg);
-	sctp_datamsg_put(datamsg);
 	/* Did the lower layer accept the chunk? */
-	if (err)
+	if (err) {
+		sctp_datamsg_free(datamsg);
 		goto out_free;
+	}
 
 	pr_debug("%s: we sent primitively\n", __func__);
 
+	sctp_datamsg_put(datamsg);
 	err = msg_len;
 
 	if (unlikely(wait_connect)) {
@@ -4322,19 +4326,18 @@ static void sctp_shutdown(struct sock *sk, int how)
 {
 	struct net *net = sock_net(sk);
 	struct sctp_endpoint *ep;
-	struct sctp_association *asoc;
 
 	if (!sctp_style(sk, TCP))
 		return;
 
-	if (how & SEND_SHUTDOWN) {
+	ep = sctp_sk(sk)->ep;
+	if (how & SEND_SHUTDOWN && !list_empty(&ep->asocs)) {
+		struct sctp_association *asoc;
+
 		sk->sk_state = SCTP_SS_CLOSING;
-		ep = sctp_sk(sk)->ep;
-		if (!list_empty(&ep->asocs)) {
-			asoc = list_entry(ep->asocs.next,
-					  struct sctp_association, asocs);
-			sctp_primitive_SHUTDOWN(net, asoc, NULL);
-		}
+		asoc = list_entry(ep->asocs.next,
+				  struct sctp_association, asocs);
+		sctp_primitive_SHUTDOWN(net, asoc, NULL);
 	}
 }
 
@@ -4520,12 +4523,9 @@ int sctp_transport_lookup_process(int (*cb)(struct sctp_transport *, void *),
 	if (!transport || !sctp_transport_hold(transport))
 		goto out;
 
-	sctp_association_hold(transport->asoc);
-	sctp_transport_put(transport);
-
 	rcu_read_unlock();
 	err = cb(transport, p);
-	sctp_association_put(transport->asoc);
+	sctp_transport_put(transport);
 
 out:
 	return err;

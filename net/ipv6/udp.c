@@ -514,7 +514,7 @@ out:
 	return;
 }
 
-static int __udpv6_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
+int __udpv6_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 {
 	int rc;
 
@@ -706,10 +706,10 @@ static int __udp6_lib_mcast_deliver(struct net *net, struct sk_buff *skb,
 
 	if (use_hash2) {
 		hash2_any = udp6_portaddr_hash(net, &in6addr_any, hnum) &
-			    udp_table.mask;
-		hash2 = udp6_portaddr_hash(net, daddr, hnum) & udp_table.mask;
+			    udptable->mask;
+		hash2 = udp6_portaddr_hash(net, daddr, hnum) & udptable->mask;
 start_lookup:
-		hslot = &udp_table.hash2[hash2];
+		hslot = &udptable->hash2[hash2];
 		offset = offsetof(typeof(*sk), __sk_common.skc_portaddr_node);
 	}
 
@@ -1430,6 +1430,8 @@ void udp6_proc_exit(struct net *net)
 }
 #endif /* CONFIG_PROC_FS */
 
+/* ------------------------------------------------------------------------ */
+
 void udp_v6_clear_sk(struct sock *sk, int size)
 {
 	struct inet_sock *inet = inet_sk(sk);
@@ -1440,8 +1442,6 @@ void udp_v6_clear_sk(struct sock *sk, int size)
 	size -= offsetof(struct inet_sock, pinet6) + sizeof(inet->pinet6);
 	memset(&inet->pinet6 + 1, 0, size);
 }
-
-/* ------------------------------------------------------------------------ */
 
 struct proto udpv6_prot = {
 	.name		   = "UDPv6",

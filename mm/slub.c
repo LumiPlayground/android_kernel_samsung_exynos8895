@@ -1193,25 +1193,15 @@ next_object:
 	ret = 1;
 
 out:
-	if (cnt != bulk_cnt) {
+	if (cnt != bulk_cnt)
 		slab_err(s, page, "Bulk freelist count(%d) invalid(%d)\n",
 			 bulk_cnt, cnt);
-		BUG();
-	}
 
 	slab_unlock(page);
-	/*
-	 * Keep node_lock to preserve integrity
-	 * until the object is actually freed
-	 */
-	return n;
-
-fail:
-	BUG();
-	slab_unlock(page);
-	spin_unlock_irqrestore(&n->list_lock, *flags);
-	slab_fix(s, "Object at 0x%p not freed", object);
-	return NULL;
+	spin_unlock_irqrestore(&n->list_lock, flags);
+	if (!ret)
+		slab_fix(s, "Object at 0x%p not freed", object);
+	return ret;
 }
 
 static int __init setup_slub_debug(char *str)

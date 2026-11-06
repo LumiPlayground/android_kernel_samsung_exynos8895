@@ -1223,3 +1223,51 @@ bool is_empty_dir_inode(struct inode *inode)
 	return (inode->i_fop == &empty_dir_operations) &&
 		(inode->i_op == &empty_dir_inode_operations);
 }
+
+struct dentry *mount_pseudo_xattr(struct file_system_type *fs_type, char *name,
+	const struct super_operations *ops, const struct xattr_handler **xattr,
+	const struct dentry_operations *dops, unsigned long magic)
+{
+	struct super_block *s;
+	struct dentry *dentry;
+	struct inode *root;
+	struct qstr d_name = QSTR_INIT(name, strlen(name));
+
+	s = sget(fs_type, NULL, set_anon_super, MS_NOUSER, NULL);
+	if (IS_ERR(s))
+		return ERR_CAST(s);
+
+	s->s_maxbytes = MAX_LFS_FILESIZE;
+	s->s_blocksize = PAGE_SIZE;
+	s->s_blocksize_bits = PAGE_SHIFT;
+	s->s_magic = magic;
+	s->s_op = ops ? ops : &simple_super_operations;
+	s->s_xattr = xattr;
+	s->s_time_gran = 1;
+	root = new_inode(s);
+	if (!root)
+		goto Enomem;
+	/*
+	 * since this is the first inode, make it number 1. New inodes created
+	 * after this must take care not to collide with it (by passing
+	 * max_reserved of 1 to iunique).
+	 */
+	root->i_ino = 1;
+	root->i_mode = S_IFDIR | S_IRUSR | S_IWUSR;
+	root->i_atime = root->i_mtime = root->i_ctime = current_time(root);
+	dentry = __d_alloc(s, &d_name);
+	if (!dentry) {
+		iput(root);
+		goto Enomem;
+	}
+	d_instantiate(dentry, root);
+	s->s_root = dentry;
+	s->s_d_op = dops;
+	s->s_flags |= MS_ACTIVE;
+	return dget(s->s_root);
+
+Enomem:
+	deactivate_locked_super(s);
+	return ERR_PTR(-ENOMEM);
+}
+EXPORT_SYMBOL(mount_pseudo_xattr);

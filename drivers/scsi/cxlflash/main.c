@@ -823,17 +823,6 @@ static void notify_shutdown(struct cxlflash_cfg *cfg, bool wait)
 }
 
 /**
- * cxlflash_shutdown() - shutdown handler
- * @pdev:	PCI device associated with the host.
- */
-static void cxlflash_shutdown(struct pci_dev *pdev)
-{
-	struct cxlflash_cfg *cfg = pci_get_drvdata(pdev);
-
-	notify_shutdown(cfg, false);
-}
-
-/**
  * cxlflash_remove() - PCI entry point to tear down host
  * @pdev:	PCI device associated with the host.
  *
@@ -843,6 +832,11 @@ static void cxlflash_remove(struct pci_dev *pdev)
 {
 	struct cxlflash_cfg *cfg = pci_get_drvdata(pdev);
 	ulong lock_flags;
+
+	if (!pci_is_enabled(pdev)) {
+		pr_debug("%s: Device is disabled\n", __func__);
+		return;
+	}
 
 	/* If a Task Management Function is active, wait for it to complete
 	 * before continuing with remove.
@@ -1099,42 +1093,25 @@ static int wait_port_offline(__be64 __iomem *fc_regs, u32 delay_us, u32 nretry)
  * online. This toggling action can cause this routine to delay up to a few
  * seconds. When configured to use the internal LUN feature of the AFU, a
  * failure to come online is overridden.
- *
- * Return:
- *	0 when the WWPN is successfully written and the port comes back online
- *	-1 when the port fails to go offline or come back up online
  */
-static int afu_set_wwpn(struct afu *afu, int port, __be64 __iomem *fc_regs,
-			u64 wwpn)
+static void afu_set_wwpn(struct afu *afu, int port, __be64 __iomem *fc_regs,
+			 u64 wwpn)
 {
-	int rc = 0;
-
 	set_port_offline(fc_regs);
-
 	if (!wait_port_offline(fc_regs, FC_PORT_STATUS_RETRY_INTERVAL_US,
 			       FC_PORT_STATUS_RETRY_CNT)) {
 		pr_debug("%s: wait on port %d to go offline timed out\n",
 			 __func__, port);
-		rc = -1; /* but continue on to leave the port back online */
 	}
 
-	if (rc == 0)
-		writeq_be(wwpn, &fc_regs[FC_PNAME / 8]);
-
-	/* Always return success after programming WWPN */
-	rc = 0;
+	writeq_be(wwpn, &fc_regs[FC_PNAME / 8]);
 
 	set_port_online(fc_regs);
-
 	if (!wait_port_online(fc_regs, FC_PORT_STATUS_RETRY_INTERVAL_US,
 			      FC_PORT_STATUS_RETRY_CNT)) {
-		pr_err("%s: wait on port %d to go online timed out\n",
-		       __func__, port);
+		pr_debug("%s: wait on port %d to go online timed out\n",
+			 __func__, port);
 	}
-
-	pr_debug("%s: returning rc=%d\n", __func__, rc);
-
-	return rc;
 }
 
 /**
@@ -1635,15 +1612,10 @@ static int init_global(struct cxlflash_cfg *cfg)
 			  [FC_CRC_THRESH / 8]);
 
 		/* Set WWPNs. If already programmed, wwpn[i] is 0 */
-		if (wwpn[i] != 0 &&
-		    afu_set_wwpn(afu, i,
-				 &afu->afu_map->global.fc_regs[i][0],
-				 wwpn[i])) {
-			dev_err(dev, "%s: failed to set WWPN on port %d\n",
-			       __func__, i);
-			rc = -EIO;
-			goto out;
-		}
+		if (wwpn[i] != 0)
+			afu_set_wwpn(afu, i,
+				     &afu->afu_map->global.fc_regs[i][0],
+				     wwpn[i]);
 		/* Programming WWPN back to back causes additional
 		 * offline/online transitions and a PLOGI
 		 */
@@ -2702,7 +2674,7 @@ static struct pci_driver cxlflash_driver = {
 	.id_table = cxlflash_pci_table,
 	.probe = cxlflash_probe,
 	.remove = cxlflash_remove,
-	.shutdown = cxlflash_shutdown,
+	.shutdown = cxlflash_remove,
 	.err_handler = &cxlflash_err_handler,
 };
 

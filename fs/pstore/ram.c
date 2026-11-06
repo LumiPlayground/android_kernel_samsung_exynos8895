@@ -665,12 +665,20 @@ static int ramoops_probe(struct platform_device *pdev)
 		cxt->pstore.bufsize = 1024; /* LOG_LINE_MAX */
 	cxt->pstore.bufsize = max(cxt->record_size, cxt->pstore.bufsize);
 	cxt->pstore.buf = kmalloc(cxt->pstore.bufsize, GFP_KERNEL);
-	spin_lock_init(&cxt->pstore.buf_lock);
 	if (!cxt->pstore.buf) {
 		pr_err("cannot allocate pstore buffer\n");
 		err = -ENOMEM;
 		goto fail_clear;
 	}
+	spin_lock_init(&cxt->pstore.buf_lock);
+
+	cxt->pstore.flags = PSTORE_FLAGS_DMESG;
+	if (cxt->console_size)
+		cxt->pstore.flags |= PSTORE_FLAGS_CONSOLE;
+	if (cxt->ftrace_size)
+		cxt->pstore.flags |= PSTORE_FLAGS_FTRACE;
+	if (cxt->pmsg_size)
+		cxt->pstore.flags |= PSTORE_FLAGS_PMSG;
 
 	err = pstore_register(&cxt->pstore);
 	if (err) {

@@ -63,7 +63,7 @@ extern void __init files_maxfiles_init(void);
 
 extern struct files_stat_struct files_stat;
 extern unsigned long get_max_files(void);
-extern int sysctl_nr_open;
+extern unsigned int sysctl_nr_open;
 extern struct inodes_stat_t inodes_stat;
 extern int leases_enable, lease_break_time;
 extern int sysctl_protected_symlinks;
@@ -329,6 +329,7 @@ struct writeback_control;
 #define IOCB_HIPRI		(1 << 3)
 #define IOCB_DSYNC		(1 << 4)
 #define IOCB_SYNC		(1 << 5)
+#define IOCB_WRITE		(1 << 6)
 
 struct kiocb {
 	struct file		*ki_filp;
@@ -1489,6 +1490,7 @@ static inline void i_gid_write(struct inode *inode, gid_t gid)
 }
 
 extern struct timespec current_fs_time(struct super_block *sb);
+extern struct timespec current_time(struct inode *inode);
 
 /*
  * Snapshotting support.
@@ -3046,6 +3048,7 @@ extern int buffer_migrate_page(struct address_space *,
 #endif
 
 extern int inode_change_ok(const struct inode *, struct iattr *);
+extern int setattr_prepare(struct dentry *, struct iattr *);
 extern int inode_newsize_ok(const struct inode *, loff_t offset);
 extern void setattr_copy(struct inode *inode, const struct iattr *attr);
 
@@ -3242,4 +3245,7 @@ static inline bool dir_relax_shared(struct inode *inode)
 extern bool path_noexec(const struct path *path);
 extern void inode_nohighmem(struct inode *inode);
 
+struct dentry *mount_pseudo_xattr(struct file_system_type *, char *,
+	const struct super_operations *, const struct xattr_handler **,
+	const struct dentry_operations *, unsigned long);
 #endif /* _LINUX_FS_H */

@@ -2957,7 +2957,7 @@ static const struct inode_operations sdfat_dir_inode_operations = {
 	.symlink       = sdfat_symlink,
 	.mkdir         = sdfat_mkdir,
 	.rmdir         = sdfat_rmdir,
-	.rename        = sdfat_rename,
+	.rename2       = sdfat_rename,
 	.setattr       = sdfat_setattr,
 	.getattr       = sdfat_getattr,
 #ifdef CONFIG_SDFAT_VIRTUAL_XATTR
