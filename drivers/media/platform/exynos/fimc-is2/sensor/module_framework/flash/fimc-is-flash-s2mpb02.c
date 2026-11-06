@@ -154,7 +154,8 @@ int flash_s2mpb02_probe(struct device *dev, struct i2c_client *client)
 	u32 sensor_id[FIMC_IS_SENSOR_COUNT];
 	int i;
 
-	BUG_ON(!fimc_is_dev);
+	if (!fimc_is_dev)
+		return -EPROBE_DEFER;
 	BUG_ON(!dev);
 
 	dnode = dev->of_node;

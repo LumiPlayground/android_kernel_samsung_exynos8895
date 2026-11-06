@@ -2157,7 +2157,8 @@ int cis_imx333_probe(struct i2c_client *client,
 	int i;
 
 	BUG_ON(!client);
-	BUG_ON(!fimc_is_dev);
+	if (!fimc_is_dev)
+		return -EPROBE_DEFER;
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
