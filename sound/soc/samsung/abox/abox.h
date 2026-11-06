@@ -585,6 +585,7 @@ struct abox_data {
 	struct abox_l2c_request l2c_requests[8];
 	struct work_struct l2c_work;
 	struct notifier_block pm_nb;
+	atomic_t suspend_state;
 	struct notifier_block modem_nb;
 	struct notifier_block itmon_nb;
 	int pm_qos_int[5];
