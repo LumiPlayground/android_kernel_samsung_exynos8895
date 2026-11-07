@@ -679,6 +679,8 @@ int decon_create_debugfs(struct decon_device *decon)
 		}
 	}
 #endif
+	return 0;
+
 err_debugfs:
 	if (decon->d.debug_root)
 		debugfs_remove(decon->d.debug_root);
