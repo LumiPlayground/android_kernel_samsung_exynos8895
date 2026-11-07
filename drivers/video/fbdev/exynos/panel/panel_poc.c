@@ -1278,7 +1278,7 @@ int panel_poc_probe(struct panel_poc_device *poc_dev)
 	}
 
 	poc_info = &poc_dev->poc_info;
-	poc_dev->dev.minor = MISC_PANEL_POC_MINOR;
+	poc_dev->dev.minor = MISC_DYNAMIC_MINOR;
 	poc_dev->dev.name = "poc";
 	poc_dev->dev.fops = &panel_poc_fops;
 	poc_dev->dev.parent = NULL;
