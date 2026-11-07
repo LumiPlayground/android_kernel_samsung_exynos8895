@@ -24,6 +24,7 @@
 
 #define BLOCK_HEADER		"HEADER"
 
+#define BLOCK_PIDTM "PIDTM"
 #define BLOCK_AP_THERMAL	"THERMAL"
 #define BLOCK_MIF_THERMAL	"MR4"
 #define BLOCK_DVFS		"DVFS"
@@ -363,6 +364,28 @@ struct ect_new_timing_param_header
 	struct ect_new_timing_param_size *size_list;
 };
 
+struct ect_pidtm_block
+{
+	char *block_name;
+	unsigned int offset;
+
+	int num_of_temperature;
+	int *temperature_list;
+
+	int num_of_parameter;
+	char **param_name_list;
+	int *param_value_list;
+};
+
+struct ect_pidtm_header
+{
+	int parser_version;
+	char version[4];
+	int num_of_block;
+
+	struct ect_pidtm_block *block_list;
+};
+
 struct ect_info
 {
 	char *block_name;
@@ -385,6 +408,7 @@ struct ect_voltage_domain *ect_asv_get_domain(void *block, char *domain_name);
 struct ect_rcc_domain *ect_rcc_get_domain(void *block, char *domain_name);
 struct ect_mif_thermal_level *ect_mif_thermal_get_level(void *block, int mr4_level);
 struct ect_ap_thermal_function *ect_ap_thermal_get_function(void *block, char *function_name);
+struct ect_pidtm_block *ect_pidtm_get_block(void *block, char *block_name);
 struct ect_margin_domain *ect_margin_get_domain(void *block, char *domain_name);
 struct ect_timing_param_size *ect_timing_param_get_size(void *block, int size);
 struct ect_timing_param_size *ect_timing_param_get_key(void *block, unsigned long long key);
@@ -410,6 +434,7 @@ static inline struct ect_pll *ect_pll_get_pll(void *block, char *pll_name) { ret
 static inline struct ect_voltage_domain *ect_asv_get_domain(void *block, char *domain_name) { return NULL; }
 static inline struct ect_rcc_domain *ect_rcc_get_domain(void *block, char *domain_name) { return NULL; }
 static inline struct ect_mif_thermal_level *ect_mif_thermal_get_level(void *block, int mr4_level) { return NULL; }
+static inline struct ect_pidtm_block *ect_pidtm_get_block(void *block, char *name) { return NULL; }
 static inline struct ect_ap_thermal_function *ect_ap_thermal_get_function(void *block, char *function_name) { return NULL; }
 static inline struct ect_margin_domain *ect_margin_get_domain(void *block, char *domain_name) { return NULL; }
 static inline struct ect_timing_param_size *ect_timing_param_get_size(void *block, int size) { return NULL; }

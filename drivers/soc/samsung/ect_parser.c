@@ -1065,6 +1065,105 @@ err_size_list_allocation:
 	return ret;
 }
 
+static int ect_parse_pidtm_block(int parser_version, void *address, struct ect_pidtm_block *block)
+{
+	int ret = 0;
+	int i, length;
+
+	ect_parse_integer(&address, &block->num_of_temperature);
+	block->temperature_list = address;
+
+	address += sizeof(int32_t) * block->num_of_temperature;
+
+	ect_parse_integer(&address, &block->num_of_parameter);
+	block->param_name_list = kzalloc(sizeof(char *) * block->num_of_parameter, GFP_KERNEL);
+	if (block->param_name_list == NULL) {
+		ret = -ENOMEM;
+		goto err_param_name_list_allocation;
+	}
+
+	for (i = 0; i < block->num_of_parameter; ++i) {
+		if (ect_parse_string(&address, &block->param_name_list[i], &length)) {
+			ret = -EINVAL;
+			goto err_parse_param_name;
+		}
+	}
+
+	block->param_value_list = address;
+
+	return 0;
+
+err_parse_param_name:
+	kfree(block->param_name_list);
+err_param_name_list_allocation:
+	return ret;
+}
+
+static int ect_parse_pidtm_header(void *address, struct ect_info *info)
+{
+	int ret = 0;
+	int i;
+	struct ect_pidtm_header *ect_pidtm_header;
+	struct ect_pidtm_block *ect_pidtm_block;
+	void *address_param_header = address;
+	char *block_name;
+	int offset, length;
+
+	if (address == NULL)
+		return -EINVAL;
+
+	ect_pidtm_header = kzalloc(sizeof(struct ect_pidtm_header), GFP_KERNEL);
+	if (ect_pidtm_header == NULL)
+		return -ENOMEM;
+
+	ect_parse_integer(&address, &ect_pidtm_header->parser_version);
+	ect_parse_integer(&address, &ect_pidtm_header->version);
+	ect_parse_integer(&address, &ect_pidtm_header->num_of_block);
+
+	ect_pidtm_header->block_list = kzalloc(sizeof(struct ect_pidtm_block) * ect_pidtm_header->num_of_block,
+							GFP_KERNEL);
+	if (ect_pidtm_header->block_list == NULL) {
+		ret = -ENOMEM;
+		goto err_block_list_allocation;
+	}
+
+	for (i = 0; i < ect_pidtm_header->num_of_block; ++i) {
+		ect_pidtm_block = &ect_pidtm_header->block_list[i];
+
+		if (ect_parse_string(&address, &block_name, &length)) {
+			ret = -EINVAL;
+			goto err_parse_string;
+		}
+
+		ect_parse_integer(&address, &offset);
+		ect_pidtm_block->block_name = block_name;
+		ect_pidtm_block->offset = offset;
+	}
+
+	for (i = 0; i < ect_pidtm_header->num_of_block; ++i) {
+		ect_pidtm_block = &ect_pidtm_header->block_list[i];
+
+		if (ect_parse_pidtm_block(ect_pidtm_header->parser_version,
+							address_param_header + ect_pidtm_block->offset,
+							ect_pidtm_block)) {
+			ret = -EINVAL;
+			goto err_parse_pidtm_block;
+		}
+
+	}
+
+	info->block_handle = ect_pidtm_header;
+
+	return 0;
+
+err_parse_pidtm_block:
+err_parse_string:
+	kfree(ect_pidtm_header->block_list);
+err_block_list_allocation:
+	kfree(ect_pidtm_header);
+	return ret;
+}
+
 static void ect_present_test_data(char *version)
 {
 	if (version[1] == '.')
@@ -1098,10 +1197,13 @@ static int ect_dump_gen_parameter(struct seq_file *s, void *data);
 static int ect_dump_binary(struct seq_file *s, void *data);
 static int ect_dump_new_timing_parameter(struct seq_file *s, void *data);
 
+static int ect_dump_pidtm(struct seq_file *s, void *data);
+
 static int dump_open(struct inode *inode, struct file *file);
 
 #else
 
+#define ect_dump_pidtm			NULL
 #define ect_dump_header			NULL
 #define ect_dump_ap_thermal		NULL
 #define ect_dump_voltage		NULL
@@ -1135,6 +1237,12 @@ static struct ect_info ect_header_info = {
 };
 
 static struct ect_info ect_list[] = {
+	{ .block_name = BLOCK_PIDTM,
+	  .block_name_length = sizeof(BLOCK_PIDTM) - 1,
+	  .parser = ect_parse_pidtm_header, .block_precedence = -1,
+	  .dump = ect_dump_pidtm, .dump_node_name = "pidtm",
+	  .dump_ops = { .open = dump_open, .read = seq_read,
+		.llseek = seq_lseek, .release = single_release } },
 	{
 		.block_name = BLOCK_AP_THERMAL,
 		.block_name_length = sizeof(BLOCK_AP_THERMAL) - 1,
@@ -1907,6 +2015,46 @@ static int ect_dump_new_timing_parameter(struct seq_file *s, void *data)
 	return 0;
 }
 
+static int ect_dump_pidtm(struct seq_file *s, void *data)
+{
+	int i, j;
+	struct ect_info *info = ect_get_info(BLOCK_PIDTM);
+	struct ect_pidtm_header *ect_pidtm_header = info->block_handle;
+	struct ect_pidtm_block *block;
+
+	if (ect_pidtm_header == NULL) {
+		seq_printf(s, "[ECT] : there is no pidtm parameter information\n");
+		return 0;
+	}
+
+	seq_printf(s, "[ECT] : PIDTM Parameter Information\n");
+	seq_printf(s, "\t[PARSER VERSION] : %d\n", ect_pidtm_header->parser_version);
+	seq_printf(s, "\t[VERSION] : %c%c%c%c\n",
+			ect_pidtm_header->version[0],
+			ect_pidtm_header->version[1],
+			ect_pidtm_header->version[2],
+			ect_pidtm_header->version[3]);
+	seq_printf(s, "\t[NUM OF BLOCK] : %d\n", ect_pidtm_header->num_of_block);
+
+	for (i = 0; i < ect_pidtm_header->num_of_block; ++i) {
+		block = &ect_pidtm_header->block_list[i];
+
+		seq_printf(s, "\t\t[BLOCK NAME] : %s\n", block->block_name);
+		seq_printf(s, "\t\t[NUM OF TEMPERATURE] : %d\n", block->num_of_temperature);
+
+		for (j = 0; j < block->num_of_temperature; ++j) {
+			seq_printf(s, "\t\t\t[TRIGGER TEMPERATURE] : %d\n", block->temperature_list[j]);
+		}
+
+		seq_printf(s, "\t\t[NUM OF PARAMETER] : %d\n", block->num_of_parameter);
+		for (j = 0; j < block->num_of_parameter; ++j) {
+			seq_printf(s, "\t\t\t[PARAMETER] : %s, %d\n", block->param_name_list[j], block->param_value_list[j]);
+		}
+	}
+
+	return 0;
+}
+
 static int dump_open(struct inode *inode, struct file *file)
 {
 	struct ect_info *info = inode->i_private;
@@ -2465,4 +2613,26 @@ void ect_init_map_io(void)
 		pr_err("[ECT] : failed to mapping va and pa(%d)\n", ret);
 	}
 	kfree(pages);
+}
+
+struct ect_pidtm_block *ect_pidtm_get_block(void *block, char *block_name)
+{
+	int i;
+	struct ect_pidtm_header *header;
+	struct ect_pidtm_block *pidtm_block;
+
+	if (block == NULL ||
+		block_name == NULL)
+		return NULL;
+
+	header = (struct ect_pidtm_header *)block;
+
+	for (i = 0; i < header->num_of_block; ++i) {
+		pidtm_block = &header->block_list[i];
+
+		if (ect_strcmp(block_name, pidtm_block->block_name) == 0)
+			return pidtm_block;
+	}
+
+	return NULL;
 }
