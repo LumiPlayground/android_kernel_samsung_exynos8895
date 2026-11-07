@@ -705,6 +705,7 @@
 	pinctrl_1: pinctrl@13E60000{
 		compatible = "samsung,exynos8895-pinctrl";
 		reg = <0x0 0x13E60000 0x1000>;
+		samsung,power-domain = <&pd_abox>;
 	};
 
 	/* VTS */
