@@ -1070,6 +1070,7 @@ static int exynos_pm_notifier(struct notifier_block *notifier,
 		mutex_lock(&thermal_suspend_lock);
 		suspended = true;
 		list_for_each_entry(devnode, &dtm_dev_list, node) {
+			cdev = NULL;
 			tz = devnode->tzd;
 			list_for_each_entry(instance, &tz->thermal_instances, tz_node) {
 				if (instance->cdev) {
@@ -1087,6 +1088,7 @@ static int exynos_pm_notifier(struct notifier_block *notifier,
 		mutex_lock(&thermal_suspend_lock);
 		suspended = false;
 		list_for_each_entry(devnode, &dtm_dev_list, node) {
+			cdev = NULL;
 			tz = devnode->tzd;
 			list_for_each_entry(instance, &tz->thermal_instances, tz_node) {
 				if (instance->cdev) {
