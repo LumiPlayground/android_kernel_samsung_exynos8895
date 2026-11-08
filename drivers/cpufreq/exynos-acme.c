@@ -16,6 +16,7 @@
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
 #include <linux/cpufreq.h>
+#include <linux/cpu_cooling.h>
 #include <linux/exynos-ss.h>
 #include <linux/pm_opp.h>
 
@@ -1427,6 +1428,7 @@ static int __init exynos_cpufreq_init(void)
 
 		list_add_tail(&domain->list, &domains);
 
+		domain->dn = dn;
 		domain->id = domain_id;
 		ret = init_domain(domain, dn);
 		if (ret) {
@@ -1466,6 +1468,7 @@ static int __init exynos_cpufreq_init(void)
 	 */
 	list_for_each_entry(domain, &domains, list) {
 		enable_domain(domain);
+		exynos_cpufreq_cooling_register(domain->dn, &domain->cpus);
 		update_freq(domain, domain->old);
 		cpufreq_update_policy(cpumask_first(&domain->cpus));
 	}

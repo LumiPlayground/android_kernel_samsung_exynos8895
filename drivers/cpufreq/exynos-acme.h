@@ -29,6 +29,9 @@ struct exynos_cpufreq_domain {
 	/* lock */
 	struct mutex			lock;
 
+	/* dt node */
+	struct device_node		*dn;
+
 	/* domain identity */
 	unsigned int			id;
 	struct cpumask			cpus;
