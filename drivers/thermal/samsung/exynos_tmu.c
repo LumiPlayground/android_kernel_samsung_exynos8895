@@ -1341,14 +1341,28 @@ static int exynos_tmu_cpus_notifier(struct notifier_block *nb,
 	struct cpumask mask;
 	int big_cpu_cnt;
 	int count;
-	struct cpufreq_cooling_device *cpufreq_device = (struct cpufreq_cooling_device *)tmudata->cool_dev->devdata;
+	struct cpufreq_cooling_device *cpufreq_device;
+	struct thermal_instance *instance;
 
+	if (IS_ERR_OR_NULL(tz))
+		return NOTIFY_DONE;
 
 	cpumask_copy(&mask, data);
 	cpumask_and(&mask, &mask, &hmp_fast_cpu_mask);
 	big_cpu_cnt = cpumask_weight(&mask);
 
-	cpumask_copy(&cpufreq_device->target_cpus, &mask);
+	mutex_lock(&tz->lock);
+	list_for_each_entry(instance, &tz->thermal_instances, tz_node) {
+		struct thermal_cooling_device *cdev = instance->cdev;
+
+		if (!cdev || strncmp(cdev->type, "thermal-cpufreq-",
+				   sizeof("thermal-cpufreq-") - 1))
+			continue;
+
+		cpufreq_device = cdev->devdata;
+		cpumask_copy(&cpufreq_device->target_cpus, &mask);
+	}
+	mutex_unlock(&tz->lock);
 
 	switch (event) {
 	case CPUS_DOWN_COMPLETE:
