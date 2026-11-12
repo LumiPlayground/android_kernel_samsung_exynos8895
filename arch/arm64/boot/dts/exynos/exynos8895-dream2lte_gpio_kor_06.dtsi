@@ -59,7 +59,6 @@
 	initial4: initial-state {
 		PIN_IN(gpj0-6, DOWN, LV1);	/* NC */
 		PIN_IN(gpj1-1, DOWN, LV1);	/* NC */
-		PIN_IN(gpj1-5, NONE, LV1);	/* SUB_PMIC_IRQ_N */
 	};
 	sleep4:sleep-state {
 		PIN_SLP(gpj0-6, INPUT, DOWN);	/* NC */
