@@ -157,10 +157,6 @@
 			samsung,pins = "gpb1-0";
 			samsung,pin-con-pdn = <3>;
 		};
-		g3d_dvs: g3d-dvs {
-			samsung,pins = "gpb1-2";
-			samsung,pin-function = <0x2>;
-		};
 	};
 
 	hsi2c@10870000 {
@@ -227,7 +223,7 @@
 			interrupts = <6 0 0>;
 			interrupt-parent = <&gpa3>;
 			pinctrl-names = "default";
-			pinctrl-0 = <&pmic_irq &pm_wrsti &g3d_dvs &smpl_warn>;
+			pinctrl-0 = <&pmic_irq &pm_wrsti &smpl_warn>;
 			gpios = <&gpb1 3 0>, <&gpb1 2 0x2>;
 			smpl_warn_en = <1>; /* 1 : enable , 0 : disable*/
 			/* range of smpl_warn_vth */

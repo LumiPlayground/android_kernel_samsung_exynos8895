@@ -95,7 +95,6 @@
 	pinctrl-0 = <&initial6>;
 	pinctrl-1 = <&sleep6>;
 	initial6: initial-state {
-		PIN_OUT_SET(gpb1-2, PIN_DAT_HIGH, LV1);	/* BUCK6_DVS */
 		PIN_IN(gpb1-3, NONE, LV1);	/* SMPL_WARN_AP */
 		PIN_IN(gpd0-0, NONE, LV1);	/* HW_REV0 */
 		PIN_IN(gpd0-1, NONE, LV1);	/* HW_REV1 */
@@ -122,7 +121,6 @@
 		PIN_IN(gpf1-7, NONE, LV1);	/* CP_REV3 */
 	};
 	sleep6:sleep-state {
-		PIN_SLP(gpb1-2, PREV, NONE);	/* BUCK6_DVS */
 		PIN_SLP(gpb1-3, INPUT, NONE);	/* SMPL_WARN_AP */
 		PIN_SLP(gpd0-0, INPUT, NONE);	/* HW_REV0 */
 		PIN_SLP(gpd0-1, INPUT, NONE);	/* HW_REV1 */
