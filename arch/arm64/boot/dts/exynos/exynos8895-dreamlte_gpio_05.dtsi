@@ -39,7 +39,6 @@
 		PIN_IN(gpi1-2, DOWN, LV1);	/* OLED ID */
 		PIN_OUT(gpi1-3, LV3);		/* eDP_SW_OE */
 		PIN_OUT(gpi1-6, LV1);		/* S2MM005_OM */
-		PIN_IN(gpi1-7, UP, LV1);	/* USB3.1_COM_SEL */
 	  };
 	sleep3:sleep-state {
 		PIN_SLP(gpi0-2, INPUT, DOWN);	/* NC */
