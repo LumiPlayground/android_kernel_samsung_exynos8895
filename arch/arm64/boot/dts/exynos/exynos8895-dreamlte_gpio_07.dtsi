@@ -22,7 +22,6 @@
 		PIN_IN(gpa1-1, DOWN, LV1);	/* NC */
 		PIN_IN(gpa2-1, DOWN, LV1);	/* NC */
 		PIN_IN(gpa4-0, DOWN, LV1);	/* NC */
-		PIN_IN(gpa4-6, NONE, LV1);	/* Model_ID */
 	};
 };
 

@@ -60,7 +60,7 @@
 			spi-cpol;
 			spi-cpha;
 			pinctrl-names = "default";
-			pinctrl-0 = <&ssp_host_req &ssp_mcu_req &ssp_mcu_resp &ssp_batch_wake_irq &ssp_pwr_en>;
+			pinctrl-0 = <&ssp_host_req &ssp_mcu_req &ssp_mcu_resp &ssp_batch_wake_irq>;
 		
 			gpio-controller;
 			#gpio-cells = <2>;
