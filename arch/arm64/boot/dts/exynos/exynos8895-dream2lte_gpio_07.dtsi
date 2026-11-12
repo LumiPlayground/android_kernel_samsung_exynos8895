@@ -75,7 +75,6 @@
 	pinctrl-0 = <&initial5>;
 	pinctrl-1 = <&sleep5>;
 	initial5: initial-state {
-		PIN_IN(gpb2-0, UP, LV3);	/* AP_PMIC_SDA_1P8 -> speedy */
 		PIN_IN(gpb2-1, DOWN, LV1);	/* AP_PMIC_SCL_1P8 -> NC */
 	};
 	sleep5:sleep-state {
