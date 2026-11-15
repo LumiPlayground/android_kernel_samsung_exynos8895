@@ -159,6 +159,32 @@
 		#address-cells = <2>;
 		#size-cells = <0>;
 
+		ehmp {
+			/* lb trigger */
+			#define DISABLED 0xFFFFFFFF
+			top-overutil = <DISABLED
+					DISABLED
+					DISABLED
+					DISABLED
+					DISABLED
+					DISABLED
+					DISABLED
+					DISABLED>;
+			bot-overutil = <35
+					35
+					35
+					35
+					DISABLED
+					DISABLED
+					DISABLED
+					DISABLED>;
+
+			/* ontime migration */
+			up-threshold = <79>;
+			down-threshold = <128>;
+			min-residency-us = <8192>;
+		};
+
 		cpu0: cpu@100 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a53", "arm,armv8";
