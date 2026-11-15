@@ -25,6 +25,7 @@
 #endif
 #define CREATE_TRACE_POINTS
 
+#include <linux/boot_checkpoint.h>
 #include <linux/memblock.h>
 #include <linux/err.h>
 #include <linux/mm.h>
@@ -127,7 +128,21 @@ static int __init cma_activate_area(struct cma *cma)
 			if (page_zone(pfn_to_page(pfn)) != zone)
 				goto err;
 		}
-		init_cma_reserved_pageblock(pfn_to_page(base_pfn), is_rbin);
+		if (boot_checkpoint_reserved(PFN_PHYS(base_pfn),
+					    pageblock_nr_pages * PAGE_SIZE)) {
+			/* Keep the scanout reserved, including in recyclable camera CMA. */
+			bitmap_set(cma->bitmap,
+				(base_pfn - cma->base_pfn) >> cma->order_per_bit,
+				cma_bitmap_pages_to_bits(cma, pageblock_nr_pages));
+#ifdef CONFIG_RBIN
+			if (is_rbin)
+				totalrbin_pages -= pageblock_nr_pages;
+			else
+#endif
+				totalcma_pages -= pageblock_nr_pages;
+		} else {
+			init_cma_reserved_pageblock(pfn_to_page(base_pfn), is_rbin);
+		}
 	} while (--i);
 
 	mutex_init(&cma->lock);

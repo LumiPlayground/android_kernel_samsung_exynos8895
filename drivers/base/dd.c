@@ -17,6 +17,7 @@
  * This file is released under the GPLv2
  */
 
+#include <linux/boot_checkpoint.h>
 #include <linux/device.h>
 #include <linux/delay.h>
 #include <linux/module.h>
@@ -344,6 +345,7 @@ static int really_probe(struct device *dev, struct device_driver *drv)
 	WARN_ON(!list_empty(&dev->devres_head));
 
 re_probe:
+	boot_checkpoint(37, "PROBE %s %s", drv->name, dev_name(dev));
 	dev->driver = drv;
 
 	/* If using pinctrl, bind pins now before probing */
@@ -373,6 +375,7 @@ re_probe:
 			goto probe_failed;
 	}
 
+	boot_checkpoint(38, "PROBE OK %s %s", drv->name, dev_name(dev));
 	if (test_remove) {
 		test_remove = false;
 

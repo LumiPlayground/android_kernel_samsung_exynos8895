@@ -8,6 +8,7 @@
 #warning "Sparse checking disabled for this file"
 #endif
 
+#include <linux/boot_checkpoint.h>
 #include <linux/init.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
@@ -628,15 +629,19 @@ static int __init populate_rootfs(void)
 		return default_rootfs();
 	}
 
+	boot_checkpoint(29, "INTERNAL INITRAMFS UNPACK BEGIN");
 	err = unpack_to_rootfs(__initramfs_start, __initramfs_size);
+	boot_checkpoint(30, "INTERNAL INITRAMFS %s", err ? err : "OK");
 	if (err)
 		panic("%s", err); /* Failed to decompress INTERNAL initramfs */
 	if (initrd_start) {
 #ifdef CONFIG_BLK_DEV_RAM
 		int fd;
 		printk(KERN_INFO "Trying to unpack rootfs image as initramfs...\n");
+		boot_checkpoint(29, "UPLOADED INITRAMFS UNPACK BEGIN");
 		err = unpack_to_rootfs((char *)initrd_start,
 			initrd_end - initrd_start);
+		boot_checkpoint(30, "UPLOADED INITRAMFS %s", err ? err : "OK");
 		if (!err) {
 			free_initrd();
 			goto done;
@@ -662,8 +667,10 @@ static int __init populate_rootfs(void)
 	done:
 #else
 		printk(KERN_INFO "Unpacking initramfs...\n");
+		boot_checkpoint(29, "UPLOADED INITRAMFS UNPACK BEGIN");
 		err = unpack_to_rootfs((char *)initrd_start,
 			initrd_end - initrd_start);
+		boot_checkpoint(30, "UPLOADED INITRAMFS %s", err ? err : "OK");
 		if (err)
 			printk(KERN_EMERG "Initramfs unpacking failed: %s\n", err);
 		free_initrd();

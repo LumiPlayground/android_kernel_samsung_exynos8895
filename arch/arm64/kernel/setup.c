@@ -17,6 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/boot_checkpoint.h>
 #include <linux/acpi.h>
 #include <linux/export.h>
 #include <linux/kernel.h>
@@ -279,12 +280,16 @@ void __init setup_arch(char **cmdline_p)
 
 	*cmdline_p = boot_command_line;
 
+	boot_checkpoint(3, "SETUP_ARCH ENTRY");
 	early_fixmap_init();
 	early_ioremap_init();
+	boot_checkpoint(4, "EARLY FIXMAP / IOREMAP OK");
 
 	setup_machine_fdt(__fdt_pointer);
+	boot_checkpoint(5, "FDT SETUP OK");
 
 	parse_early_param();
+	boot_checkpoint(6, "EARLY PARAMS OK");
 
 	/*
 	 *  Unmask asynchronous aborts after bringing up possible earlycon.
@@ -297,12 +302,17 @@ void __init setup_arch(char **cmdline_p)
 	 * point to zero page to avoid speculatively fetching new entries.
 	 */
 	cpu_uninstall_idmap();
+	boot_checkpoint(7, "IDMAP REMOVED");
 
 	xen_early_init();
 	efi_init();
 	arm64_memblock_init();
+	boot_checkpoint_fb_init();
+	boot_checkpoint(8, "MEMBLOCK OK");
 
 	paging_init();
+	boot_checkpoint_linear();
+	boot_checkpoint(9, "PAGING INIT OK");
 
 	acpi_table_upgrade();
 
@@ -313,6 +323,7 @@ void __init setup_arch(char **cmdline_p)
 		unflatten_device_tree();
 
 	bootmem_init();
+	boot_checkpoint(10, "BOOTMEM OK");
 
 	kasan_init();
 

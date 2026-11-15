@@ -1,5 +1,16 @@
 menu "Kernel hacking"
 
+config EXYNOS8895_BOOT_CHECKPOINTS
+	bool "Exynos8895 on-screen boot checkpoints"
+	depends on SOC_EXYNOS8895
+	default n
+	select FONT_SUPPORT
+	select FONT_8x16
+	help
+	  Temporary bringup instrumentation on the bootloader RGB framebuffer.
+	  Records setup, driver probes and PID 1 progress. Preserves
+	  the running display trigger during DECON handoff. Disable for normal use.
+
 source "lib/Kconfig.debug"
 
 config ARM64_PTDUMP

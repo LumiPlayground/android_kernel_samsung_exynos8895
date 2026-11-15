@@ -18,6 +18,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/boot_checkpoint.h>
 #include <linux/extable.h>
 #include <linux/signal.h>
 #include <linux/mm.h>
@@ -649,6 +650,18 @@ asmlinkage void __exception do_mem_abort(unsigned long addr, unsigned int esr,
 	const struct fault_info *inf = esr_to_fault_info(esr);
 	struct siginfo info;
 
+#ifdef CONFIG_EXYNOS8895_BOOT_CHECKPOINTS
+	if (task_pid_nr(current) == 1) {
+		static unsigned long faults;
+		unsigned long n = ++faults;
+
+		if (n < 32 || !(n & 1023)) {
+			boot_checkpoint(51, "PID1 FAULT PC %016llx", regs->pc);
+			boot_checkpoint(52, "PID1 FAULT ADDR %016lx", addr);
+			boot_checkpoint(53, "PID1 FAULT ESR %08x COUNT %lu", esr, n);
+		}
+	}
+#endif
 	if (!inf->fn(addr, esr, regs))
 		return;
 
