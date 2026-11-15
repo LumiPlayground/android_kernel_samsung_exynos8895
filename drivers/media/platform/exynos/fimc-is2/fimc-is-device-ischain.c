@@ -44,6 +44,9 @@
 #if defined(CONFIG_EXYNOS_BTS)
 #include <soc/samsung/bts.h>
 #endif
+#ifdef CONFIG_SCHED_EHMP
+#include <linux/ehmp.h>
+#endif
 
 #include "fimc-is-binary.h"
 #include "fimc-is-time.h"
@@ -87,6 +90,10 @@ extern struct pm_qos_request exynos_isp_qos_mem;
 extern struct pm_qos_request exynos_isp_qos_cam;
 extern struct pm_qos_request exynos_isp_qos_hpg;
 extern struct pm_qos_request exynos_isp_qos_cpu_online_min;
+
+#ifdef CONFIG_SCHED_EHMP
+extern struct gb_qos_request gb_req;
+#endif
 
 extern const struct fimc_is_subdev_ops fimc_is_subdev_3aa_ops;
 extern const struct fimc_is_subdev_ops fimc_is_subdev_3ac_ops;
@@ -2204,6 +2211,9 @@ int fimc_is_ischain_runtime_suspend(struct device *dev)
 #if defined(CONFIG_HMP_VARIABLE_SCALE)
 		if (core->resourcemgr.dvfs_ctrl.cur_hmp_bst)
 			set_hmp_boost(0);
+#elif defined(CONFIG_SCHED_EHMP)
+		if (core->resourcemgr.dvfs_ctrl.cur_hmp_bst)
+			gb_qos_update_request(&gb_req, 0);
 #endif
 	}
 #endif

@@ -294,6 +294,16 @@ static void update_cpu_capacity(unsigned int cpu)
 		capacity = cpu_core_energy(cpu)->cap_states[max_cap_idx].cap;
 	}
 
+#ifdef CONFIG_SOC_EXYNOS8895
+	if (!cpu_core_energy(cpu)) {
+		struct device_node *cn = of_get_cpu_node(cpu, NULL);
+
+		/* Legacy 8895 IPC weights, not power or energy measurements. */
+		if (cn && of_device_is_compatible(cn, "arm,cortex-a53"))
+			capacity = SCHED_CAPACITY_SCALE * 2048 / 5035;
+		of_node_put(cn);
+	}
+#endif
 	set_capacity_scale(cpu, capacity);
 
 	pr_debug("CPU%d: update cpu_capacity %lu\n",

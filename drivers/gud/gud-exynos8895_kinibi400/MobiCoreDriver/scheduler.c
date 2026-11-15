@@ -19,6 +19,7 @@
 #include <linux/completion.h>
 #include <linux/stringify.h>
 #include <linux/version.h>
+#include <linux/topology.h>
 
 #include "public/mc_user.h"
 
@@ -229,7 +230,7 @@ int mc_scheduler_start(void)
 	}
 
 	/* ExySp: set affinity to little */
-	set_cpus_allowed_ptr(sched_ctx.thread, &hmp_slow_cpu_mask);
+	set_cpus_allowed_ptr(sched_ctx.thread, cpu_coregroup_mask(0));
 
 	nq_register_scheduler(mc_dev_command);
 	complete(&sched_ctx.idle_complete);

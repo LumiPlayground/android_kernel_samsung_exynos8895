@@ -53,6 +53,13 @@
 #include "hardware/fimc-is-hw-control.h"
 #endif
 
+#ifdef CONFIG_SCHED_EHMP
+#include <linux/ehmp.h>
+struct gb_qos_request gb_req = {
+	.name = "camera_ehmp_boost",
+};
+#endif
+
 #define CLUSTER_MIN_MASK			0x0000FFFF
 #define CLUSTER_MIN_SHIFT			0
 #define CLUSTER_MAX_MASK			0xFFFF0000

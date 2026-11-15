@@ -11,6 +11,9 @@
  */
 
 #include <linux/slab.h>
+#ifdef CONFIG_SCHED_EHMP
+#include <linux/ehmp.h>
+#endif
 #include "fimc-is-core.h"
 #include "fimc-is-dvfs.h"
 #include "fimc-is-hw-dvfs.h"
@@ -25,6 +28,10 @@ extern struct pm_qos_request exynos_isp_qos_int;
 extern struct pm_qos_request exynos_isp_qos_mem;
 extern struct pm_qos_request exynos_isp_qos_cam;
 extern struct pm_qos_request exynos_isp_qos_hpg;
+
+#ifdef CONFIG_SCHED_EHMP
+extern struct gb_qos_request gb_req;
+#endif
 
 int fimc_is_get_start_sensor_cnt(struct fimc_is_core *core)
 {
@@ -527,6 +534,19 @@ int fimc_is_set_dvfs(struct fimc_is_core *core, struct fimc_is_device_ischain *d
 		} else {
 			if (dvfs_ctrl->cur_hmp_bst) {
 				set_hmp_boost(0);
+				dvfs_ctrl->cur_hmp_bst = 0;
+			}
+		}
+#elif defined(CONFIG_SCHED_EHMP)
+		/* for migration to big core */
+		if (hpg_qos > 4) {
+			if (!dvfs_ctrl->cur_hmp_bst) {
+				gb_qos_update_request(&gb_req, 100);
+				dvfs_ctrl->cur_hmp_bst = 1;
+			}
+		} else {
+			if (dvfs_ctrl->cur_hmp_bst) {
+				gb_qos_update_request(&gb_req, 0);
 				dvfs_ctrl->cur_hmp_bst = 0;
 			}
 		}

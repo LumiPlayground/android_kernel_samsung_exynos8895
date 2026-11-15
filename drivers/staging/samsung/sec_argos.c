@@ -27,6 +27,13 @@
 #include <linux/interrupt.h>
 #include <linux/sec_argos.h>
 
+#ifdef CONFIG_SCHED_EHMP
+#include <linux/ehmp.h>
+static struct gb_qos_request gb_req = {
+	.name = "argos_ehmp_boost",
+};
+#endif
+
 #define ARGOS_NAME "argos"
 #define TYPE_SHIFT 4
 #define TYPE_MASK_BIT ((1 << TYPE_SHIFT) - 1)
@@ -378,7 +385,10 @@ int argos_hmpboost_apply(int dev_num, bool enable)
 	if (enable) {
 		/* disable -> enable */
 		if (!*hmpboost_enable) {
-#if defined(CONFIG_SCHED_HMP)
+#ifdef CONFIG_SCHED_EHMP
+			/* set global boost */
+			gb_qos_update_request(&gb_req, 100);
+#elif defined(CONFIG_SCHED_HMP)
 			set_hmp_boost(true);
 #endif
 			*hmpboost_enable = true;
@@ -387,7 +397,10 @@ int argos_hmpboost_apply(int dev_num, bool enable)
 	} else {
 		/* enable -> disable */
 		if (*hmpboost_enable) {
-#if defined(CONFIG_SCHED_HMP)
+#ifdef CONFIG_SCHED_EHMP
+			/* unset global boost */
+			gb_qos_update_request(&gb_req, 0);
+#elif defined(CONFIG_SCHED_HMP)
 			set_hmp_boost(false);
 #endif
 			*hmpboost_enable = false;
