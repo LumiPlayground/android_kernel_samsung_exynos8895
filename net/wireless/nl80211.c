@@ -213,36 +213,6 @@ cfg80211_get_dev_from_info(struct net *netns, struct genl_info *info)
 	return __cfg80211_rdev_from_attrs(netns, info->attrs);
 }
 
-static int validate_beacon_head(const struct nlattr *attr)
-{
-	const u8 *data = nla_data(attr);
-	unsigned int len = nla_len(attr);
-	const struct element *elem;
-	const struct ieee80211_mgmt *mgmt = (void *)data;
-	unsigned int fixedlen = offsetof(struct ieee80211_mgmt,
-					 u.beacon.variable);
-
-	if (len < fixedlen)
-		goto err;
-
-	if (ieee80211_hdrlen(mgmt->frame_control) !=
-	    offsetof(struct ieee80211_mgmt, u.beacon))
-		goto err;
-
-	data += fixedlen;
-	len -= fixedlen;
-
-	for_each_element(elem, data, len) {
-		/* nothing */
-	}
-
-	if (for_each_element_completed(elem, data, len))
-		return 0;
-
-err:
-	return -EINVAL;
-}
-
 /* policy for the attributes */
 static const struct nla_policy nl80211_policy[NUM_NL80211_ATTR] = {
 	[NL80211_ATTR_WIPHY] = { .type = NLA_U32 },
@@ -3707,11 +3677,6 @@ static int nl80211_parse_beacon(struct nlattr *attrs[],
 	memset(bcn, 0, sizeof(*bcn));
 
 	if (attrs[NL80211_ATTR_BEACON_HEAD]) {
-		int ret = validate_beacon_head(attrs[NL80211_ATTR_BEACON_HEAD]);
-
-		if (ret)
-			return ret;
-
 		bcn->head = nla_data(attrs[NL80211_ATTR_BEACON_HEAD]);
 		bcn->head_len = nla_len(attrs[NL80211_ATTR_BEACON_HEAD]);
 		if (!bcn->head_len)
@@ -6510,18 +6475,18 @@ static int nl80211_trigger_scan(struct sk_buff *skb, struct genl_info *info)
 	int err, tmp, n_ssids = 0, n_channels, i;
 	size_t ie_len;
 
-	if (!is_valid_ie_attr(info->attrs[NL80211_ATTR_IE]))
+	if (WARN_ON(!is_valid_ie_attr(info->attrs[NL80211_ATTR_IE])))
 		return -EINVAL;
 
 	wiphy = &rdev->wiphy;
 
-	if (wdev->iftype == NL80211_IFTYPE_NAN)
+	if (WARN_ON(wdev->iftype == NL80211_IFTYPE_NAN))
 		return -EOPNOTSUPP;
 
-	if (!rdev->ops->scan)
+	if (WARN_ON(!rdev->ops->scan))
 		return -EOPNOTSUPP;
 
-	if (rdev->scan_req || rdev->scan_msg) {
+	if (WARN_ON(rdev->scan_req || rdev->scan_msg)) {
 		err = -EBUSY;
 		goto unlock;
 	}
@@ -6529,7 +6494,7 @@ static int nl80211_trigger_scan(struct sk_buff *skb, struct genl_info *info)
 	if (info->attrs[NL80211_ATTR_SCAN_FREQUENCIES]) {
 		n_channels = validate_scan_freqs(
 				info->attrs[NL80211_ATTR_SCAN_FREQUENCIES]);
-		if (!n_channels) {
+		if (WARN_ON(!n_channels)) {
 			err = -EINVAL;
 			goto unlock;
 		}
@@ -6541,7 +6506,7 @@ static int nl80211_trigger_scan(struct sk_buff *skb, struct genl_info *info)
 		nla_for_each_nested(attr, info->attrs[NL80211_ATTR_SCAN_SSIDS], tmp)
 			n_ssids++;
 
-	if (n_ssids > wiphy->max_scan_ssids) {
+	if (WARN_ON(n_ssids > wiphy->max_scan_ssids)) {
 		err = -EINVAL;
 		goto unlock;
 	}
@@ -6551,7 +6516,7 @@ static int nl80211_trigger_scan(struct sk_buff *skb, struct genl_info *info)
 	else
 		ie_len = 0;
 
-	if (ie_len > wiphy->max_scan_ie_len) {
+	if (WARN_ON(ie_len > wiphy->max_scan_ie_len)) {
 		err = -EINVAL;
 		goto unlock;
 	}
@@ -6583,7 +6548,7 @@ static int nl80211_trigger_scan(struct sk_buff *skb, struct genl_info *info)
 
 			chan = ieee80211_get_channel(wiphy, nla_get_u32(attr));
 
-			if (!chan) {
+			if (WARN_ON(!chan)) {
 				err = -EINVAL;
 				goto out_free;
 			}
@@ -6628,7 +6593,7 @@ static int nl80211_trigger_scan(struct sk_buff *skb, struct genl_info *info)
 	i = 0;
 	if (n_ssids) {
 		nla_for_each_nested(attr, info->attrs[NL80211_ATTR_SCAN_SSIDS], tmp) {
-			if (nla_len(attr) > IEEE80211_MAX_SSID_LEN) {
+			if (WARN_ON(nla_len(attr) > IEEE80211_MAX_SSID_LEN)) {
 				err = -EINVAL;
 				goto out_free;
 			}
@@ -6656,7 +6621,7 @@ static int nl80211_trigger_scan(struct sk_buff *skb, struct genl_info *info)
 				    tmp) {
 			enum nl80211_band band = nla_type(attr);
 
-			if (band < 0 || band >= NUM_NL80211_BANDS) {
+			if (WARN_ON(band < 0 || band >= NUM_NL80211_BANDS)) {
 				err = -EINVAL;
 				goto out_free;
 			}
@@ -6674,8 +6639,8 @@ static int nl80211_trigger_scan(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	if (info->attrs[NL80211_ATTR_MEASUREMENT_DURATION]) {
-		if (!wiphy_ext_feature_isset(wiphy,
-					NL80211_EXT_FEATURE_SET_SCAN_DWELL)) {
+		if (WARN_ON(!wiphy_ext_feature_isset(wiphy,
+					NL80211_EXT_FEATURE_SET_SCAN_DWELL))) {
 			err = -EOPNOTSUPP;
 			goto out_free;
 		}
@@ -6689,20 +6654,20 @@ static int nl80211_trigger_scan(struct sk_buff *skb, struct genl_info *info)
 	if (info->attrs[NL80211_ATTR_SCAN_FLAGS]) {
 		request->flags = nla_get_u32(
 			info->attrs[NL80211_ATTR_SCAN_FLAGS]);
-		if ((request->flags & NL80211_SCAN_FLAG_LOW_PRIORITY) &&
-		    !(wiphy->features & NL80211_FEATURE_LOW_PRIORITY_SCAN)) {
+		if (WARN_ON((request->flags & NL80211_SCAN_FLAG_LOW_PRIORITY) &&
+		    !(wiphy->features & NL80211_FEATURE_LOW_PRIORITY_SCAN))) {
 			err = -EOPNOTSUPP;
 			goto out_free;
 		}
 
 		if (request->flags & NL80211_SCAN_FLAG_RANDOM_ADDR) {
-			if (!(wiphy->features &
-					NL80211_FEATURE_SCAN_RANDOM_MAC_ADDR)) {
+			if (WARN_ON(!(wiphy->features &
+					NL80211_FEATURE_SCAN_RANDOM_MAC_ADDR))) {
 				err = -EOPNOTSUPP;
 				goto out_free;
 			}
 
-			if (wdev->current_bss) {
+			if (WARN_ON(wdev->current_bss)) {
 				err = -EOPNOTSUPP;
 				goto out_free;
 			}
@@ -7758,7 +7723,9 @@ static int nl80211_dump_survey(struct sk_buff *skb, struct netlink_callback *cb)
 static bool nl80211_valid_wpa_versions(u32 wpa_versions)
 {
 	return !(wpa_versions & ~(NL80211_WPA_VERSION_1 |
-				  NL80211_WPA_VERSION_2));
+				  NL80211_WPA_VERSION_2 |
+/*WAPI*/
+				  NL80211_WAPI_VERSION_1));
 }
 
 static int nl80211_authenticate(struct sk_buff *skb, struct genl_info *info)
