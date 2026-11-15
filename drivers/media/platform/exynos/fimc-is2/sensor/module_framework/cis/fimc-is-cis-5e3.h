@@ -14,7 +14,7 @@
 
 #include "fimc-is-cis.h"
 
-#define EXT_CLK_Mhz (24.37)
+#define EXT_CLK_Mhz (26)
 
 #define SENSOR_5E3_MAX_WIDTH		(2560 + 16)
 #define SENSOR_5E3_MAX_HEIGHT		(1920 + 12)

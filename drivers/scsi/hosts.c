@@ -262,7 +262,6 @@ int scsi_add_host_with_dma(struct Scsi_Host *shost, struct device *dev,
 	scsi_host_set_state(shost, SHOST_RUNNING);
 	get_device(shost->shost_gendev.parent);
 
-
 	error = device_add(&shost->shost_dev);
 	if (error)
 		goto out_del_gendev;

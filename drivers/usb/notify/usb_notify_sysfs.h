@@ -7,15 +7,14 @@
  * (at your option) any later version.
  */
 
-  /* usb notify layer v3.2 */
+  /* usb notify layer v3.0 */
+
 
 #ifndef __LINUX_USB_NOTIFY_SYSFS_H__
 #define __LINUX_USB_NOTIFY_SYSFS_H__
 
 #define MAX_DISABLE_STR_LEN 32
-#define MAX_WHITELIST_STR_LEN 256
-#define MAX_CLASS_TYPE_NUM	USB_CLASS_VENDOR_SPEC
-
+#if defined(CONFIG_USB_OTG_WHITELIST_FOR_MDM)
 enum u_interface_class_type {
 	U_CLASS_PER_INTERFACE = 1,
 	U_CLASS_AUDIO,
@@ -36,6 +35,10 @@ enum u_interface_class_type {
 	U_CLASS_VENDOR_SPEC,
 };
 
+#define MAX_WHITELIST_STR_LEN 256
+#define MAX_CLASS_TYPE_NUM	USB_CLASS_VENDOR_SPEC
+#endif
+
 struct usb_notify_dev {
 	const char *name;
 	struct device *dev;
@@ -44,13 +47,13 @@ struct usb_notify_dev {
 	unsigned long disable_state;
 	char disable_state_cmd[MAX_DISABLE_STR_LEN];
 	int (*set_disable)(struct usb_notify_dev *, int);
+#if defined(CONFIG_USB_OTG_WHITELIST_FOR_MDM)
 	void (*set_mdm)(struct usb_notify_dev *udev, int mdm_disable);
 	char whitelist_str[MAX_WHITELIST_STR_LEN];
 	int whitelist_array_for_mdm[MAX_CLASS_TYPE_NUM+1];
+#endif
 };
 
-extern int usb_notify_dev_uevent(struct usb_notify_dev *udev,
-							char *envp_ext[]);
 extern int usb_notify_dev_register(struct usb_notify_dev *ndev);
 extern void usb_notify_dev_unregister(struct usb_notify_dev *ndev);
 extern int usb_notify_class_init(void);

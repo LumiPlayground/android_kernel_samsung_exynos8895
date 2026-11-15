@@ -15,6 +15,7 @@
 #include <linux/gpio.h>
 #include <linux/clk.h>
 #include <linux/err.h>
+#include <linux/platform_device.h>
 #include <linux/io.h>
 #include <linux/regulator/consumer.h>
 #include <linux/delay.h>
@@ -25,7 +26,6 @@
 #endif
 
 #include <exynos-fimc-is-module.h>
-#include "fimc-is-i2c-config.h"
 
 static int acquire_shared_rsc(struct exynos_sensor_pin *pin_ctrls)
 {
@@ -43,10 +43,9 @@ static int release_shared_rsc(struct exynos_sensor_pin *pin_ctrls)
 	return 0;
 }
 
-static int exynos_fimc_is_module_pin_control(struct fimc_is_module_enum *module,
-	struct pinctrl *pinctrl, struct exynos_sensor_pin *pin_ctrls, u32 scenario)
+static int exynos_fimc_is_module_pin_control(struct device *dev,
+	struct pinctrl *pinctrl, struct exynos_sensor_pin *pin_ctrls)
 {
-	struct device *dev = module->dev;
 	char* name = pin_ctrls->name;
 	ulong pin = pin_ctrls->pin;
 	u32 delay = pin_ctrls->delay;
@@ -126,7 +125,7 @@ static int exynos_fimc_is_module_pin_control(struct fimc_is_module_enum *module,
 		{
 			struct regulator *regulator = NULL;
 
-			regulator = regulator_get_optional(dev, name);
+			regulator = regulator_get(dev, name);
 			if (IS_ERR_OR_NULL(regulator)) {
 				pr_err("%s : regulator_get(%s) fail\n", __func__, name);
 				return PTR_ERR(regulator);
@@ -169,9 +168,6 @@ static int exynos_fimc_is_module_pin_control(struct fimc_is_module_enum *module,
 			regulator_put(regulator);
 		}
 		break;
-	case PIN_I2C:
-		ret = fimc_is_i2c_pin_control(module, scenario, value);
-		break;
 	default:
 		pr_err("unknown act for pin\n");
 		break;
@@ -190,25 +186,19 @@ int exynos_fimc_is_module_pins_cfg(struct fimc_is_module_enum *module,
 	struct exynos_sensor_pin (*pin_ctrls)[GPIO_SCENARIO_MAX][GPIO_CTRL_MAX];
 	struct exynos_platform_fimc_is_module *pdata;
 
-	FIMC_BUG(!module);
-	FIMC_BUG(!module->pdata);
-	FIMC_BUG(gpio_scenario >= GPIO_SCENARIO_MAX);
-	FIMC_BUG(scenario > SENSOR_SCENARIO_MAX);
+	BUG_ON(!module);
+	BUG_ON(!module->pdata);
+	BUG_ON(gpio_scenario >= GPIO_SCENARIO_MAX);
+	BUG_ON(scenario > SENSOR_SCENARIO_MAX);
 
 	pdata = module->pdata;
 	pinctrl = pdata->pinctrl;
 	pin_ctrls = pdata->pin_ctrls;
 	idx_max = pdata->pinctrl_index[scenario][gpio_scenario];
 
-	if (idx_max == 0) {
-		err("There is no such a scenario(scen:%d, on:%d)", scenario, gpio_scenario);
-		ret = -EINVAL;
-		goto p_err;
-	}
-
 	/* print configs */
 	for (idx = 0; idx < idx_max; ++idx) {
-		info("[@] pin_ctrl(act(%d), pin(%ld), val(%d), nm(%s)\n",
+		printk(KERN_DEBUG "[@] pin_ctrl(act(%d), pin(%ld), val(%d), nm(%s)\n",
 			pin_ctrls[scenario][gpio_scenario][idx].act,
 			(pin_ctrls[scenario][gpio_scenario][idx].act == PIN_FUNCTION) ? 0 : pin_ctrls[scenario][gpio_scenario][idx].pin,
 			pin_ctrls[scenario][gpio_scenario][idx].value,
@@ -217,8 +207,7 @@ int exynos_fimc_is_module_pins_cfg(struct fimc_is_module_enum *module,
 
 	/* do configs */
 	for (idx = 0; idx < idx_max; ++idx) {
-		ret = exynos_fimc_is_module_pin_control(module, pinctrl,
-			&pin_ctrls[scenario][gpio_scenario][idx], scenario);
+		ret = exynos_fimc_is_module_pin_control(module->dev, pinctrl, &pin_ctrls[scenario][gpio_scenario][idx]);
 		if (ret) {
 			pr_err("[@] exynos_fimc_is_sensor_gpio(%d) is fail(%d)", idx, ret);
 			goto p_err;
@@ -274,7 +263,7 @@ static int exynos_fimc_is_module_pin_debug(struct device *dev,
 			struct regulator *regulator;
 			int voltage;
 
-			regulator = regulator_get_optional(dev, name);
+			regulator = regulator_get(dev, name);
 			if (IS_ERR(regulator)) {
 				pr_err("%s : regulator_get(%s) fail\n", __func__, name);
 				return PTR_ERR(regulator);
@@ -308,10 +297,10 @@ int exynos_fimc_is_module_pins_dbg(struct fimc_is_module_enum *module,
 	struct exynos_sensor_pin (*pin_ctrls)[GPIO_SCENARIO_MAX][GPIO_CTRL_MAX];
 	struct exynos_platform_fimc_is_module *pdata;
 
-	FIMC_BUG(!module);
-	FIMC_BUG(!module->pdata);
-	FIMC_BUG(gpio_scenario > 1);
-	FIMC_BUG(scenario > SENSOR_SCENARIO_MAX);
+	BUG_ON(!module);
+	BUG_ON(!module->pdata);
+	BUG_ON(gpio_scenario > 1);
+	BUG_ON(scenario > SENSOR_SCENARIO_MAX);
 
 	pdata = module->pdata;
 	pinctrl = pdata->pinctrl;

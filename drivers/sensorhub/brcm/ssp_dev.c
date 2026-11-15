@@ -57,12 +57,19 @@ void ssp_enable(struct ssp_data *data, bool enable)
 
 	pr_info("[SSP] %s, new enable = %d, old enable = %d\n",
 		__func__, enable, !data->bSspShutdown);
-
 #ifdef CONFIG_SENSORS_SSP_HIFI_BATCHING
 	if (enable) {
-		enable_irq(data->irq_shub_int);
+		enable_irq(data->mcu_host_wake_irq);
+		 /*
+		  *pr_info("[SSP_IRQ] enable irq (%d)",
+		  *               data->mcu_host_wake_irq);
+		  */
 	} else {
-		disable_irq(data->irq_shub_int);
+		disable_irq(data->mcu_host_wake_irq);
+		 /*
+		  *pr_info("[SSP_IRQ] disable irq (%d)",
+		  *               data->mcu_host_wake_irq);
+		  */
 	}
 #endif
 
@@ -98,7 +105,7 @@ static void initialize_variable(struct ssp_data *data)
 	data->ts_irq_last = 0ULL;
 #endif
 	for (iSensorIndex = 0; iSensorIndex < SENSOR_MAX; iSensorIndex++) {
-		data->adDelayBuf[iSensorIndex] = DEFAULT_POLLING_DELAY;
+		data->adDelayBuf[iSensorIndex] = DEFUALT_POLLING_DELAY;
 		data->batchLatencyBuf[iSensorIndex] = 0;
 		data->batchOptBuf[iSensorIndex] = 0;
 		data->aiCheckStatus[iSensorIndex] = INITIALIZATION_STATE;
@@ -151,7 +158,7 @@ static void initialize_variable(struct ssp_data *data)
 	data->uProxLoThresh = data->uProxLoThresh_default;
 #endif
 	data->uGyroDps = GYROSCOPE_DPS1000;
-	data->uIr_Current = DEFAULT_IR_CURRENT;
+	data->uIr_Current = DEFUALT_IR_CURRENT;
 
 	data->mcu_device = NULL;
 	data->acc_device = NULL;
@@ -161,7 +168,6 @@ static void initialize_variable(struct ssp_data *data)
 	data->prox_device = NULL;
 	data->light_device = NULL;
 	data->ges_device = NULL;
-	data->thermistor_device = NULL;
 
 #ifdef CONFIG_SENSORS_SSP_LIGHT_COLORID
 	data->hiddenhole_device = NULL;
@@ -207,10 +213,6 @@ static void initialize_variable(struct ssp_data *data)
 	ssp_debug_time_flag = false;
 	data->dhrAccelScaleRange = 0;
 	data->skipSensorData = 0;
-	data->IsGyroselftest = false;
-	data->IsVDIS_Enabled = false;
-        data->IsAPsuspend = false;
-        data->IsNoRespCnt = 0;
 }
 
 int initialize_mcu(struct ssp_data *data)
@@ -269,10 +271,6 @@ int initialize_mcu(struct ssp_data *data)
 		pr_err("[SSP]: %s - initialize magnetic sensor failed\n",
 			__func__);
 
-	if (initialize_thermistor_table(data) < 0)
-		pr_err("[SSP]: %s - initialize thermistor table failed\n",
-			__func__);
-
 	data->uCurFirmRev = get_firmware_rev(data);
 	pr_info("[SSP] MCU Firm Rev : New = %8u\n",
 		data->uCurFirmRev);
@@ -323,19 +321,31 @@ void ssp_reset_batching_resources(struct ssp_data *data)
 	pr_err("[SSP_RST] reset finished %lld\n", ts);
 }
 
-irqreturn_t ssp_shub_int_handler(int irq, void *device)
+irqreturn_t ssp_mcu_host_wake_irq_handler(int irq, void *device)
 {
 	struct ssp_data *data = (struct ssp_data *) device;
 	u64 timestamp = get_current_timestamp();
+	unsigned int tmp = 0U;
 
-	data->ts_stacked_cnt = (data->ts_stacked_cnt + 1) % SIZE_TIMESTAMP_BUFFER;
-	data->ts_index_buffer[data->ts_stacked_cnt] = timestamp;
+	/** HIFI Sensor **/
+	/* Use buffer idx from 1 to 999, 0, 1 ... */
+	data->ts_stacked_cnt++;
+	tmp = data->ts_stacked_cnt % SIZE_TIMESTAMP_BUFFER;
+	data->ts_index_buffer[tmp] = timestamp;
 
-	//pr_err("[SSP_IRQ] ts_stacked_cnt %d timestamp %llu\n", data->ts_stacked_cnt, timestamp);
+	ssp_debug_time("[SSP_DEBUG_TIME_IRQ] ts_stacked_cnt - %d, timestamp - %lld diff - %lld\n",
+			data->ts_stacked_cnt % SIZE_TIMESTAMP_BUFFER, timestamp, timestamp - data->ts_irq_last);
+	/*
+	 *ssp_dbg("[SSP_IRQ] %15s	   [%3d] TS  %lld   [		   AP  %5u] DT %lld  DE %lld\n",
+	 *        __func__, irq, timestamp, data->ts_stacked_cnt,
+	 *        (timestamp - data->ts_irq_last),
+	 *        (timestamp - data->ts_last_enable_cmd_time));
+	 */
+
+	data->ts_irq_last = timestamp;
 	return IRQ_HANDLED;
 }
 #endif
-
 static int ssp_parse_dt(struct device *dev, struct ssp_data *data)
 {
 	struct device_node *np = dev->of_node;
@@ -373,33 +383,24 @@ static int ssp_parse_dt(struct device *dev, struct ssp_data *data)
 			pr_err("[SSPBBD]: failed set SHUB EN as output mode, ret:%d", errorno);
 	}
 
-	data->pin_ap_sleep = of_get_named_gpio(np, "ssp-batch-wake-irq", 0);
-	pr_info("[SSPBBD] of_get_named_gpio ssp-batch-wake-irq=%d to AP SLEEP\n", data->pin_ap_sleep);
-	if (data->pin_ap_sleep < 0) {
-		pr_info("[SSPBBD] Failed to of_get_named_gpio 'ssp-batch-wake-irq'\n");
-	} else {
-		errorno = gpio_request(data->pin_ap_sleep, "AP SLEEP");
-		if (errorno) {
-			pr_info("[SSPBBD] failed to request AP SLEEP, ret:%d", errorno);
-		}
-		errorno = gpio_direction_output(data->pin_ap_sleep, 1);
-		if (errorno)
-			pr_err("[SSPBBD]: failed set AP SLEEP as output mode, ret:%d", errorno);
+#ifdef CONFIG_SENSORS_SSP_HIFI_BATCHING
+	data->mcu_host_wake_int = of_get_named_gpio(np,
+					"ssp-batch-wake-irq", 0);
+	/* pr_info("[SSP_IRQ] of_get_named_gpio 'ssp-batch-wake-irq' : %d\n", data->mcu_host_wake_int); */
+	if (data->mcu_host_wake_int < 0) {
+		pr_info("[SSP_IRQ] Failed to of_get_named_gpio 'ssp-batch-wake-irq'\n");
+		errorno = data->mcu_host_wake_int;
+		goto dt_exit;
 	}
 
-	data->pin_shub_int = of_get_named_gpio(np, "ssp-shub-int", 0);
-	pr_info("[SSPBBD] of_get_named_gpio ssp-shub-int=%d to SHUB INT\n", data->pin_shub_int);
-	if (data->pin_shub_int < 0) {
-		pr_info("[SSPBBD] Failed to of_get_named_gpio 'ssp-shub-int'\n");
-	} else {
-		errorno = gpio_request(data->pin_shub_int, "SHUB INT");
-		if (errorno) {
-			pr_info("[SSPBBD] failed to request SHUB INT, ret:%d", errorno);
-		}
-		errorno = gpio_direction_input(data->pin_shub_int);
-		if (errorno)
-			pr_err("[SSPBBD]: failed set SHUB INT as output mode, ret:%d", errorno);
+	errorno = gpio_request(data->mcu_host_wake_int, "ssp-batch-wake-irq");
+	/* pr_info("[SSP_IRQ] gpio_request SSP_HOST_WAKE : %d\n", errorno); */
+	if (errorno) {
+		pr_info("[SSP_IRQ] Failed to request SSP_HOST_WAKE\n");
+		goto dt_exit;
 	}
+	errorno = gpio_direction_input(data->mcu_host_wake_int);
+#endif
 
 	if (of_property_read_u32(np, "ssp-acc-position", &data->accel_position))
 		data->accel_position = 0;
@@ -426,22 +427,22 @@ static int ssp_parse_dt(struct device *dev, struct ssp_data *data)
 #ifndef CONFIG_SENSORS_SSP_LIGHT_COLORID
 	if (of_property_read_u32(np, "ssp,prox-hi_thresh",
 			&data->uProxHiThresh))
-		data->uProxHiThresh = DEFAULT_HIGH_THRESHOLD;
+		data->uProxHiThresh = DEFUALT_HIGH_THRESHOLD;
 
 	if (of_property_read_u32(np, "ssp,prox-low_thresh",
 			&data->uProxLoThresh))
-		data->uProxLoThresh = DEFAULT_LOW_THRESHOLD;
+		data->uProxLoThresh = DEFUALT_LOW_THRESHOLD;
 
 	pr_info("[SSP] hi-thresh[%u] low-thresh[%u]\n",
 		data->uProxHiThresh, data->uProxLoThresh);
 
 	if (of_property_read_u32(np, "ssp,prox-detect_hi_thresh",
 			&data->uProxHiThresh_detect))
-		data->uProxHiThresh_detect = DEFAULT_DETECT_HIGH_THRESHOLD;
+		data->uProxHiThresh_detect = DEFUALT_DETECT_HIGH_THRESHOLD;
 
 	if (of_property_read_u32(np, "ssp,prox-detect_LOW_thresh",
 			&data->uProxLoThresh_detect))
-		data->uProxLoThresh_detect = DEFAULT_DETECT_LOW_THRESHOLD;
+		data->uProxLoThresh_detect = DEFUALT_DETECT_LOW_THRESHOLD;
 
 	pr_info("[SSP] detect-hi[%u] detect-low[%u]\n",
 		data->uProxHiThresh_detect, data->uProxLoThresh_detect);
@@ -449,28 +450,28 @@ static int ssp_parse_dt(struct device *dev, struct ssp_data *data)
 #else /* CONFIG_SENSORS_SSP_PROX_FACTORYCAL */
 	if (of_property_read_u32(np, "ssp,prox-hi_thresh",
 			&data->uProxHiThresh_default))
-		data->uProxHiThresh_default = DEFAULT_HIGH_THRESHOLD;
+		data->uProxHiThresh_default = DEFUALT_HIGH_THRESHOLD;
 
 	if (of_property_read_u32(np, "ssp,prox-low_thresh",
 			&data->uProxLoThresh_default))
-		data->uProxLoThresh_default = DEFAULT_LOW_THRESHOLD;
+		data->uProxLoThresh_default = DEFUALT_LOW_THRESHOLD;
 
 	pr_info("[SSP] hi-thresh[%u] low-thresh[%u]\n",
 		data->uProxHiThresh_default, data->uProxLoThresh_default);
 
 	if (of_property_read_u32(np, "ssp,prox-cal_hi_thresh",
 			&data->uProxHiThresh_cal))
-		data->uProxHiThresh_cal = DEFAULT_CAL_HIGH_THRESHOLD;
+		data->uProxHiThresh_cal = DEFUALT_CAL_HIGH_THRESHOLD;
 
 	if (of_property_read_u32(np, "ssp,prox-cal_LOW_thresh",
 			&data->uProxLoThresh_cal))
-		data->uProxLoThresh_cal = DEFAULT_CAL_LOW_THRESHOLD;
+		data->uProxLoThresh_cal = DEFUALT_CAL_LOW_THRESHOLD;
 
 	pr_info("[SSP] cal-hi[%u] cal-low[%u]\n",
 		data->uProxHiThresh_cal, data->uProxLoThresh_cal);
 #endif
 
-	data->uProxAlertHiThresh = DEFAULT_PROX_ALERT_HIGH_THRESHOLD;
+	data->uProxAlertHiThresh = DEFUALT_PROX_ALERT_HIGH_THRESHOLD;
 
 #ifdef CONFIG_SENSORS_MULTIPLE_GLASS_TYPE
 	if (of_property_read_u32(np, "ssp-glass-type", &data->glass_type))
@@ -504,13 +505,6 @@ static int ssp_parse_dt(struct device *dev, struct ssp_data *data)
 			*(data->static_matrix+i) = (int)temp;
 		}
 	}
-	if (of_property_read_u16_array(np, "ssp-thermi-up",
-		data->tempTable_up, ARRAY_SIZE(data->tempTable_up)))
-		pr_err("no thermi up table, set as 0");
-
-	if (of_property_read_u16_array(np, "ssp-thermi-sub",
-		data->tempTable_sub, ARRAY_SIZE(data->tempTable_sub)))
-		pr_err("no thermi sub table, set as 0");
 
 	/* Hall IC threshold */
 	if (of_property_read_u16_array(np, "ssp-hall-threshold",
@@ -630,7 +624,7 @@ void ssp_timestamp_sync_work_func(struct work_struct *work)
 	msg->cmd = MSG2AP_INST_TIMESTAMP_OFFSET;
 	msg->length = sizeof(data->timestamp_offset);
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(sizeof(data->timestamp_offset), GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(sizeof(data->timestamp_offset), GFP_KERNEL);
 
 	pr_info("handle_timestamp_sync: %lld\n", data->timestamp_offset);
 	memcpy(msg->buffer, &(data->timestamp_offset), sizeof(data->timestamp_offset));
@@ -739,9 +733,6 @@ static int ssp_probe(struct spi_device *spi)
 	wake_lock_init(&data->ssp_wake_lock,
 		WAKE_LOCK_SUSPEND, "ssp_wake_lock");
 
-	wake_lock_init(&data->ssp_batch_wake_lock,
-		WAKE_LOCK_SUSPEND, "ssp_batch_wake_lock");
-
 	wake_lock_init(&data->ssp_comm_wake_lock,
 		WAKE_LOCK_SUSPEND, "ssp_comm_wake_lock");
 
@@ -790,18 +781,29 @@ static int ssp_probe(struct spi_device *spi)
 		goto err_create_batch_workqueue;
 	}
 
-	data->irq_shub_int = gpio_to_irq(data->pin_shub_int);
-	iRet = request_irq(data->irq_shub_int, ssp_shub_int_handler,
-			IRQF_TRIGGER_FALLING, "ssp-shub-int", data);
+	/* HIFI Sensor + Normal Indexing */
+	data->mcu_host_wake_irq = gpio_to_irq(data->mcu_host_wake_int);
+
+	iRet = request_irq(data->mcu_host_wake_irq,
+			ssp_mcu_host_wake_irq_handler,
+			IRQF_TRIGGER_FALLING, "ssp-batch-wake-irq", data);
+
+	/*
+	 *pr_info("[SSP_IRQ]: request_irq(%d) for gpio %d (%d)\n",
+	 *        data->mcu_host_wake_int,
+	 *        data->mcu_host_wake_irq,
+	 *        iRet)
+	 */
 
 	if (iRet < 0) {
 		pr_info("[SSP_IRQ]: request_irq(%d) failed for gpio %d (%d)\n",
-				data->irq_shub_int,
-				data->pin_shub_int,
+				data->mcu_host_wake_int,
+				data->mcu_host_wake_irq,
 				iRet);
 		iRet = -ENODEV;
+		goto err_request_irq;
 	}
-	disable_irq(data->irq_shub_int);
+	disable_irq(data->mcu_host_wake_irq);
 	data->ts_stacked_cnt = 0;
 #endif
 	bbd_register(data, &ssp_bbd_callbacks);
@@ -861,6 +863,8 @@ err_create_motor_workqueue:
 #endif
 #ifdef CONFIG_SENSORS_SSP_HIFI_BATCHING
 /* Test PIN for Camera - Gyro Sync */
+err_request_irq:
+	gpio_free(data->mcu_host_wake_int);
 err_create_batch_workqueue:
 	destroy_workqueue(data->batch_wq);
 	mutex_destroy(&data->batch_events_lock);
@@ -872,7 +876,6 @@ err_sysfs_create:
 err_create_workqueue:
 	remove_input_dev(data);
 err_input_register_device:
-	wake_lock_destroy(&data->ssp_batch_wake_lock);
 	wake_lock_destroy(&data->ssp_comm_wake_lock);
 	wake_lock_destroy(&data->ssp_wake_lock);
 err_reset_null:
@@ -934,6 +937,7 @@ static void ssp_shutdown(struct spi_device *spi)
 	cancel_work_sync(&data->work_bbd_mcu_ready);
 	destroy_workqueue(data->bbd_mcu_ready_wq);
 #ifdef CONFIG_SENSORS_SSP_HIFI_BATCHING
+	gpio_free(data->mcu_host_wake_int); /* HIFI */
 	destroy_workqueue(data->batch_wq); /* HIFI */
 	mutex_destroy(&data->batch_events_lock);
 #endif
@@ -962,7 +966,6 @@ static void ssp_shutdown(struct spi_device *spi)
 	destroy_workqueue(data->debug_wq);
 	wake_lock_destroy(&data->ssp_comm_wake_lock);
 	wake_lock_destroy(&data->ssp_wake_lock);
-	wake_lock_destroy(&data->ssp_batch_wake_lock);
 #ifdef CONFIG_SENSORS_SSP_SHTC1
 	mutex_destroy(&data->bulk_temp_read_lock);
 	mutex_destroy(&data->cp_temp_adc_lock);
@@ -1026,19 +1029,15 @@ static int ssp_suspend(struct device *dev)
 
 	func_dbg();
 
-	gpio_set_value(data->pin_ap_sleep, 0);
-	pr_err("[SSP]: status of suspend notifier: %d", gpio_get_value(data->pin_ap_sleep));
-	gpio_set_value(data->pin_ap_sleep, 1);
-/*
 	if (ssp_send_cmd(data, MSG2SSP_AP_STATUS_SUSPEND, 0) != SUCCESS)
 		pr_err("[SSP]: %s MSG2SSP_AP_STATUS_SUSPEND failed\n",
 			__func__);
-*/
+
 	data->uLastResumeState = MSG2SSP_AP_STATUS_SUSPEND;
 	disable_debug_timer(data);
 
 	data->bTimeSyncing = false;
-        data->IsAPsuspend = true;
+	pr_info("[SSP]: isHandlingIrq:%d\n", data->bHandlingIrq);
 
 	return 0;
 }
@@ -1054,14 +1053,10 @@ static int ssp_resume(struct device *dev)
 	data->resumeTimestamp = get_current_timestamp();
 	data->bIsResumed = true;
 #endif
-	gpio_set_value(data->pin_ap_sleep, 1);
-	pr_err("[SSP]: status of resume notifier: %d", gpio_get_value(data->pin_ap_sleep));
-
 	if (ssp_send_cmd(data, MSG2SSP_AP_STATUS_RESUME, 0) != SUCCESS)
 		pr_err("[SSP]: %s MSG2SSP_AP_STATUS_RESUME failed\n",
 			__func__);
 	data->uLastResumeState = MSG2SSP_AP_STATUS_RESUME;
-        data->IsAPsuspend = false;
 
 	return 0;
 }

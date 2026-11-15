@@ -74,7 +74,7 @@ enum legacy_ipc_map {
 	MAX_SIPC_MAP,
 };
 
-#define MAX_SIPC5_DEVICES	(IPC_RAW + 1)	/* FMT, RAW */
+#define MAX_SIPC5_DEVICES	(IPC_RAW + 1) /* FMT, RAW */
 
 #define MAX_SIPC_CHANNELS	256	/* 2 ^ 8		*/
 #define MAX_LINK_CHANNELS	32	/* up to 32 channels	*/
@@ -156,8 +156,6 @@ enum sipc_ch_id {
 	SIPC_CH_ID_CPLOG2,	/*ID:29*/
 	SIPC_CH_ID_LOOPBACK1,	/*ID:30*/
 	SIPC_CH_ID_LOOPBACK2,	/*ID:31*/
-
-	SIPC_CH_ID_CASS = 35,
 
 	/* 32 ~ 214 are reserved */
 
@@ -272,8 +270,7 @@ enum iodev_attr_bit {
 	ATTR_NO_CHECK_MAXQ,     /* no need to check rxq overflow condition */
 	ATTR_DUALSIM,		/* support Dual SIM */
 	ATTR_OPTION_REGION,	/* region & operator info */
-	ATTR_ZEROCOPY,		/* support Zerocopy : 0x1 << 12*/
-	ATTR_SMAPPER,		/* support zerocopty with SMAPPER */
+	ATTR_ZEROCOPY,		/* suppoert Zerocopy : 0x1 << 12*/
 };
 #define IODEV_ATTR(b)	(0x1 << b)
 
@@ -306,6 +303,9 @@ struct modem_io_t {
 	u32 attrs;
 	char *app;
 	char *option_region;
+#ifdef CONFIG_LINK_DEVICE_NAPI
+	int napi_weight;
+#endif /* CONFIG_LINK_DEVICE_NAPI */
 #if 1/*defined(CONFIG_LINK_DEVICE_MEMORY_SBD)*/
 	unsigned int ul_num_buffers;
 	unsigned int ul_buffer_size;
@@ -368,7 +368,6 @@ struct modem_mbox {
 	unsigned int int_ap2cp_wakeup;
 	unsigned int int_ap2cp_status;
 	unsigned int int_ap2cp_uart_noti;
-	unsigned int int_ap2cp_smapper;
 
 	unsigned int irq_cp2ap_msg;
 	unsigned int irq_cp2ap_active;
@@ -376,7 +375,6 @@ struct modem_mbox {
 	unsigned int irq_cp2ap_status;
 	unsigned int irq_cp2ap_wakelock;
 	unsigned int irq_cp2ap_rat_mode;
-	unsigned int irq_cp2ap_smapper;
 
 	/* Performance request */
 	unsigned int mbx_ap2cp_perf_req;
@@ -398,8 +396,6 @@ struct modem_mbox {
 	unsigned int sbi_lte_active_pos;
 	unsigned int sbi_cp_status_mask;
 	unsigned int sbi_cp_status_pos;
-	unsigned int sbi_cp_smapper_mask;
-	unsigned int sbi_cp_smapper_pos;
 	unsigned int sbi_cp2ap_wakelock_mask;
 	unsigned int sbi_cp2ap_wakelock_pos;
 	unsigned int sbi_cp2ap_rat_mode_mask;
@@ -409,8 +405,6 @@ struct modem_mbox {
 	unsigned int sbi_pda_active_pos;
 	unsigned int sbi_ap_status_mask;
 	unsigned int sbi_ap_status_pos;
-	unsigned int sbi_ap2cp_wakelock_mask;
-	unsigned int sbi_ap2cp_wakelock_pos;
 
 	unsigned int sbi_ap2cp_kerneltime_sec_mask;
 	unsigned int sbi_ap2cp_kerneltime_sec_pos;
@@ -486,6 +480,10 @@ struct modem_data {
 	/* MIF buffer information */
 	unsigned int buff_offset;
 	unsigned int buff_size;
+
+	/* buff pool 2nd information */
+	unsigned long int bufpool_2nd_base;
+	unsigned int bufpool_2nd_size;
 #endif
 
 	/* Switch with 2 links in a modem */

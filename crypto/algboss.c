@@ -226,7 +226,9 @@ static int cryptomgr_test(void *data)
 	int err = 0;
 
 // skip test procedure if it's not from POST.
+//#ifdef CONFIG_CRYPTO_MANAGER_DISABLE_TESTS
 	goto skiptest;
+//#endif
 
 	if (type & CRYPTO_ALG_TESTED)
 		goto skiptest;

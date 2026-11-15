@@ -294,6 +294,24 @@ void tpm_sysfs_add_device(struct tpm_chip *chip)
 	 * is called before ops is null'd and the sysfs core synchronizes this
 	 * removal so that no callbacks are running or can run again
 	 */
-	WARN_ON(chip->groups_cnt != 0);
-	chip->groups[chip->groups_cnt++] = &tpm_dev_group;
+	if (chip->flags & TPM_CHIP_FLAG_TPM2)
+		return 0;
+
+	err = sysfs_create_group(&chip->dev.parent->kobj,
+				 &tpm_dev_group);
+
+	if (err)
+		dev_err(&chip->dev,
+			"failed to create sysfs attributes, %d\n", err);
+	return err;
+}
+
+void tpm_sysfs_del_device(struct tpm_chip *chip)
+{
+	/* The sysfs routines rely on an implicit tpm_try_get_ops, this
+	 * function is called before ops is null'd and the sysfs core
+	 * synchronizes this removal so that no callbacks are running or can
+	 * run again
+	 */
+	sysfs_remove_group(&chip->dev.parent->kobj, &tpm_dev_group);
 }

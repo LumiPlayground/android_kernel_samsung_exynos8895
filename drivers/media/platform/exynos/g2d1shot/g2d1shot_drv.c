@@ -238,13 +238,11 @@ static void g2d1shot_request_bts_performance(struct g2d1shot_dev *g2d_dev,
 	}
 
 	if ((rbw != cur_rbw) || (wbw != cur_wbw)) {
-#if 0
 		struct bts_bw bw;
 		bw.peak = ((rbw + wbw) / 1000) * BTS_PEAK_FPS_RATIO / 2;
 		bw.write = wbw;
 		bw.read = rbw;
 		bts_update_bw(BTS_BW_G2D, bw);
-#endif
 	}
 
 	mutex_unlock(&g2d_dev->lock_qos);
@@ -658,7 +656,9 @@ static int m2m1shot2_g2d_prepare_target(struct m2m1shot2_context *ctx,
 	/* invalid crop range */
 	if (fmt->crop.left < 0 || fmt->crop.top < 0 ||
 			(fmt->crop.left + fmt->crop.width > fmt->width) ||
-			(fmt->crop.top + fmt->crop.height > fmt->height)) {
+			(fmt->crop.top + fmt->crop.height > fmt->height) ||
+			(fmt->crop.width == 0) ||
+			(fmt->crop.height == 0)) {
 		pr_err("Invalid range of crop ltwh(%d, %d, %d, %d)\n",
 				fmt->crop.left, fmt->crop.top,
 				fmt->crop.width, fmt->crop.height);
@@ -761,7 +761,9 @@ static int m2m1shot2_g2d_prepare_source(struct m2m1shot2_context *ctx,
 	/* invalid crop range */
 	if (fmt->crop.left < 0 || fmt->crop.top < 0 ||
 			(fmt->crop.left + fmt->crop.width > fmt->width) ||
-			(fmt->crop.top + fmt->crop.height > fmt->height)) {
+			(fmt->crop.top + fmt->crop.height > fmt->height) ||
+			(fmt->crop.width == 0) || (fmt->window.width == 0) ||
+			(fmt->crop.height == 0) || (fmt->window.height == 0)) {
 		pr_err("Invalid range of crop ltwh(%d, %d, %d, %d)\n",
 				fmt->crop.left, fmt->crop.top,
 				fmt->crop.width, fmt->crop.height);
@@ -1546,7 +1548,7 @@ static const struct of_device_id exynos_g2d_match[] = {
 static struct platform_driver exynos_g2d_driver = {
 	.probe		= exynos_g2d_probe,
 	.remove		= exynos_g2d_remove,
-	.shutdown	= exynos_g2d_shutdown,
+        .shutdown       = exynos_g2d_shutdown,
 	.driver = {
 		.name	= MODULE_NAME,
 		.owner	= THIS_MODULE,

@@ -45,7 +45,6 @@
 #include <linux/usb_notify.h>
 #include <linux/gpio.h>
 #endif
-
 /*
  * USB function drivers should return USB_GADGET_DELAYED_STATUS if they
  * wish to delay the data/status stages of the control transfer till they
@@ -57,9 +56,6 @@
 
 /* big enough to hold our biggest descriptor */
 #define USB_COMP_EP0_BUFSIZ	1024
-
-/* OS feature descriptor length <= 4kB */
-#define USB_COMP_EP0_OS_DESC_BUFSIZ	4096
 
 #define USB_MS_TO_HS_INTERVAL(x)	(ilog2((x * 1000 / 125)) + 1)
 struct usb_configuration;
@@ -134,10 +130,6 @@ struct usb_os_desc_table {
  *	string identifiers assigned during @bind(). If this
  *	pointer is null after initiation, the function will not
  *	be available at super speed.
- * @ssp_descriptors: Table of super speed plus descriptors, using
- *	interface and string identifiers assigned during @bind(). If
- *	this pointer is null after initiation, the function will not
- *	be available at super speed plus.
  * @config: assigned when @usb_add_function() is called; this is the
  *	configuration with which this function is associated.
  * @os_desc_table: Table of (interface id, os descriptors) pairs. The function
@@ -198,14 +190,15 @@ struct usb_function {
 	struct usb_descriptor_header	**fs_descriptors;
 	struct usb_descriptor_header	**hs_descriptors;
 	struct usb_descriptor_header	**ss_descriptors;
-	struct usb_descriptor_header	**ssp_descriptors;
 
 	struct usb_configuration	*config;
+
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	int (*set_intf_num)(struct usb_function *f,
 			int intf_num, int index_num);
 	int (*set_config_desc)(int conf_num);
 #endif
+
 	struct usb_os_desc_table	*os_desc_table;
 	unsigned			os_desc_n;
 
@@ -224,7 +217,7 @@ struct usb_function {
 	struct module		*mod;
 
 #ifdef CONFIG_USB_CONFIGFS_UEVENT
-	/* Optional function for vendor specific processing */
+/* Optional function for vendor specific processing */
 	int			(*ctrlrequest)(struct usb_function *,
 					const struct usb_ctrlrequest *);
 #endif
@@ -238,8 +231,7 @@ struct usb_function {
 	int			(*setup)(struct usb_function *,
 					const struct usb_ctrlrequest *);
 	bool			(*req_match)(struct usb_function *,
-					const struct usb_ctrlrequest *,
-					bool config0);
+					const struct usb_ctrlrequest *);
 	void			(*suspend)(struct usb_function *);
 	void			(*resume)(struct usb_function *);
 
@@ -341,7 +333,6 @@ struct usb_configuration {
 	unsigned		superspeed:1;
 	unsigned		highspeed:1;
 	unsigned		fullspeed:1;
-	unsigned		superspeed_plus:1;
 	struct usb_function	*interface[MAX_CONFIG_INTERFACES];
 };
 
@@ -517,6 +508,7 @@ struct usb_composite_dev {
 	 * data/status stages till delayed_status is zero.
 	 */
 	int				delayed_status;
+
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 		/* used by enable_store function of android.c
 		 * to avoid signalling switch changes
@@ -609,9 +601,10 @@ struct usb_function_instance {
 	int (*set_inst_name)(struct usb_function_instance *inst,
 			      const char *name);
 	void (*free_func_inst)(struct usb_function_instance *inst);
+
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	int (*set_inst_eth_addr)(struct usb_function_instance *inst,
-		       u8 *ethaddr);
+		       u8 * ethaddr);
 #endif
 };
 

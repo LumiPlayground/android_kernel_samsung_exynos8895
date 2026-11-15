@@ -91,7 +91,7 @@ int fimc_is_hw_group_cfg(void *group_data)
 	struct fimc_is_device_sensor *sensor;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	device = group->device;
@@ -125,14 +125,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_SCC] = NULL;
 		group->subdev[ENTRY_SCP] = NULL;
 		group->subdev[ENTRY_VRA] = NULL;
-
-		INIT_LIST_HEAD(&group->subdev_list);
-		list_add_tail(&sensor->group_sensor.leader.list, &group->subdev_list);
-		list_add_tail(&sensor->ssvc0.list, &group->subdev_list);
-		list_add_tail(&sensor->ssvc1.list, &group->subdev_list);
-		list_add_tail(&sensor->ssvc2.list, &group->subdev_list);
-		list_add_tail(&sensor->ssvc3.list, &group->subdev_list);
-		list_add_tail(&sensor->bns.list, &group->subdev_list);
 		break;
 #endif
 	case GROUP_SLOT_3AA:
@@ -150,11 +142,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_SCC] = NULL;
 		group->subdev[ENTRY_SCP] = NULL;
 		group->subdev[ENTRY_VRA] = NULL;
-
-		INIT_LIST_HEAD(&group->subdev_list);
-		list_add_tail(&device->group_3aa.leader.list, &group->subdev_list);
-		list_add_tail(&device->txc.list, &group->subdev_list);
-		list_add_tail(&device->txp.list, &group->subdev_list);
 
 		device->txc.param_dma_ot = PARAM_3AA_VDMA4_OUTPUT;
 		device->txp.param_dma_ot = PARAM_3AA_VDMA2_OUTPUT;
@@ -174,11 +161,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_SCC] = NULL;
 		group->subdev[ENTRY_SCP] = NULL;
 		group->subdev[ENTRY_VRA] = NULL;
-
-		INIT_LIST_HEAD(&group->subdev_list);
-		list_add_tail(&device->group_isp.leader.list, &group->subdev_list);
-		list_add_tail(&device->ixc.list, &group->subdev_list);
-		list_add_tail(&device->ixp.list, &group->subdev_list);
 		break;
 	case GROUP_SLOT_DIS:
 		group->subdev[ENTRY_3AA] = NULL;
@@ -195,11 +177,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_SCC] = NULL;
 		group->subdev[ENTRY_SCP] = NULL;
 		group->subdev[ENTRY_VRA] = NULL;
-
-		INIT_LIST_HEAD(&group->subdev_list);
-		list_add_tail(&device->group_dis.leader.list, &group->subdev_list);
-		list_add_tail(&device->odc.list, &group->subdev_list);
-		list_add_tail(&device->dnr.list, &group->subdev_list);
 		break;
 	case GROUP_SLOT_MCS:
 		group->subdev[ENTRY_3AA] = NULL;
@@ -223,15 +200,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_M3P] = &device->m3p;
 		group->subdev[ENTRY_M4P] = &device->m4p;
 		group->subdev[ENTRY_VRA] = &device->group_vra.leader;
-
-		INIT_LIST_HEAD(&group->subdev_list);
-		list_add_tail(&device->group_mcs.leader.list, &group->subdev_list);
-		list_add_tail(&device->m0p.list, &group->subdev_list);
-		list_add_tail(&device->m1p.list, &group->subdev_list);
-		list_add_tail(&device->m2p.list, &group->subdev_list);
-		list_add_tail(&device->m3p.list, &group->subdev_list);
-		list_add_tail(&device->m4p.list, &group->subdev_list);
-		list_add_tail(&device->group_vra.leader.list, &group->subdev_list);
 
 		device->m0p.param_dma_ot = PARAM_MCS_OUTPUT0;
 		device->m1p.param_dma_ot = PARAM_MCS_OUTPUT1;
@@ -259,8 +227,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_M3P] = NULL;
 		group->subdev[ENTRY_M4P] = NULL;
 		group->subdev[ENTRY_VRA] = NULL;
-
-		INIT_LIST_HEAD(&group->subdev_list);
 		break;
 	default:
 		probe_err("group slot(%d) is invalid", group->slot);
@@ -282,7 +248,7 @@ int fimc_is_hw_group_open(void *group_data)
 	struct fimc_is_group *group;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	leader = &group->leader;
@@ -344,7 +310,7 @@ int fimc_is_hw_camif_cfg(void *sensor_data)
 	struct fimc_is_device_ischain *ischain;
 	bool is_otf = false;
 
-	FIMC_BUG(!sensor_data);
+	BUG_ON(!sensor_data);
 
 	sensor = sensor_data;
 	ischain = sensor->ischain;
@@ -460,7 +426,7 @@ int fimc_is_hw_camif_open(void *sensor_data)
 	struct fimc_is_device_flite *flite;
 	struct fimc_is_device_csi *csi;
 
-	FIMC_BUG(!sensor_data);
+	BUG_ON(!sensor_data);
 
 	sensor = sensor_data;
 	flite = (struct fimc_is_device_flite *)v4l2_get_subdevdata(sensor->subdev_flite);
@@ -510,7 +476,7 @@ int fimc_is_hw_ischain_cfg(void *ischain_data)
 	void __iomem *regs;
 	u32 val;
 
-	FIMC_BUG(!ischain_data);
+	BUG_ON(!ischain_data);
 
 	device = (struct fimc_is_device_ischain *)ischain_data;
 	if (test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state))
@@ -962,8 +928,8 @@ int fimc_is_hw_get_address(void *itfc_data, void *pdev_data, int hw_id)
 	struct platform_device *pdev = NULL;
 	struct fimc_is_interface_hwip *itf_hwip = NULL;
 
-	FIMC_BUG(!itfc_data);
-	FIMC_BUG(!pdev_data);
+	BUG_ON(!itfc_data);
+	BUG_ON(!pdev_data);
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 	pdev = (struct platform_device *)pdev_data;
@@ -1139,7 +1105,7 @@ int fimc_is_hw_get_irq(void *itfc_data, void *pdev_data, int hw_id)
 	struct platform_device *pdev = NULL;
 	int ret = 0;
 
-	FIMC_BUG(!itfc_data);
+	BUG_ON(!itfc_data);
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 	pdev = (struct platform_device *)pdev_data;
@@ -1253,7 +1219,7 @@ int fimc_is_hw_request_irq(void *itfc_data, int hw_id)
 	u32 name_len = 0;
 	int ret = 0;
 
-	FIMC_BUG(!itfc_data);
+	BUG_ON(!itfc_data);
 
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
@@ -1455,7 +1421,7 @@ int fimc_is_hw_s_ctrl(void *itfc_data, int hw_id, enum hw_s_ctrl_id id, void *va
 			u32 values = 0;
 			u32 read_values = 0;
 
-			FIMC_BUG(!itfc_data);
+			BUG_ON(!itfc_data);
 
 			itfc = (struct fimc_is_interface_ischain *)itfc_data;
 			switch (hw_id) {
@@ -1485,7 +1451,7 @@ int fimc_is_hw_s_ctrl(void *itfc_data, int hw_id, enum hw_s_ctrl_id id, void *va
 		{
 			struct fimc_is_interface *itf = NULL;
 
-			FIMC_BUG(!itfc_data);
+			BUG_ON(!itfc_data);
 
 			itf = (struct fimc_is_interface *)itfc_data;
 
@@ -1500,8 +1466,8 @@ int fimc_is_hw_s_ctrl(void *itfc_data, int hw_id, enum hw_s_ctrl_id id, void *va
 			struct fimc_is_device_ischain *device;
 			unsigned long data = (unsigned long)val;
 
-			FIMC_BUG(!vctx);
-			FIMC_BUG(!GET_DEVICE(vctx));
+			BUG_ON(!vctx);
+			BUG_ON(!GET_DEVICE(vctx));
 
 			device = GET_DEVICE(vctx);
 
@@ -1542,7 +1508,7 @@ int fimc_is_hw_query_cap(void *cap_data, int hw_id)
 {
 	int ret = 0;
 
-	FIMC_BUG(!cap_data);
+	BUG_ON(!cap_data);
 
 	switch (hw_id) {
 	case DEV_HW_MCSC0:

@@ -21,7 +21,6 @@
 #include <linux/log2.h>
 #include <linux/pm_runtime.h>
 #include <linux/badblocks.h>
-#include <linux/ologk.h>
 
 #ifdef CONFIG_BLOCK_SUPPORT_STLOG
 #include <linux/fslog.h>
@@ -1217,7 +1216,7 @@ static ssize_t iomon_store(struct device *dev,
 
 	if(!strcmp(action, "c") || !strcmp(action, "s") || !strcmp(action, "e")) {
 		disk = dev_to_disk(dev);
-		ologk("rc %lu rmb %lu "
+		ST_LOG("rc %lu rmb %lu "
 				"wc %lu wmb %lu dc %lu dmb %lu "
 				"inp %u %u "
 				"iot %u %llu ",

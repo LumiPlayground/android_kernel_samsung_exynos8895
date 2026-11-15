@@ -1,11 +1,6 @@
 #ifndef SAMSUNG_DP_DMA_H
 #define SAMSUNG_DP_DMA_H
 
-#define AUDIO_DISABLE 0
-#define AUDIO_ENABLE 1
-#define AUDIO_WAIT_BUF_FULL 2
-#define AUDIO_DMA_REQ_HIGH 3
-
 enum audio_sampling_frequency {
 	FS_32KHZ	= 0,
 	FS_44KHZ	= 1,
@@ -48,13 +43,6 @@ struct displayport_audio_config_data {
 	enum audio_dma_word_length audio_word_length;
 };
 
-#if defined(CONFIG_EXYNOS_MIPI_DISPLAYPORT) || defined (CONFIG_EXYNOS_DISPLAYPORT)
 extern int displayport_audio_config(struct displayport_audio_config_data *audio_config_data);
-#else
-int displayport_audio_config(struct displayport_audio_config_data *audio_config_data)
-{
-	return -ENODEV;
-}
-#endif
 
 #endif /* SAMSUNG_DP_DMA_H */

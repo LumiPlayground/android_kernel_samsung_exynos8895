@@ -7,9 +7,17 @@
  *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
+ *   This program is distributed in the hope that it will be useful,
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *   GNU General Public License for more details.
+ *
+ *   You should have received a copy of the GNU General Public License
+ *   along with this program; if not, write to the Free Software
+ *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
  */
 
-#include <linux/extcon.h>
 #include <linux/input.h>
 #include <linux/extcon/extcon-madera.h>
 #include <linux/mfd/madera/core.h>
@@ -24,10 +32,12 @@ int madera_ear_mic;
 static int select_jack(int state)
 {
 	struct snd_soc_codec *codec = madera_codec;
+	struct madera *madera = dev_get_drvdata(codec->dev->parent);
+	struct madera_extcon_info *info = madera->extcon_info;
 
 	dev_info(codec->dev, "%s: %d\n", __func__, state);
 
-	/* To be developed */
+	madera_extcon_report(info, state);
 
 	return 0;
 }
@@ -38,7 +48,7 @@ static int get_jack_status(void)
 
 	dev_info(codec->dev, "%s: %d\n", __func__, madera_jack_det);
 
-	return (madera_jack_det || madera_ear_mic);
+	return madera_jack_det;
 }
 
 static int get_key_status(void)
@@ -59,7 +69,6 @@ static int get_key_status(void)
 	ret = 0;
 
 	if (val & MADERA_MICD_LVL_0_TO_7) {
-		dev_info(codec->dev, "val LVL_0_TO_7\n");
 		if (madera_ear_mic) {
 			lvl = val & MADERA_MICD_LVL_MASK;
 			lvl >>= MADERA_MICD_LVL_SHIFT;
@@ -84,7 +93,8 @@ static int get_mic_adc(void)
 {
 	struct snd_soc_codec *codec = madera_codec;
 	struct madera *madera = dev_get_drvdata(codec->dev->parent);
-	struct madera_extcon *info = madera->extcon_info;
+	struct madera_extcon_info *info = madera->extcon_info;
+
 	int adc;
 
 	adc = madera_extcon_manual_mic_reading(info);
@@ -94,22 +104,6 @@ static int get_mic_adc(void)
 	return adc;
 }
 
-#ifdef CONFIG_EXTCON_PTT
-static int get_ptt_state(void)
-{
-	struct snd_soc_codec *codec = madera_codec;
-	struct madera *madera = dev_get_drvdata(codec->dev->parent);
-	struct madera_extcon *info = madera->extcon_info;
-	int ptt_state;
-
-	ptt_state = info->ptt_state;
-
-	dev_info(codec->dev, "%s: %d\n", __func__, ptt_state);
-
-	return ptt_state;
-}
-#endif
-
 void register_madera_jack_cb(struct snd_soc_codec *codec)
 {
 	madera_codec = codec;
@@ -118,8 +112,5 @@ void register_madera_jack_cb(struct snd_soc_codec *codec)
 	audio_register_jack_state_cb(get_jack_status);
 	audio_register_key_state_cb(get_key_status);
 	audio_register_mic_adc_cb(get_mic_adc);
-#ifdef CONFIG_EXTCON_PTT
-	audio_register_ptt_state_cb(get_ptt_state);
-#endif
 }
 EXPORT_SYMBOL_GPL(register_madera_jack_cb);

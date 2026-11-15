@@ -669,13 +669,13 @@ u8 rtw_addbareq_cmd(struct adapter *padapter, u8 tid, u8 *addr)
 
 
 	ph2c = kzalloc(sizeof(struct cmd_obj), GFP_ATOMIC);
-	if (!ph2c) {
+	if (ph2c == NULL) {
 		res = _FAIL;
 		goto exit;
 	}
 
 	paddbareq_parm = kzalloc(sizeof(struct addBaReq_parm), GFP_ATOMIC);
-	if (!paddbareq_parm) {
+	if (paddbareq_parm == NULL) {
 		kfree(ph2c);
 		res = _FAIL;
 		goto exit;

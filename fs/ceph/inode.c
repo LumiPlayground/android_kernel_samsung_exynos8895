@@ -1450,7 +1450,7 @@ static int fill_readdir_cache(struct inode *dir, struct dentry *dn,
 		unlock_page(ctl->page);
 		ctl->dentries = kmap(ctl->page);
 		if (idx == 0)
-			memset(ctl->dentries, 0, PAGE_SIZE);
+			memset(ctl->dentries, 0, PAGE_CACHE_SIZE);
 	}
 
 	if (req->r_dir_release_cnt == atomic64_read(&ci->i_release_count) &&
@@ -1887,7 +1887,10 @@ static const struct inode_operations ceph_symlink_iops = {
 	.listxattr = ceph_listxattr,
 };
 
-int __ceph_setattr(struct inode *inode, struct iattr *attr)
+/*
+ * setattr
+ */
+int __ceph_setattr(struct dentry *dentry, struct iattr *attr)
 {
 	struct ceph_inode_info *ci = ceph_inode(inode);
 	const unsigned int ia_valid = attr->ia_valid;

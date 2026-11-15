@@ -19,6 +19,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <video/videonode.h>
+#include <media/exynos_mc.h>
 #include <asm/cacheflush.h>
 #include <asm/pgtable.h>
 #include <linux/firmware.h>
@@ -37,9 +38,9 @@
 
 #include "fimc-is-device-sensor.h"
 
-ulong frame_fcount(struct fimc_is_frame *frame, void *data)
+int frame_fcount(struct fimc_is_frame *frame, void *data)
 {
-	return (ulong)frame->fcount - (ulong)data;
+	return frame->fcount - (u32)(ulong)data;
 }
 
 int put_frame(struct fimc_is_framemgr *this, struct fimc_is_frame *frame,
@@ -98,8 +99,8 @@ int trans_frame(struct fimc_is_framemgr *this, struct fimc_is_frame *frame,
 		return -EINVAL;
 
 	if (!this->queued_count[frame->state]) {
-		err("%s frame queue is empty (%s)", frame_state_name[frame->state],
-							this->name);
+		err("%s frame queue is empty (0x%08x)", frame_state_name[frame->state],
+							this->id);
 		return -EINVAL;
 	}
 
@@ -140,7 +141,7 @@ struct fimc_is_frame *peek_frame_tail(struct fimc_is_framemgr *this,
 
 struct fimc_is_frame *find_frame(struct fimc_is_framemgr *this,
 		enum fimc_is_frame_state state,
-		ulong (*fn)(struct fimc_is_frame *, void *), void *data)
+		int (*fn)(struct fimc_is_frame *, void *), void *data)
 {
 	struct fimc_is_frame *frame;
 
@@ -148,8 +149,8 @@ struct fimc_is_frame *find_frame(struct fimc_is_framemgr *this,
 		return NULL;
 
 	if (!this->queued_count[state]) {
-		err("[F%lu] %s frame queue is empty (%s)",
-			(ulong)data, frame_state_name[state], this->name);
+		err("%s frame queue is empty (0x%08x)", frame_state_name[state],
+							this->id);
 		return NULL;
 	}
 
@@ -169,8 +170,8 @@ void print_frame_queue(struct fimc_is_framemgr *this,
 	if (!(TRACE_ID & this->id))
 			return;
 
-	pr_info("[FRM] %s(%s, %d) :", frame_state_name[state],
-					this->name, this->queued_count[state]);
+	pr_info("[FRM] %s(0x%08x, %d) :", frame_state_name[state],
+					this->id, this->queued_count[state]);
 
 	list_for_each_entry_safe(frame, temp, &this->queued_list[state], list)
 		pr_cont("%d[%d]->", frame->index, frame->fcount);
@@ -189,8 +190,8 @@ void print_frame_info_queue(struct fimc_is_framemgr *this,
 	if (!(TRACE_ID & this->id))
 			return;
 
-	pr_info("[FRM_INFO] %s(%s, %d) :", hw_frame_state_name[state],
-					this->name, this->queued_count[state]);
+	pr_info("[FRM_INFO] %s(0x%08x, %d) :", hw_frame_state_name[state],
+					this->id, this->queued_count[state]);
 
 	list_for_each_entry_safe(frame, temp, &this->queued_list[state], list) {
 		when[INFO_FRAME_START]    = frame->frame_info[INFO_FRAME_START].when;
@@ -213,10 +214,9 @@ void print_frame_info_queue(struct fimc_is_framemgr *this,
 }
 #endif
 
-int frame_manager_probe(struct fimc_is_framemgr *this, u32 id, const char *name)
+int frame_manager_probe(struct fimc_is_framemgr *this, u32 id)
 {
 	this->id = id;
-	snprintf(this->name, sizeof(this->name), "%s", name);
 	spin_lock_init(&this->slock);
 	this->frames = NULL;
 
@@ -247,9 +247,10 @@ int frame_manager_open(struct fimc_is_framemgr *this, u32 buffers)
 	 * each video node was opened.
 	 */
 	if (this->frames)
-		vfree(this->frames);
+		kfree(this->frames);
 
-	this->frames = vzalloc(sizeof(struct fimc_is_frame) * buffers);
+	this->frames = kzalloc(sizeof(struct fimc_is_frame) * buffers,
+						GFP_KERNEL);
 	if (!this->frames) {
 		err("failed to allocate frames");
 		return -ENOMEM;
@@ -267,7 +268,7 @@ int frame_manager_open(struct fimc_is_framemgr *this, u32 buffers)
 	for (i = 0; i < buffers; ++i) {
 		this->frames[i].index = i;
 		put_frame(this, &this->frames[i], FS_FREE);
-		kthread_init_work(&this->frames[i].work, default_frame_work_fn);
+		init_kthread_work(&this->frames[i].work, default_frame_work_fn);
 	}
 
 	spin_unlock_irqrestore(&this->slock, flag);
@@ -283,7 +284,7 @@ int frame_manager_close(struct fimc_is_framemgr *this)
 	spin_lock_irqsave(&this->slock, flag);
 
 	if (this->frames) {
-		vfree(this->frames);
+		kfree(this->frames);
 		this->frames = NULL;
 	}
 
@@ -314,7 +315,7 @@ int frame_manager_flush(struct fimc_is_framemgr *this)
 
 	spin_unlock_irqrestore(&this->slock, flag);
 
-	FIMC_BUG(this->queued_count[FS_FREE] != this->num_frames);
+	BUG_ON(this->queued_count[FS_FREE] != this->num_frames);
 
 	return 0;
 }

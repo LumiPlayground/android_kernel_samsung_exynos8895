@@ -1,8 +1,20 @@
-__attribute__ ((section(".rodata"), unused))
-const unsigned char first_crypto_asm_rodata = 0x10;
+#include <linux/init.h>
 
-__attribute__ ((section(".text"), unused))
-void first_crypto_asm_text(void){}
+const int first_crypto_asm_rodata = 10;
+int       first_crypto_asm_data   = 20;
 
-__attribute__ ((section(".init.text"), optimize("-O0"), unused))
-static void first_crypto_asm_init(void){};
+
+void first_crypto_asm_text (void) __attribute__((unused));
+void first_crypto_asm_text (void)
+{
+}
+
+void __init first_crypto_asm_init(void) __attribute__((unused));
+void __init first_crypto_asm_init(void)
+{
+}
+
+void __exit first_crypto_asm_exit(void) __attribute__((unused));
+void __exit first_crypto_asm_exit(void)
+{
+}

@@ -40,7 +40,7 @@ int fimc_is_hw_group_cfg(void *group_data)
 	struct fimc_is_group *group;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	device = group->device;
@@ -67,10 +67,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_SCP] = NULL;
 		group->subdev[ENTRY_VRA] = NULL;
 
-		INIT_LIST_HEAD(&group->subdev_list);
-		list_add_tail(&device->txc.list, &group->subdev_list);
-		list_add_tail(&device->txp.list, &group->subdev_list);
-
 		device->txc.param_dma_ot = PARAM_3AA_VDMA4_OUTPUT;
 		device->txp.param_dma_ot = PARAM_3AA_VDMA2_OUTPUT;
 		break;
@@ -89,11 +85,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_SCC] = NULL;
 		group->subdev[ENTRY_SCP] = NULL;
 		group->subdev[ENTRY_VRA] = NULL;
-
-		INIT_LIST_HEAD(&group->subdev_list);
-		list_add_tail(&device->ixc.list, &group->subdev_list);
-		list_add_tail(&device->ixp.list, &group->subdev_list);
-		list_add_tail(&device->drc.list, &group->subdev_list);
 		break;
 	case GROUP_SLOT_DIS:
 		group->subdev[ENTRY_3AA] = NULL;
@@ -110,13 +101,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_SCC] = &device->scc;
 		group->subdev[ENTRY_SCP] = &device->scp;
 		group->subdev[ENTRY_VRA] = &device->group_vra.leader;
-
-		INIT_LIST_HEAD(&group->subdev_list);
-		list_add_tail(&device->odc.list, &group->subdev_list);
-		list_add_tail(&device->dnr.list, &group->subdev_list);
-		list_add_tail(&device->scc.list, &group->subdev_list);
-		list_add_tail(&device->scp.list, &group->subdev_list);
-		list_add_tail(&device->group_vra.leader.list, &group->subdev_list);
 		break;
 	case GROUP_SLOT_MCS:
 		group->subdev[ENTRY_3AA] = NULL;
@@ -138,8 +122,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_M3P] = NULL;
 		group->subdev[ENTRY_M4P] = NULL;
 		group->subdev[ENTRY_VRA] = NULL;
-
-		INIT_LIST_HEAD(&group->subdev_list);
 		break;
 	case GROUP_SLOT_VRA:
 		group->subdev[ENTRY_3AA] = NULL;
@@ -161,8 +143,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_M3P] = NULL;
 		group->subdev[ENTRY_M4P] = NULL;
 		group->subdev[ENTRY_VRA] = NULL;
-
-		INIT_LIST_HEAD(&group->subdev_list);
 		break;
 	default:
 		probe_err("group slot(%d) is invalid", group->slot);
@@ -181,7 +161,7 @@ int fimc_is_hw_group_open(void *group_data)
 	struct fimc_is_group *group;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	leader = &group->leader;
@@ -459,8 +439,8 @@ int fimc_is_hw_get_address(void *itfc_data, void *pdev_data, int hw_id)
 	struct platform_device *pdev = NULL;
 	struct fimc_is_interface_hwip *itf_hwip = NULL;
 
-	FIMC_BUG(!itfc_data);
-	FIMC_BUG(!pdev_data);
+	BUG_ON(!itfc_data);
+	BUG_ON(!pdev_data);
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 	pdev = (struct platform_device *)pdev_data;
@@ -598,7 +578,7 @@ int fimc_is_hw_get_irq(void *itfc_data, void *pdev_data, int hw_id)
 	struct platform_device *pdev = NULL;
 	int ret = 0;
 
-	FIMC_BUG(!itfc_data);
+	BUG_ON(!itfc_data);
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 	pdev = (struct platform_device *)pdev_data;
@@ -706,7 +686,7 @@ int fimc_is_hw_request_irq(void *itfc_data, int hw_id)
 	u32 name_len = 0;
 	int ret = 0;
 
-	FIMC_BUG(!itfc_data);
+	BUG_ON(!itfc_data);
 
 	dbg_itfc("%s: id(%d)\n", __func__, hw_id);
 
@@ -892,7 +872,7 @@ int fimc_is_hw_s_ctrl(void *itfc_data, int hw_id, enum hw_s_ctrl_id id, void *va
 			unsigned long bypass = (unsigned long)val;
 			u32 values = 0;
 
-			FIMC_BUG(!itfc_data);
+			BUG_ON(!itfc_data);
 
 			itfc = (struct fimc_is_interface_ischain *)itfc_data;
 			switch (hw_id) {
@@ -915,7 +895,7 @@ int fimc_is_hw_s_ctrl(void *itfc_data, int hw_id, enum hw_s_ctrl_id id, void *va
 		{
 			struct fimc_is_interface *itf = NULL;
 
-			FIMC_BUG(!itfc_data);
+			BUG_ON(!itfc_data);
 
 			itf = (struct fimc_is_interface *)itfc_data;
 

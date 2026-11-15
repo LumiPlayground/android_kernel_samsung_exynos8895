@@ -29,6 +29,6 @@ struct gpio_dvs_t {
 };
 
 /* list of all exported SoC specific data */
-extern struct gpio_dvs_t exynos9810_secgpio_dvs;
-extern int exynos9810_secgpio_get_nr_gpio(void);
+extern struct gpio_dvs_t exynos8895_secgpio_dvs;
+extern int exynos8895_secgpio_get_nr_gpio(void);
 #endif /* __SECGPIO_DVS_H */

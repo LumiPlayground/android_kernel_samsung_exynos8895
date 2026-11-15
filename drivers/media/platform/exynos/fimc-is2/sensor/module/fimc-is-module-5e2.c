@@ -68,7 +68,7 @@ static int sensor_5e2_init(struct v4l2_subdev *subdev, u32 val)
 	int ret = 0;
 	struct fimc_is_module_enum *module;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 
@@ -94,7 +94,7 @@ static int sensor_5e2_power_setpin(struct platform_device *pdev,
 	int gpio_reset = 0;
 	int gpio_none = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -144,7 +144,7 @@ int sensor_5e2_probe(struct platform_device *pdev)
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -168,10 +168,10 @@ int sensor_5e2_probe(struct platform_device *pdev)
 		goto p_err;
 	}
 
-	dev_info(dev, "%s module_count %d \n", __func__,atomic_read(&device->module_count));
+	dev_info(dev, "%s rsccount_module %d \n", __func__,atomic_read(&core->resourcemgr.rsccount_module));
 
-	module = &device->module_enum[atomic_read(&device->module_count)];
-	atomic_inc(&device->module_count);
+	module = &device->module_enum[atomic_read(&core->resourcemgr.rsccount_module)];
+	atomic_inc(&core->resourcemgr.rsccount_module);
 	clear_bit(FIMC_IS_MODULE_GPIO_ON, &module->state);
 	module->pdata = pdata;
 	module->dev = dev;
@@ -198,7 +198,7 @@ int sensor_5e2_probe(struct platform_device *pdev)
 	module->ops = NULL;
 	module->private_data = NULL;
 
-	dev_info(dev, "%s module_count  sensor_id %d \n", __func__,module->sensor_id);
+	dev_info(dev, "%s rsccount_module  sensor_id %d \n", __func__,module->sensor_id);
 
 	ext = &module->ext;
 	ext->mipi_lane_num = module->lanes;

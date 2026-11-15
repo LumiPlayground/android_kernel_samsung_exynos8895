@@ -124,7 +124,7 @@ struct musb_hdrc_platform_data {
 	int		(*set_power)(int state);
 
 	/* MUSB configuration-specific details */
-	const struct musb_hdrc_config *config;
+	struct musb_hdrc_config	*config;
 
 	/* Architecture specific board data	*/
 	void		*board_data;
@@ -142,11 +142,10 @@ enum musb_vbus_id_status {
 };
 
 #if IS_ENABLED(CONFIG_USB_MUSB_HDRC)
-int musb_mailbox(enum musb_vbus_id_status status);
+void musb_mailbox(enum musb_vbus_id_status status);
 #else
-static inline int musb_mailbox(enum musb_vbus_id_status status)
+static inline void musb_mailbox(enum musb_vbus_id_status status)
 {
-	return 0;
 }
 #endif
 

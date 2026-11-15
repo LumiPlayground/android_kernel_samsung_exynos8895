@@ -49,11 +49,9 @@ static struct spi_device dummy_spi = {
 
 #ifdef CONFIG_BCM_GPS_SPI_DRIVER
 extern bool ssi_dbg;
-extern bool ssi_dbg_pzc;
-extern bool ssi_dbg_rng;
 #endif
 
-void bbd_log_hex(const char *pIntroduction, const unsigned char *pData, unsigned long ulDataLen);
+void bbd_log_hex(const char*, const unsigned char*, unsigned long);
 
 //--------------------------------------------------------------
 //
@@ -129,30 +127,26 @@ static struct bbd_device bbd;
  * Embedded patch file provided as /dev/bbd_patch
  */
 static unsigned char bbd_patch[] = {
-#if defined(CONFIG_SENSORS_SSP_STAR)
-#if ANDROID_VERSION < 90000
-#include "o_os/bbd_patch_file_star.h"
-#elif ANDROID_VERSION < 100000
-#include "p_os/bbd_patch_file_star.h"
+#if defined(CONFIG_SENSORS_SSP_GREAT)
+#if ANDROID_VERSION < 80000
+#include "bbd_patch_file_great.h"
+#elif ANDROID_VERSION < 90000
+#include "bbd_patch_file_great_o.h"
 #else
-#include "q_os/bbd_patch_file_star.h"
+#include "bbd_patch_file_great_p.h"
 #endif
-#elif defined(CONFIG_SENSORS_SSP_CROWN)
-#if ANDROID_VERSION < 90000
-#include "o_os/bbd_patch_file_crown.h"
-#elif ANDROID_VERSION < 100000
-#include "p_os/bbd_patch_file_crown.h"
+#elif defined(CONFIG_SENSORS_SSP_DREAM)
+#if ANDROID_VERSION < 80000
+#include "bbd_patch_file_dream.h"
+#elif ANDROID_VERSION < 90000
+#include "bbd_patch_file_dream_o.h"
 #else
-#include "q_os/bbd_patch_file_crown.h"
+#include "bbd_patch_file_dream_p.h"
 #endif
-#elif defined(CONFIG_SENSORS_SSP_HAECHI)
-#if ANDROID_VERSION < 90000
-#include "bbd_patch_file_haechi.h"
-#elif ANDROID_VERSION < 100000
-#include "p_os/bbd_patch_file_haechi.h"
-#else
-#include "q_os/bbd_patch_file_haechi.h"
-#endif
+#elif defined(CONFIG_SENSORS_SSP_VLTE)
+#include "bbd_patch_file_valley.h"
+#elif defined(CONFIG_SENSORS_SSP_LUGE)
+#include "bbd_patch_file_luge.h"
 #endif
 };
 
@@ -270,7 +264,7 @@ void bbd_disable_stat(void)
 static void bbd_lk_work(struct work_struct *work)
 {
 	if (bbd.lk.timer_enabled)
-		bbd_mcu_reset(false);
+		bbd_mcu_reset();
 }
 
 static void bbd_lk_timer_func(unsigned long p)
@@ -427,11 +421,11 @@ EXPORT_SYMBOL(bbd_pull_packet);
  *
  * @return: 0 = success, -1 = failure
  */
-int bbd_mcu_reset(bool IsNoResp)
+int bbd_mcu_reset(void)
 {
 	pr_info("reset request from sensor hub\n");
 	if (bbd.ssp_cb && bbd.ssp_cb->on_mcu_reset)
-		bbd.ssp_cb->on_mcu_reset(bbd.ssp_priv, IsNoResp);
+		bbd.ssp_cb->on_mcu_reset(bbd.ssp_priv);
 
 	if (bbd.lk.enabled) {
 		int ret;
@@ -515,14 +509,6 @@ ssize_t bbd_control(const char *buf, ssize_t len)
 		ssi_dbg = true;
 	} else if (strstr(buf, SSI_DEBUG_OFF)) {
 		ssi_dbg = false;
-	} else if (strstr(buf, PZC_DEBUG_ON)) {
-		ssi_dbg_pzc = true;
-	} else if (strstr(buf, PZC_DEBUG_OFF)) {
-		ssi_dbg_pzc = false;
-	} else if (strstr(buf, RNG_DEBUG_ON)) {
-		ssi_dbg_rng = true;
-	} else if (strstr(buf, RNG_DEBUG_OFF)) {
-		ssi_dbg_rng = false;
 #endif
 #ifdef CONFIG_LHD_KILLER
 	} else if (strstr(buf, BBD_CTRL_PASSTHRU_ON)) {
@@ -705,27 +691,10 @@ static unsigned int bbd_common_poll(struct file *filp, poll_table *wait)
  * @buf: contains sensor packet coming from gpsd/lhd
  *
  */
-static unsigned long init_time = 0;
-static unsigned long clock_get_ms(void)
-{
-	struct timeval t;
-	unsigned long now;
-
-	do_gettimeofday(&t);
-	now = t.tv_usec / 1000 + t.tv_sec * 1000;
-	if (init_time == 0)
-		init_time = now;
-
-	return now - init_time;
-}
 
 static struct timespec bbd_sensor_time;
 ssize_t bbd_sensor_write(const char *buf, size_t size)
 {
-	unsigned long start_time = 0, end_time = 0, delta = 0;
-
-	start_time = clock_get_ms();
-
 	bbd_sensor_time = ktime_to_timespec(ktime_get_boottime());
 	/* Copies into /dev/bbd_shmd. If SHMD was sleeping in poll_wait, bbd_on_read() wakes it up also */
 
@@ -740,12 +709,6 @@ ssize_t bbd_sensor_write(const char *buf, size_t size)
 		bbd.ssp_cb->on_packet_alarm(bbd.ssp_priv);
 	} else
 		pr_err("%s no SSP on_packet callback registered. Dropped %u bytes\n", __func__, (unsigned int)size);
-
-	end_time = clock_get_ms();
-	delta = end_time - start_time;
-	
-	if (delta > 100)
-		pr_err("[SSPBBD] SSP consumed %lu msec in handling %u bytes sensor data", delta, (int)size);
 
 	return size;
 }
@@ -924,7 +887,7 @@ void bbd_log_hex(const char *pIntroduction,
 
 			snprintf(buf+len, bufsize - len, "%02X ", *pData);
 		}
-		pr_info("%s}\n", buf);
+		printk(KERN_INFO"%s}\n", buf);
 	}
 }
 

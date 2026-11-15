@@ -2041,6 +2041,7 @@ static inline void i40evf_tx_map(struct i40e_ring *tx_ring, struct sk_buff *skb,
 		tx_bi = &tx_ring->tx_bi[i];
 	}
 
+#define WB_STRIDE 0x3
 	/* set next_to_watch value indicating a packet is present */
 	first->next_to_watch = tx_desc;
 
@@ -2065,6 +2066,12 @@ static inline void i40evf_tx_map(struct i40e_ring *tx_ring, struct sk_buff *skb,
 	 *			update tail and set RS bit on every packet.
 	 *	if xmit_more is false and last_xmit_more was true
 	 *		update tail and set RS bit.
+	 * else (kernel < 3.18)
+	 *	if every packet spanned less than 4 desc
+	 *		then set RS bit on 4th packet and update tail
+	 *		on every packet
+	 *	else
+	 *		set RS bit on EOP for every packet and update tail
 	 *
 	 * Optimization: wmb to be issued only in case of tail update.
 	 * Also optimize the Descriptor WB path for RS bit with the same

@@ -106,7 +106,6 @@
 #define INT_CMD_REQ_ACTIVE		0x3
 #define INT_CMD_RES_ACTIVE		0x4
 #define INT_CMD_REQ_TIME_SYNC		0x5
-#define INT_CMD_KERNEL_PANIC		0x6
 #define INT_CMD_CRASH_RESET		0x7
 #define INT_CMD_PHONE_START		0x8
 #define INT_CMD_ERR_DISPLAY		0x9
@@ -127,7 +126,6 @@
 
 #define RES_ACK_WAIT_TIMEOUT	100		/* 100 ms */
 #define REQ_ACK_DELAY		10		/* 10 ms */
-#define MAX_TIMEOUT_CNT		1000
 
 #ifdef CONFIG_DEBUG_MODEM_IF
 #define MAX_RETRY_CNT	1

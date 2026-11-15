@@ -15,7 +15,6 @@
 #include "pmucal_system.h"
 #include "pmucal_local.h"
 #include "pmucal_cpu.h"
-#include "pmucal_cp.h"
 #include "pmucal_rae.h"
 #include "pmucal_powermode.h"
 
@@ -175,15 +174,10 @@ int cal_pd_control(unsigned int id, int on)
 
 	index = id & 0x0000FFFF;
 
-	if (on) {
-		if ((id & 0xffff) == 0x8)
-			exynos_acpm_update_reg(0x3, 0x2a, 0x3 << 6, 0x3 << 6);
+	if (on)
 		ret = pmucal_local_enable(index);
-	} else {
+	else
 		ret = pmucal_local_disable(index);
-		if ((id & 0xffff) == 0x8)
-			exynos_acpm_update_reg(0x3, 0x2a, 0x0 << 6, 0x3 << 6);
-	}
 
 	return ret;
 }
@@ -344,48 +338,6 @@ int cal_asv_get_tablever(void)
 	return asv_get_table_ver();
 }
 
-#ifdef CONFIG_CP_PMUCAL
-int cal_cp_init(void)
-{
-	return pmucal_cp_init();
-}
-
-int cal_cp_status(void)
-{
-	return pmucal_cp_status();
-}
-
-int cal_cp_reset_assert(void)
-{
-	return pmucal_cp_reset_assert();
-}
-
-int cal_cp_reset_release(void)
-{
-	return pmucal_cp_reset_release();
-}
-
-void cal_cp_active_clear(void)
-{
-	pmucal_cp_active_clear();
-}
-
-void cal_cp_reset_req_clear(void)
-{
-	pmucal_cp_reset_req_clear();
-}
-
-void cal_cp_enable_dump_pc_no_pg(void)
-{
-	pmucal_cp_enable_dump_pc_no_pg();
-}
-
-void cal_cp_disable_dump_pc_no_pg(void)
-{
-	pmucal_cp_disable_dump_pc_no_pg();
-}
-#endif
-
 int __init cal_if_init(void *dev)
 {
 	static int cal_initialized;
@@ -420,12 +372,6 @@ int __init cal_if_init(void *dev)
 	ret = pmucal_cpuinform_init();
 	if (ret < 0)
 		return ret;
-
-#ifdef CONFIG_CP_PMUCAL
-	ret = pmucal_cp_initialize();
-	if (ret < 0)
-		return ret;
-#endif
 
 	exynos_acpm_set_device(dev);
 

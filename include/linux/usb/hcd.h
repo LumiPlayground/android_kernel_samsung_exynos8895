@@ -23,7 +23,6 @@
 
 #include <linux/rwsem.h>
 #include <linux/interrupt.h>
-#include <linux/idr.h>
 
 #define MAX_TOPO_LEVEL		6
 
@@ -257,7 +256,6 @@ struct hc_driver {
 #define	HCD_MASK	0x0070
 #define	HCD_BH		0x0100		/* URB complete in BH context */
 
-	int	(*wake_lock) (struct usb_hcd *hcd, int is_lock);
 	/* called to init HCD and root hub */
 	int	(*reset) (struct usb_hcd *hcd);
 	int	(*start) (struct usb_hcd *hcd);
@@ -313,8 +311,6 @@ struct hc_driver {
 	int	(*hub_control) (struct usb_hcd *hcd,
 				u16 typeReq, u16 wValue, u16 wIndex,
 				char *buf, u16 wLength);
-	int 	(*hub_check_speed) (struct usb_hcd *hcd);
-	int 	(*usb_l2_check) (struct usb_hcd *hcd);
 	int	(*bus_suspend)(struct usb_hcd *);
 	int	(*bus_resume)(struct usb_hcd *);
 	int	(*start_port_reset)(struct usb_hcd *, unsigned port_num);
@@ -636,8 +632,8 @@ extern void usb_set_device_state(struct usb_device *udev,
 
 /* exported only within usbcore */
 
-extern struct idr usb_bus_idr;
-extern struct mutex usb_bus_idr_lock;
+extern struct list_head usb_bus_list;
+extern struct mutex usb_bus_list_lock;
 extern wait_queue_head_t usb_kill_urb_queue;
 
 

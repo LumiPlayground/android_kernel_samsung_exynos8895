@@ -3199,7 +3199,7 @@ static void sd_probe_async(void *data, async_cookie_t cookie)
 			sdp->host->ufs_system_start = 0;
 			sdp->host->ufs_system_end = 0;
 			sdp->host->ufs_sys_log_en = false;
-	
+
 			for (i = 1; i < 30 ; i++) {
 				if (!gd->part_tbl)
 					break;

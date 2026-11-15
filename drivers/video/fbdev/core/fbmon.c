@@ -33,10 +33,8 @@
 #include <video/edid.h>
 #include <video/of_videomode.h>
 #include <video/videomode.h>
-#ifdef CONFIG_EXYNOS_DISPLAYPORT
 #include <media/v4l2-dv-timings.h>
 #include <uapi/linux/v4l2-dv-timings.h>
-#endif
 #include "../edid.h"
 
 /*
@@ -495,7 +493,6 @@ static int get_est_timing(unsigned char *block, struct fb_videomode *mode)
 	return num;
 }
 
-#ifdef CONFIG_EXYNOS_DISPLAYPORT
 static struct ext_std_timing_t {
 	u32 byte_code;
 	struct v4l2_dv_timings timing;
@@ -529,7 +526,6 @@ static int check_ext_std_timing(unsigned char *block, struct fb_videomode *mode)
 
 	return -EINVAL;
 }
-#endif
 
 static int get_std_timing(unsigned char *block, struct fb_videomode *mode,
 			  int ver, int rev, const struct fb_monspecs *specs)
@@ -577,7 +573,6 @@ static int get_std_timing(unsigned char *block, struct fb_videomode *mode,
 		refresh = (block[1] & 0x3f) + 60;
 		DPRINTK("      %dx%d@%dHz\n", xres, yres, refresh);
 
-#ifdef CONFIG_EXYNOS_DISPLAYPORT
 		if (!check_ext_std_timing(block, mode)) {
 			mode->xres = xres;
 			mode->yres = yres;
@@ -586,9 +581,7 @@ static int get_std_timing(unsigned char *block, struct fb_videomode *mode,
 			return 1;
 		} else
 			calc_mode_timings(xres, yres, refresh, mode);
-#else
-		calc_mode_timings(xres, yres, refresh, mode);
-#endif
+
 	}
 
 	/* Check the mode we got is within valid spec of the monitor */
@@ -1076,7 +1069,6 @@ void fb_edid_add_monspecs(unsigned char *edid, struct fb_monspecs *specs)
 	while (pos < edid[2]) {
 		u8 len = edid[pos] & 0x1f, type = (edid[pos] >> 5) & 7;
 		pr_debug("Data block %u of %u bytes\n", type, len);
-
 		pos++;
 		if (type == 2) {
 			for (i = pos; i < pos + len; i++) {

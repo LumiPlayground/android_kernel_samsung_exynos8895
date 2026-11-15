@@ -318,6 +318,11 @@ struct io_device {
 	struct miscdevice  miscdev;
 	struct net_device *ndev;
 	struct list_head node_ndev;
+#ifdef CONFIG_LINK_DEVICE_NAPI
+	struct napi_struct napi;
+	int napi_weight;
+	unsigned int rx_poll_count;
+#endif /* CONFIG_LINK_DEVICE_NAPI */
 
 	/* ID and Format for channel on the link */
 	unsigned int id;
@@ -520,8 +525,6 @@ struct link_device {
 	int (*enable_rx_int)(struct link_device *ld);
 	int (*disable_rx_int)(struct link_device *ld);
 #endif /* CONFIG_LINK_DEVICE_NAPI */
-
-	void (*gro_flush)(struct link_device *ld);
 };
 
 #define pm_to_link_device(pm)	container_of(pm, struct link_device, pm)

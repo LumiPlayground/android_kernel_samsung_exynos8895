@@ -24,7 +24,6 @@
 #include <linux/device.h>
 #include <linux/slab.h>
 #include "../../regulator/internal.h"
-#include <../drivers/soc/samsung/acpm/acpm_ipc.h>
 
 #define EXYNOS_RGT_PREFIX	"EXYNOS-RGT: "
 
@@ -255,11 +254,9 @@ static int exynos_rgt_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct exynos_rgt_info *rgt_info;
-	struct device_node *regulators_np, *reg_np, *pmic_np;
-	int rgt_idx = 0, ipc_ch;
+	struct device_node *regulators_np, *reg_np;
+	int rgt_idx = 0;
 	const char *rgt_name;
-	struct regulator_ss_info *rgt_ss;
-	struct regulator_desc rdesc;
 
 	regulators_np = of_find_node_by_name(NULL, "regulators");
 	if (!regulators_np) {
@@ -316,20 +313,6 @@ static int exynos_rgt_probe(struct platform_device *pdev)
 				debugfs_create_file("voltage", 0600, rgt_info[rgt_idx].reg_dir,
 						rgt_info[rgt_idx].rgt, &rgt_info[rgt_idx].volt_fops);
 
-			pmic_np = of_get_parent(regulators_np);
-			ret = of_property_read_u32(pmic_np, "acpm-ipc-channel", &ipc_ch);
-			if (!ret) {
-				rgt_ss = get_regulator_ss(rgt_idx);
-				if (rgt_ss != NULL) {
-					rdesc = *(rgt_info[rgt_idx].rgt->rdev->desc);
-
-					snprintf(rgt_ss->name, sizeof(rgt_ss->name), "%s.", rdesc.name);
-					rgt_ss->min_uV = rdesc.min_uV;
-					rgt_ss->uV_step = rdesc.uV_step;
-					rgt_ss->linear_min_sel = rdesc.linear_min_sel;
-					rgt_ss->vsel_reg = rdesc.vsel_reg;
-				}
-			}
 			rgt_idx++;
 		}
 		regulators_np = of_find_node_by_name(regulators_np, "regulators");

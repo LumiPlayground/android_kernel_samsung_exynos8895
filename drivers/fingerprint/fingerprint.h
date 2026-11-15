@@ -1,16 +1,19 @@
 /*
- *  Copyright (C) 2017, Samsung Electronics Co. Ltd. All Rights Reserved.
+ * Copyright (C) 2013 Samsung Electronics. All rights reserved.
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
  *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+ * 02110-1301 USA
  */
 
 #ifndef FINGERPRINT_H_
@@ -32,12 +35,13 @@ enum {
 	SENSOR_EGIS,
 	SENSOR_VIPER_WOG,
 	SENSOR_NAMSAN,
+	SENSOR_CPID,
 	SENSOR_MAXIMUM,
 };
 
-#define SENSOR_STATUS_SIZE 8
+#define SENSOR_STATUS_SIZE 9
 static char sensor_status[SENSOR_STATUS_SIZE][10] = {"ooo", "unknown", "failed",
-	"viper", "raptor", "egis", "viper_wog", "namsan"};
+	"viper", "raptor", "egis", "viper_wog", "namsan", "cpid"};
 
 /* For Finger Detect Mode */
 enum {
@@ -45,10 +49,8 @@ enum {
 	DETECT_ADM,			/* Always on Detect Mode */
 };
 
-#if defined(CONFIG_SOC_EXYNOS7570) || defined(CONFIG_SOC_EXYNOS7870) \
-	|| defined(CONFIG_SOC_EXYNOS7880) || defined(CONFIG_SOC_EXYNOS8890) \
-	|| defined(CONFIG_SOC_EXYNOS8895) || defined(CONFIG_SOC_EXYNOS9810)
-#define FP_ENABLE_AP_CONFIG
+#ifdef CONFIG_SENSORS_FINGERPRINT_DUALIZATION
+extern int FP_CHECK; /* extern variable */
 #endif
 
 #ifdef ENABLE_SENSORS_FPRINT_SECURE

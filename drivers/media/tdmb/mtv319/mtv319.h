@@ -1,21 +1,21 @@
 /*
- *
- * File name: mtv319.h
- *
- * Description : MTV319 device driver API header file.
- *
- * Copyright (C) (2013, RAONTECH)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation version 2.
- *
- * This program is distributed "as is" WITHOUT ANY WARRANTY of any
- * kind, whether express or implied; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- */
+*
+* File name: mtv319.h
+*
+* Description : MTV319 device driver API header file.
+*
+* Copyright (C) (2013, RAONTECH)
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation version 2.
+*
+* This program is distributed "as is" WITHOUT ANY WARRANTY of any
+* kind, whether express or implied; without even the implied warranty
+* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+*/
 
 #ifndef __MTV319_H__
 #define __MTV319_H__
@@ -26,12 +26,11 @@ extern "C"{
 
 #include "mtv319_port.h"
 
-/*
- *
- * Common definitions and types.
- *
- *
- */
+/*=============================================================================
+*
+* Common definitions and types.
+*
+*===========================================================================*/
 #define MTV319_CHIP_ID			0xC6
 #define MTV319_FIC_BUF_SIZE		(3 * 188)
 #define MTV319_SPI_CMD_SIZE		3
@@ -80,6 +79,7 @@ extern "C"{
 #define RTV_INVALID_FIC_OPEN_STATE		-15
 #define RTV_INVALID_FREQENCY			-16
 
+
 /* Do not modify the value! */
 enum E_RTV_SERVICE_TYPE {
 	RTV_SERVICE_DMB = 0, /* DMB Video */
@@ -107,12 +107,11 @@ enum RTV_MCH_HDR_ID_FLAG_T {
 #define RTV_MCH_HDR_SIZE	4 /* Size, in bytes,  of MCH header */
 #define MAX_MCH_PAYLOAD_SIZE	(RTV_TSP_XFER_SIZE - RTV_MCH_HDR_SIZE)
 
-/*
- *
- * TDMB definitions, types and APIs.
- *
- *
- */
+/*=============================================================================
+*
+* TDMB definitions, types and APIs.
+*
+*===========================================================================*/
 #define RTV_TDMB_AGC_LOCK_MASK		0x1
 #define RTV_TDMB_OFDM_LOCK_MASK		0x2
 #define RTV_TDMB_FEC_LOCK_MASK		0x4

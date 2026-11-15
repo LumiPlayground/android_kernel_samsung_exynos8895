@@ -44,7 +44,7 @@ config EXYNOS_SNAPSHOT_IRQ_DISABLED
 
 config EXYNOS_SNAPSHOT_SPINLOCK
 	bool "Enable debugging of spinlock event by kevent(EXPERIMENTAL)"
-	depends on EXYNOS_SNAPSHOT && !EXYNOS_SNAPSHOT_MINIMIZED_MODE
+	depends on EXYNOS_SNAPSHOT && DEBUG_SPINLOCK && !EXYNOS_SNAPSHOT_MINIMIZED_MODE
 	default y
 
 config EXYNOS_SNAPSHOT_CLK
@@ -92,11 +92,6 @@ config EXYNOS_SNAPSHOT_THERMAL
 	depends on EXYNOS_SNAPSHOT && !EXYNOS_SNAPSHOT_MINIMIZED_MODE && EXYNOS_THERMAL
 	default y
 
-config EXYNOS_SNAPSHOT_UART
-	bool "Enable debugging of uart driver"
-	depends on EXYNOS_SNAPSHOT && !EXYNOS_SNAPSHOT_MINIMIZED_MODE
-	default y
-
 config EXYNOS_SNAPSHOT_I2C
 	bool "Enable debugging of i2c driver"
 	depends on EXYNOS_SNAPSHOT && !EXYNOS_SNAPSHOT_MINIMIZED_MODE
@@ -107,10 +102,18 @@ config EXYNOS_SNAPSHOT_SPI
 	depends on EXYNOS_SNAPSHOT && !EXYNOS_SNAPSHOT_MINIMIZED_MODE
 	default y
 
-config EXYNOS_SNAPSHOT_LOGGING_HVC_CALL
-	bool "Support logging HVC call"
-	depends on EXYNOS_SNAPSHOT && !EXYNOS_SNAPSHOT_MINIMIZED_MODE && UH
-	default n
+config EXYNOS_SNAPSHOT_PSTORE
+	bool "Enable supporting ramoops driver for pstore filesystem"
+	depends on EXYNOS_SNAPSHOT
+	select PSTORE
+	select PSTORE_RAM
+	select PSTORE_PMSG
+	default y
+
+config EXYNOS_SNAPSHOT_HOOK_LOGGER
+	bool "Enable hooking android platform log for ramdump"
+	depends on EXYNOS_SNAPSHOT && EXYNOS_SNAPSHOT_PSTORE
+	default y
 
 config EXYNOS_SNAPSHOT_PANIC_REBOOT
 	bool "Enable forced reboot after panic for ramdump"
@@ -126,6 +129,11 @@ config EXYNOS_SNAPSHOT_CRASH_KEY
 	bool "Support Crash Key to artificial panic for debugging"
 	depends on EXYNOS_SNAPSHOT && KEYBOARD_GPIO
 	default y
+
+config EXYNOS_SNAPSHOT_SFRDUMP
+	bool "Support dump of sfr region for debugging"
+	depends on EXYNOS_SNAPSHOT && !EXYNOS_SNAPSHOT_MINIMIZED_MODE
+	default n
 
 config EXYNOS_SNAPSHOT_MINIMIZED_MODE
 	bool "Support minimized feature configuration"
@@ -162,16 +170,6 @@ config EXYNOS_CORESIGHT_MAINTAIN_DBG_REG
           save in /restore from memory. If OS-lock is set, debugging to use
           trace32 is impossible. So OS-lock must clear when core power is up.
           This config must enable only using iTSP program.
-
-menuconfig EXYNOS_CONSOLE_DEBUGGER
-	bool "Exynos Console Debugger(ECD) Support for debugging"
-	default y
-	depends on ARCH_EXYNOS
-
-config EXYNOS_CONSOLE_DEBUGGER_INTERFACE
-	bool "Specific Console Debugger Interface Support and Console Support"
-	depends on EXYNOS_CONSOLE_DEBUGGER
-	default y
 
 menuconfig EXYNOS_CORESIGHT_ETM
         bool "Enable ETM driver of exynos"
@@ -214,4 +212,21 @@ config EXYNOS_CORESIGHT_ETM_SYSFS
         help
           Show ETM, FUNNEL, ETB, ETF and ETR status through sysfs.
 
+config EXYNOS_CORESIGHT_STM
+        bool "Enable STM driver of exynos"
+        depends on ARCH_EXYNOS
+        default n
+        help
+          STM driver is a driver for H/W event and S/W event debugging.
+
+menuconfig EXYNOS_CONSOLE_DEBUGGER
+	bool "Exynos Console Debugger(ECD) Support for debugging"
+	default y
+	depends on ARCH_EXYNOS
+
+config EXYNOS_CONSOLE_DEBUGGER_INTERFACE
+	bool "Specific Console Debugger Interface Support and Console Support"
+	depends on EXYNOS_CONSOLE_DEBUGGER
+	default y
 endif
+#

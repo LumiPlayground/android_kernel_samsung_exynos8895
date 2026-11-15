@@ -436,11 +436,7 @@ void fimc_is_scaler_set_v_init_phase_offset(void __iomem *base_addr, u32 output_
 	}
 }
 
-void fimc_is_scaler_set_poly_scaler_coef(void __iomem *base_addr,
-	u32 output_id,
-	u32 hratio,
-	u32 vratio,
-	enum exynos_sensor_position sensor_position)
+void fimc_is_scaler_set_poly_scaler_coef(void __iomem *base_addr, u32 output_id, u32 hratio, u32 vratio)
 {
 	u32 h_coef;
 	u32 v_coef;

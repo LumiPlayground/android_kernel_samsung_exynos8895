@@ -477,7 +477,8 @@ void *crypto_create_tfm(struct crypto_alg *alg,
 
 #ifdef CONFIG_CRYPTO_FIPS
 	if (unlikely(in_fips_err())) {
-		pr_err("Fail %s due to fips error state.\n", __func__);
+		printk(KERN_ERR
+			"Fail crypto_create_tfm due to fips error state.\n");
 		return ERR_PTR(-EACCES);
 	}
 #endif
@@ -594,14 +595,6 @@ err:
 }
 EXPORT_SYMBOL_GPL(crypto_alloc_tfm);
 
-#ifdef CONFIG_CRYPTO_FIPS_FUNC_TEST
-static void hexdump(unsigned char *buf, unsigned int len)
-{
-	print_hex_dump(KERN_INFO, "FIPS FUNC : ", DUMP_PREFIX_OFFSET,
-			16, 1, buf, len, false);
-}
-#endif
-
 /*
  *	crypto_destroy_tfm - Free crypto transform
  *	@mem: Start of tfm slab
@@ -623,20 +616,18 @@ void crypto_destroy_tfm(void *mem, struct crypto_tfm *tfm)
 		alg->cra_exit(tfm);
 	crypto_exit_ops(tfm);
 	crypto_mod_put(alg);
-#ifdef CONFIG_CRYPTO_FIPS_FUNC_TEST
-	if (!strcmp("zeroization", get_fips_functest_mode())) {
-		int t = ksize(mem);
-
-		pr_err("FIPS FUNC : Zeroization %s %d\n", __func__, t);
-		hexdump(mem, t);
-		kzfree(mem);
-		pr_err("FIPS FUNC : Zeroization %s %d\n", __func__, t);
-		hexdump(mem, t);
-	} else {
-		kzfree(mem);
-	}
-#else
+#if FIPS_FUNC_TEST == 4
+    {
+        extern void hexdump(unsigned char *, unsigned int);
+        int t = ksize(mem);
+        printk(KERN_ERR "FIPS: Zeroization crypto_destroy_tfm %d\n", t);
+        hexdump(mem, t);
+#endif
 	kzfree(mem);
+#if FIPS_FUNC_TEST == 4
+        printk(KERN_ERR "FIPS: Zeroization crypto_destroy_tfm \n");
+        hexdump(mem, t);
+    }
 #endif
 }
 EXPORT_SYMBOL_GPL(crypto_destroy_tfm);

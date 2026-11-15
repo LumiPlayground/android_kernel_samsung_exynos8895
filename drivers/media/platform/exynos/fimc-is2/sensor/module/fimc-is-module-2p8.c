@@ -79,7 +79,7 @@ static int sensor_2p8_init(struct v4l2_subdev *subdev, u32 val)
 	int ret = 0;
 	struct fimc_is_module_enum *module;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 
@@ -105,7 +105,7 @@ static int sensor_2p8_power_setpin(struct platform_device *pdev,
 	int gpio_reset = 0;
 	int gpio_none = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -159,7 +159,7 @@ int sensor_2p8_probe(struct platform_device *pdev)
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -184,8 +184,8 @@ int sensor_2p8_probe(struct platform_device *pdev)
 		goto p_err;
 	}
 
-	module = &device->module_enum[atomic_read(&device->module_count)];
-	atomic_inc(&device->module_count);
+	module = &device->module_enum[atomic_read(&core->resourcemgr.rsccount_module)];
+	atomic_inc(&core->resourcemgr.rsccount_module);
 	clear_bit(FIMC_IS_MODULE_GPIO_ON, &module->state);
 	module->pdata = pdata;
 	module->dev = dev;

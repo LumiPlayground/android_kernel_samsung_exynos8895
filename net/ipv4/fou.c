@@ -442,7 +442,6 @@ next_proto:
 		goto out_unlock;
 
 	pp = call_gro_receive(ops->callbacks.gro_receive, head, skb);
-	flush = 0;
 
 out_unlock:
 	rcu_read_unlock();

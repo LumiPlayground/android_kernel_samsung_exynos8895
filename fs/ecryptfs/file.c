@@ -24,6 +24,7 @@
  */
 
 #include <linux/file.h>
+#include <linux/xattr.h>
 #include <linux/poll.h>
 #include <linux/slab.h>
 #include <linux/mount.h>
@@ -31,7 +32,7 @@
 #include <linux/security.h>
 #include <linux/compat.h>
 #include <linux/fs_stack.h>
-#include <linux/xattr.h>
+#include <crypto/fmp.h>
 
 #include "ecryptfs_kernel.h"
 
@@ -49,9 +50,6 @@
 #endif
 #include "ecryptfs_dek.h"
 #include "mm.h"
-#endif
-#if defined(CONFIG_SDP) || defined(CONFIG_DLP)
-#include <sdp/fs_request.h>
 #endif
 
 #ifdef CONFIG_DLP
@@ -174,7 +172,7 @@ static int read_or_initialize_metadata(struct dentry *dentry)
 		&& crypt_stat->flags & ECRYPTFS_I_SIZE_INITIALIZED) {
 		crypt_stat->flags |= ECRYPTFS_ENCRYPTED_OTHER_DEVICE;
 	}
-		mutex_lock(&crypt_stat->cs_mutex);
+	mutex_lock(&crypt_stat->cs_mutex);
 	if ((mount_crypt_stat->flags & ECRYPTFS_ENABLE_NEW_PASSTHROUGH)
 			&& (crypt_stat->flags & ECRYPTFS_ENCRYPTED)) {
 		if (ecryptfs_read_metadata(dentry)) {
@@ -243,7 +241,8 @@ static int read_or_initialize_metadata(struct dentry *dentry)
 out:
 	mutex_unlock(&crypt_stat->cs_mutex);
 #ifdef CONFIG_SDP
-	if (!rc) {
+	if(!rc)
+	{
 		/*
 		 * SDP v2.0 : sensitive directory (SDP vault)
 		 * Files under sensitive directory automatically becomes sensitive
@@ -263,22 +262,114 @@ out:
 	return rc;
 }
 
+#if defined(CONFIG_FMP_ECRYPT_FS)
+static void ecryptfs_set_rapages(struct file *file, unsigned int flag)
+{
+	if (!flag)
+		file->f_ra.ra_pages = 0;
+	else
+		file->f_ra.ra_pages = inode_to_bdi(file->f_mapping->host)->ra_pages;
+}
+
+static int ecryptfs_set_fmpinfo(struct file *file, struct inode *inode, unsigned int set_flag)
+{
+	struct address_space *mapping = file->f_mapping;
+
+	if (set_flag) {
+		struct ecryptfs_crypt_stat *crypt_stat =
+			&ecryptfs_inode_to_private(inode)->crypt_stat;
+		struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
+			&ecryptfs_superblock_to_private(inode->i_sb)->mount_crypt_stat;
+
+		if (strncmp(crypt_stat->cipher, "aesxts", sizeof("aesxts"))
+				&& strncmp(crypt_stat->cipher, "aes", sizeof("aes"))) {
+			if (!(crypt_stat->flags & ECRYPTFS_ENCRYPTED)) {
+				mapping->plain_text = 1;
+				return 0;
+			} else {
+				ecryptfs_printk(KERN_ERR,
+						"%s: Error invalid file encryption algorithm, inode %lu, filename %s alg %s\n"
+						, __func__, inode->i_ino,  file_inode(file)->i_sb->s_root->d_iname, crypt_stat->cipher);
+				return -EINVAL;
+			}
+		}
+		mapping->iv = crypt_stat->root_iv;
+		mapping->sensitive_data_index = crypt_stat->metadata_size/4096;
+		if (mount_crypt_stat->cipher_code == RFC2440_CIPHER_AES_XTS_256) {
+			mapping->key_length = crypt_stat->key_size * 2;
+			mapping->alg = "aesxts";
+		} else {
+			mapping->key_length = crypt_stat->key_size;
+			mapping->alg = crypt_stat->cipher;
+		}
+		mapping->hash_tfm = crypt_stat->hash_tfm;
+		memset(mapping->key, 0, MAX_KEY_SIZE);
+		memcpy(mapping->key, crypt_stat->key, mapping->key_length);
+#ifdef CONFIG_CRYPTO_FIPS
+		mapping->cc_enable =
+			(mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC)?1:0;
+#endif
+		mapping->private_enc_mode = FMP_FILE_ENC_MODE;
+	} else {
+		mapping->iv = NULL;
+		memset(mapping->key, 0, MAX_KEY_SIZE);
+		mapping->key_length = 0;
+		mapping->sensitive_data_index = 0;
+		mapping->alg = NULL;
+		mapping->hash_tfm = NULL;
+#ifdef CONFIG_CRYPTO_FIPS
+		mapping->cc_enable = 0;
+#endif
+		mapping->plain_text = 0;
+		mapping->private_enc_mode = FMP_BYPASS_MODE;
+	}
+
+	return 0;
+}
+
+void ecryptfs_propagate_rapages(struct file *file, unsigned int flag)
+{
+	struct file *f = file;
+
+	do {
+		if (!f)
+			return;
+		ecryptfs_set_rapages(f, flag);
+	} while(f->f_op->get_lower_file && (f = f->f_op->get_lower_file(f)));
+
+}
+
+int ecryptfs_propagate_fmpinfo(struct inode *inode, unsigned int flag)
+{
+	struct file *f = ecryptfs_inode_to_private(inode)->lower_file;
+
+	do {
+		if (!f)
+			return 0;
+		if (ecryptfs_set_fmpinfo(f, inode, flag))
+			return -EINVAL;
+	} while(f->f_op->get_lower_file && (f = f->f_op->get_lower_file(f)));
+
+	return 0;
+}
+#endif
+
 static int ecryptfs_mmap(struct file *file, struct vm_area_struct *vma)
 {
-	struct dentry *dentry = ecryptfs_dentry_to_lower(file->f_path.dentry);
+	struct file *lower_file = ecryptfs_file_to_lower(file);
 	/*
 	 * Don't allow mmap on top of file systems that don't support it
 	 * natively.  If FILESYSTEM_MAX_STACK_DEPTH > 2 or ecryptfs
 	 * allows recursive mounting, this will need to be extended.
 	 */
-	if (!dentry->d_inode->i_fop->mmap)
+	if (!lower_file->f_op->mmap)
 		return -ENODEV;
 	return generic_file_mmap(file, vma);
 }
 
 /**
  * ecryptfs_open
- * @inode: inode specifying file to open
+ * @inode: inode speciying file to open
  * @file: Structure to return filled in
  *
  * Opens the file specified by inode.
@@ -296,19 +387,16 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 	/* Private value of ecryptfs_dentry allocated in
 	 * ecryptfs_lookup() */
 	struct ecryptfs_file_info *file_info;
-#if defined(CONFIG_SDP) || defined(CONFIG_DLP)
-	sdp_fs_command_t *cmd = NULL;
-#endif
-
 #ifdef CONFIG_DLP
+	sdp_fs_command_t *cmd = NULL;
+
 	ssize_t dlp_len = 0;
 	struct knox_dlp_data dlp_data;
 	struct timespec ts;
 #endif
-
 #if defined(CONFIG_SDP)
 	mount_crypt_stat = &ecryptfs_superblock_to_private(
-		inode->i_sb)->mount_crypt_stat;
+	    inode->i_sb)->mount_crypt_stat;
 #endif
 
 	/* Released in ecryptfs_release or end of function if failure */
@@ -346,10 +434,11 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 	}
 	ecryptfs_set_file_lower(
 		file, ecryptfs_inode_to_private(inode)->lower_file);
+
 	rc = read_or_initialize_metadata(ecryptfs_dentry);
 #ifdef CONFIG_SDP
 	if (rc) {
-		if (file->f_flags & O_SDP) {
+		if(file->f_flags & O_SDP){
 			printk("Failed to initialize metadata, "
 					"but let it continue cause current call is from SDP API\n");
 			mutex_lock(&crypt_stat->cs_mutex);
@@ -372,11 +461,21 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 		goto out_put;
 #endif
 
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	mount_crypt_stat = &ecryptfs_superblock_to_private(
+			inode->i_sb)->mount_crypt_stat;
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP)
+		rc = ecryptfs_propagate_fmpinfo(inode, FMPINFO_SET);
+	else
+		rc = ecryptfs_propagate_fmpinfo(inode, FMPINFO_CLEAR);
+	if (rc)
+		goto out_put;
+#endif
 #ifdef CONFIG_SDP
 	if (crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE) {
 #ifdef CONFIG_SDP_KEY_DUMP
 		if (S_ISREG(ecryptfs_dentry->d_inode->i_mode)) {
-			if (get_sdp_sysfs_key_dump()) {
+			if(get_sdp_sysfs_key_dump()) {
 				printk("FEK[%s] : ", ecryptfs_dentry->d_name.name);
 				key_dump(crypt_stat->key, 32);
 			}
@@ -388,14 +487,14 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 		if (S_ISREG(ecryptfs_dentry->d_inode->i_mode)) {
 			ecryptfs_set_mapping_sensitive(inode, mount_crypt_stat->userid, TO_SENSITIVE);
 		}
-
+		
 		if (ecryptfs_is_sdp_locked(crypt_stat->engine_id)) {
 			ecryptfs_printk(KERN_INFO, "ecryptfs_open: persona is locked, rc=%d\n", rc);
 		} else {
 			int dek_type = crypt_stat->sdp_dek.type;
 
 			ecryptfs_printk(KERN_INFO, "ecryptfs_open: persona is unlocked, rc=%d\n", rc);
-			if (dek_type != DEK_TYPE_AES_ENC) {
+			if(dek_type != DEK_TYPE_AES_ENC) {
 				ecryptfs_printk(KERN_DEBUG, "converting dek...\n");
 				rc = ecryptfs_sdp_convert_dek(ecryptfs_dentry);
 				ecryptfs_printk(KERN_DEBUG, "conversion ready, rc=%d\n", rc);
@@ -411,18 +510,18 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 #endif
 
 #ifdef CONFIG_DLP
-	if (crypt_stat->flags & ECRYPTFS_DLP_ENABLED) {
+	if(crypt_stat->flags & ECRYPTFS_DLP_ENABLED) {
 #if DLP_DEBUG
 		printk("DLP %s: try to open %s [%lu] with crypt_stat->flags %d\n",
 				__func__, ecryptfs_dentry->d_name.name, inode->i_ino, crypt_stat->flags);
 #endif
 
-		dlp_len = vfs_getxattr(
-			ecryptfs_dentry,
+		dlp_len = __vfs_getxattr(
+			ecryptfs_dentry, d_inode(ecryptfs_dentry),
 			KNOX_DLP_XATTR_NAME,
 			&dlp_data, sizeof(dlp_data));
 
-		if (dlp_data.expiry_time.tv_sec <= 0) {
+		if(dlp_data.expiry_time.tv_sec <= 0){
 #if DLP_DEBUG
 			printk("[LOG] %s: DLP flag is set but it is not DLP file -> media created file but not DLP [%s]\n",
 				__func__, ecryptfs_dentry->d_name.name);
@@ -436,7 +535,7 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 			goto out_put;
 		}
 
-		if (in_egroup_p(AID_KNOX_DLP) || in_egroup_p(AID_KNOX_DLP_RESTRICTED) || in_egroup_p(AID_KNOX_DLP_MEDIA)) {
+		if(in_egroup_p(AID_KNOX_DLP) || in_egroup_p(AID_KNOX_DLP_RESTRICTED) || in_egroup_p(AID_KNOX_DLP_MEDIA)) {
 			if (dlp_len == sizeof(dlp_data)) {
 				getnstimeofday(&ts);
 #if DLP_DEBUG
@@ -444,9 +543,9 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 						__func__, (long)ts.tv_sec, (long)dlp_data.expiry_time.tv_sec, ecryptfs_dentry->d_name.name);
 #endif
 				if ((ts.tv_sec > dlp_data.expiry_time.tv_sec) &&
-						dlp_isInterestedFile(mount_crypt_stat->userid, ecryptfs_dentry->d_name.name) == 0) {
-
-					if (in_egroup_p(AID_KNOX_DLP_MEDIA)) { //ignore media notifications
+						dlp_isInterestedFile(mount_crypt_stat->userid, ecryptfs_dentry->d_name.name)==0) {
+					
+					if(in_egroup_p(AID_KNOX_DLP_MEDIA)) { //ignore media notifications
 					/* Command to delete expired file  */
 					cmd = sdp_fs_command_alloc(FSOP_DLP_FILE_REMOVE_MEDIA,
 							current->tgid, mount_crypt_stat->userid, mount_crypt_stat->partition_id,
@@ -472,14 +571,14 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 			}
 
 #if DLP_DEBUG
-			printk("DLP %s: DLP file [%s] opened with tgid %d, %d\n",
+			printk("DLP %s: DLP file [%s] opened with tgid %d, %d\n" ,
 					__func__, ecryptfs_dentry->d_name.name, current->tgid, in_egroup_p(AID_KNOX_DLP_RESTRICTED));
 #endif
-			if (in_egroup_p(AID_KNOX_DLP_RESTRICTED)) {
+			if(in_egroup_p(AID_KNOX_DLP_RESTRICTED)) {
 				cmd = sdp_fs_command_alloc(FSOP_DLP_FILE_OPENED,
 						current->tgid, mount_crypt_stat->userid, mount_crypt_stat->partition_id,
 						inode->i_ino, GFP_KERNEL);
-			} else if (in_egroup_p(AID_KNOX_DLP)) {
+			} else if(in_egroup_p(AID_KNOX_DLP)) {
 				cmd = sdp_fs_command_alloc(FSOP_DLP_FILE_OPENED_CREATOR,
 						current->tgid, mount_crypt_stat->userid, mount_crypt_stat->partition_id,
 						inode->i_ino, GFP_KERNEL);
@@ -492,7 +591,7 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 			cmd = sdp_fs_command_alloc(FSOP_DLP_FILE_ACCESS_DENIED,
 							current->tgid, mount_crypt_stat->userid, mount_crypt_stat->partition_id,
 							inode->i_ino, GFP_KERNEL);
-
+							
 			rc = -EPERM;
 			goto out_put;
 		}
@@ -511,20 +610,18 @@ out_free:
 	kmem_cache_free(ecryptfs_file_info_cache,
 			ecryptfs_file_to_private(file));
 out:
-
 #ifdef CONFIG_DLP
-	if (cmd) {
+	if(cmd) {
 		sdp_fs_request(cmd, NULL);
 		sdp_fs_command_free(cmd);
 	}
 #endif
-
 #ifdef CONFIG_SDP
 	if (rc && (rc != -ENOENT)) {
 		cmd = sdp_fs_command_alloc(FSOP_AUDIT_FAIL_ACCESS,
 				current->tgid, mount_crypt_stat->userid, mount_crypt_stat->partition_id,
 				inode->i_ino, GFP_KERNEL);
-		if (cmd) {
+		if(cmd) {
 			sdp_fs_request(cmd, NULL);
 			sdp_fs_command_free(cmd);
 		}
@@ -535,7 +632,7 @@ out:
 
 /**
  * ecryptfs_dir_open
- * @inode: inode specifying file to open
+ * @inode: inode speciying file to open
  * @file: Structure to return filled in
  *
  * Opens the file specified by inode.
@@ -549,7 +646,6 @@ static int ecryptfs_dir_open(struct inode *inode, struct file *file)
 	 * ecryptfs_lookup() */
 	struct ecryptfs_file_info *file_info;
 	struct file *lower_file;
-
 #if defined(CONFIG_SDP)
 	struct ecryptfs_mount_crypt_stat *mount_crypt_stat;
 	struct ecryptfs_crypt_stat *crypt_stat = NULL;
@@ -657,7 +753,6 @@ ecryptfs_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct file *lower_file = ecryptfs_file_to_lower(file);
 	long rc = -ENOTTY;
-    long sdp_rc = -ENOTTY;
 
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
 	if (cmd == ECRYPTFS_IOCTL_GET_ATTRIBUTES) {
@@ -699,9 +794,9 @@ ecryptfs_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 #endif
 
 #ifdef CONFIG_SDP
-	sdp_rc = ecryptfs_do_sdp_ioctl(file, cmd, arg);
-	if (sdp_rc != -EOPNOTSUPP)
-		return sdp_rc;
+	rc = ecryptfs_do_sdp_ioctl(file, cmd, arg);
+	if (rc != EOPNOTSUPP)
+		return rc;
 #else
 	printk("%s CONFIG_SDP not enabled \n", __func__);
 #endif
@@ -730,7 +825,6 @@ ecryptfs_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct file *lower_file = ecryptfs_file_to_lower(file);
 	long rc = -ENOIOCTLCMD;
-    long sdp_rc = -ENOIOCTLCMD;
 
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
 	if (cmd == ECRYPTFS_IOCTL_GET_ATTRIBUTES) {
@@ -772,9 +866,9 @@ ecryptfs_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 #endif
 
 #ifdef CONFIG_SDP
-	sdp_rc = ecryptfs_do_sdp_ioctl(file, cmd, arg);
-	if (sdp_rc != EOPNOTSUPP)
-		return sdp_rc;
+	rc = ecryptfs_do_sdp_ioctl(file, cmd, arg);
+	if (rc != EOPNOTSUPP)
+		return rc;
 #else
 	printk("%s CONFIG_SDP not enabled \n", __func__);
 #endif
@@ -879,7 +973,7 @@ int is_file_ext_match(struct ecryptfs_mount_crypt_stat *mcs, char *str)
 #endif
 
 const struct file_operations ecryptfs_dir_fops = {
-	.iterate_shared = ecryptfs_readdir,
+	.iterate = ecryptfs_readdir,
 	.read = generic_read_dir,
 	.unlocked_ioctl = ecryptfs_unlocked_ioctl,
 #ifdef CONFIG_COMPAT

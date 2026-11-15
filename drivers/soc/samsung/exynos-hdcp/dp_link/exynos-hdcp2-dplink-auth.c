@@ -19,8 +19,7 @@
 
 static uint8_t pairing_ready;
 static uint8_t hprime_ready;
-uint8_t rp_ready;
-uint8_t rp_ready_s;
+static uint8_t rp_ready;
 static uint8_t reauth_req;
 static uint8_t integrity_fail;
 
@@ -156,12 +155,14 @@ static void rxinfo_print_all_info(struct rxinfo *rx)
 	hdcp_info("rxinfo.hdcp1x_down(%d)\n", rx->hdcp1x_downstream);
 }
 #endif
+
 static int is_auth_aborted(void)
 {
 	/* todo: need mutex */
 	if (integrity_fail || reauth_req) {
 		/* clear flag */
-		dplink_clear_irqflag_all();
+		integrity_fail = 0;
+		reauth_req = 0;
 		hdcp_err("Authentication is aborted\n");
 		return 1;
 	}
@@ -244,11 +245,11 @@ static int do_send_ake_init(struct hdcp_link_data *lk)
 	struct hdcp_msg_info msg_info;
 	struct dp_ake_init *m_init;
 
-       /* check abort state firstly,
-        * if session is abored by Rx, Tx stops Authentication process
-        */
-       if (is_auth_aborted())
-               return -TX_AUTH_ERROR_ABORT;
+	/* check abort state firstly,
+	 * if session is abored by Rx, Tx stops Authentication process
+	 */
+	if (is_auth_aborted())
+		return -TX_AUTH_ERROR_ABORT;
 
 	ret = dp_send_protocol_msg(lk, DP_AKE_INIT, &msg_info);
 	if (ret < 0) {
@@ -296,11 +297,11 @@ static int do_recv_ake_send_cert(struct hdcp_link_data *lk)
 	struct hdcp_msg_info msg_info;
 	struct dp_ake_send_cert m_send_cert;
 
-       /* check abort state firstly,
-        * if session is abored by Rx, Tx stops Authentication process
-        */
-       if (is_auth_aborted())
-               return -TX_AUTH_ERROR_ABORT;
+	/* check abort state firstly,
+	 * if session is abored by Rx, Tx stops Authentication process
+	 */
+	if (is_auth_aborted())
+		return -TX_AUTH_ERROR_ABORT;
 
 	ret = hdcp_dplink_recv(HDCP22_MSG_CERT_RX_R,
 			m_send_cert.cert_rx,
@@ -357,11 +358,11 @@ static int do_send_ake_nostored_km(struct hdcp_link_data *lk)
 	struct hdcp_msg_info msg_info;
 	struct dp_ake_no_stored_km *m_nostored_km;
 
-       /* check abort state firstly,
-        * if session is abored by Rx, Tx stops Authentication process
-        */
-       if (is_auth_aborted())
-               return -TX_AUTH_ERROR_ABORT;
+	/* check abort state firstly,
+	 * if session is abored by Rx, Tx stops Authentication process
+	 */
+	if (is_auth_aborted())
+		return -TX_AUTH_ERROR_ABORT;
 
 	ret = dp_send_protocol_msg(lk, DP_AKE_NO_STORED_KM, &msg_info);
 	if (ret < 0) {
@@ -387,11 +388,11 @@ static int do_send_ake_stored_km(struct hdcp_link_data *lk)
 	struct hdcp_msg_info msg_info;
 	struct dp_ake_stored_km *m_stored_km;
 
-       /* check abort state firstly,
-        * if session is abored by Rx, Tx stops Authentication process
-        */
-       if (is_auth_aborted())
-               return -TX_AUTH_ERROR_ABORT;
+	/* check abort state firstly,
+	 * if session is abored by Rx, Tx stops Authentication process
+	 */
+	if (is_auth_aborted())
+		return -TX_AUTH_ERROR_ABORT;
 
 	ret = dp_send_protocol_msg(lk, DP_AKE_STORED_KM, &msg_info);
 	if (ret < 0) {
@@ -425,11 +426,11 @@ static int do_recv_ake_send_h_prime(struct hdcp_link_data *lk)
 	struct hdcp_msg_info msg_info;
 	struct dp_ake_send_h_prime m_hprime;
 
-       /* check abort state firstly,
-        * if session is abored by Rx, Tx stops Authentication process
-        */
-       if (is_auth_aborted())
-               return -TX_AUTH_ERROR_ABORT;
+	/* check abort state firstly,
+	 * if session is abored by Rx, Tx stops Authentication process
+	 */
+	if (is_auth_aborted())
+		return -TX_AUTH_ERROR_ABORT;
 
 	ret = hdcp_dplink_recv(HDCP22_MSG_HPRIME_R,
 			m_hprime.h_prime,
@@ -461,11 +462,11 @@ static int do_recv_ake_send_pairing_info(struct hdcp_link_data *lk)
 	struct hdcp_msg_info msg_info;
 	struct dp_ake_send_pairing_info m_pairing;
 
-       /* check abort state firstly,
-        * if session is abored by Rx, Tx stops Authentication process
-        */
-       if (is_auth_aborted())
-               return -TX_AUTH_ERROR_ABORT;
+	/* check abort state firstly,
+	 * if session is abored by Rx, Tx stops Authentication process
+	 */
+	if (is_auth_aborted())
+		return -TX_AUTH_ERROR_ABORT;
 
 	ret = hdcp_dplink_recv(HDCP22_MSG_EKH_KM_R,
 			m_pairing.ekh_km,
@@ -492,11 +493,11 @@ static int do_send_lc_init(struct hdcp_link_data *lk)
 	struct hdcp_msg_info msg_info;
 	struct dp_lc_init *m_lc_init;
 
-       /* check abort state firstly,
-        * if session is abored by Rx, Tx stops Authentication process
-        */
-       if (is_auth_aborted())
-               return -TX_AUTH_ERROR_ABORT;
+	/* check abort state firstly,
+	 * if session is abored by Rx, Tx stops Authentication process
+	 */
+	if (is_auth_aborted())
+		return -TX_AUTH_ERROR_ABORT;
 
 	ret = dp_send_protocol_msg(lk, DP_LC_INIT, &msg_info);
 	if (ret < 0) {
@@ -522,11 +523,11 @@ static int do_recv_lc_send_l_prime(struct hdcp_link_data *lk)
 	struct hdcp_msg_info msg_info;
 	struct dp_lc_send_l_prime m_lprime;
 
-       /* check abort state firstly,
-        * if session is abored by Rx, Tx stops Authentication process
-        */
-       if (is_auth_aborted())
-               return -TX_AUTH_ERROR_ABORT;
+	/* check abort state firstly,
+	 * if session is abored by Rx, Tx stops Authentication process
+	 */
+	if (is_auth_aborted())
+		return -TX_AUTH_ERROR_ABORT;
 
 	ret = hdcp_dplink_recv(HDCP22_MSG_LPRIME_R,
 			m_lprime.l_prime,
@@ -558,11 +559,11 @@ static int do_send_ske_send_eks(struct hdcp_link_data *lk)
 	 */
 	/* uint8_t type = 0x00; */
 
-       /* check abort state firstly,
-        * if session is abored by Rx, Tx stops Authentication process
-        */
-       if (is_auth_aborted())
-               return -TX_AUTH_ERROR_ABORT;
+	/* check abort state firstly,
+	 * if session is abored by Rx, Tx stops Authentication process
+	 */
+	if (is_auth_aborted())
+		return -TX_AUTH_ERROR_ABORT;
 
 	ret = dp_send_protocol_msg(lk, DP_SKE_SEND_EKS, &msg_info);
 	if (ret < 0) {
@@ -613,21 +614,15 @@ static int do_send_ske_send_eks(struct hdcp_link_data *lk)
 	return 0;
 }
 
-static int cal_rcvid_list_size(uint8_t *rxinfo, uint32_t *rcvid_size)
+static void cal_rcvid_list_size(uint8_t *rxinfo, uint32_t *rcvid_size)
 {
 	struct rxinfo rx;
-	int ret = 0;
+
 	rxinfo_convert_arr2st(rxinfo, &rx);
 #if defined(HDCP_DEBUG)
-	rxinfo_print_all_info();
+	rxinfo_print_all_info(&rx);
 #endif
-
-	/* rx_list check */
-	if (rx.max_dev_exd || rx.max_cascade_exd)
-		return 1;
-
 	*rcvid_size = rx.dev_count * HDCP_RCV_ID_LEN;
-	return ret;
 }
 
 static int do_recv_rcvid_list(struct hdcp_link_data *lk)
@@ -637,11 +632,11 @@ static int do_recv_rcvid_list(struct hdcp_link_data *lk)
 	uint32_t rcvid_size = 0;
 	struct hdcp_msg_info msg_info;
 
-       /* check abort state firstly,
-        * if session is abored by Rx, Tx stops Authentication process
-        */
-       if (is_auth_aborted())
-               return -TX_AUTH_ERROR_ABORT;
+	/* check abort state firstly,
+	 * if session is abored by Rx, Tx stops Authentication process
+	 */
+	if (is_auth_aborted())
+		return -TX_AUTH_ERROR_ABORT;
 
 	memset(&m_rcvid, 0x00, sizeof(m_rcvid));
 
@@ -652,18 +647,13 @@ static int do_recv_rcvid_list(struct hdcp_link_data *lk)
 		hdcp_err("verify_receiver_id_list rx_info rcv fail: ret(%d)\n", ret);
 		return -1;
 	}
+	hdcp_info("rx_info 0:0x%X, 8:0x%X\n", m_rcvid.rx_info[1], m_rcvid.rx_info[0]);
 
 	ret = hdcp_dplink_recv(HDCP22_MSG_SEQ_NUM_V_R,
 			m_rcvid.seq_num_v,
 			sizeof(m_rcvid.seq_num_v));
-
 	if (ret) {
 		hdcp_err("verify_receiver_id_list seq_num_v rcv fail: ret(%d)\n", ret);
-		return -1;
-	}
-
-	if ((m_rcvid.seq_num_v[0] || m_rcvid.seq_num_v[1] || m_rcvid.seq_num_v[2]) && rp_ready < 2) {
-		hdcp_err("Initial seq_num_v is non_zero.\n");
 		return -1;
 	}
 
@@ -675,12 +665,7 @@ static int do_recv_rcvid_list(struct hdcp_link_data *lk)
 		return -1;
 	}
 
-	ret = cal_rcvid_list_size(m_rcvid.rx_info, &rcvid_size);
-	if (ret) {
-		hdcp_err("Cal_rcvid_list Fail ! (%d)\n", ret);
-		return -1;
-	}
-
+	cal_rcvid_list_size(m_rcvid.rx_info, &rcvid_size);
 	ret = hdcp_dplink_recv(HDCP22_MSG_RECV_ID_LIST_R,
 			m_rcvid.rcvid_list,
 			rcvid_size);
@@ -706,11 +691,11 @@ static int do_send_rp_ack(struct hdcp_link_data *lk)
 	struct hdcp_msg_info msg_info;
 	struct dp_rp_send_ack *m_ack;
 
-       /* check abort state firstly,
-        * if session is abored by Rx, Tx stops Authentication process
-        */
-       if (is_auth_aborted())
-               return -TX_AUTH_ERROR_ABORT;
+	/* check abort state firstly,
+	 * if session is abored by Rx, Tx stops Authentication process
+	 */
+	if (is_auth_aborted())
+		return -TX_AUTH_ERROR_ABORT;
 
 	ret = dp_send_protocol_msg(lk, DP_REPEATERAUTH_SEND_AKE, &msg_info);
 	if (ret < 0) {
@@ -737,11 +722,11 @@ static int do_send_rp_stream_manage(struct hdcp_link_data *lk)
 	struct dp_rp_stream_manage *m_strm;
 	uint16_t stream_num;
 
-       /* check abort state firstly,
-        * if session is abored by Rx, Tx stops Authentication process
-        */
-       if (is_auth_aborted())
-               return -TX_AUTH_ERROR_ABORT;
+	/* check abort state firstly,
+	 * if session is abored by Rx, Tx stops Authentication process
+	 */
+	if (is_auth_aborted())
+		return -TX_AUTH_ERROR_ABORT;
 
 	ret = dp_send_protocol_msg(lk, DP_REPEATERAUTH_STREAM_MANAGE, &msg_info);
 	if (ret < 0) {
@@ -784,11 +769,11 @@ static int do_recv_rp_stream_ready(struct hdcp_link_data *lk)
 	struct hdcp_msg_info msg_info;
 	struct dp_rp_stream_ready m_strm_ready;
 
-       /* check abort state firstly,
-        * if session is abored by Rx, Tx stops Authentication process
-        */
-       if (is_auth_aborted())
-               return -TX_AUTH_ERROR_ABORT;
+	/* check abort state firstly,
+	 * if session is abored by Rx, Tx stops Authentication process
+	 */
+	if (is_auth_aborted())
+		return -TX_AUTH_ERROR_ABORT;
 
 	ret = hdcp_dplink_recv(HDCP22_MSG_MPRIME_R,
 			m_strm_ready.m_prime,
@@ -801,7 +786,6 @@ static int do_recv_rp_stream_ready(struct hdcp_link_data *lk)
 	memcpy(msg_info.msg, &m_strm_ready, sizeof(struct dp_rp_stream_ready));
 	msg_info.msg_len = sizeof(struct dp_rp_stream_ready);
 	ret = dp_recv_protocol_msg(lk, DP_REPEATERAUTH_STREAM_READY, &msg_info);
-
 	if (ret < 0) {
 		hdcp_err("HDCP recv RepeaterAuth_Stream_Ready failed. ret(%d)\n", ret);
 		return -1;
@@ -911,23 +895,23 @@ static int check_rcvidlist_ready(void)
 			return -TX_AUTH_ERROR_ABORT;
 
 		/* received from CP_IRQ */
-		if (rp_ready > rp_ready_s) {
+		if (rp_ready) {
 			/* reset flag */
-			rp_ready_s = rp_ready;
+			rp_ready = 0;
 			return 0;
 		}
 
 		/* check as polling mode */
 		hdcp_dplink_get_rxstatus(&status);
 		if (status & DP_RXSTATUS_READY) {
-			rp_ready++;
+			/* reset flag */
+			rp_ready = 0;
 			return 0;
 		}
 
 		msleep(100);
 		i++;
 	}
-
 
 	hdcp_err("receiver ID list timeout(%dms)\n", (100 * i));
 	return -TX_AUTH_ERROR_TIME_EXCEED;
@@ -1173,7 +1157,8 @@ int dplink_set_hprime_available(void)
 
 int dplink_set_rp_ready(void)
 {
-	rp_ready++;
+	rp_ready = 1;
+
 	return 0;
 }
 
@@ -1186,7 +1171,6 @@ int dplink_set_reauth_req(void)
 
 int dplink_set_integrity_fail(void)
 {
-	dplink_clear_irqflag_all();
 	integrity_fail = 1;
 
 	return 0;
@@ -1194,10 +1178,9 @@ int dplink_set_integrity_fail(void)
 
 void dplink_clear_irqflag_all(void)
 {
-	pairing_ready = 0;
-	hprime_ready = 0;
-	rp_ready = 0;
-	rp_ready_s = 0;
-	reauth_req = 0;
-	integrity_fail = 0;
+       pairing_ready = 0;
+       hprime_ready = 0;
+       rp_ready = 0;
+       reauth_req = 0;
+       integrity_fail = 0;
 }

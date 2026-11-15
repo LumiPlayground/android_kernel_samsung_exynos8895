@@ -75,6 +75,10 @@
 #include "muic_usb.h"
 #endif
 
+#if defined(CONFIG_SEC_FACTORY)
+int f_opmode;
+#endif
+
 extern struct muic_platform_data muic_pdata;
 
 extern void muic_send_dock_intent(int type);
@@ -115,7 +119,8 @@ static int muic_get_hmt_status(void)
 #if defined(CONFIG_VBUS_NOTIFIER)
 static void muic_handle_vbus(muic_data_t *pmuic)
 {
-	vbus_status_t status = pmuic->vps.t.vbvolt ? STATUS_VBUS_HIGH : STATUS_VBUS_LOW;
+	vbus_status_t status = pmuic->vps.t.vbvolt ?
+				STATUS_VBUS_HIGH: STATUS_VBUS_LOW;
 
 	pr_info("%s:%s <%d>\n", MUIC_DEV_NAME, __func__, pmuic->vps.t.vbvolt);
 
@@ -130,6 +135,8 @@ static void muic_handle_vbus(muic_data_t *pmuic)
 #endif
 
 	vbus_notifier_handle(status);
+
+	return;
 }
 #else
 static void muic_handle_vbus(muic_data_t *pmuic)
@@ -152,7 +159,7 @@ static void max77865_restore(muic_data_t *pmuic)
 	muic_i2c_write_byte(i2c, MAX77865_REG_CCDET, CCDET_RESTORE);
 	ccdet = muic_i2c_read_byte(i2c, MAX77865_REG_CCDET);
 
-	pr_info("%s:%s\n", MUIC_DEV_NAME, __func__);
+	pr_info("%s:%s \n", MUIC_DEV_NAME, __func__);
 	muic_print_reg_dump(pmuic);
 	pr_info("CCDET[0x%02x]\n", ccdet);
 
@@ -193,9 +200,9 @@ static irqreturn_t max77865_muic_irq_handler(muic_data_t *pmuic, int irq)
 	if (irq < 0)
 		return INT_REQ_DONE;
 
-	/* W/A for irq value none when irq occurred [Except when driver init] */
+	/* W/A for irq value none when irq occured [Except when driver init] */
 	if ((irq_main == 0) && (irq_bc == 0) && (irq_fc == 0) && (irq_gp == 0)) {
-		pr_info("%s: irq occurred. but nothing irq information.\n", __func__);
+		pr_info("%s: irq occured. but nothing irq information.\n", __func__);
 		return INT_REQ_NONE;
 	}
 
@@ -205,7 +212,7 @@ static irqreturn_t max77865_muic_irq_handler(muic_data_t *pmuic, int irq)
 	irq_reset = irq_gp & MAX77865_RESET_MASK;
 
 	if (irq_reset) {
-		pr_info("%s RESET interrupt occurred\n", __func__);
+		pr_info("%s RESET interrupt occured\n",__func__);
 		max77865_restore(pmuic);
 		val.intval = true;
 		psy_do_property("max77865-charger", set, POWER_SUPPLY_EXT_PROP_SURGE, val);
@@ -214,17 +221,17 @@ static irqreturn_t max77865_muic_irq_handler(muic_data_t *pmuic, int irq)
 
 	/* VBUS Noti */
 	if (irq_vbus) {
-		pr_info("%s VBUS interrupt occurred\n", __func__);
+		pr_info("%s VBUS interrupt occured\n",__func__);
 		return INT_REQ_DONE_VB;
 	}
 
 	if (irq_ovp) {
-		pr_info("%s OVP interrupt occurred\n", __func__);
+		pr_info("%s OVP interrupt occured\n",__func__);
 		return INT_REQ_OVP;
 	}
 
 	if (irq_dcdtmr) {
-		pr_info("%s DCDTMR interrupt occurred. RID[%d]\n", __func__, pmuic->rid);
+		pr_info("%s DCDTMR interrupt occured. RID[%d]\n", __func__, pmuic->rid);
 		if (pmuic->rid != RID_619K)
 			pmuic->is_dcdtmr_intr = true;
 	}
@@ -440,6 +447,9 @@ static int muic_probe(struct platform_device *pdev)
 	if (pmuic->pdata->init_switch_dev_cb)
 		pmuic->pdata->init_switch_dev_cb();
 
+	if (pmuic->pdata->init_cable_data_collect_cb)
+		pmuic->pdata->init_cable_data_collect_cb();
+
 	pr_info("  switch_sel : 0x%04x\n", get_switch_sel());
 
 	if (!(get_switch_sel() & SWITCH_SEL_RUSTPROOF_MASK)) {
@@ -465,10 +475,15 @@ static int muic_probe(struct platform_device *pdev)
 	pmuic->regmapdesc = pdesc;
 
 #if defined(CONFIG_MUIC_SUPPORT_CCIC)
-	pmuic->pdata->opmode = get_ccic_info() & 0x0F;
+	pmuic->opmode = get_ccic_info() & 0x0F;
 	pmuic->afc_water_disable = false;
+	pmuic->afc_tsub_disable = false;
 	pmuic->is_ccic_attach = false;
-	pmuic->is_ccic_afc_enable = false;
+	pmuic->is_ccic_afc_enable = 0;
+	pmuic->is_ccic_rp56_enable = false;
+#if defined(CONFIG_SEC_FACTORY)
+	f_opmode = pmuic->opmode;
+#endif
 #endif
 	/* set switch device's driver_data */
 	dev_set_drvdata(switch_device, pmuic);
@@ -476,7 +491,7 @@ static int muic_probe(struct platform_device *pdev)
 	/* create sysfs group */
 	ret = sysfs_create_group(&switch_device->kobj, &muic_sysfs_group);
 	if (ret) {
-		pr_err("%s: failed to create sm5703 muic attribute group\n",
+		pr_err("%s: failed to create max77865 muic attribute group\n",
 			__func__);
 		goto fail;
 	}
@@ -501,8 +516,6 @@ static int muic_probe(struct platform_device *pdev)
 	hv_initialize(pmuic, &pmuic->phv);
 	of_muic_hv_dt(pmuic);
 	hv_configure_AFC(pmuic->phv);
-	/* set MUIC afc voltage switching function */
-	pmuic->pdata->muic_afc_set_voltage_cb = max77865_muic_afc_set_voltage;
 #endif
 
 	coagent_update_ctx(pmuic);
@@ -529,7 +542,7 @@ static int muic_probe(struct platform_device *pdev)
 #if defined(CONFIG_MUIC_SUPPORT_CCIC)
 	muic_is_ccic_supported_jig(pmuic, pmuic->attached_dev);
 
-	if (pmuic->pdata->opmode & OPMODE_CCIC)
+	if (pmuic->opmode & OPMODE_CCIC)
 		muic_register_ccic_notifier(pmuic);
 	else
 		pr_info("%s: OPMODE_MUIC. CCIC is not used.\n", __func__);
@@ -567,6 +580,7 @@ static int muic_remove(struct platform_device *pdev)
 #if defined(CONFIG_MUIC_HV_MAX77865)
 		max77865_hv_muic_remove(pmuic->phv);
 #endif
+		cancel_delayed_work(&pmuic->init_work);
 		cancel_delayed_work(&pmuic->usb_work);
 		disable_irq_wake(pmuic->i2c->irq);
 		free_irq(pmuic->i2c->irq, pmuic);
@@ -620,6 +634,11 @@ static void muic_shutdown(struct platform_device *pdev)
 	else
 		pr_info("%s: usb_work is not pending.\n", __func__);
 
+
+	if (cancel_delayed_work(&pmuic->init_work))
+		pr_info("%s: init_work canceled.\n", __func__);
+	else
+		pr_info("%s: init_work is not pending.\n", __func__);
 	pr_info("%s:%s open D+,D-\n", pmuic->chip_name, __func__);
 	ret = com_to_open_with_vbus(pmuic);
 	if (ret < 0)
@@ -643,7 +662,7 @@ static int muic_suspend(struct device *dev)
 {
 	muic_data_t *pmuic = dev_get_drvdata(dev);
 
-	pr_info("%s:%s\n", MUIC_DEV_NAME, __func__);
+	pr_info("%s:%s \n", MUIC_DEV_NAME, __func__);
 
 	cancel_delayed_work(&pmuic->usb_work);
 
@@ -659,7 +678,7 @@ static int muic_resume(struct device *dev)
 {
 	muic_data_t *pmuic = dev_get_drvdata(dev);
 
-	pr_info("%s:%s\n", MUIC_DEV_NAME, __func__);
+	pr_info("%s:%s \n", MUIC_DEV_NAME, __func__);
 
 	schedule_delayed_work(&pmuic->usb_work, msecs_to_jiffies(1000));
 

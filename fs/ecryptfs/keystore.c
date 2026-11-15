@@ -25,12 +25,12 @@
  * 02111-1307, USA.
  */
 
-#include <crypto/hash.h>
-#include <crypto/skcipher.h>
 #include <linux/string.h>
 #include <linux/pagemap.h>
 #include <linux/key.h>
 #include <linux/random.h>
+#include <linux/crypto.h>
+#include <crypto/hash.h>
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #ifdef CONFIG_ECRYPTFS_FEK_INTEGRITY
@@ -42,13 +42,8 @@
 #include "ecryptfs_dek.h"
 #endif
 
-/**
- * request_key returned an error instead of a valid key address;
- * determine the type of error, make appropriate log entries, and
- * return an error code.
- */
 #ifdef CONFIG_ECRYPTFS_FEK_INTEGRITY
-static int calculate_hmac_sha256(u8 *key, u8 ksize, char *plaintext, u8 psize, u8 *output)
+static int eCryptfs_hmac_sha256(u8 *key, u8 ksize, char *plaintext, u8 psize, u8 *output)
 {
 	struct crypto_shash *tfm;
 	int rc = 0;
@@ -77,29 +72,16 @@ static int calculate_hmac_sha256(u8 *key, u8 ksize, char *plaintext, u8 psize, u
 					  output);
 	}
 
-	crypto_free_shash(tfm);
+	crypto_free_shash(tfm);	
 	return rc;
 }
 #endif
 
-static int calculate_sha256(char *dst, char *src, int len, struct crypto_shash *tfm)
-{
-	SHASH_DESC_ON_STACK(desc, tfm);
-	int rc = 0;
-
-	desc->tfm = tfm;
-	desc->flags = CRYPTO_TFM_REQ_MAY_SLEEP;
-	rc = crypto_shash_digest(desc, src, len, dst);
-	shash_desc_zero(desc);
-
-	if (rc)
-		ecryptfs_printk(KERN_ERR,
-		       "%s: Error computing crypto hash; rc = [%d]\n",
-		       __func__, rc);
-
-	return rc;
-}
-
+/**
+ * request_key returned an error instead of a valid key address;
+ * determine the type of error, make appropriate log entries, and
+ * return an error code.
+ */
 static int process_request_key_err(long err_code)
 {
 	int rc = 0;
@@ -669,8 +651,7 @@ struct ecryptfs_write_tag_70_packet_silly_stack {
 	struct ecryptfs_auth_tok *auth_tok;
 	struct scatterlist src_sg[2];
 	struct scatterlist dst_sg[2];
-	struct crypto_skcipher *skcipher_tfm;
-	struct skcipher_request *skcipher_req;
+	struct blkcipher_desc desc;
 	char iv[ECRYPTFS_MAX_IV_BYTES];
 	char hash[ECRYPTFS_TAG_70_DIGEST_SIZE];
 	char tmp_hash[ECRYPTFS_TAG_70_DIGEST_SIZE];
@@ -702,8 +683,10 @@ ecryptfs_write_tag_70_packet(char *dest, size_t *remaining_bytes,
 	if (!s) {
 		printk(KERN_ERR "%s: Out of memory whilst trying to kmalloc "
 		       "[%zd] bytes of kernel memory\n", __func__, sizeof(*s));
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto out;
 	}
+	s->desc.flags = CRYPTO_TFM_REQ_MAY_SLEEP;
 	(*packet_size) = 0;
 	rc = ecryptfs_find_auth_tok_for_sig(
 		&auth_tok_key,
@@ -715,11 +698,15 @@ ecryptfs_write_tag_70_packet(char *dest, size_t *remaining_bytes,
 		       mount_crypt_stat->global_default_fnek_sig, rc);
 		goto out;
 	}
-
+#ifdef CONFIG_CRYPTO_FIPS
 	rc = ecryptfs_get_tfm_and_mutex_for_cipher_name(
-		&s->skcipher_tfm,
+		&s->desc.tfm,
 		&s->tfm_mutex, mount_crypt_stat->global_default_fn_cipher_name, mount_crypt_stat->flags);
-
+#else
+	rc = ecryptfs_get_tfm_and_mutex_for_cipher_name(
+		&s->desc.tfm,
+		&s->tfm_mutex, mount_crypt_stat->global_default_fn_cipher_name);
+#endif
 	if (unlikely(rc)) {
 		printk(KERN_ERR "Internal error whilst attempting to get "
 		       "tfm and mutex for cipher name [%s]; rc = [%d]\n",
@@ -727,7 +714,7 @@ ecryptfs_write_tag_70_packet(char *dest, size_t *remaining_bytes,
 		goto out;
 	}
 	mutex_lock(s->tfm_mutex);
-	s->block_size = crypto_skcipher_blocksize(s->skcipher_tfm);
+	s->block_size = crypto_blkcipher_blocksize(s->desc.tfm);
 	/* Plus one for the \0 separator between the random prefix
 	 * and the plaintext filename */
 	s->num_rand_bytes = (ECRYPTFS_FILENAME_MIN_RANDOM_PREPEND_BYTES + 1);
@@ -760,19 +747,6 @@ ecryptfs_write_tag_70_packet(char *dest, size_t *remaining_bytes,
 		rc = -EINVAL;
 		goto out_unlock;
 	}
-
-	s->skcipher_req = skcipher_request_alloc(s->skcipher_tfm, GFP_KERNEL);
-	if (!s->skcipher_req) {
-		printk(KERN_ERR "%s: Out of kernel memory whilst attempting to "
-		       "skcipher_request_alloc for %s\n", __func__,
-		       crypto_skcipher_driver_name(s->skcipher_tfm));
-		rc = -ENOMEM;
-		goto out_unlock;
-	}
-
-	skcipher_request_set_callback(s->skcipher_req,
-				      CRYPTO_TFM_REQ_MAY_SLEEP, NULL, NULL);
-
 	s->block_aligned_filename = kzalloc(s->block_aligned_filename_size,
 					    GFP_KERNEL);
 	if (!s->block_aligned_filename) {
@@ -782,6 +756,7 @@ ecryptfs_write_tag_70_packet(char *dest, size_t *remaining_bytes,
 		rc = -ENOMEM;
 		goto out_unlock;
 	}
+	s->i = 0;
 	dest[s->i++] = ECRYPTFS_TAG_70_PACKET_TYPE;
 	rc = ecryptfs_write_packet_length(&dest[s->i],
 					  (ECRYPTFS_SIG_SIZE
@@ -896,8 +871,10 @@ ecryptfs_write_tag_70_packet(char *dest, size_t *remaining_bytes,
 	 * of the IV here, so we just use 0's for the IV. Note the
 	 * constraint that ECRYPTFS_FILENAME_MIN_RANDOM_PREPEND_BYTES
 	 * >= ECRYPTFS_MAX_IV_BYTES. */
-	rc = crypto_skcipher_setkey(
-		s->skcipher_tfm,
+	memset(s->iv, 0, ECRYPTFS_MAX_IV_BYTES);
+	s->desc.info = s->iv;
+	rc = crypto_blkcipher_setkey(
+		s->desc.tfm,
 		s->auth_tok->token.password.session_key_encryption_key,
 		mount_crypt_stat->global_default_fn_cipher_key_bytes);
 	if (rc < 0) {
@@ -910,9 +887,8 @@ ecryptfs_write_tag_70_packet(char *dest, size_t *remaining_bytes,
 		       mount_crypt_stat->global_default_fn_cipher_key_bytes);
 		goto out_release_free_unlock;
 	}
-	skcipher_request_set_crypt(s->skcipher_req, s->src_sg, s->dst_sg,
-				   s->block_aligned_filename_size, s->iv);
-	rc = crypto_skcipher_encrypt(s->skcipher_req);
+	rc = crypto_blkcipher_encrypt_iv(&s->desc, s->dst_sg, s->src_sg,
+					 s->block_aligned_filename_size);
 	if (rc) {
 		printk(KERN_ERR "%s: Error attempting to encrypt filename; "
 		       "rc = [%d]\n", __func__, rc);
@@ -932,8 +908,8 @@ out:
 		up_write(&(auth_tok_key->sem));
 		key_put(auth_tok_key);
 	}
-	skcipher_request_free(s->skcipher_req);
-	kzfree(s->hash_desc);
+	if (s)
+		kzfree(s->hash_desc);
 	kfree(s);
 	return rc;
 }
@@ -951,8 +927,7 @@ struct ecryptfs_parse_tag_70_packet_silly_stack {
 	struct ecryptfs_auth_tok *auth_tok;
 	struct scatterlist src_sg[2];
 	struct scatterlist dst_sg[2];
-	struct crypto_skcipher *skcipher_tfm;
-	struct skcipher_request *skcipher_req;
+	struct blkcipher_desc desc;
 	char fnek_sig_hex[ECRYPTFS_SIG_SIZE_HEX + 1];
 	char iv[ECRYPTFS_MAX_IV_BYTES];
 	char cipher_string[ECRYPTFS_MAX_CIPHER_NAME_SIZE + 1];
@@ -986,12 +961,14 @@ ecryptfs_parse_tag_70_packet(char **filename, size_t *filename_size,
 	(*packet_size) = 0;
 	(*filename_size) = 0;
 	(*filename) = NULL;
-	s = kzalloc(sizeof(*s), GFP_KERNEL);
+	s = kmalloc(sizeof(*s), GFP_KERNEL);
 	if (!s) {
 		printk(KERN_ERR "%s: Out of memory whilst trying to kmalloc "
 		       "[%zd] bytes of kernel memory\n", __func__, sizeof(*s));
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto out;
 	}
+	s->desc.flags = CRYPTO_TFM_REQ_MAY_SLEEP;
 	if (max_packet_size < ECRYPTFS_TAG_70_MIN_METADATA_SIZE) {
 		printk(KERN_WARNING "%s: max_packet_size is [%zd]; it must be "
 		       "at least [%d]\n", __func__, max_packet_size,
@@ -1054,11 +1031,15 @@ ecryptfs_parse_tag_70_packet(char **filename, size_t *filename_size,
 		       rc);
 		goto out;
 	}
-
-	rc = ecryptfs_get_tfm_and_mutex_for_cipher_name(&s->skcipher_tfm,
+#ifdef CONFIG_CRYPTO_FIPS
+	rc = ecryptfs_get_tfm_and_mutex_for_cipher_name(&s->desc.tfm,
 							&s->tfm_mutex,
 							s->cipher_string, mount_crypt_stat->flags);
-
+#else
+	rc = ecryptfs_get_tfm_and_mutex_for_cipher_name(&s->desc.tfm,
+							&s->tfm_mutex,
+							s->cipher_string);
+#endif
 	if (unlikely(rc)) {
 		printk(KERN_ERR "Internal error whilst attempting to get "
 		       "tfm and mutex for cipher name [%s]; rc = [%d]\n",
@@ -1094,23 +1075,12 @@ ecryptfs_parse_tag_70_packet(char **filename, size_t *filename_size,
 		       __func__, rc, s->block_aligned_filename_size);
 		goto out_free_unlock;
 	}
-
-	s->skcipher_req = skcipher_request_alloc(s->skcipher_tfm, GFP_KERNEL);
-	if (!s->skcipher_req) {
-		printk(KERN_ERR "%s: Out of kernel memory whilst attempting to "
-		       "skcipher_request_alloc for %s\n", __func__,
-		       crypto_skcipher_driver_name(s->skcipher_tfm));
-		rc = -ENOMEM;
-		goto out_free_unlock;
-	}
-
-	skcipher_request_set_callback(s->skcipher_req,
-				      CRYPTO_TFM_REQ_MAY_SLEEP, NULL, NULL);
-
 	/* The characters in the first block effectively do the job of
 	 * the IV here, so we just use 0's for the IV. Note the
 	 * constraint that ECRYPTFS_FILENAME_MIN_RANDOM_PREPEND_BYTES
 	 * >= ECRYPTFS_MAX_IV_BYTES. */
+	memset(s->iv, 0, ECRYPTFS_MAX_IV_BYTES);
+	s->desc.info = s->iv;
 	/* TODO: Support other key modules than passphrase for
 	 * filename encryption */
 	if (s->auth_tok->token_type != ECRYPTFS_PASSWORD) {
@@ -1119,8 +1089,8 @@ ecryptfs_parse_tag_70_packet(char **filename, size_t *filename_size,
 		       "password tokens\n", __func__);
 		goto out_free_unlock;
 	}
-	rc = crypto_skcipher_setkey(
-		s->skcipher_tfm,
+	rc = crypto_blkcipher_setkey(
+		s->desc.tfm,
 		s->auth_tok->token.password.session_key_encryption_key,
 		mount_crypt_stat->global_default_fn_cipher_key_bytes);
 	if (rc < 0) {
@@ -1133,14 +1103,14 @@ ecryptfs_parse_tag_70_packet(char **filename, size_t *filename_size,
 		       mount_crypt_stat->global_default_fn_cipher_key_bytes);
 		goto out_free_unlock;
 	}
-	skcipher_request_set_crypt(s->skcipher_req, s->src_sg, s->dst_sg,
-				   s->block_aligned_filename_size, s->iv);
-	rc = crypto_skcipher_decrypt(s->skcipher_req);
+	rc = crypto_blkcipher_decrypt_iv(&s->desc, s->dst_sg, s->src_sg,
+					 s->block_aligned_filename_size);
 	if (rc) {
 		printk(KERN_ERR "%s: Error attempting to decrypt filename; "
 		       "rc = [%d]\n", __func__, rc);
 		goto out_free_unlock;
 	}
+	s->i = 0;
 	while (s->decrypted_filename[s->i] != '\0'
 	       && s->i < s->block_aligned_filename_size)
 		s->i++;
@@ -1183,7 +1153,6 @@ out:
 		up_write(&(auth_tok_key->sem));
 		key_put(auth_tok_key);
 	}
-	skcipher_request_free(s->skcipher_req);
 	kfree(s);
 	return rc;
 }
@@ -1540,8 +1509,14 @@ parse_tag_3_packet(struct ecryptfs_crypt_stat *crypt_stat,
 		crypt_stat->key_size = 24;
 		break;
 	default:
-		crypt_stat->key_size =
-			(*new_auth_tok)->session_key.encrypted_key_size;
+#if defined(CONFIG_FMP_ECRYPT_FS)
+		if (crypt_stat->mount_crypt_stat->cipher_code == RFC2440_CIPHER_AES_XTS_256)
+			crypt_stat->key_size =
+				crypt_stat->mount_crypt_stat->global_default_cipher_key_size;
+		else
+#endif
+			crypt_stat->key_size =
+				(*new_auth_tok)->session_key.encrypted_key_size;
 	}
 	rc = ecryptfs_init_crypt_ctx(crypt_stat);
 	if (rc)
@@ -1743,15 +1718,19 @@ decrypt_passphrase_encrypted_session_key(struct ecryptfs_auth_tok *auth_tok,
 	struct scatterlist dst_sg[2];
 	struct scatterlist src_sg[2];
 	struct mutex *tfm_mutex;
-	struct crypto_skcipher *tfm;
-	struct skcipher_request *req = NULL;
+	struct blkcipher_desc desc = {
+		.flags = CRYPTO_TFM_REQ_MAY_SLEEP
+	};
 	int rc = 0;
-	char *hash_key = NULL;
-	char *iv = NULL;
+#ifdef CONFIG_CRYPTO_FIPS
+	char iv[ECRYPTFS_DEFAULT_IV_BYTES];
+#endif
+
 #ifdef CONFIG_ECRYPTFS_FEK_INTEGRITY
 	unsigned char hmac_hash[FEK_HASH_SIZE];
 	int rz = 0;
-#endif	
+#endif
+
 	if (unlikely(ecryptfs_verbosity > 0)) {
 		ecryptfs_printk(
 			KERN_DEBUG, "Session key encryption key (size [%d]):\n",
@@ -1760,10 +1739,13 @@ decrypt_passphrase_encrypted_session_key(struct ecryptfs_auth_tok *auth_tok,
 			auth_tok->token.password.session_key_encryption_key,
 			auth_tok->token.password.session_key_encryption_key_bytes);
 	}
-
-	rc = ecryptfs_get_tfm_and_mutex_for_cipher_name(&tfm, &tfm_mutex,
-		crypt_stat->cipher, crypt_stat->mount_crypt_stat->flags);
-
+#ifdef CONFIG_CRYPTO_FIPS
+	rc = ecryptfs_get_tfm_and_mutex_for_cipher_name(&desc.tfm, &tfm_mutex,
+							crypt_stat->cipher, crypt_stat->mount_crypt_stat->flags);
+#else
+	rc = ecryptfs_get_tfm_and_mutex_for_cipher_name(&desc.tfm, &tfm_mutex,
+							crypt_stat->cipher);
+#endif
 	if (unlikely(rc)) {
 		printk(KERN_ERR "Internal error whilst attempting to get "
 		       "tfm and mutex for cipher name [%s]; rc = [%d]\n",
@@ -1793,20 +1775,8 @@ decrypt_passphrase_encrypted_session_key(struct ecryptfs_auth_tok *auth_tok,
 		goto out;
 	}
 	mutex_lock(tfm_mutex);
-	req = skcipher_request_alloc(tfm, GFP_KERNEL);
-	if (!req) {
-		mutex_unlock(tfm_mutex);
-		printk(KERN_ERR "%s: Out of kernel memory whilst attempting to "
-		       "skcipher_request_alloc for %s\n", __func__,
-		       crypto_skcipher_driver_name(tfm));
-		rc = -ENOMEM;
-		goto out;
-	}
-
-	skcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_SLEEP,
-				      NULL, NULL);
-	rc = crypto_skcipher_setkey(
-		tfm, auth_tok->token.password.session_key_encryption_key,
+	rc = crypto_blkcipher_setkey(
+		desc.tfm, auth_tok->token.password.session_key_encryption_key,
 		crypt_stat->key_size);
 	if (unlikely(rc < 0)) {
 		mutex_unlock(tfm_mutex);
@@ -1814,62 +1784,24 @@ decrypt_passphrase_encrypted_session_key(struct ecryptfs_auth_tok *auth_tok,
 		rc = -EINVAL;
 		goto out;
 	}
-
-	if (crypt_stat->mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC) {
-		hash_key = kmalloc(SHA256_HASH_SIZE, GFP_KERNEL);
-		if (!hash_key) {
-			mutex_unlock(tfm_mutex);
-			printk(KERN_ERR "hash_key is wrong\n");
-			goto out;
-		}
-
-		rc = calculate_sha256(hash_key, auth_tok->token.password.session_key_encryption_key,
-						crypt_stat->key_size, crypt_stat->hash_tfm);
-		if (unlikely(rc)) {
-			mutex_unlock(tfm_mutex);
-			printk(KERN_ERR "calculate_sha256 is wrong; rc = [%d]\n", rc);
-			goto out;
-		}
-
-		iv = kmalloc(ECRYPTFS_DEFAULT_IV_BYTES, GFP_KERNEL);
-		if (!iv) {
-			mutex_unlock(tfm_mutex);
-			printk(KERN_ERR "iv is wrong\n");
-			goto out;
-		}
-
-		memcpy(iv, hash_key, ECRYPTFS_DEFAULT_IV_BYTES);
-		memset(hash_key, 0, SHA256_HASH_SIZE);
-	}
-	skcipher_request_set_crypt(req, src_sg, dst_sg,
-				   auth_tok->session_key.encrypted_key_size,
-				   iv);
-
-	rc = crypto_skcipher_decrypt(req);
-	mutex_unlock(tfm_mutex);
-	if (unlikely(rc)) {
-		printk(KERN_ERR "Error decrypting; rc = [%d]\n", rc);
-		goto out;
-	}
+#ifdef CONFIG_CRYPTO_FIPS
+	if (crypt_stat->mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC)
+		crypto_blkcipher_get_iv(desc.tfm, iv, ECRYPTFS_DEFAULT_IV_BYTES);
+#endif
+	rc = crypto_blkcipher_decrypt(&desc, dst_sg, src_sg,
+				      auth_tok->session_key.encrypted_key_size);
 #ifdef CONFIG_ECRYPTFS_FEK_INTEGRITY
 #ifdef CONFIG_SDP
-	if (!(crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)) {
+	if(!(crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)) {
 #endif
+	rz = eCryptfs_hmac_sha256(auth_tok->token.password.session_key_encryption_key, crypt_stat->key_size, auth_tok->session_key.decrypted_key, auth_tok->session_key.encrypted_key_size, hmac_hash);
+	if (unlikely(rz)) {
+		mutex_unlock(tfm_mutex);
+		ecryptfs_printk(KERN_ERR, "Error Generating Hash : rz = [%d]\n", rz);
+		return rz;
+	}
+
 	if(crypt_stat->flags & ECRYPTFS_ENABLE_HMAC) {
-		if (crypt_stat->flags & ECRYPTFS_SUPPORT_HMAC_KEY
-				&& auth_tok->token.password.session_key_encryption_key_bytes == ECRYPTFS_MAX_KEY_BYTES) {
-			rz = calculate_hmac_sha256(auth_tok->token.password.session_key_encryption_key + SEC_ECRYPTFS_HMAC_KEY_SIZE,
-				crypt_stat->key_size, auth_tok->session_key.decrypted_key, auth_tok->session_key.encrypted_key_size, hmac_hash);
-		} else {
-			rz = calculate_hmac_sha256(auth_tok->token.password.session_key_encryption_key,
-				crypt_stat->key_size, auth_tok->session_key.decrypted_key, auth_tok->session_key.encrypted_key_size, hmac_hash);
-		}
-	
-		if (unlikely(rz)) {
-			mutex_unlock(tfm_mutex);
-			ecryptfs_printk(KERN_ERR, "Error Generating Hash : rz = [%d]\n", rz);
-			return rz;
-		}
 		if(memcmp(crypt_stat->hash, hmac_hash, FEK_HASH_SIZE)) {
 			ecryptfs_printk(KERN_ERR, "FEK Integrity Verification Failed...\n");
 			mutex_unlock(tfm_mutex);
@@ -1882,16 +1814,41 @@ decrypt_passphrase_encrypted_session_key(struct ecryptfs_auth_tok *auth_tok,
 #ifdef CONFIG_SDP
 	}
 #endif
-#endif	
+#endif
+#ifdef CONFIG_CRYPTO_FIPS
+	if (crypt_stat->mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC)
+		crypto_blkcipher_set_iv(desc.tfm, iv, ECRYPTFS_DEFAULT_IV_BYTES);
+	if (unlikely(rc)) {
+		mutex_unlock(tfm_mutex);
+		printk(KERN_ERR "Error decrypting; rc = [%d]\n", rc);
+		goto out;
+	}
+	/* Session key(the key to decrypt file encryption keys) CLEAR! */
+	memset(auth_tok->token.password.session_key_encryption_key, 0, ECRYPTFS_MAX_KEY_BYTES);
+	rc = crypto_blkcipher_setkey(desc.tfm, auth_tok->token.password.session_key_encryption_key, crypt_stat->key_size);
+	mutex_unlock(tfm_mutex);
+	if (unlikely(rc < 0)) {
+		printk(KERN_ERR "Error(decrypt) Session Key CLEAR in desc.tfm; rc = [%d]\n", rc);
+	}
+	rc = 0;
+#else
+	mutex_unlock(tfm_mutex);
+	if (unlikely(rc)) {
+		printk(KERN_ERR "Error decrypting; rc = [%d]\n", rc);
+		goto out;
+	}
+#endif
 	auth_tok->session_key.flags |= ECRYPTFS_CONTAINS_DECRYPTED_KEY;
 	memcpy(crypt_stat->key, auth_tok->session_key.decrypted_key,
 	       auth_tok->session_key.decrypted_key_size);
 	crypt_stat->flags |= ECRYPTFS_KEY_VALID;
 
-    /* File encryption key CLEAR! */
-    memset(auth_tok->session_key.decrypted_key, 0, auth_tok->session_key.decrypted_key_size);
-    auth_tok->session_key.decrypted_key_size = 0;
-    auth_tok->session_key.flags &= ~ECRYPTFS_CONTAINS_DECRYPTED_KEY;
+#ifdef CONFIG_CRYPTO_FIPS
+	/* File encryption key CLEAR! */
+	memset(auth_tok->session_key.decrypted_key, 0, auth_tok->session_key.decrypted_key_size);
+	auth_tok->session_key.decrypted_key_size = 0;
+	auth_tok->session_key.flags &= ~ECRYPTFS_CONTAINS_DECRYPTED_KEY;
+#endif
 
 	if (unlikely(ecryptfs_verbosity > 0)) {
 		ecryptfs_printk(KERN_DEBUG, "FEK of size [%zd]:\n",
@@ -1900,11 +1857,6 @@ decrypt_passphrase_encrypted_session_key(struct ecryptfs_auth_tok *auth_tok,
 				  crypt_stat->key_size);
 	}
 out:
-	skcipher_request_free(req);
-	kfree(hash_key);
-	if (iv)
-		memset(iv, 0, ECRYPTFS_DEFAULT_IV_BYTES);
-	kfree(iv);
 	return rc;
 }
 
@@ -1955,12 +1907,12 @@ int ecryptfs_parse_packet_set(struct ecryptfs_crypt_stat *crypt_stat,
 	next_packet_is_auth_tok_packet = 1;
 	while (next_packet_is_auth_tok_packet) {
 		size_t max_packet_size;
-		if ((PAGE_SIZE - 8) < i) {
+		if ((PAGE_CACHE_SIZE - 8) < i) {
 			printk(KERN_WARNING "%s: Invalid max packet size\n", __func__);
 			rc = -EINVAL;
 			goto out;
 		}
-		max_packet_size = ((PAGE_SIZE - 8) - i);
+		max_packet_size = ((PAGE_CACHE_SIZE - 8) - i);
 
 		switch (src[i]) {
 		case ECRYPTFS_TAG_3_PACKET_TYPE:
@@ -2113,7 +2065,7 @@ found_matching_auth_tok:
 		key_put(auth_tok_key);
 #ifdef CONFIG_ECRYPTFS_FEK_INTEGRITY
 #ifdef CONFIG_SDP
-		if ((crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)) {
+		if((crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)) {
 			memcpy(session_key_encryption_key,
 					candidate_auth_tok->token.password.session_key_encryption_key,
 					candidate_auth_tok->token.password.session_key_encryption_key_bytes);
@@ -2160,41 +2112,37 @@ found_matching_auth_tok:
 	}
 
 #ifdef CONFIG_SDP
-	if ((crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)) {
+	if((crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)) {
 		rc = ecryptfs_get_sdp_dek(crypt_stat);
 		if (rc) {
 			ecryptfs_printk(KERN_ERR, "Error setting sdp key after parse\n");
 			goto out_wipe_list;
 		}
 #ifdef CONFIG_ECRYPTFS_FEK_INTEGRITY
-		if (is_integrity_check_for_sdp
+		if(is_integrity_check_for_sdp 
 				&& crypt_stat->flags & ECRYPTFS_ENABLE_HMAC) {//Do integrity check for SDP-FEK
 			unsigned char hmac_hash[FEK_HASH_SIZE];
-
-			rz = calculate_hmac_sha256(session_key_encryption_key,
+			rz = eCryptfs_hmac_sha256(session_key_encryption_key,
 					crypt_stat->key_size,
 					crypt_stat->key,
 					crypt_stat->key_size,
 					hmac_hash);
-
+			
 			memset(session_key_encryption_key, 0, ksize);
-
+			
 			if (unlikely(rz)) {
 				ecryptfs_printk(KERN_ERR, "Error Generating Hash for SDP FEK: rz = [%d]\n", rz);
 				goto out_wipe_list;
 			}
-
+			
 			if (memcmp(crypt_stat->hash, hmac_hash, FEK_HASH_SIZE)) {
 				ecryptfs_printk(KERN_ERR, "SDP FEK Integrity Verification Failed...\n");
 				goto out_wipe_list;
-			} else {
-				ecryptfs_printk(KERN_INFO, "SDP FEK Integrity Verification Success...\n");
 			}
 		}
 #endif
 	}
 #endif
-
 	rc = ecryptfs_compute_root_iv(crypt_stat);
 	if (rc) {
 		ecryptfs_printk(KERN_ERR, "Error computing "
@@ -2435,7 +2383,6 @@ write_tag_3_packet(char *dest, size_t *remaining_bytes,
 	size_t i;
 	size_t encrypted_session_key_valid = 0;
 	char session_key_encryption_key[ECRYPTFS_MAX_KEY_BYTES];
-	char session_hmac_key[SEC_ECRYPTFS_HMAC_KEY_SIZE];
 	struct scatterlist dst_sg[2];
 	struct scatterlist src_sg[2];
 	struct mutex *tfm_mutex = NULL;
@@ -2444,19 +2391,25 @@ write_tag_3_packet(char *dest, size_t *remaining_bytes,
 	size_t max_packet_size;
 	struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
 		crypt_stat->mount_crypt_stat;
-	struct crypto_skcipher *tfm;
-	struct skcipher_request *req;
+	struct blkcipher_desc desc = {
+		.tfm = NULL,
+		.flags = CRYPTO_TFM_REQ_MAY_SLEEP
+	};
 	int rc = 0;
-	char *hash_key = NULL;
-	char *iv = NULL;
+#ifdef CONFIG_CRYPTO_FIPS
+	char iv[ECRYPTFS_DEFAULT_IV_BYTES];
+#endif
 
 	(*packet_size) = 0;
 	ecryptfs_from_hex(key_rec->sig, auth_tok->token.password.signature,
 			  ECRYPTFS_SIG_SIZE);
-
-	rc = ecryptfs_get_tfm_and_mutex_for_cipher_name(&tfm, &tfm_mutex,
-		crypt_stat->cipher, crypt_stat->mount_crypt_stat->flags);
-
+#ifdef CONFIG_CRYPTO_FIPS
+	rc = ecryptfs_get_tfm_and_mutex_for_cipher_name(&desc.tfm, &tfm_mutex,
+							crypt_stat->cipher, crypt_stat->mount_crypt_stat->flags);
+#else
+	rc = ecryptfs_get_tfm_and_mutex_for_cipher_name(&desc.tfm, &tfm_mutex,
+							crypt_stat->cipher);
+#endif
 	if (unlikely(rc)) {
 		printk(KERN_ERR "Internal error whilst attempting to get "
 		       "tfm and mutex for cipher name [%s]; rc = [%d]\n",
@@ -2464,21 +2417,32 @@ write_tag_3_packet(char *dest, size_t *remaining_bytes,
 		goto out;
 	}
 	if (mount_crypt_stat->global_default_cipher_key_size == 0) {
+		struct blkcipher_alg *alg = crypto_blkcipher_alg(desc.tfm);
+
 		printk(KERN_WARNING "No key size specified at mount; "
-		       "defaulting to [%d]\n",
-		       crypto_skcipher_default_keysize(tfm));
+		       "defaulting to [%d]\n", alg->max_keysize);
 		mount_crypt_stat->global_default_cipher_key_size =
-			crypto_skcipher_default_keysize(tfm);
+			alg->max_keysize;
 	}
 	if (crypt_stat->key_size == 0)
 		crypt_stat->key_size =
 			mount_crypt_stat->global_default_cipher_key_size;
-	if (auth_tok->session_key.encrypted_key_size == 0)
-		auth_tok->session_key.encrypted_key_size = crypt_stat->key_size;
+	if (auth_tok->session_key.encrypted_key_size == 0) {
+#if defined(CONFIG_FMP_ECRYPT_FS)
+		if (crypt_stat->mount_crypt_stat->cipher_code == RFC2440_CIPHER_AES_XTS_256)
+			auth_tok->session_key.encrypted_key_size = crypt_stat->key_size * 2;
+		else
+#endif
+			auth_tok->session_key.encrypted_key_size = crypt_stat->key_size;
+	}
 	if (crypt_stat->key_size == 24
 	    && strcmp("aes", crypt_stat->cipher) == 0) {
 		memset((crypt_stat->key + 24), 0, 8);
 		auth_tok->session_key.encrypted_key_size = 32;
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	} else if (mount_crypt_stat->cipher_code == RFC2440_CIPHER_AES_XTS_256) {
+		auth_tok->session_key.encrypted_key_size = crypt_stat->key_size * 2;
+#endif
 	} else
 		auth_tok->session_key.encrypted_key_size = crypt_stat->key_size;
 	key_rec->enc_key_size =
@@ -2504,15 +2468,8 @@ write_tag_3_packet(char *dest, size_t *remaining_bytes,
 				auth_tok->token.password.
 				session_key_encryption_key_bytes);
 		memcpy(session_key_encryption_key,
-			 	auth_tok->token.password.session_key_encryption_key,
-				crypt_stat->key_size);
-						
-		if (crypt_stat->flags & ECRYPTFS_SUPPORT_HMAC_KEY 
-				&& auth_tok->token.password.session_key_encryption_key_bytes == ECRYPTFS_MAX_KEY_BYTES){
-		memcpy(session_hmac_key,
-				auth_tok->token.password.session_key_encryption_key + SEC_ECRYPTFS_HMAC_KEY_SIZE,
-				crypt_stat->key_size);
-		}
+		       auth_tok->token.password.session_key_encryption_key,
+		       crypt_stat->key_size);
 		ecryptfs_printk(KERN_DEBUG,
 				"Cached session key encryption key:\n");
 		if (ecryptfs_verbosity > 0)
@@ -2524,21 +2481,15 @@ write_tag_3_packet(char *dest, size_t *remaining_bytes,
 	}
 #ifdef CONFIG_ECRYPTFS_FEK_INTEGRITY
 	if(crypt_stat->flags & ECRYPTFS_ENABLE_HMAC) {
-		if(crypt_stat->flags & ECRYPTFS_SUPPORT_HMAC_KEY 
-				&& auth_tok->token.password.session_key_encryption_key_bytes == ECRYPTFS_MAX_KEY_BYTES ) {
-			rc = calculate_hmac_sha256(session_hmac_key, crypt_stat->key_size,
+		rc = eCryptfs_hmac_sha256(session_key_encryption_key, crypt_stat->key_size, 
 				crypt_stat->key, crypt_stat->key_size, crypt_stat->hash);
-		}else {
-			rc = calculate_hmac_sha256(session_key_encryption_key, crypt_stat->key_size,
-				crypt_stat->key, crypt_stat->key_size, crypt_stat->hash);
-		}
 		if (rc < 0) {
 			mutex_unlock(tfm_mutex);
 			ecryptfs_printk(KERN_ERR, "Error Generating Hash for FEK : rc = [%d]\n", rc);
 			goto out;
 		}
 	}
-#endif	
+#endif
 	rc = virt_to_scatterlist(crypt_stat->key, key_rec->enc_key_size,
 				 src_sg, 2);
 	if (rc < 1 || rc > 2) {
@@ -2561,59 +2512,46 @@ write_tag_3_packet(char *dest, size_t *remaining_bytes,
 		goto out;
 	}
 	mutex_lock(tfm_mutex);
-	rc = crypto_skcipher_setkey(tfm, session_key_encryption_key,
-				    crypt_stat->key_size);
+	rc = crypto_blkcipher_setkey(desc.tfm, session_key_encryption_key,
+				     crypt_stat->key_size);
 	if (rc < 0) {
 		mutex_unlock(tfm_mutex);
 		ecryptfs_printk(KERN_ERR, "Error setting key for crypto "
 				"context; rc = [%d]\n", rc);
 		goto out;
 	}
-
-	req = skcipher_request_alloc(tfm, GFP_KERNEL);
-	if (!req) {
-		mutex_unlock(tfm_mutex);
-		ecryptfs_printk(KERN_ERR, "Out of kernel memory whilst "
-				"attempting to skcipher_request_alloc for "
-				"%s\n", crypto_skcipher_driver_name(tfm));
-		rc = -ENOMEM;
-		goto out;
-	}
-
-	skcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_SLEEP,
-				      NULL, NULL);
-
 	rc = 0;
 	ecryptfs_printk(KERN_DEBUG, "Encrypting [%zd] bytes of the key\n",
 			crypt_stat->key_size);
-
-	if (crypt_stat->mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC) {
-		hash_key = kmalloc(SHA256_HASH_SIZE, GFP_KERNEL);
-		if (!hash_key)
-			goto out;
-
-		rc = calculate_sha256(hash_key, session_key_encryption_key,
-						crypt_stat->key_size, crypt_stat->hash_tfm);
-		if (unlikely(rc))
-			goto out;
-
-		iv = kmalloc(ECRYPTFS_DEFAULT_IV_BYTES, GFP_KERNEL);
-		if (!iv)
-			goto out;
-
-		memcpy(iv, hash_key, ECRYPTFS_DEFAULT_IV_BYTES);
-		memset(hash_key, 0, SHA256_HASH_SIZE);
+#ifdef CONFIG_CRYPTO_FIPS
+	if (crypt_stat->mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC)
+		crypto_blkcipher_get_iv(desc.tfm, iv, ECRYPTFS_DEFAULT_IV_BYTES);
+#endif
+	rc = crypto_blkcipher_encrypt(&desc, dst_sg, src_sg,
+				      (*key_rec).enc_key_size);
+#ifdef CONFIG_CRYPTO_FIPS
+	if (crypt_stat->mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC)
+		crypto_blkcipher_set_iv(desc.tfm, iv, ECRYPTFS_DEFAULT_IV_BYTES);
+	if (rc) {
+		mutex_unlock(tfm_mutex);
+		printk(KERN_ERR "Error encrypting; rc = [%d]\n", rc);
+		goto out;
 	}
-	skcipher_request_set_crypt(req, src_sg, dst_sg,
-				   (*key_rec).enc_key_size, iv);
-
-	rc = crypto_skcipher_encrypt(req);
+	/* Session key(the key to encrypt file encryption keys) CLEAR! */
+	memset( session_key_encryption_key, 0, ECRYPTFS_MAX_KEY_BYTES );
+	rc = crypto_blkcipher_setkey(desc.tfm, session_key_encryption_key, crypt_stat->key_size);
 	mutex_unlock(tfm_mutex);
-	skcipher_request_free(req);
+	if (rc) {
+		printk(KERN_ERR "Error(encrypt) Session Key CLEAR in desc.tfm; rc = [%d]\n", rc);
+	}
+	rc = 0;
+#else
+	mutex_unlock(tfm_mutex);
 	if (rc) {
 		printk(KERN_ERR "Error encrypting; rc = [%d]\n", rc);
 		goto out;
 	}
+#endif
 	ecryptfs_printk(KERN_DEBUG, "This should be the encrypted key:\n");
 	if (ecryptfs_verbosity > 0) {
 		ecryptfs_printk(KERN_DEBUG, "EFEK of size [%zd]:\n",
@@ -2674,24 +2612,21 @@ encrypted_session_key_set:
 	if ((crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)) {
 		ecryptfs_printk(KERN_DEBUG, "Sensitive file, tag_3 to zeroes\n");
 		memset(&dest[(*packet_size)], 0, key_rec->enc_key_size);
-	} else
-#endif
-	{
+	} else {
 		memcpy(&dest[(*packet_size)], key_rec->enc_key,
 		       key_rec->enc_key_size);
 	}
 	(*packet_size) += key_rec->enc_key_size;
+#else
+	memcpy(&dest[(*packet_size)], key_rec->enc_key,
+	       key_rec->enc_key_size);
+	(*packet_size) += key_rec->enc_key_size;
+#endif
 out:
 	if (rc)
 		(*packet_size) = 0;
 	else
 		(*remaining_bytes) -= (*packet_size);
-
-	kfree(hash_key);
-	if (iv)
-		memset(iv, 0, ECRYPTFS_DEFAULT_IV_BYTES);
-	kfree(iv);
-
 	return rc;
 }
 

@@ -12,6 +12,7 @@
 
 #ifndef EXYNOS_SNAPSHOT_SOC_H
 #define EXYNOS_SNAPSHOT_SOC_H
+#include <soc/samsung/cal-if.h>
 
 /* SoC Dependent Header */
 #define ESS_REG_MCT_ADDR	(0)
@@ -23,5 +24,7 @@ struct exynos_ss_ops {
         int (*pd_status)(unsigned int id);
 };
 
-extern struct exynos_ss_ops ess_ops;
+struct exynos_ss_ops ess_ops = {
+	.pd_status = cal_pd_status,
+};
 #endif

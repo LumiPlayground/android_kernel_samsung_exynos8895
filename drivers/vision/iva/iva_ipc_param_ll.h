@@ -12,6 +12,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
  */
 #ifndef __IVA_IPC_PARAM_LL_H__
 #define __IVA_IPC_PARAM_LL_H__
@@ -47,11 +51,7 @@ struct _ipcq_res_param_ll {
 };
 
 struct ipc_cmd_queue {
-#ifdef CONFIG_TEST_PARAM
-#define IPC_CMD_Q_PARAM_SIZE	(8)
-#else
-#define IPC_CMD_Q_PARAM_SIZE	(32)
-#endif
+#define IPC_CMD_Q_PARAM_SIZE	(16)
 #define IPC_QUEUE_ACTIVE_FLAG	(0x1 << 28)
 	uint32_t		flags;
 #ifdef IVA_IPC_PARAM_ARCH64_SUPPORT
@@ -61,11 +61,7 @@ struct ipc_cmd_queue {
 };
 
 struct ipc_res_queue {
-#ifdef CONFIG_TEST_PARAM
-#define IPC_RES_Q_PARAM_SIZE	(8)
-#else
 #define IPC_RES_Q_PARAM_SIZE	(16)
-#endif
 	uint32_t			flags;
 #ifdef IVA_IPC_PARAM_ARCH64_SUPPORT
 	uint32_t			rsv;

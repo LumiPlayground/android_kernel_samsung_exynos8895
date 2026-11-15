@@ -151,13 +151,4 @@ config ARM_EXYNOS8895_BUS_DEVFREQ
 	help
 	  This adds the DEVFREQ driver for Exynos8895 memory and int.
 
-config ARM_EXYNOS9810_BUS_DEVFREQ
-	bool "ARM Exynos9810 Memory Bus DEVFREQ Driver"
-	default y
-	depends on ARM_EXYNOS_DEVFREQ
-	depends on SOC_EXYNOS9810
-	select DEVFREQ_GOV_SIMPLE_INTERACTIVE
-	help
-	  This adds the DEVFREQ driver for Exynos8895 memory and int.
-
 endif # PM_DEVFREQ

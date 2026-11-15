@@ -64,7 +64,7 @@
 #include <linux/amba/bus.h>
 #include <linux/amba/pl330.h>
 #if defined(CONFIG_SECURE_OS_BOOSTER_API)
-#ifdef FP_ENABLE_AP_CONFIG
+#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
 #include <soc/samsung/secos_booster.h>
 #else
 #include <mach/secos_booster.h>
@@ -87,7 +87,7 @@ static struct class *vfsspi_device_class;
 static int gpio_irq;
 
 #ifdef CONFIG_OF
-static const struct of_device_id vfsspi_match_table[] = {
+static struct of_device_id vfsspi_match_table[] = {
 	{.compatible = "vfsspi,vfs8xxx",},
 	{},
 };
@@ -144,11 +144,14 @@ struct vfsspi_device_data {
 	struct regulator *regulator_3p3;
 	const char *chipid;
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#ifdef FP_ENABLE_AP_CONFIG
+#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
 	/* set cs pin in fp driver, use Exynos8890, 8895 */
 	/* for use auto cs mode with dualization fp sensor */
 	unsigned int cs_gpio;
 #endif
+#endif
+#ifdef CONFIG_SENSORS_FINGERPRINT_DUALIZATION
+	unsigned int vendor_pin; /* For checking vendor */
 #endif
 	struct work_struct work_debug;
 	struct workqueue_struct *wq_dbg;
@@ -168,9 +171,15 @@ struct vfsspi_device_data {
 	unsigned int detect_mode;
 };
 
+#ifdef CONFIG_SENSORS_FINGERPRINT_DUALIZATION
+int FP_CHECK = 0; /* extern variable init */
+#endif
+
 #ifdef ENABLE_SENSORS_FPRINT_SECURE
 int fpsensor_goto_suspend;
 #endif
+
+bool fp_lockscreen_mode;
 
 #define VENDOR		"SYNAPTICS"
 
@@ -502,7 +511,7 @@ static int vfsspi_sec_spi_unprepare(struct sec_spi_info *spi_info,
 	return 0;
 }
 
-#ifndef FP_ENABLE_AP_CONFIG
+#if !defined(CONFIG_SOC_EXYNOS8890) && !defined(CONFIG_SOC_EXYNOS8895)
 struct amba_device *adev_dma;
 static int vfsspi_sec_dma_prepare(struct sec_spi_info *spi_info)
 {
@@ -561,8 +570,7 @@ static void vfsspi_pin_control(struct vfsspi_device_data *vfsspi_device,
 			status = pinctrl_select_state(vfsspi_device->p,
 						      vfsspi_device->pins_sleep);
 			if (status)
-				pr_err("%s: can't set pin sleep state\n",
-				       __func__);
+				pr_err("%s: can't set pin sleep state\n", __func__);
 			pr_debug("%s sleep\n", __func__);
 		}
 	}
@@ -600,7 +608,7 @@ static int vfsspi_set_clk(struct vfsspi_device_data *vfsspi_device,
 			break;
 		default:
 			pr_debug("%s baud rate is %d.\n", __func__, clock);
-#ifdef FP_ENABLE_AP_CONFIG
+#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
 			/* exynos8890 evt0 board don't support to SPI clock rate 13MHz under */
 			vfsspi_device->current_spi_speed = MAX_BAUD_RATE;
 #else
@@ -626,7 +634,7 @@ static int vfsspi_set_clk(struct vfsspi_device_data *vfsspi_device,
 				else
 					pr_info("%s ENABLE_SPI_CLOCK %ld\n",
 							__func__, spi_info->speed);
-#ifndef FP_ENABLE_AP_CONFIG
+#if !defined(CONFIG_SOC_EXYNOS8890) && !defined(CONFIG_SOC_EXYNOS8895)
 				ret_val = vfsspi_sec_dma_prepare(spi_info);
 				if (ret_val < 0)
 					pr_err("%s: Unable to enable spi dma\n",
@@ -662,7 +670,7 @@ static int vfsspi_ioctl_disable_spi_clock(struct vfsspi_device_data
 		ret_val = vfsspi_sec_spi_unprepare(spi_info, spidev);
 		if (ret_val < 0)
 			pr_err("%s: couldn't disable spi clks\n", __func__);
-#ifndef FP_ENABLE_AP_CONFIG
+#if !defined(CONFIG_SOC_EXYNOS8890) && !defined(CONFIG_SOC_EXYNOS8895)
 		ret_val = vfsspi_sec_dma_unprepare();
 		if (ret_val < 0)
 			pr_err("%s: couldn't disable spi dma\n", __func__);
@@ -897,6 +905,7 @@ static long vfsspi_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	unsigned int onoff = 0;
 #ifdef ENABLE_SENSORS_FPRINT_SECURE
 	unsigned int type_check = -1;
+	unsigned int lockscreen_mode = 0;
 #endif
 	pr_debug("%s\n", __func__);
 
@@ -1017,7 +1026,7 @@ static long vfsspi_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 		if ((int)type_check >= SENSOR_OOO && (int)type_check < SENSOR_MAXIMUM) {
 			if ((int)type_check == SENSOR_OOO && vfsspi_device->sensortype == SENSOR_FAILED) {
-				pr_info("%s Maintain type check from out of oder :%s\n", __func__,
+				pr_info("%s Maintain type check from out of order :%s\n", __func__,
 					sensor_status[g_data->sensortype + 2]);
 			} else {
 				vfsspi_device->sensortype = (int)type_check;
@@ -1033,7 +1042,18 @@ static long vfsspi_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 		break;
 	case VFSSPI_IOCTL_SET_LOCKSCREEN:
-		pr_info("%s SET_LOCKSCREEN\n", __func__);
+		if (copy_from_user(&lockscreen_mode,
+				   (void *)arg, sizeof(unsigned int)) != 0) {
+			pr_err
+			    ("%s Failed copy from user.(SET_LOCKSCREEN_MODE)\n",
+			     __func__);
+			mutex_unlock(&vfsspi_device->buffer_mutex);
+			return -EFAULT;
+		}
+		lockscreen_mode ? (fp_lockscreen_mode =
+				   true) : (fp_lockscreen_mode = false);
+		pr_info("%s SET_LOCKSCREEN :%s\n", __func__,
+			fp_lockscreen_mode ? "ON" : "OFF");
 		break;
 #endif
 	case VFSSPI_IOCTL_GET_SENSOR_ORIENT:
@@ -1077,20 +1097,20 @@ static int vfsspi_open(struct inode *inode, struct file *filp)
 		mutex_lock(&vfsspi_device->kernel_lock);
 		if (vfsspi_device->is_opened != 0) {
 			status = -EBUSY;
-			pr_err("%s: is_opened != 0, -EBUSY\n",
+			pr_err("%s : is_opened != 0, -EBUSY\n",
 			       __func__);
 			goto vfsspi_open_out;
 		}
 		vfsspi_device->user_pid = 0;
 		if (vfsspi_device->buffer != NULL) {
-			pr_err("%s: buffer != NULL\n", __func__);
+			pr_err("%s : buffer != NULL\n", __func__);
 			goto vfsspi_open_out;
 		}
 		vfsspi_device->null_buffer =
 		    kmalloc(DEFAULT_BUFFER_SIZE, GFP_KERNEL);
 		if (vfsspi_device->null_buffer == NULL) {
 			status = -ENOMEM;
-			pr_err("%s: null_buffer == NULL, -ENOMEM\n",
+			pr_err("%s : null_buffer == NULL, -ENOMEM\n",
 			       __func__);
 			goto vfsspi_open_out;
 		}
@@ -1099,8 +1119,7 @@ static int vfsspi_open(struct inode *inode, struct file *filp)
 		if (vfsspi_device->buffer == NULL) {
 			status = -ENOMEM;
 			kfree(vfsspi_device->null_buffer);
-			pr_err("%s: buffer == NULL, -ENOMEM\n",
-			       __func__);
+			pr_err("%s : buffer == NULL, -ENOMEM\n", __func__);
 			goto vfsspi_open_out;
 		}
 		vfsspi_device->is_opened = 1;
@@ -1252,8 +1271,12 @@ static void vfsspi_platformUninit(struct vfsspi_device_data *vfsspi_device)
 			gpio_free(vfsspi_device->ldo_pin);
 		if (vfsspi_device->regulator_3p3)
 			regulator_put(vfsspi_device->regulator_3p3);
+#ifdef CONFIG_SENSORS_FINGERPRINT_DUALIZATION
+		if (vfsspi_device->vendor_pin)
+			gpio_free(vfsspi_device->vendor_pin);
+#endif
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#ifdef FP_ENABLE_AP_CONFIG
+#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
 		if (vfsspi_device->cs_gpio)
 			gpio_free(vfsspi_device->cs_gpio);
 #endif
@@ -1273,7 +1296,7 @@ static int vfsspi_parse_dt(struct device *dev, struct vfsspi_device_data *data)
 	int gpio;
 
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#ifdef FP_ENABLE_AP_CONFIG
+#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
 	gpio = of_get_named_gpio(np, "vfsspi-csgpio", 0);
 	if (gpio < 0) {
 		errorno = gpio;
@@ -1325,6 +1348,22 @@ static int vfsspi_parse_dt(struct device *dev, struct vfsspi_device_data *data)
 			pr_info("%s: vfsspi_regulator ok\n", __func__);
 		}
 	}
+
+#ifdef CONFIG_SENSORS_FINGERPRINT_DUALIZATION
+	if (!of_find_property(np, "vfsspi-vendorPin", NULL)) {
+		pr_info("%s: not set vendorPin in dts\n", __func__);
+		data->vendor_pin = 0;
+	} else {
+		gpio = of_get_named_gpio(np, "vfsspi-vendorPin", 0);
+		if (gpio < 0) {
+			data->vendor_pin = 0;
+			pr_err("%s: fail to get vendorPin\n", __func__);
+		} else {
+			data->vendor_pin = gpio;
+			pr_info("%s: vendorPin=%d\n", __func__, data->vendor_pin);
+		}
+	}
+#endif
 
 	if (of_property_read_string_index(np, "vfsspi-chipid", 0,
 			(const char **)&data->chipid))
@@ -1424,17 +1463,12 @@ static struct device_attribute *fp_attrs[] = {
 
 static void vfsspi_work_func_debug(struct work_struct *work)
 {
-	struct vfsspi_device_data *vfsspi_device;
-
-	vfsspi_device = container_of(work, struct vfsspi_device_data, work_debug);
-
 	pr_info("%s power:%d, irq:%d, tz:%d, type:%s, cnt_irq:%d\n",
 		__func__,
-		vfsspi_device->ldo_onoff,
-		gpio_get_value(vfsspi_device->drdy_pin),
-		vfsspi_device->tz_mode,
-		sensor_status[vfsspi_device->sensortype + 2],
-				vfsspi_device->cnt_irq);
+		g_data->ldo_onoff,
+		gpio_get_value(g_data->drdy_pin),
+		g_data->tz_mode,
+		sensor_status[g_data->sensortype + 2], g_data->cnt_irq);
 }
 
 static void vfsspi_enable_debug_timer(void)
@@ -1455,6 +1489,40 @@ static void vfsspi_timer_func(unsigned long ptr)
 	mod_timer(&g_data->dbg_timer,
 		  round_jiffies_up(jiffies + FPSENSOR_DEBUG_TIMER_SEC));
 }
+
+#ifdef CONFIG_SENSORS_FINGERPRINT_DUALIZATION
+static int vfsspi_vendor_check(struct vfsspi_device_data *vfsspi_device)
+{
+	int status = 0;
+
+	pr_info("%s\n", __func__);
+	vfsspi_regulator_onoff(vfsspi_device, true); /* power on */
+
+	status = gpio_request(vfsspi_device->vendor_pin, "vfsspi_vendor");
+	if (status < 0) {
+		pr_err("%s: gpio_request - vfsspi_vendor failed\n", __func__);
+		goto vfsspi_vendor_check_vendor_failed;
+	}
+
+	status = gpio_direction_input(vfsspi_device->vendor_pin);
+	if (status < 0) {
+		pr_err("%s gpio_direction_input VENDOR failed\n", __func__);
+		status = -EBUSY;
+		gpio_free(vfsspi_device->vendor_pin);
+		goto vfsspi_vendor_check_vendor_failed;
+	}
+
+	usleep_range(10000, 10050);
+	status = gpio_get_value(vfsspi_device->vendor_pin);
+
+	pr_info("%s is success, vendorPin (%d), value (%d)\n",
+		__func__, vfsspi_device->vendor_pin, status);
+
+vfsspi_vendor_check_vendor_failed:
+	vfsspi_regulator_onoff(vfsspi_device, false); /* power off */
+	return status;
+}
+#endif
 
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
 static int vfsspi_type_check(struct vfsspi_device_data *vfsspi_device)
@@ -1510,7 +1578,7 @@ static int vfsspi_type_check(struct vfsspi_device_data *vfsspi_device)
 #endif
 
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#ifdef FP_ENABLE_AP_CONFIG
+#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
 static int vfsspi_set_cs_gpio(struct vfsspi_device_data *vfsspi_device,
 			      struct s3c64xx_spi_csinfo *cs)
 {
@@ -1541,7 +1609,7 @@ static int vfsspi_probe(struct spi_device *spi)
 {
 	int status = 0;
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#ifdef FP_ENABLE_AP_CONFIG
+#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
 	struct s3c64xx_spi_csinfo *cs;
 #endif
 #endif
@@ -1580,16 +1648,38 @@ static int vfsspi_probe(struct spi_device *spi)
 		goto vfsspi_probe_platformInit_failed;
 	}
 
+#ifdef CONFIG_SENSORS_FINGERPRINT_DUALIZATION
+	/* vendor check */
+	if (vfsspi_device->vendor_pin) {
+		status = vfsspi_vendor_check(vfsspi_device);
+
+		if (status) { /* normal = 0, not vfs8xxx = 1 */
+			if (status < 0) {
+				pr_err("%s: vendor gpio request failed %d\n",
+						__func__, status);
+				goto vfsspi_vendor_request_failed;
+			}
+			pr_info("%s: It is not vfs8xxx sensor.\n", __func__);
+			FP_CHECK = 0;
+			status = -ENODEV;
+			goto vfsspi_vendor_check_failed;
+		} else {
+			FP_CHECK = 1; /* It is vfs8xxx sensor */
+		}
+	} else
+		pr_info("%s: This model has no vender pin dts.\n", __func__);
+#endif
+
 	spi->bits_per_word = BITS_PER_WORD;
 	spi->max_speed_hz = SLOW_BAUD_RATE;
 	spi->mode = SPI_MODE_0;
 	vfsspi_device->cnt_irq = 0;
+	fp_lockscreen_mode = false;
 #ifdef ENABLE_SENSORS_FPRINT_SECURE
 	fpsensor_goto_suspend = 0;
 #endif
-
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-#ifdef FP_ENABLE_AP_CONFIG
+#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895)
 	/* set cs pin in fp driver, use only Exynos8890 */
 	/* for use auto cs mode with dualization fp sensor */
 	cs = spi->controller_data;
@@ -1694,6 +1784,10 @@ vfsspi_probe_alloc_chardev_failed:
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
 vfsspi_probe_spi_setup_failed:
 #endif
+#ifdef CONFIG_SENSORS_FINGERPRINT_DUALIZATION
+vfsspi_vendor_check_failed:
+vfsspi_vendor_request_failed:
+#endif
 	vfsspi_platformUninit(vfsspi_device);
 vfsspi_probe_platformInit_failed:
 	pinctrl_put(vfsspi_device->p);
@@ -1701,7 +1795,7 @@ vfsspi_probe_platformInit_failed:
 	mutex_destroy(&vfsspi_device->kernel_lock);
 vfsspi_probe_parse_dt_failed:
 	kfree(vfsspi_device);
-	pr_err("%s failed!!\n", __func__);
+	pr_err("%s vfsspi_probe failed!!\n", __func__);
 	return status;
 }
 
@@ -1809,7 +1903,7 @@ static int __init vfsspi_init(void)
 		pr_err("%s spi_register_driver() failed\n", __func__);
 		return status;
 	}
-	pr_info("%s init is successful\n", __func__);
+	pr_info("%s is successful\n", __func__);
 
 	return status;
 }

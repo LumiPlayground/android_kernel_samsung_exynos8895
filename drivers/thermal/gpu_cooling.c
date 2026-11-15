@@ -38,10 +38,6 @@
 #include <dt-bindings/clock/emulator8895.h>
 #elif defined(CONFIG_SOC_EXYNOS8895) && !defined(CONFIG_SOC_EMULATOR8895)
 #include <dt-bindings/clock/exynos8895.h>
-#elif defined(CONFIG_SOC_EXYNOS7872)
-#include <dt-bindings/clock/exynos7872.h>
-#elif defined(CONFIG_SOC_EXYNOS9810)
-#include <dt-bindings/clock/exynos9810.h>
 #endif
 
 /**

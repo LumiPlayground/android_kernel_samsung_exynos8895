@@ -21,6 +21,9 @@ static void win_update_adjust_region(struct decon_device *decon,
 {
 	int i;
 	int div_w, div_h;
+#ifdef CONFIG_SUPPORT_DOZE
+	struct panel_state *state = decon->panel_state;
+#endif
 	struct decon_rect r1, r2;
 	struct decon_win_config *update_config = &win_config[DECON_WIN_UPDATE_IDX];
 	struct decon_win_config *config;
@@ -28,9 +31,18 @@ static void win_update_adjust_region(struct decon_device *decon,
 	regs->need_update = false;
 	DPU_FULL_RECT(&regs->up_region, decon->lcd_info);
 
+
+	if (decon->force_fullupdate) {
+		decon->force_fullupdate = 0;
+		return;
+	}
 	if (!decon->win_up.enabled)
 		return;
 
+#ifdef CONFIG_SUPPORT_DOZE
+	if (state->cur_state == PANEL_STATE_ALPM)
+		return;
+#endif
 	if (update_config->state != DECON_WIN_STATE_UPDATE)
 		return;
 
@@ -223,12 +235,33 @@ void dpu_prepare_win_update_config(struct decon_device *decon,
 	struct decon_win_config *win_config = win_data->config;
 	bool reconfigure = false;
 	struct decon_rect r;
+#ifdef CONFIG_SUPPORT_DSU
+	struct decon_lcd dsu_info;
+#endif
 
 	if (!decon->win_up.enabled)
 		return;
 
 	if (decon->dt.out_type != DECON_OUT_DSI)
 		return;
+
+#ifdef CONFIG_SUPPORT_DSU
+	if (regs->dsu.needupdate) {
+		memset(&dsu_info, 0, sizeof(struct decon_lcd));
+
+		dsu_info.xres = regs->dsu.right;
+		dsu_info.yres = regs->dsu.bottom;
+
+		DPU_FULL_RECT(&regs->up_region, &dsu_info);
+
+		memcpy(&decon->win_up.prev_up_region, &regs->up_region,
+			sizeof(struct decon_rect));
+
+		decon_info("DECON:INFO:%s: DSU Config fullupdate : %d %d\n",
+			__func__, regs->up_region.left, regs->up_region.bottom);
+		return;
+	}
+#endif
 
 	/* find adjusted update region on LCD */
 	win_update_adjust_region(decon, win_config, regs);
@@ -266,13 +299,17 @@ void dpu_prepare_win_update_config(struct decon_device *decon,
 			sizeof(struct decon_rect));
 }
 
+
+#define COLUMN_CMD_SIZE 5
+#define PAGE_CMD_SIZE	5
+	
 static int win_update_send_partial_command(struct dsim_device *dsim,
 		struct decon_rect *rect)
 {
-	char column[5];
-	char page[5];
 	int retry;
-
+	char page[COLUMN_CMD_SIZE];
+	char column[PAGE_CMD_SIZE];
+	
 	DPU_DEBUG_WIN("SET: [%d %d %d %d]\n", rect->left, rect->top,
 			rect->right - rect->left + 1, rect->bottom - rect->top + 1);
 
@@ -289,10 +326,10 @@ static int win_update_send_partial_command(struct dsim_device *dsim,
 	page[4] = rect->bottom & 0xff;
 
 	retry = 2;
+
 	while (dsim_write_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
-				(unsigned long)column, ARRAY_SIZE(column)) != 0) {
+				column, COLUMN_CMD_SIZE) != COLUMN_CMD_SIZE) {
 		dsim_err("failed to write COLUMN_ADDRESS\n");
-		dsim_reg_function_reset(dsim->id);
 		if (--retry <= 0) {
 			dsim_err("COLUMN_ADDRESS is failed: exceed retry count\n");
 			return -EINVAL;
@@ -301,15 +338,13 @@ static int win_update_send_partial_command(struct dsim_device *dsim,
 
 	retry = 2;
 	while (dsim_write_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
-				(unsigned long)page, ARRAY_SIZE(page)) != 0) {
+				page, PAGE_CMD_SIZE) != PAGE_CMD_SIZE) {
 		dsim_err("failed to write PAGE_ADDRESS\n");
-		dsim_reg_function_reset(dsim->id);
 		if (--retry <= 0) {
 			dsim_err("PAGE_ADDRESS is failed: exceed retry count\n");
 			return -EINVAL;
 		}
 	}
-
 	return 0;
 }
 
@@ -386,6 +421,10 @@ void dpu_set_win_update_config(struct decon_device *decon,
 		DPU_FULL_RECT(&regs->up_region, decon->lcd_info);
 		regs->need_update = true;
 		full_partial_update = true;
+	}
+	if (decon->force_fullupdate) {
+		DPU_FULL_RECT(&regs->up_region, decon->lcd_info);
+		regs->need_update = true;
 	}
 
 	if (regs->need_update) {

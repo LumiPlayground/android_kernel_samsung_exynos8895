@@ -22,7 +22,7 @@
 #include "fimc-is-interface-preprocessor.h"
 #include "fimc-is-preprocessor-c3.h"
 
-#if 1 /* #ifdef CAMERA_C3_ADDR_MAP_V2 */
+#ifdef CAMERA_C3_ADDR_MAP_V2
 #include "fimc-is-preprocessor-c3-regmap_v2.h"
 #else
 #include "fimc-is-preprocessor-c3-regmap.h"
@@ -110,6 +110,8 @@ static const char* C73C3_DbgSysRegName[C73C3_NUM_OF_DBG_SYS_REG] = {
 
 static const u32 pC73C3_AfAddr[] = {
 	api_info_otf_af_preset_index,
+
+	api_otf_af_int_skipframe,
 
 	api_pafstat_roi_topLeft_x,
 	api_pafstat_roi_topLeft_y,
@@ -447,6 +449,10 @@ static const u32 pC73C3_AfAddr[] = {
 
 static const u32 pC73C3_AfAddr_Burst_Sect_PresetIndex[] = {
 	api_info_otf_af_preset_index,
+};
+
+static const u32 pC73C3_AfAddr_Burst_Sect_OtfAfIntSkipFrame[] = {
+	api_otf_af_int_skipframe,
 };
 
 static const u32 pC73C3_AfAddr_Burst_Sect_PafROIUseSetting[] = {
@@ -835,6 +841,8 @@ static const u32 pC73C3_AfAddr_Burst_Sect_YExtParam[] = {
 static const u32* pC73C3_AfAddr_Burst[] = {
 	pC73C3_AfAddr_Burst_Sect_PresetIndex,
 
+	pC73C3_AfAddr_Burst_Sect_OtfAfIntSkipFrame,
+
 	pC73C3_AfAddr_Burst_Sect_PafROIUseSetting,
 	pC73C3_AfAddr_Burst_Sect_PafSingleWindows,
 	pC73C3_AfAddr_Burst_Sect_PafMultiMainWindows,
@@ -867,6 +875,8 @@ static const u32* pC73C3_AfAddr_Burst[] = {
 
 static const u32 pC73C3_AfAddr_Burst_Size[] = {
 	sizeof(pC73C3_AfAddr_Burst_Sect_PresetIndex) / sizeof(pC73C3_AfAddr_Burst_Sect_PresetIndex[0]),
+
+	sizeof(pC73C3_AfAddr_Burst_Sect_OtfAfIntSkipFrame) / sizeof(pC73C3_AfAddr_Burst_Sect_OtfAfIntSkipFrame[0]),
 
 	sizeof(pC73C3_AfAddr_Burst_Sect_PafROIUseSetting) / sizeof(pC73C3_AfAddr_Burst_Sect_PafROIUseSetting[0]),
 	sizeof(pC73C3_AfAddr_Burst_Sect_PafSingleWindows) / sizeof(pC73C3_AfAddr_Burst_Sect_PafSingleWindows[0]),
@@ -922,6 +932,7 @@ struct fimc_is_preproc_cfg config_preproc_sensor_2l2[] = {
 	FIMC_IS_PREPROC_CFG(2016, 1512, 30, 7), /* 4:3 (2PD Mode2) */
 	FIMC_IS_PREPROC_CFG(1504, 1504, 30, 8), /* 1:1 (2PD Mode2) */
 	FIMC_IS_PREPROC_CFG(1008, 756, 120, 9), /* Fast AE 4:3 (2PD Mode2) */
+	FIMC_IS_PREPROC_CFG(4032, 1960, 30, 10), /* 18.5:9 (2PD Mode1) */
 };
 
 /* FixMe. Temp data. */
@@ -949,6 +960,7 @@ struct fimc_is_preproc_cfg config_preproc_sensor_imx333[] = {
 	FIMC_IS_PREPROC_CFG(2016, 1512, 30, 7), /* 4:3 (2PD Mode2) */
 	FIMC_IS_PREPROC_CFG(1504, 1504, 30, 8), /* 1:1 (2PD Mode2) */
 	FIMC_IS_PREPROC_CFG(1008, 756, 120, 9), /* Fast AE 4:3 (2PD Mode2) */
+	FIMC_IS_PREPROC_CFG(4032, 1960, 30, 10), /* 18.5:9 (2PD Mode1) */
 };
 
 struct fimc_is_preproc_cfg config_preproc_sensor_4e6[] = {
@@ -965,6 +977,7 @@ struct fimc_is_preproc_cfg config_preproc_sensor_imx320[] = {
 	FIMC_IS_PREPROC_CFG(1632, 1224, 30, 16), 	/* 2x2 binning mode 4:3 */
 	FIMC_IS_PREPROC_CFG(1224, 1224, 30, 17), 	/* 2x2 binning mode 1:1 */
 	FIMC_IS_PREPROC_CFG(800, 600, 120, 18), 	/* 4x4 binning mode 4:3 */
+	FIMC_IS_PREPROC_CFG(3264, 1592, 30, 19), 	/* 18.5:9 */
 };
 
 struct fimc_is_preproc_cfg config_preproc_sensor_3H1[] = {
@@ -976,6 +989,7 @@ struct fimc_is_preproc_cfg config_preproc_sensor_3H1[] = {
 	FIMC_IS_PREPROC_CFG(1632, 1224, 30, 16), 	/* 2x2 binning mode 4:3 */
 	FIMC_IS_PREPROC_CFG(1224, 1224, 30, 17), 	/* 2x2 binning mode 1:1 */
 	FIMC_IS_PREPROC_CFG(800, 600, 120, 18), 	/* 4x4 binning mode 4:3 */
+	FIMC_IS_PREPROC_CFG(3264, 1592, 30, 19), 	/* 18.5:9 */
 };
 
 struct fimc_is_preproc_cfg *config_preproc_sensor[] = {
@@ -1369,12 +1383,23 @@ static bool C73C3_IsPafStatEnableMode(cis_shared_data *cis_data)
 		}
 		break;
 	case SENSOR_NAME_S5K2L2:
-		if (mode <= C73C3_S5K2L2_CONFIG_4032X2268_60) {
+		if (mode <= C73C3_S5K2L2_CONFIG_6048X3024_30 || mode > C73C3_S5K2L2_CONFIG_1008X756_120  
+#ifdef USE_BINNING_PAF			
+		    || mode == C73C3_S5K2L2_CONFIG_2016X1134_30 || mode == C73C3_S5K2L2_CONFIG_2016X1512_30 
+		    || mode == C73C3_S5K2L2_CONFIG_1504X1504_30
+#endif
+			){
 			bRes = true;
 		}
 		break;
 	case SENSOR_NAME_IMX333:
-		if (mode <= C73C3_IMX333_CONFIG_4032X2268_60) {
+
+		if (mode <= C73C3_IMX333_CONFIG_6048X3024_30 || mode > C73C3_IMX333_CONFIG_1008X756_120 
+#ifdef USE_BINNING_PAF
+		    || mode == C73C3_IMX333_CONFIG_2016X1134_30 || mode == C73C3_IMX333_CONFIG_2016X1512_30
+		    || mode == C73C3_IMX333_CONFIG_1504X1504_30
+#endif
+			){
 			bRes = true;
 		}
 		break;
@@ -1458,6 +1483,7 @@ static bool C73C3_IsWdrEnableMode(cis_shared_data *cis_data)
 		case C73C3_S5K3H1_CONFIG_3264X2448_30:
 		case C73C3_S5K3H1_CONFIG_3264X1836_30:
 		case C73C3_S5K3H1_CONFIG_2448X2448_30:
+		case C73C3_S5K3H1_CONFIG_3264X1592_30:
 			bRes = true;
 			break;
 		default:
@@ -1471,6 +1497,7 @@ static bool C73C3_IsWdrEnableMode(cis_shared_data *cis_data)
 		case C73C3_IMX320_CONFIG_3264X2448_30:
 		case C73C3_IMX320_CONFIG_3264X1836_30:
 		case C73C3_IMX320_CONFIG_2448X2448_30:
+		case C73C3_IMX320_CONFIG_3264X1592_30:
 			bRes = true;
 			break;
 		default:
@@ -1559,6 +1586,12 @@ static bool C73C3SendByte_WdrOnOff(struct i2c_client *client, u32 onOffStatus)
 		bRes = C73C3SendByte_Reg2Data2(client, api_otf_WdrMode,   0x0001);
 		// api_otf_PowerMode=1-WDR Auto
 		bRes = C73C3SendByte_Reg2Data2(client, api_otf_PowerMode, 0x0002);
+	} else if (onOffStatus == COMPANION_WDR_AUTO_LIKE) {
+		// WDR AUTO LIKE = WDR AUTO
+		// api_otf_WdrMode=1-WDR mode
+		bRes = C73C3SendByte_Reg2Data2(client, api_otf_WdrMode,   0x0001);
+		// api_otf_PowerMode=1-WDR Auto
+		bRes = C73C3SendByte_Reg2Data2(client, api_otf_PowerMode, 0x0002);
 	} else {
 		// WDR OFF
 		// api_otf_WdrMode=0-Normal mode
@@ -1572,7 +1605,7 @@ static bool C73C3SendByte_WdrOnOff(struct i2c_client *client, u32 onOffStatus)
     	return bRes;
 }
 
-static bool C73C3SendByte_DisparityOnOff(struct i2c_client *client, u32 disparity_mode, s32 mode)
+static bool C73C3SendByte_DisparityOnOff(struct i2c_client *client, u32 disparity_mode)
 {
 	bool bRes = true;
 
@@ -1616,12 +1649,6 @@ static bool C73C3SendByte_DisparityOnOff(struct i2c_client *client, u32 disparit
 		// Disparity mode off
 		C73C3SendByte_Reg2Data2(client, api_config_2__PDAFMode, 0x0002);
 
-		// Disparity mode off (mode3 only)
-		if(mode == C73C3_IMX333_CONFIG_4032X2268_60 || mode == C73C3_S5K2L2_CONFIG_4032X2268_60)
-		{
-			C73C3SendByte_Reg2Data2(client, api_config_3__PDAFMode, 0x0003);
-		}
-
 		info("[COMP][%s] Disparity OFF\n", __func__);
 	}
 
@@ -1646,13 +1673,24 @@ static int C73C3_StreamOn(struct v4l2_subdev *subdev, preproc_setting_info *seti
 {
 	struct fimc_is_preprocessor *preprocessor;
 	struct i2c_client *client;
+	int ret = 0;
+#ifdef USE_CAMERA_HW_BIG_DATA
+	struct cam_hw_param *hw_param;
+#endif
 
 	preprocessor = (struct fimc_is_preprocessor *)v4l2_get_subdevdata(subdev);
 	client = preprocessor->client;
 
 	I2C_MUTEX_LOCK(preprocessor->i2c_lock);
-
-	C73C3SendByte_Reg2Data2(client, HOST_INTRP_StreamEnable, 0x0001);
+	
+	ret = C73C3SendByte_Reg2Data2(client, HOST_INTRP_StreamEnable, 0x0001);
+#ifdef USE_CAMERA_HW_BIG_DATA
+	if (!ret) {
+		fimc_is_sec_get_hw_param(&hw_param, SENSOR_POSITION_REAR);
+		if (hw_param)
+			hw_param->i2c_comp_err_cnt++;
+	}
+#endif
 
 	I2C_MUTEX_UNLOCK(preprocessor->i2c_lock);
 
@@ -1679,6 +1717,7 @@ static int C73C3_StreamOff(struct v4l2_subdev *subdev, preproc_setting_info *set
 	}
 
 	I2C_MUTEX_LOCK(preprocessor->i2c_lock);
+
 	C73C3SendByte_Reg2Data2(client, HOST_INTRP_StreamEnable, 0x0000);
 	I2C_MUTEX_UNLOCK(preprocessor->i2c_lock);
 
@@ -1744,7 +1783,7 @@ static int C73C3_ModeChange(struct v4l2_subdev *subdev, preproc_setting_info *se
 
 	C73C3SendByte_WdrOnOff(client, cis_data->companion_data.wdr_mode);
 
-	C73C3SendByte_DisparityOnOff(client, cis_data->companion_data.disparity_mode, (s32)cis_data->companion_data.config_idx);
+	C73C3SendByte_DisparityOnOff(client, cis_data->companion_data.disparity_mode);
 	/*C73C3SendByte_Reg2Data2(client, api_otf_isVideoMode,
 		cis_data->pOisCaptureState[0]);*/
 
@@ -1764,6 +1803,33 @@ static int C73C3_ModeChange(struct v4l2_subdev *subdev, preproc_setting_info *se
 		cis_data->stream_id, __func__,
 		cis_data->sens_config_index_cur,
 		cis_data->companion_data.config_idx);
+
+	return ERROR_SENSOR_NO;
+}
+
+static int C73C3_WdrModeChange(struct v4l2_subdev *subdev, preproc_setting_info *setinfo, cis_shared_data *cis_data)
+{
+	struct fimc_is_preprocessor *preprocessor;
+	struct i2c_client *client;
+
+	preprocessor = (struct fimc_is_preprocessor *)v4l2_get_subdevdata(subdev);
+	client = preprocessor->client;
+
+	if (cis_data->companion_data.pre_wdr_mode == 
+			cis_data->companion_data.wdr_mode) {
+		return ERROR_SENSOR_NO;
+	}
+
+	cis_data->companion_data.pre_wdr_mode = cis_data->companion_data.wdr_mode;
+
+	I2C_MUTEX_LOCK(preprocessor->i2c_lock);
+	C73C3SendByte_WdrOnOff(client, cis_data->companion_data.wdr_mode);
+	C73C3SendByte_Reg2Data2(client, HOST_INTRP_ChangeConfig, 0x0001);
+	I2C_MUTEX_UNLOCK(preprocessor->i2c_lock);
+
+	info("[COMP][S%d][%s] WDR mode:%d\n",
+			cis_data->stream_id, __func__,
+			cis_data->companion_data.wdr_mode);
 
 	return ERROR_SENSOR_NO;
 }
@@ -1858,7 +1924,8 @@ static int C73C3_WdrSetAeInfo(struct v4l2_subdev *subdev, preproc_setting_info *
 	if (cis_data->companion_data.bypass == false)
 	{
 		if (cis_data->companion_data.wdr_mode == COMPANION_WDR_ON ||
-			cis_data->companion_data.wdr_mode == COMPANION_WDR_AUTO) {
+			cis_data->companion_data.wdr_mode == COMPANION_WDR_AUTO ||
+			cis_data->companion_data.wdr_mode == COMPANION_WDR_AUTO_LIKE) {
 			if (pWdr->uiLongExposureCoarse == 0 || pWdr->uiLongExposureFine == 0 ||
 				pWdr->uiLongExposureAnalogGain == 0 || pWdr->uiLongExposureDigitalGain == 0 ||
 				pWdr->uiShortExposureCoarse == 0 || pWdr->uiShortExposureFine == 0 ||
@@ -1963,6 +2030,42 @@ static int C73C3_WdrSetAeInfo(struct v4l2_subdev *subdev, preproc_setting_info *
 	return ERROR_SENSOR_NO;
 }
 
+static int C73C3_HistRoiSetInfo(struct v4l2_subdev *subdev, preproc_setting_info *setinfo, cis_shared_data *cis_data)
+{
+	SENCMD_CompanionSetHistRoiInfoStr *pVal = (SENCMD_CompanionSetHistRoiInfoStr*)setinfo->param;
+
+	u8 pBuf[12];
+	struct fimc_is_preprocessor *preprocessor;
+	struct i2c_client *client;
+
+	preprocessor = (struct fimc_is_preprocessor *)v4l2_get_subdevdata(subdev);
+	client = preprocessor->client;
+
+	I2C_MUTEX_LOCK(preprocessor->i2c_lock);
+
+	pBuf[0]  = (api_rgbyHist_1__bWinEnable & 0x0000FF00) >> 8;
+	pBuf[1]  = (api_rgbyHist_1__bWinEnable & 0x000000FF);
+	pBuf[2] = (pVal->uWinEnable & 0x0000FF00) >> 8;
+	pBuf[3] = (pVal->uWinEnable & 0x000000FF);
+	pBuf[4] = (pVal->uTopLeftX & 0x0000FF00) >> 8;
+	pBuf[5] = (pVal->uTopLeftX & 0x000000FF);
+	pBuf[6] = (pVal->uTopLeftY & 0x0000FF00) >> 8;
+	pBuf[7] = (pVal->uTopLeftY & 0x000000FF);
+	pBuf[8] = (pVal->uSpanWidth & 0x0000FF00) >> 8;
+	pBuf[9] = (pVal->uSpanWidth & 0x000000FF);
+	pBuf[10] = (pVal->uSpanHeight & 0x0000FF00) >> 8;
+	pBuf[11] = (pVal->uSpanHeight & 0x000000FF);	
+
+	C73C3SendByteArray(client, pBuf, 12);
+
+	dbg_preproc("[%s] %02X%02X  %02X%02X  %02X%02X  %02X%02X  %02X%02X\n",__func__, 
+		pBuf[2],pBuf[3],pBuf[4],pBuf[5],pBuf[6],pBuf[7],pBuf[8],pBuf[9],pBuf[10],pBuf[11]);
+
+	I2C_MUTEX_UNLOCK(preprocessor->i2c_lock);
+
+	return ERROR_SENSOR_NO;
+}
+
 static int C73C3_AfSetInfo(struct v4l2_subdev *subdev, preproc_setting_info *setinfo, cis_shared_data *cis_data)
 {
 	u32 baseAddress = 0x4000; // default base for C73C3 reg
@@ -1984,7 +2087,7 @@ static int C73C3_AfSetInfo(struct v4l2_subdev *subdev, preproc_setting_info *set
 	if (cis_data->companion_data.bypass == false) {
 		SENCMD_CompanionSetAfInfoStr_73C3 *pAf = (SENCMD_CompanionSetAfInfoStr_73C3*)setinfo->param;
 
-		if (sInit == true) {
+		if (sInit == true && (pAf->bBurstMode == false)) {
 			for (i = 0; i < NUM_OF_73C3_AF_PARAMETERS; i++) {
 				if (pAf->pAfUpdate[i] == 1) {
 					u32 newBaseAddress;
@@ -2726,7 +2829,8 @@ static int C73C3_ReadAfReg(struct v4l2_subdev *subdev, preproc_setting_info* set
 	return ERROR_SENSOR_NO;
 }
 
-int C73C3_ReadAfStatFromSpi(struct spi_device *spi, preproc_setting_info* setinfo, cis_shared_data* cis_data, u8 **buf)
+int C73C3_ReadAfStatFromSpi(struct spi_device *spi, preproc_setting_info* setinfo, cis_shared_data* cis_data, u8 **buf, 
+							u32 sensor_position)
 {
 	u8 *pAfData = NULL;
 	u32 maxAfDataSize = MAX_PDAF_STATS_SIZE ;
@@ -2813,6 +2917,7 @@ exit:
 	pAfRegs->pAfData = pAfData;
 	pAfRegs->crcResult = crc_result;
 	pAfRegs->isValid = true;
+	pAfRegs->sensorPosition = sensor_position;
 
 	return ret;
 }
@@ -2861,6 +2966,8 @@ int init_comp_func_73c3(sencmd_func *func_list, cis_shared_data *cis_data, bool 
 	func_list[COMP_CMD_SEAMLESSMODE_SET_INFO] = C73C3_SeamlessModeSetInfo;
 	func_list[COMP_CMD_UPDATE_SUPPORT_MODE] = C73C3_updateSupportMode;
 	func_list[COMP_CMD_DEINIT] = C73C3_DeInit;
+	func_list[COMP_CMD_HISTOGRAM_ROI_SET_INFO] = C73C3_HistRoiSetInfo;
+	func_list[COMP_CMD_WDR_MODE_CHANGE] = C73C3_WdrModeChange;
 
 	// Initialization
 	switch (sensor_name) {
@@ -2897,6 +3004,7 @@ int init_comp_func_73c3(sencmd_func *func_list, cis_shared_data *cis_data, bool 
 	cis_data->companion_data.paf_mode = COMPANION_PAF_OFF;
 	cis_data->companion_data.caf_mode = COMPANION_CAF_OFF;
 	cis_data->companion_data.wdr_mode = COMPANION_WDR_OFF;
+	cis_data->companion_data.pre_wdr_mode = COMPANION_WDR_OFF;
 	cis_data->companion_data.disparity_mode = COMPANION_DISPARITY_OFF;
 
 	cis_data->companion_data.enable_drc = true;

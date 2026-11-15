@@ -14,9 +14,6 @@
 #define SMC_HDCP_INIT			((unsigned int)0x82004010)
 #define SMC_HDCP_TERMINATE		((unsigned int)0x82004011)
 #define SMC_HDCP_PROT_MSG		((unsigned int)0x82004012)
-#define SMC_CHECK_STREAM_TYPE_FALG	((unsigned int)0x82004022)
-
-#define SMC_DRM_HDCP_AUTH_INFO		((unsigned int)0x82002140)
 
 /**
  * HDCP TEE service commands
@@ -41,7 +38,6 @@ enum {
 	HDCP_TEEI_SET_RCV_ID_LIST,
 	HDCP_TEEI_GEN_STREAM_MANAGE,
 	HDCP_TEEI_VERIFY_M_PRIME,
-	HDCP_TEEI_WRAP_KEY,
 	HDCP_TEEI_MSG_END
 };
 
@@ -93,14 +89,8 @@ enum {
 #define HDCP_RP_MAX_STREAMID_NUM	(63)
 #define HDCP_RP_TYPE_LEN		(1)
 #define HDCP_RP_STREAMID_LEN		(1)
-#define HDCP_RP_STREAM_MSG_MAX_LEN	(32 * 8)
 #define HDCP_RP_STREAMID_TYPE_LEN	(HDCP_RP_STREAMID_LEN + HDCP_RP_TYPE_LEN)
 #define HDCP_RP_MAX_STREAMID_TYPE_LEN	(HDCP_RP_STREAMID_TYPE_LEN * HDCP_RP_MAX_STREAMID_NUM)
-#define HDCP_STATIC_KEY			(16)
-#define HDCP_WRAP_KEY			(16)
-#define HDCP_WRAP_MAX_SIZE		(128)
-#define HDCP_WRAP_AUTH_TAG		(16)
-#define HDCP_RX_CAPS_LEN		(1)
 
 /* TEEI error code */
 enum hdcp_rv_t  {
@@ -108,10 +98,6 @@ enum hdcp_rv_t  {
 	E_HDCP_PRO_INVALID_RCV_ID	= 0x3015,
 };
 
-enum kw_mode {
-        WRAP,
-        UNWRAP,
-};
 
 typedef struct {
 	uint32_t id;
@@ -233,17 +219,7 @@ typedef struct {
 typedef struct {
 	uint32_t id;
 	uint8_t m_prime[HDCP_RP_HMAC_M_LEN];
-	uint8_t strmsg[HDCP_RP_STREAM_MSG_MAX_LEN];
-	uint32_t str_len;
 } hci_verifymprime_t;
-
-typedef struct {
-	uint32_t id;
-	uint8_t key[HDCP_WRAP_KEY];
-	uint8_t enc_key[HDCP_WRAP_MAX_SIZE];
-	uint32_t wrapped;
-	uint32_t key_len;
-} hci_wrap_key_t;
 
 /* todo: define WSM message format for AKE */
 struct hci_message {
@@ -267,7 +243,6 @@ struct hci_message {
 		hci_setrcvlist_t setrcvlist;
 		hci_genstreaminfo_t genstrminfo;
 		hci_verifymprime_t verifymprime;
-		hci_wrap_key_t wrap_key;
 		uint8_t data[HDCP_WSM_SIZE];
 	};
 };
@@ -327,6 +302,5 @@ int teei_gen_stream_manage(uint16_t stream_num,
 		uint8_t *seq_num_m,
 		uint8_t *k,
 		uint8_t *streamid_type);
-int teei_verify_m_prime(uint8_t *m_prime, uint8_t *input, size_t input_len);
-int teei_wrapped_key(uint8_t *key_str, uint32_t wrraped, uint32_t key_len);
+int teei_verify_m_prime(uint8_t *m_prime);
 #endif

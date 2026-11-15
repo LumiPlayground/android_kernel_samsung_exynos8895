@@ -96,7 +96,7 @@ static int sensor_preproc_stream_on(struct v4l2_subdev *subdev)
 {
 	struct fimc_is_preprocessor *preprocessor;
 	struct fimc_is_module_preprocessor *module_preproc;
-	is_shared_data *is_data;
+	companion_shared_data *companion_data;
 	struct i2c_client *client;
 	cis_shared_data *cis_data;
 	int ret = 0;
@@ -136,7 +136,7 @@ static int sensor_preproc_stream_off(struct v4l2_subdev *subdev)
 {
 	struct fimc_is_preprocessor *preprocessor;
 	struct fimc_is_module_preprocessor *module_preproc;
-	is_shared_data *is_data;
+	companion_shared_data *companion_data;
 	cis_shared_data *cis_data;
 	struct i2c_client *client;
 	int ret = 0;
@@ -274,6 +274,39 @@ static int sensor_preproc_mode_change(struct v4l2_subdev *subdev,
 	ret = module_preproc->cmd_func[COMP_CMD_MODE_CHANGE](subdev, NULL, cis_data);
 	if (ret) {
 		err("MODE_CHANGE CMD failed");
+		return ret;
+	}
+
+	return ret;
+}
+
+static int sensor_preproc_wdr_mode_change(struct v4l2_subdev *subdev, void *param)
+{
+	struct fimc_is_preprocessor *preprocessor;
+	struct fimc_is_module_preprocessor *module_preproc;
+	cis_shared_data *cis_data;
+	struct i2c_client *client;
+	int ret = 0;
+
+	BUG_ON(!subdev);
+
+	preprocessor = (struct fimc_is_preprocessor *)v4l2_get_subdevdata(subdev);
+	BUG_ON(!preprocessor);
+	BUG_ON(!preprocessor->private_data);
+	module_preproc = (struct fimc_is_module_preprocessor *)preprocessor->private_data;
+	cis_data = module_preproc->cis_data;
+
+	client = preprocessor->client;
+	if (unlikely(!client)) {
+		err("client is NULL");
+		return -EINVAL;
+	}
+
+	CHECK_INIT_N_RET(module_preproc->initialized);
+
+	ret = module_preproc->cmd_func[COMP_CMD_WDR_MODE_CHANGE](subdev, NULL, cis_data);
+	if (ret) {
+		err("WDR_MODE_CHANGE CMD failed");
 		return ret;
 	}
 
@@ -643,6 +676,39 @@ static int sensor_preproc_set_roi(struct v4l2_subdev *subdev, void *param)
 	return ret;
 }
 
+static int sensor_preproc_set_hist_roi(struct v4l2_subdev *subdev, void *param)
+{
+	struct fimc_is_preprocessor *preprocessor;
+	struct fimc_is_module_preprocessor *module_preproc;
+	cis_shared_data *cis_data;
+	struct i2c_client *client;
+	preproc_setting_info setinfo = {param, 0};
+	int ret = 0;
+
+	BUG_ON(!subdev);
+
+	preprocessor = (struct fimc_is_preprocessor *)v4l2_get_subdevdata(subdev);
+	BUG_ON(!preprocessor);
+	BUG_ON(!preprocessor->private_data);
+	module_preproc = (struct fimc_is_module_preprocessor *)preprocessor->private_data;
+	cis_data = module_preproc->cis_data;
+
+	client = preprocessor->client;
+	if (unlikely(!client)) {
+		err("client is NULL");
+		return -EINVAL;
+	}
+
+	CHECK_INIT_N_RET(module_preproc->initialized);
+
+	ret = module_preproc->cmd_func[COMP_CMD_HISTOGRAM_ROI_SET_INFO](subdev, &setinfo, cis_data);
+	if (ret) {
+		err("COMP_CMD_HISTOGRAM_ROI_SET_INFO CMD failed");
+	}
+
+	return ret;
+}
+
 static int sensor_preproc_set_power_mode(struct v4l2_subdev *subdev, void *param)
 {
 	struct fimc_is_preprocessor *preprocessor;
@@ -712,50 +778,30 @@ static int sensor_preproc_change_config(struct v4l2_subdev *subdev, void *param)
 static int sensor_preproc_debug(struct v4l2_subdev *subdev)
 {
 	struct fimc_is_preprocessor *preprocessor;
+	struct fimc_is_module_preprocessor *module_preproc;
+	cis_shared_data *cis_data;
 	struct i2c_client *client;
 	int ret = 0;
-	u16 companion_id = 0;
 
 	BUG_ON(!subdev);
 
 	preprocessor = (struct fimc_is_preprocessor *)v4l2_get_subdevdata(subdev);
 	BUG_ON(!preprocessor);
+	BUG_ON(!preprocessor->private_data);
+	module_preproc = (struct fimc_is_module_preprocessor *)preprocessor->private_data;
+	cis_data = module_preproc->cis_data;
 
 	client = preprocessor->client;
 	if (unlikely(!client)) {
 		err("client is NULL");
-		ret = -EINVAL;
-		goto p_err;
+		return -EINVAL;
 	}
 
-	fimc_is_comp_i2c_read(client, 0x6800, &companion_id);
-	info("Companion stream off status: 0x%04x, %s\n", companion_id, __func__);
-	fimc_is_comp_i2c_read(client, 0x11B0, &companion_id);
-	info("DBG_COUNTER_0 : 0x%04x, %s\n", companion_id, __func__);
-	fimc_is_comp_i2c_read(client, 0x11B2, &companion_id);
-	info("DBG_COUNTER_1 : 0x%04x, %s\n", companion_id, __func__);
-	fimc_is_comp_i2c_read(client, 0x11B4, &companion_id);
-	info("DBG_COUNTER_2 : 0x%04x, %s\n", companion_id, __func__);
-	fimc_is_comp_i2c_read(client, 0x11BA, &companion_id);
-	info("DBG_COUNTER_5 : 0x%04x, %s\n", companion_id, __func__);
-	fimc_is_comp_i2c_read(client, 0x11BC, &companion_id);
-	info("DBG_COUNTER_6 : 0x%04x, %s\n", companion_id, __func__);
-	fimc_is_comp_i2c_read(client, 0x11BE, &companion_id);
-	info("DBG_COUNTER_7 : 0x%04x, %s\n", companion_id, __func__);
-	fimc_is_comp_i2c_read(client, 0x11C0, &companion_id);
-	info("DBG_COUNTER_8 : 0x%04x, %s\n", companion_id, __func__);
-	fimc_is_comp_i2c_read(client, 0x11C6, &companion_id);
-	info("DBG_COUNTER_11 : 0x%04x, %s\n", companion_id, __func__);
-	fimc_is_comp_i2c_read(client, 0x11CA, &companion_id);
-	info("DBG_COUNTER_13 : 0x%04x, %s\n", companion_id, __func__);
-	fimc_is_comp_i2c_read(client, 0x11CC, &companion_id);
-	info("DBG_COUNTER_14 : 0x%04x, %s\n", companion_id, __func__);
-	fimc_is_comp_i2c_read(client, 0x11D0, &companion_id);
-	info("DBG_COUNTER_15 : 0x%04x, %s\n", companion_id, __func__);
-	fimc_is_comp_i2c_read(client, 0x0, &companion_id);
-	info("Companion validation: 0x%04x\n", companion_id);
+	ret = module_preproc->cmd_func[COMP_CMD_READ_SYS_REG](subdev, NULL, cis_data);
+	if (ret) {
+		err("READ_SYS_REG CMD failed");
+	}
 
-p_err:
 	return ret;
 }
 
@@ -802,6 +848,7 @@ static int sensor_preproc_read_af_stat(struct v4l2_subdev *subdev, void *param)
 	int ret = 0;
 	int buf_index = 0;
 	u8 *buf = NULL;
+	u32 sensor_position = SENSOR_POSITION_REAR;
 
 	BUG_ON(!subdev);
 
@@ -828,7 +875,11 @@ static int sensor_preproc_read_af_stat(struct v4l2_subdev *subdev, void *param)
 
 	buf = module_preproc->pdaf_buf[module_preproc->pdaf_count++ % PREPROC_PDAF_BUF_NUM]; 
 
-	C73C3_ReadAfStatFromSpi(preprocessor->spi, &setinfo, cis_data, &buf);
+	BUG_ON(!preprocessor->device_preproc);
+	BUG_ON(!preprocessor->device_preproc->module);
+	sensor_position = preprocessor->device_preproc->module->position;
+
+	C73C3_ReadAfStatFromSpi(preprocessor->spi, &setinfo, cis_data, &buf, sensor_position);
 
 exit:
 	return ret;
@@ -1066,6 +1117,8 @@ static struct fimc_is_preprocessor_ops preprocessor_ops = {
 	.preprocessor_read_af_reg = sensor_preproc_read_af_reg,
 	.preprocessor_deinit = sensor_preproc_deinit,
 	.preprocessor_s_format = sensor_preproc_s_format,
+	.preprocessor_set_hist_roi = sensor_preproc_set_hist_roi,
+	.preprocessor_wdr_mode_change = sensor_preproc_wdr_mode_change,
 };
 
 static const struct v4l2_subdev_core_ops core_ops = {
@@ -1170,7 +1223,7 @@ static int sensor_preproc_probe(struct platform_device *pdev)
 		err("failed to get preproc pdaf gpio");
 		ret = -ENODEV;
 		goto p_err;
-	}
+	} 
 
 	preproc_irq = gpio_to_irq(gpio_pdaf);
 	if (preproc_irq < 0) {
@@ -1179,7 +1232,7 @@ static int sensor_preproc_probe(struct platform_device *pdev)
 		goto p_err;
 	}
 
-	gPtr_lib_support.intr_handler[ID_GENERAL_INTR_PREPROC_PDAF].irq = preproc_irq;
+	gPtr_lib_support.intr_handler_preproc.irq = preproc_irq;
 
 	device->subdev_preprocessor = subdev_preprocessor;
 	device->preprocessor = preprocessor;

@@ -246,29 +246,6 @@ static void uas_xfer_data(struct urb *urb, struct scsi_cmnd *cmnd,
 	}
 }
 
-static bool uas_evaluate_response_iu(struct response_iu *riu, struct scsi_cmnd *cmnd)
-{
-	u8 response_code = riu->response_code;
-
-	switch (response_code) {
-	case RC_INCORRECT_LUN:
-		cmnd->result = DID_BAD_TARGET << 16;
-		break;
-	case RC_TMF_SUCCEEDED:
-		cmnd->result = DID_OK << 16;
-		break;
-	case RC_TMF_NOT_SUPPORTED:
-		cmnd->result = DID_TARGET_FAILURE << 16;
-		break;
-	default:
-		uas_log_cmd_state(cmnd, "response iu", response_code);
-		cmnd->result = DID_ERROR << 16;
-		break;
-	}
-
-	return response_code == RC_TMF_SUCCEEDED;
-}
-
 static void uas_stat_cmplt(struct urb *urb)
 {
 	struct iu *iu = urb->transfer_buffer;
@@ -281,7 +258,6 @@ static void uas_stat_cmplt(struct urb *urb)
 	unsigned long flags;
 	unsigned int idx;
 	int status = urb->status;
-	bool success;
 
 	spin_lock_irqsave(&devinfo->lock, flags);
 
@@ -337,13 +313,13 @@ static void uas_stat_cmplt(struct urb *urb)
 		uas_xfer_data(urb, cmnd, SUBMIT_DATA_OUT_URB);
 		break;
 	case IU_ID_RESPONSE:
+		uas_log_cmd_state(cmnd, "unexpected response iu",
+				  ((struct response_iu *)iu)->response_code);
+		/* Error, cancel data transfers */
+		data_in_urb = usb_get_urb(cmdinfo->data_in_urb);
+		data_out_urb = usb_get_urb(cmdinfo->data_out_urb);
 		cmdinfo->state &= ~COMMAND_INFLIGHT;
-		success = uas_evaluate_response_iu((struct response_iu *)iu, cmnd);
-		if (!success) {
-			/* Error, cancel data transfers */
-			data_in_urb = usb_get_urb(cmdinfo->data_in_urb);
-			data_out_urb = usb_get_urb(cmdinfo->data_out_urb);
-		}
+		cmnd->result = DID_ERROR << 16;
 		uas_try_complete(cmnd, __func__);
 		break;
 	default:
@@ -799,8 +775,7 @@ static int uas_slave_alloc(struct scsi_device *sdev)
 
 	sdev->hostdata = devinfo;
 
-	/*
-	 * USB has unusual DMA-alignment requirements: Although the
+	/* USB has unusual DMA-alignment requirements: Although the
 	 * starting address of each scatter-gather element doesn't matter,
 	 * the length of each element except the last must be divisible
 	 * by the Bulk maxpacket value.  There's currently no way to
@@ -836,12 +811,6 @@ static int uas_slave_configure(struct scsi_device *sdev)
 	if (devinfo->flags & US_FL_BROKEN_FUA)
 		sdev->broken_fua = 1;
 
-	/* UAS also needs to support FL_ALWAYS_SYNC */
-	if (devinfo->flags & US_FL_ALWAYS_SYNC) {
-		sdev->skip_ms_page_3f = 1;
-		sdev->skip_ms_page_8 = 1;
-		sdev->wce_default_on = 1;
-	}
 	scsi_change_queue_depth(sdev, devinfo->qdepth - 2);
 	return 0;
 }
@@ -855,6 +824,7 @@ static struct scsi_host_template uas_host_template = {
 	.slave_configure = uas_slave_configure,
 	.eh_abort_handler = uas_eh_abort_handler,
 	.eh_bus_reset_handler = uas_eh_bus_reset_handler,
+	.can_queue = MAX_CMNDS,
 	.this_id = -1,
 	.sg_tablesize = SG_NONE,
 	.skip_settle_delay = 1,
@@ -1082,19 +1052,20 @@ static int uas_post_reset(struct usb_interface *intf)
 		return 0;
 
 	err = uas_configure_endpoints(devinfo);
-	if (err && err != -ENODEV)
+	if (err) {
 		shost_printk(KERN_ERR, shost,
 			     "%s: alloc streams error %d after reset",
 			     __func__, err);
+		return 1;
+	}
 
-	/* we must unblock the host in every case lest we deadlock */
 	spin_lock_irqsave(shost->host_lock, flags);
 	scsi_report_bus_reset(shost, 0);
 	spin_unlock_irqrestore(shost->host_lock, flags);
 
 	scsi_unblock_requests(shost);
 
-	return err ? 1 : 0;
+	return 0;
 }
 
 static int uas_suspend(struct usb_interface *intf, pm_message_t message)

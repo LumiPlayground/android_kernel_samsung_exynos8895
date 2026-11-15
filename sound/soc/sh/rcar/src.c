@@ -387,7 +387,11 @@ static int rsnd_src_init(struct rsnd_mod *mod,
 {
 	struct rsnd_src *src = rsnd_mod_to_src(mod);
 
-	rsnd_mod_power_on(mod);
+	/*
+	 * stop SRC output only
+	 * see rsnd_src_quit_gen2
+	 */
+	rsnd_mod_write(mod, SRC_CTRL, 0x01);
 
 	rsnd_src_activation(mod);
 
@@ -401,9 +405,9 @@ static int rsnd_src_init(struct rsnd_mod *mod,
 	return 0;
 }
 
-static int rsnd_src_quit(struct rsnd_mod *mod,
-			 struct rsnd_dai_stream *io,
-			 struct rsnd_priv *priv)
+static int rsnd_src_quit_gen2(struct rsnd_mod *mod,
+			      struct rsnd_dai_stream *io,
+			      struct rsnd_priv *priv)
 {
 	struct rsnd_src *src = rsnd_mod_to_src(mod);
 
@@ -419,8 +423,8 @@ static int rsnd_src_quit(struct rsnd_mod *mod,
 	return 0;
 }
 
-static void __rsnd_src_interrupt(struct rsnd_mod *mod,
-				 struct rsnd_dai_stream *io)
+static void __rsnd_src_interrupt_gen2(struct rsnd_mod *mod,
+				      struct rsnd_dai_stream *io)
 {
 	struct rsnd_priv *priv = rsnd_mod_to_priv(mod);
 	bool stop = false;

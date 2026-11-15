@@ -33,11 +33,8 @@ static ssize_t sea_level_pressure_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
-	int iRet;
 
-	iRet = kstrtoint(buf, 10, &data->sealevelpressure);
-	if (iRet < 0)
-		return iRet;
+	sscanf(buf, "%d", &data->sealevelpressure);
 
 	if (data->sealevelpressure == 0) {
 		pr_info("%s, our->temperature = 0\n", __func__);

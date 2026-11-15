@@ -39,7 +39,7 @@
 enum {
 	TASK_REQ_UPIU_SIZE_DWORDS	= 8,
 	TASK_RSP_UPIU_SIZE_DWORDS	= 8,
-	ALIGNED_UPIU_SIZE		= 1024,
+	ALIGNED_UPIU_SIZE		= 512,
 };
 
 /* UFSHCI Registers */
@@ -94,7 +94,6 @@ enum {
 	UFSHCI_VERSION_10 = 0x00010000, /* 1.0 */
 	UFSHCI_VERSION_11 = 0x00010100, /* 1.1 */
 	UFSHCI_VERSION_20 = 0x00000200, /* 2.0 */
-	UFSHCI_VERSION_21 = 0x00000210, /* 2.1 */
 };
 
 /*
@@ -179,8 +178,6 @@ enum {
 #define UIC_DATA_LINK_LAYER_ERROR_FCX_PRO_TIMER_EXP	UFS_BIT(3)
 #define UIC_DATA_LINK_LAYER_ERROR_RX_BUF_OF	UFS_BIT(5)
 #define UIC_DATA_LINK_LAYER_ERROR_PA_INIT	UFS_BIT(13)
-#define UIC_DATA_LINK_LAYER_ERROR_NAC_RECEIVED	0x0001
-#define UIC_DATA_LINK_LAYER_ERROR_TCx_REPLAY_TIMEOUT 0x0002
 
 /* UECN - Host UIC Error Code Network Layer 40h */
 #define UIC_NETWORK_LAYER_ERROR			UFS_BIT(31)
@@ -230,7 +227,6 @@ enum {
 
 /* GenSelectorIndex calculation macros for M-PHY attributes */
 #define UIC_ARG_MPHY_TX_GEN_SEL_INDEX(lane) (lane)
-#define UIC_ARG_MPHY_RX_GEN_SEL_INDEX(lane) (PA_MAXDATALANES + (lane))
 
 #define UIC_ARG_MIB_SEL(attr, sel)	((((attr) & 0xFFFF) << 16) |\
 					 ((sel) & 0xFFFF))
@@ -238,11 +234,6 @@ enum {
 #define UIC_ARG_ATTR_TYPE(t)		(((t) & 0xFF) << 16)
 #define UIC_GET_ATTR_ID(v)		(((v) >> 16) & 0xFFFF)
 
-/* Link Status*/
-enum link_status {
-	UFSHCD_LINK_IS_DOWN	= 1,
-	UFSHCD_LINK_IS_UP	= 2,
-};
 /*
  * UFS Protector configuration
  */
@@ -311,11 +302,6 @@ enum {
 	UTP_CMD_TYPE_DEV_MANAGE		= 0x2,
 };
 
-/* To accommodate UFS2.0 required Command type */
-enum {
-	UTP_CMD_TYPE_UFS_STORAGE	= 0x1,
-};
-
 enum {
 	UTP_SCSI_COMMAND		= 0x00000000,
 	UTP_NATIVE_UFS_COMMAND		= 0x10000000,
@@ -353,6 +339,7 @@ enum {
 #define CLEAR           0
 #define AES_CBC         1
 #define AES_XTS         2
+
 /**
  * struct ufshcd_sg_entry - UFSHCI PRD Entry
  * @base_addr: Lower 32bit physical address DW-0
@@ -361,74 +348,48 @@ enum {
  * @size: size of physical segment DW-3
  */
 struct ufshcd_sg_entry {
-	__le32 base_addr;	/* des0 */
-	__le32 upper_addr;	/* des1 */
-	__le32 reserved;	/* des2 */
-	__le32 size;		/* des3 */
-#ifdef CONFIG_EXYNOS_FMP
-	__le32 file_iv0;	/* des4 */
-	__le32 file_iv1;	/* des5 */
-	__le32 file_iv2;	/* des6 */
-	__le32 file_iv3;	/* des7 */
-	__le32 file_enckey0;	/* des8 */
-	__le32 file_enckey1;	/* des9 */
-	__le32 file_enckey2;	/* des10 */
-	__le32 file_enckey3;	/* des11 */
-	__le32 file_enckey4;	/* des12 */
-	__le32 file_enckey5;	/* des13 */
-	__le32 file_enckey6;	/* des14 */
-	__le32 file_enckey7;	/* des15 */
-	__le32 file_twkey0;	/* des16 */
-	__le32 file_twkey1;	/* des17 */
-	__le32 file_twkey2;	/* des18 */
-	__le32 file_twkey3;	/* des19 */
-	__le32 file_twkey4;	/* des20 */
-	__le32 file_twkey5;	/* des21 */
-	__le32 file_twkey6;	/* des22 */
-	__le32 file_twkey7;	/* des23 */
-	__le32 disk_iv0;	/* des24 */
-	__le32 disk_iv1;	/* des25 */
-	__le32 disk_iv2;	/* des26 */
-	__le32 disk_iv3;	/* des27 */
-	__le32 reserved0;	/* des28 */
-	__le32 reserved1;	/* des29 */
-	__le32 reserved2;	/* des30 */
-	__le32 reserved3;	/* des31 */
-#if defined(CONFIG_EXYNOS_FMP_DUAL_FILE_ENCRYPTION)
-	__le32 file2_enckey0;	/* des32 */
-	__le32 file2_enckey1;	/* des33 */
-	__le32 file2_enckey2;	/* des34 */
-	__le32 file2_enckey3;	/* des35 */
-	__le32 file2_enckey4;	/* des36 */
-	__le32 file2_enckey5;	/* des37 */
-	__le32 file2_enckey6;	/* des38 */
-	__le32 file2_enckey7;	/* des39 */
-	__le32 file2_twkey0;	/* des40 */
-	__le32 file2_twkey1;	/* des41 */
-	__le32 file2_twkey2;	/* des42 */
-	__le32 file2_twkey3;	/* des43 */
-	__le32 file2_twkey4;	/* des44 */
-	__le32 file2_twkey5;	/* des45 */
-	__le32 file2_twkey6;	/* des46 */
-	__le32 file2_twkey7;	/* des47 */
-	__le32 reserved4;	/* des48 */
-	__le32 reserved5;	/* des49 */
-	__le32 reserved6;	/* des50 */
-	__le32 reserved7;	/* des51 */
-	__le32 reserved8;	/* des52 */
-	__le32 reserved9;	/* des53 */
-	__le32 reserved10;	/* des54 */
-	__le32 reserved11;	/* des55 */
-	__le32 reserved12;	/* des56 */
-	__le32 reserved13;	/* des57 */
-	__le32 reserved14;	/* des58 */
-	__le32 reserved15;	/* des59 */
-	__le32 reserved16;	/* des60 */
-	__le32 reserved17;	/* des61 */
-	__le32 reserved18;	/* des62 */
-	__le32 reserved19;	/* des63 */
-#endif /* CONFIG_EXYNOS_FMP_DUAL_FILE_ENCRYPTION */
-#endif /* CONFIG_EXYNOS_FMP */
+	__le32    base_addr;
+	__le32    upper_addr;
+	__le32    reserved;
+	__le32    size;
+#define FKL     BIT(26)
+#define DKL     BIT(27)
+#define SET_FAS(d, v) \
+	((d)->size = ((d)->size & 0xcfffffff) | v << 28)
+#define SET_DAS(d, v) \
+	((d)->size = ((d)->size & 0x3fffffff) | v << 30)
+#define GET_FAS(d)	((d)->size & 0x30000000)
+#define GET_DAS(d)	((d)->size & 0xc0000000)
+#if defined(CONFIG_FMP_UFS)
+	__le32  file_iv0;
+	__le32  file_iv1;
+	__le32  file_iv2;
+	__le32  file_iv3;
+	__le32  file_enckey0;
+	__le32  file_enckey1;
+	__le32  file_enckey2;
+	__le32  file_enckey3;
+	__le32  file_enckey4;
+	__le32  file_enckey5;
+	__le32  file_enckey6;
+	__le32  file_enckey7;
+	__le32  file_twkey0;
+	__le32  file_twkey1;
+	__le32  file_twkey2;
+	__le32  file_twkey3;
+	__le32  file_twkey4;
+	__le32  file_twkey5;
+	__le32  file_twkey6;
+	__le32  file_twkey7;
+	__le32  disk_iv0;
+	__le32  disk_iv1;
+	__le32  disk_iv2;
+	__le32  disk_iv3;
+	__le32  reserved0;
+	__le32  reserved1;
+	__le32  reserved2;
+	__le32  reserved3;
+#endif
 };
 
 /**

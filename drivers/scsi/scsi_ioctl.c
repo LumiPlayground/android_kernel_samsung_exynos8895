@@ -30,7 +30,6 @@
 #define IOCTL_NORMAL_TIMEOUT			(10 * HZ)
 
 #define MAX_BUF PAGE_SIZE
-#define MAX_BUFFLEN	(32 * 512)
 
 /**
  * ioctl_probe  --  return host identification
@@ -145,7 +144,7 @@ static int srpmb_ioctl_secu_prot_command(struct scsi_device *sdev, char *cmd,
 {
 	int result, dma_direction;
 	struct scsi_sense_hdr sshdr;
-	unsigned char *buf = NULL;
+	unsigned char *buf;
 	unsigned int bufflen;
 	int prot_in_out = req->cmd;
 
@@ -153,12 +152,6 @@ static int srpmb_ioctl_secu_prot_command(struct scsi_device *sdev, char *cmd,
 	if (prot_in_out == SCSI_IOCTL_SECURITY_PROTOCOL_IN) {
 		dma_direction = DMA_FROM_DEVICE;
 		bufflen = req->inlen;
-		if (bufflen <= 0 || bufflen > MAX_BUFFLEN) {
-			sdev_printk(KERN_INFO, sdev,
-					"Invalid bufflen : %x\n", bufflen);
-			result = -EFAULT;
-			goto err_pre_buf_alloc;
-		}
 		buf = kzalloc(bufflen, GFP_KERNEL);
 		if (!virt_addr_valid(buf)) {
 			result = -ENOMEM;
@@ -167,12 +160,6 @@ static int srpmb_ioctl_secu_prot_command(struct scsi_device *sdev, char *cmd,
 	} else if (prot_in_out == SCSI_IOCTL_SECURITY_PROTOCOL_OUT) {
 		dma_direction = DMA_TO_DEVICE;
 		bufflen = req->outlen;
-		if (bufflen <= 0 || bufflen > MAX_BUFFLEN) {
-			sdev_printk(KERN_INFO, sdev,
-					"Invalid bufflen : %x\n", bufflen);
-			result = -EFAULT;
-			goto err_pre_buf_alloc;
-		}
 		buf = kzalloc(bufflen, GFP_KERNEL);
 		if (!virt_addr_valid(buf)) {
 			result = -ENOMEM;
@@ -207,8 +194,6 @@ err_pre_buf_alloc:
 	SCSI_LOG_IOCTL(2, printk("IOCTL Releasing command\n"));
 	return result;
 err_kzalloc:
-	if (buf)
-		kfree(buf);
 	printk(KERN_INFO "%s kzalloc faild\n", __func__);
 	return result;
 }
@@ -241,22 +226,10 @@ static int ioctl_secu_prot_command(struct scsi_device *sdev, char *cmd,
 	if (prot_in_out == SCSI_IOCTL_SECURITY_PROTOCOL_IN) {
 		dma_direction = DMA_FROM_DEVICE;
 		bufflen = s_ioc_arg->inlen;
-		if (bufflen <= 0 || bufflen > MAX_BUFFLEN) {
-			sdev_printk(KERN_INFO, sdev,
-					"Invalid bufflen : %x\n", bufflen);
-			result = -EFAULT;
-			goto err_pre_buf_alloc;
-		}
 		buf = kzalloc(bufflen, GFP_KERNEL);
 	} else if (prot_in_out == SCSI_IOCTL_SECURITY_PROTOCOL_OUT) {
 		dma_direction = DMA_TO_DEVICE;
 		bufflen = s_ioc_arg->outlen;
-		if (bufflen <= 0 || bufflen > MAX_BUFFLEN) {
-			sdev_printk(KERN_INFO, sdev,
-					"Invalid bufflen : %x\n", bufflen);
-			result = -EFAULT;
-			goto err_pre_buf_alloc;
-		}
 		buf = kzalloc(bufflen, GFP_KERNEL);
 		if (copy_from_user(buf, arg + sizeof(*s_ioc_arg), s_ioc_arg->outlen)) {
 			printk(KERN_INFO "copy_from_user failed\n");
@@ -524,10 +497,7 @@ int scsi_ioctl(struct scsi_device *sdev, int cmd, void __user *arg)
 	case SCSI_IOCTL_GET_PCI:
                 return scsi_ioctl_get_pci(sdev, arg);
 	case SG_SCSI_RESET:
-		if(sdev->host->by_ufs) 
-			return -EINVAL; 
-		else 
-			return scsi_ioctl_reset(sdev, arg);
+		return scsi_ioctl_reset(sdev, arg);
 	default:
 		if (sdev->host->hostt->ioctl)
 			return sdev->host->hostt->ioctl(sdev, cmd, arg);

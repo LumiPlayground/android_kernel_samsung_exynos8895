@@ -18,6 +18,7 @@
 #include "../exynos-hdcp2-misc.h"
 #include "../exynos-hdcp2-encrypt.h"
 #include "../exynos-hdcp2.h"
+#include "../exynos-hdcp2-tx-auth.h"
 #include "../exynos-hdcp2-log.h"
 #include "exynos-hdcp2-dplink-protocol-msg.h"
 
@@ -41,7 +42,7 @@ extern uint8_t tv_rpauth_stream_ready_v22[32];
 
 static struct hdcp_tx_ctx g_tx_ctx;
 static struct hdcp_rx_ctx g_rx_ctx;
-#if defined(TEST_VECTOR_1)
+
 static int dp_utc_rpauth_stream_ready(struct hdcp_tx_ctx *tx_ctx, struct hdcp_rx_ctx *rx_ctx)
 {
 	int ret;
@@ -58,6 +59,7 @@ static int dp_utc_rpauth_stream_ready(struct hdcp_tx_ctx *tx_ctx, struct hdcp_rx
 
 	return 0;
 }
+
 static int dp_utc_rpauth_stream_manage(struct hdcp_tx_ctx *tx_ctx, struct hdcp_rx_ctx *rx_ctx)
 {
 	int ret;
@@ -90,6 +92,7 @@ static int dp_utc_rpauth_stream_manage(struct hdcp_tx_ctx *tx_ctx, struct hdcp_r
 
 	return 0;
 }
+
 static int dp_utc_rpauth_send_revid_list(struct hdcp_tx_ctx *tx_ctx, struct hdcp_rx_ctx *rx_ctx)
 {
 	int ret;
@@ -140,7 +143,7 @@ static int dp_utc_rpauth_send_ack(struct hdcp_tx_ctx *tx_ctx, struct hdcp_rx_ctx
 
 	return 0;
 }
-#endif
+
 static int dp_utc_ske_send_eks(struct hdcp_tx_ctx *tx_ctx, struct hdcp_rx_ctx *rx_ctx)
 {
 	uint8_t m[525];
@@ -187,6 +190,7 @@ static int dp_utc_ske(struct hdcp_tx_ctx *tx_ctx, struct hdcp_rx_ctx *rx_ctx, in
 
 	return 0;
 }
+
 static int dp_utc_lc_send_l_prime(struct hdcp_tx_ctx *tx_ctx, struct hdcp_rx_ctx *rx_ctx)
 {
 	int ret;
@@ -400,7 +404,6 @@ static int dp_utc_ake(struct hdcp_tx_ctx *tx_ctx, struct hdcp_rx_ctx *rx_ctx,
 }
 
 /* Test RP Auth APIs */
-#if defined(TEST_VECTOR_1)
 static int dp_utc_rpauth(struct hdcp_tx_ctx *tx_ctx, struct hdcp_rx_ctx *rx_ctx,
 		int *cnt, int *fail)
 {
@@ -424,7 +427,6 @@ static int dp_utc_rpauth(struct hdcp_tx_ctx *tx_ctx, struct hdcp_rx_ctx *rx_ctx,
 
 	return 0;
 }
-#endif
 
 
 /* Test HDCP API functions */

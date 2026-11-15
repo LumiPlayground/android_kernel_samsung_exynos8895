@@ -40,17 +40,6 @@ module_param_named(sc_log_level, sc_log_level, uint, 0644);
 int sc_set_blur;
 module_param_named(sc_set_blur, sc_set_blur, uint, 0644);
 
-int sc_show_stat;
-module_param_named(sc_show_stat, sc_show_stat, uint, 0644);
-
-#define BUF_EXT_SIZE	512
-#define BUF_WIDTH_ALIGN	128
-
-static inline unsigned int sc_ext_buf_size(int width)
-{
-	return IS_ALIGNED(width, BUF_WIDTH_ALIGN) ? 0 : BUF_EXT_SIZE;
-}
-
 /*
  * If true, writes the latency of H/W operation to v4l2_buffer.reserved2
  * in the unit of nano seconds.  It must not be enabled with real use-case
@@ -266,44 +255,6 @@ static const struct sc_fmt sc_formats[] = {
 		.num_comp	= 3,
 		.h_shift	= 1,
 		.v_shift	= 1,
-	}, {
-		.name		= "YUV 4:2:0 contiguous 2-planar, Y/CbCr 8+2 bit",
-		.pixelformat	= V4L2_PIX_FMT_NV12M_S10B,
-		.cfg_val	= SCALER_CFG_FMT_YCBCR420_2P |
-					SCALER_CFG_10BIT_S10,
-		.bitperpixel	= { 10, 5 },
-		.num_planes	= 2,
-		.num_comp	= 2,
-		.h_shift	= 1,
-		.v_shift	= 1,
-	}, {
-		.name		= "YUV 4:2:0 contiguous 2-planar, Y/CbCr 10-bit",
-		.pixelformat	= V4L2_PIX_FMT_NV12M_P010,
-		.cfg_val	= SCALER_CFG_FMT_YCBCR420_2P |
-					SCALER_CFG_10BIT_P010,
-		.bitperpixel	= { 16, 8 },
-		.num_planes	= 2,
-		.num_comp	= 2,
-		.h_shift	= 1,
-		.v_shift	= 1,
-	}, {
-		.name		= "YUV 4:2:2 contiguous 2-planar, Y/CbCr 8+2 bit",
-		.pixelformat	= V4L2_PIX_FMT_NV16M_S10B,
-		.cfg_val	= SCALER_CFG_FMT_YCBCR422_2P |
-					SCALER_CFG_10BIT_S10,
-		.bitperpixel	= { 10, 10 },
-		.num_planes	= 2,
-		.num_comp	= 2,
-		.h_shift	= 1,
-	}, {
-		.name		= "YUV 4:2:2 contiguous 2-planar, Y/CrCb 8+2 bit",
-		.pixelformat	= V4L2_PIX_FMT_NV61M_S10B,
-		.cfg_val	= SCALER_CFG_FMT_YCRCB422_2P |
-					SCALER_CFG_10BIT_S10,
-		.bitperpixel	= { 10, 10 },
-		.num_planes	= 2,
-		.num_comp	= 2,
-		.h_shift	= 1,
 	},
 };
 
@@ -329,8 +280,6 @@ static const struct sc_fmt sc_formats[] = {
 
 /* must specify in revers order of SCALER_VERSION(xyz) */
 static const u32 sc_version_table[][2] = {
-	{ 0x02000100, SCALER_VERSION(5, 0, 1) }, /* SC_POLY */
-	{ 0x02000000, SCALER_VERSION(5, 0, 0) },
 	{ 0x80060007, SCALER_VERSION(4, 2, 0) }, /* SC_BI */
 	{ 0x0100000f, SCALER_VERSION(4, 0, 1) }, /* SC_POLY */
 	{ 0xA0000013, SCALER_VERSION(4, 0, 1) },
@@ -349,54 +298,6 @@ static const u32 sc_version_table[][2] = {
 
 static const struct sc_variant sc_variant[] = {
 	{
-		.limit_input = {
-			.min_w		= 16,
-			.min_h		= 16,
-			.max_w		= 8192,
-			.max_h		= 8192,
-		},
-		.limit_output = {
-			.min_w		= 4,
-			.min_h		= 4,
-			.max_w		= 8192,
-			.max_h		= 8192,
-		},
-		.version		= SCALER_VERSION(5, 0, 1),
-		.sc_up_max		= SCALE_RATIO_CONST(1, 8),
-		.sc_down_min		= SCALE_RATIO_CONST(4, 1),
-		.sc_up_swmax		= SCALE_RATIO_CONST(1, 64),
-		.sc_down_swmin		= SCALE_RATIO_CONST(16, 1),
-		.blending		= 0,
-		.prescale		= 0,
-		.ratio_20bit		= 1,
-		.initphase		= 1,
-		.pixfmt_10bit		= 1,
-		.extra_buf		= 1,
-	}, {
-		.limit_input = {
-			.min_w		= 16,
-			.min_h		= 16,
-			.max_w		= 8192,
-			.max_h		= 8192,
-		},
-		.limit_output = {
-			.min_w		= 4,
-			.min_h		= 4,
-			.max_w		= 8192,
-			.max_h		= 8192,
-		},
-		.version		= SCALER_VERSION(5, 0, 0),
-		.sc_up_max		= SCALE_RATIO_CONST(1, 8),
-		.sc_down_min		= SCALE_RATIO_CONST(4, 1),
-		.sc_up_swmax		= SCALE_RATIO_CONST(1, 64),
-		.sc_down_swmin		= SCALE_RATIO_CONST(16, 1),
-		.blending		= 0,
-		.prescale		= 0,
-		.ratio_20bit		= 1,
-		.initphase		= 1,
-		.pixfmt_10bit		= 1,
-		.extra_buf		= 1,
-	}, {
 		.limit_input = {
 			.min_w		= 16,
 			.min_h		= 16,
@@ -547,101 +448,6 @@ static const struct sc_variant sc_variant[] = {
 	},
 };
 
-#ifdef CONFIG_PM_DEVFREQ
-static void sc_pm_qos_update_devfreq(struct sc_qos_request *qos_req,
-				int pm_qos_class, u32 freq)
-{
-	struct pm_qos_request *req;
-
-	if (pm_qos_class == PM_QOS_BUS_THROUGHPUT)
-		req = &qos_req->mif_req;
-	else if (pm_qos_class == PM_QOS_DEVICE_THROUGHPUT)
-		req = &qos_req->int_req;
-	else
-		return;
-
-	if (!pm_qos_request_active(req))
-		pm_qos_add_request(req, pm_qos_class, 0);
-
-	pm_qos_update_request(req, freq);
-}
-
-static void sc_pm_qos_remove_devfreq(struct sc_qos_request *qos_req,
-				int pm_qos_class)
-{
-	struct pm_qos_request *req;
-
-	if (pm_qos_class == PM_QOS_BUS_THROUGHPUT)
-		req = &qos_req->mif_req;
-	else if (pm_qos_class == PM_QOS_DEVICE_THROUGHPUT)
-		req = &qos_req->int_req;
-	else
-		return;
-
-	if (pm_qos_request_active(req))
-		pm_qos_remove_request(req);
-}
-#else
-#define sc_pm_qos_update_devfreq(qos_req, pm_qos_class, freq) do { } while (0)
-#define sc_pm_qos_remove_devfreq(qos_req, pm_qos_class) do { } while (0)
-#endif
-
-void sc_remove_devfreq(struct sc_qos_request *qos_req,
-			struct sc_qos_table *qos_table)
-{
-	sc_pm_qos_remove_devfreq(qos_req, PM_QOS_BUS_THROUGHPUT);
-	sc_pm_qos_remove_devfreq(qos_req, PM_QOS_DEVICE_THROUGHPUT);
-}
-
-void sc_request_devfreq(struct sc_qos_request *qos_req,
-		struct sc_qos_table *qos_table, unsigned long lv)
-{
-	sc_pm_qos_update_devfreq(qos_req,
-			PM_QOS_BUS_THROUGHPUT, qos_table[lv].freq_mif);
-	sc_pm_qos_update_devfreq(qos_req,
-			PM_QOS_DEVICE_THROUGHPUT, qos_table[lv].freq_int);
-}
-
-static bool sc_get_pm_qos_level(struct sc_ctx *ctx, int framerate)
-{
-	struct sc_dev *sc = ctx->sc_dev;
-	struct sc_frame *frame = &ctx->d_frame;
-	struct sc_qos_table *qos_table = sc->qos_table;
-	unsigned int dst_len = 0;
-	int i;
-
-	/* No need to calculate if no qos_table exists. */
-	if (!qos_table)
-		return false;
-
-	for (i = 0; i < frame->sc_fmt->num_planes; i++)
-		dst_len += frame->bytesused[i];
-
-	/*
-	 * We don't need accurate size for level selection.
-	 * It is divided by 256 to use data size within 32bit value.
-	 * It should be done before calculating framerate.
-	 */
-	dst_len /= 256;
-	dst_len *= framerate;
-
-	for (i = 0; i < sc->qos_table_cnt; i++)
-		if (qos_table[i].data_size < dst_len)
-			break;
-
-	/* Set the minimum level */
-	if (i == sc->qos_table_cnt)
-		i--;
-
-	/* No request is required if level is same. */
-	if (ctx->pm_qos_lv == i)
-		return false;
-
-	ctx->pm_qos_lv = i;
-
-	return true;
-}
-
 /* Find the matches format */
 static const struct sc_fmt *sc_find_format(struct sc_dev *sc,
 						u32 pixfmt, bool output_buf)
@@ -744,75 +550,6 @@ static int sc_v4l2_g_fmt_mplane(struct file *file, void *fh,
 	return 0;
 }
 
-int sc_calc_s10b_planesize(u32 pixelformat, u32 width, u32 height,
-				u32 *ysize, u32 *csize, bool only_8bit)
-{
-	int ret = 0;
-
-	switch (pixelformat) {
-	case V4L2_PIX_FMT_NV12M_S10B:
-	case V4L2_PIX_FMT_NV12N_10B:
-			*ysize = NV12M_Y_SIZE(width, height);
-			*csize = NV12M_CBCR_SIZE(width, height);
-		break;
-	case V4L2_PIX_FMT_NV16M_S10B:
-	case V4L2_PIX_FMT_NV61M_S10B:
-			*ysize = NV16M_Y_SIZE(width, height);
-			*csize = NV16M_CBCR_SIZE(width, height);
-		break;
-	default:
-		ret = -EINVAL;
-		break;
-	}
-
-	if (ret || only_8bit)
-		return ret;
-
-	switch (pixelformat) {
-	case V4L2_PIX_FMT_NV12M_S10B:
-	case V4L2_PIX_FMT_NV12N_10B:
-			*ysize += NV12M_Y_2B_SIZE(width, height);
-			*csize += NV12M_CBCR_2B_SIZE(width, height);
-		break;
-	case V4L2_PIX_FMT_NV16M_S10B:
-	case V4L2_PIX_FMT_NV61M_S10B:
-			*ysize += NV16M_Y_2B_SIZE(width, height);
-			*csize += NV16M_CBCR_2B_SIZE(width, height);
-		break;
-	}
-
-	/* Do not consider extra size for 2bit CbCr */
-	*csize -= 256;
-
-	return ret;
-}
-
-static int sc_calc_fmt_s10b_size(const struct sc_fmt *sc_fmt,
-		struct v4l2_pix_format_mplane *pixm, unsigned int ext_size)
-{
-	int i, ret;
-
-	BUG_ON(sc_fmt->num_comp != 2);
-
-	for (i = 0; i < pixm->num_planes; i++)
-		pixm->plane_fmt[i].bytesperline = (pixm->width *
-				sc_fmt->bitperpixel[i]) >> 3;
-
-	ret = sc_calc_s10b_planesize(sc_fmt->pixelformat,
-			pixm->width, pixm->height,
-			&pixm->plane_fmt[0].sizeimage,
-			&pixm->plane_fmt[1].sizeimage, false);
-	if (ret) {
-		pr_err("Scaler doesn't support %s format\n", sc_fmt->name);
-		return ret;
-	}
-
-	for (i = 0; ext_size && i < pixm->num_planes; i++)
-		pixm->plane_fmt[i].sizeimage += (i == 0) ? ext_size : ext_size/2;
-
-	return ret;
-}
-
 static int sc_v4l2_try_fmt_mplane(struct file *file, void *fh,
 			    struct v4l2_format *f)
 {
@@ -823,7 +560,6 @@ static int sc_v4l2_try_fmt_mplane(struct file *file, void *fh,
 	int i;
 	int h_align = 0;
 	int w_align = 0;
-	unsigned int ext_size = 0;
 
 	if (!V4L2_TYPE_IS_MULTIPLANAR(f->type)) {
 		v4l2_err(&ctx->sc_dev->m2m.v4l2_dev,
@@ -858,12 +594,6 @@ static int sc_v4l2_try_fmt_mplane(struct file *file, void *fh,
 	pixm->num_planes = sc_fmt->num_planes;
 	pixm->colorspace = 0;
 
-	if (ctx->sc_dev->variant->extra_buf && V4L2_TYPE_IS_OUTPUT(f->type))
-		ext_size = sc_ext_buf_size(pixm->width);
-
-	if (sc_fmt_is_s10bit_yuv(sc_fmt->pixelformat))
-		return sc_calc_fmt_s10b_size(sc_fmt, pixm, ext_size);
-
 	for (i = 0; i < pixm->num_planes; ++i) {
 		pixm->plane_fmt[i].bytesperline = (pixm->width *
 				sc_fmt->bitperpixel[i]) >> 3;
@@ -883,9 +613,6 @@ static int sc_v4l2_try_fmt_mplane(struct file *file, void *fh,
 				i, pixm->plane_fmt[i].bytesperline,
 				pixm->plane_fmt[i].sizeimage);
 	}
-
-	for (i = 0; ext_size && i < pixm->num_planes; i++)
-		pixm->plane_fmt[i].sizeimage += (i == 0) ? ext_size : ext_size/2;
 
 	return 0;
 }
@@ -986,27 +713,27 @@ static void sc_fence_work(struct work_struct *work)
 	struct vb2_sc_buffer *svb =
 			container_of(work, struct vb2_sc_buffer, work);
 	struct sc_ctx *ctx = vb2_get_drv_priv(svb->mb.vb.vb2_buf.vb2_queue);
-	struct sync_file *sync_file;
+	struct sync_fence *fence;
 	int ret;
 
 	/* Buffers do not have acquire_fence are never pushed to workqueue */
 	BUG_ON(svb->mb.vb.vb2_buf.acquire_fence == NULL);
 	BUG_ON(!ctx->m2m_ctx);
 
-	sync_file = svb->mb.vb.vb2_buf.acquire_fence;
+	fence = svb->mb.vb.vb2_buf.acquire_fence;
 	svb->mb.vb.vb2_buf.acquire_fence = NULL;
 
-	ret = sync_file_wait(sync_file, 1000);
+	ret = sync_fence_wait(fence, 1000);
 	if (ret == -ETIME) {
 		dev_warn(ctx->sc_dev->dev, "sync_fence_wait() timeout\n");
-		ret = sync_file_wait(sync_file, 10 * MSEC_PER_SEC);
+		ret = sync_fence_wait(fence, 10 * MSEC_PER_SEC);
 
 		if (ret)
 			dev_warn(ctx->sc_dev->dev,
 					"sync_fence_wait() error (%d)\n", ret);
 	}
 
-	fput(sync_file->file);
+	sync_fence_put(fence);
 
 	/* OK to preceed the timed out buffers: It does not harm the system */
 	v4l2_m2m_buf_queue(ctx->m2m_ctx, &svb->mb.vb);
@@ -1286,42 +1013,27 @@ static int sc_ctx_stop_req(struct sc_ctx *ctx)
 	return ret;
 }
 
-static void sc_calc_planesize(struct sc_frame *frame, unsigned int pixsize)
-{
-	int idx = frame->sc_fmt->num_planes;
-
-	while (idx-- > 0)
-		frame->addr.size[idx] =
-			(pixsize * frame->sc_fmt->bitperpixel[idx]) / 8;
-}
-
 static void sc_calc_intbufsize(struct sc_dev *sc, struct sc_int_frame *int_frame)
 {
 	struct sc_frame *frame = &int_frame->frame;
 	unsigned int pixsize, bytesize;
-	unsigned int ext_size = 0, i;
 
 	pixsize = frame->width * frame->height;
 	bytesize = (pixsize * frame->sc_fmt->bitperpixel[0]) >> 3;
 
-	if (sc->variant->extra_buf)
-		ext_size = sc_ext_buf_size(frame->width);
-
 	switch (frame->sc_fmt->num_comp) {
 	case 1:
-		frame->addr.size[SC_PLANE_Y] = bytesize;
+		frame->addr.ysize = bytesize;
 		break;
 	case 2:
 		if (frame->sc_fmt->num_planes == 1) {
-			frame->addr.size[SC_PLANE_Y] = pixsize;
-			frame->addr.size[SC_PLANE_CB] = bytesize - pixsize;
+			frame->addr.ysize = pixsize;
+			frame->addr.cbsize = bytesize - pixsize;
 		} else if (frame->sc_fmt->num_planes == 2) {
-			if (frame->sc_fmt->pixelformat == V4L2_PIX_FMT_NV12M_S10B) {
-				frame->addr.size[SC_PLANE_Y] = NV12M_Y_SIZE(frame->width, frame->height);
-				frame->addr.size[SC_PLANE_CB] = NV12M_CBCR_SIZE(frame->width, frame->height);
-			} else {
-				sc_calc_planesize(frame, pixsize);
-			}
+			frame->addr.ysize =
+				(pixsize * frame->sc_fmt->bitperpixel[0]) / 8;
+			frame->addr.cbsize =
+				(pixsize * frame->sc_fmt->bitperpixel[1]) / 8;
 		}
 		break;
 	case 3:
@@ -1329,16 +1041,21 @@ static void sc_calc_intbufsize(struct sc_dev *sc, struct sc_int_frame *int_frame
 			if (sc_fmt_is_ayv12(frame->sc_fmt->pixelformat)) {
 				unsigned int c_span;
 				c_span = ALIGN(frame->width >> 1, 16);
-				frame->addr.size[SC_PLANE_Y] = pixsize;
-				frame->addr.size[SC_PLANE_CB] = c_span * (frame->height >> 1);
-				frame->addr.size[SC_PLANE_CR] = frame->addr.size[SC_PLANE_CB];
+				frame->addr.ysize = pixsize;
+				frame->addr.cbsize = c_span * (frame->height >> 1);
+				frame->addr.crsize = frame->addr.cbsize;
 			} else {
-				frame->addr.size[SC_PLANE_Y] = pixsize;
-				frame->addr.size[SC_PLANE_CB] = (bytesize - pixsize) / 2;
-				frame->addr.size[SC_PLANE_CR] = frame->addr.size[SC_PLANE_CB];
+				frame->addr.ysize = pixsize;
+				frame->addr.cbsize = (bytesize - pixsize) / 2;
+				frame->addr.crsize = frame->addr.cbsize;
 			}
 		} else if (frame->sc_fmt->num_planes == 3) {
-			sc_calc_planesize(frame, pixsize);
+			frame->addr.ysize =
+				(pixsize * frame->sc_fmt->bitperpixel[0]) / 8;
+			frame->addr.cbsize =
+				(pixsize * frame->sc_fmt->bitperpixel[1]) / 8;
+			frame->addr.crsize =
+				(pixsize * frame->sc_fmt->bitperpixel[2]) / 8;
 		} else {
 			dev_err(sc->dev, "Please check the num of comp\n");
 		}
@@ -1347,9 +1064,6 @@ static void sc_calc_intbufsize(struct sc_dev *sc, struct sc_int_frame *int_frame
 	default:
 		break;
 	}
-
-	for (i = 0; ext_size && i < frame->sc_fmt->num_comp; i++)
-		frame->addr.size[i] += (i == 0) ? ext_size : ext_size/2;
 
 	memcpy(&int_frame->src_addr, &frame->addr, sizeof(int_frame->src_addr));
 	memcpy(&int_frame->dst_addr, &frame->addr, sizeof(int_frame->dst_addr));
@@ -1365,19 +1079,32 @@ static void free_intermediate_frame(struct sc_ctx *ctx)
 	if (!ctx->i_frame->handle[0])
 		return;
 
+	if (ctx->i_frame->src_addr.y)
+		ion_iovmm_unmap(ctx->i_frame->attachment[0],
+				ctx->i_frame->src_addr.y);
+	if (ctx->i_frame->src_addr.cb)
+		ion_iovmm_unmap(ctx->i_frame->attachment[1],
+				ctx->i_frame->src_addr.cb);
+	if (ctx->i_frame->src_addr.cr)
+		ion_iovmm_unmap(ctx->i_frame->attachment[2],
+				ctx->i_frame->src_addr.cr);
+	if (ctx->i_frame->dst_addr.y)
+		ion_iovmm_unmap(ctx->i_frame->attachment[0],
+				ctx->i_frame->dst_addr.y);
+	if (ctx->i_frame->dst_addr.cb)
+		ion_iovmm_unmap(ctx->i_frame->attachment[1],
+				ctx->i_frame->dst_addr.cb);
+	if (ctx->i_frame->dst_addr.cr)
+		ion_iovmm_unmap(ctx->i_frame->attachment[2],
+				ctx->i_frame->dst_addr.cr);
+
 	for(i = 0; i < 3; i++) {
-		if (ctx->i_frame->src_addr.ioaddr[i])
-			ion_iovmm_unmap(ctx->i_frame->attachment[i],
-					ctx->i_frame->src_addr.ioaddr[i]);
-		if (ctx->i_frame->dst_addr.ioaddr[i])
-			ion_iovmm_unmap(ctx->i_frame->attachment[i],
-					ctx->i_frame->dst_addr.ioaddr[i]);
 		if (ctx->i_frame->handle[i]) {
 			dma_buf_unmap_attachment(ctx->i_frame->attachment[i],
 					ctx->i_frame->sgt[i], DMA_BIDIRECTIONAL);
 			dma_buf_detach(ctx->i_frame->dma_buf[i], ctx->i_frame->attachment[i]);
 			dma_buf_put(ctx->i_frame->dma_buf[i]);
-			ion_free(ctx->sc_dev->client, ctx->i_frame->handle[i]);
+			ion_free(ctx->i_frame->client, ctx->i_frame->handle[i]);
 		}
 	}
 
@@ -1390,6 +1117,7 @@ static void destroy_intermediate_frame(struct sc_ctx *ctx)
 {
 	if (ctx->i_frame) {
 		free_intermediate_frame(ctx);
+		ion_client_destroy(ctx->i_frame->client);
 		kfree(ctx->i_frame);
 		ctx->i_frame = NULL;
 		clear_bit(CTX_INT_FRAME, &ctx->flags);
@@ -1401,7 +1129,6 @@ static bool initialize_initermediate_frame(struct sc_ctx *ctx)
 	struct sc_frame *frame;
 	struct sc_dev *sc = ctx->sc_dev;
 	int ion_mask, flag;
-	int i;
 
 	frame = &ctx->i_frame->frame;
 
@@ -1425,75 +1152,200 @@ static bool initialize_initermediate_frame(struct sc_ctx *ctx)
 		ion_mask = EXYNOS_ION_HEAP_VIDEO_SCALER_MASK;
 		flag = ION_FLAG_PROTECTED;
 	} else {
-		ion_mask = EXYNOS_ION_HEAP_SYSTEM_MASK;
+		ion_mask = ION_HEAP_SYSTEM_MASK;
 		flag = 0;
 	}
 
-	for (i = 0; i < SC_MAX_PLANES; i++) {
-		if (!frame->addr.size[i])
-			break;
-
-		ctx->i_frame->handle[i] = ion_alloc(ctx->sc_dev->client,
-				frame->addr.size[i], 0, ion_mask, flag);
-		if (IS_ERR(ctx->i_frame->handle[i])) {
+	if (frame->addr.ysize) {
+		ctx->i_frame->handle[0] = ion_alloc(ctx->i_frame->client,
+				frame->addr.ysize, 0, ion_mask, flag);
+		if (IS_ERR(ctx->i_frame->handle[0])) {
 			dev_err(sc->dev,
-			"Failed to allocate intermediate buffer.%d (err %ld)",
-				i, PTR_ERR(ctx->i_frame->handle[i]));
-			ctx->i_frame->handle[i] = NULL;
+			"Failed to allocate intermediate y buffer (err %ld)",
+				PTR_ERR(ctx->i_frame->handle[0]));
+			ctx->i_frame->handle[0] = NULL;
 			goto err_ion_alloc;
 		}
 
-		ctx->i_frame->dma_buf[i] = ion_share_dma_buf(ctx->sc_dev->client,
-				ctx->i_frame->handle[i]);
-		if (IS_ERR(ctx->i_frame->dma_buf[i])) {
+		ctx->i_frame->dma_buf[0] = ion_share_dma_buf(ctx->i_frame->client,
+				ctx->i_frame->handle[0]);
+		if (IS_ERR(ctx->i_frame->dma_buf[0])) {
 			dev_err(sc->dev,
-			"Failed to get dma_buf from ion_handle of buffer.%d (err %ld)",
-				i, PTR_ERR(ctx->i_frame->dma_buf[i]));
-			ctx->i_frame->dma_buf[i] = NULL;
+			"Failed to get dma_buf from ion_handle of y (err %ld)",
+			PTR_ERR(ctx->i_frame->dma_buf[0]));
+			ctx->i_frame->dma_buf[0] = NULL;
 			goto err_ion_alloc;
 		}
 
-		ctx->i_frame->attachment[i] = dma_buf_attach(ctx->i_frame->dma_buf[i],
+		ctx->i_frame->attachment[0] = dma_buf_attach(ctx->i_frame->dma_buf[0],
 				sc->dev);
-		if (IS_ERR(ctx->i_frame->attachment[i])) {
+		if (IS_ERR(ctx->i_frame->attachment[0])) {
 			dev_err(sc->dev,
-			"Failed to get dma_buf_attach from dma_buf of buffer.%d (err %ld)",
-				i, PTR_ERR(ctx->i_frame->attachment[i]));
-			ctx->i_frame->attachment[i] = NULL;
+			"Failed to get dma_buf_attach from dma_buf of y (err %ld)",
+			PTR_ERR(ctx->i_frame->attachment[0]));
+			ctx->i_frame->attachment[0] = NULL;
 			goto err_ion_alloc;
 		}
 
-		ctx->i_frame->sgt[i] = dma_buf_map_attachment(ctx->i_frame->attachment[i],
+		ctx->i_frame->sgt[0] = dma_buf_map_attachment(ctx->i_frame->attachment[0],
 				DMA_BIDIRECTIONAL);
-		if (IS_ERR(ctx->i_frame->sgt[i])) {
+		if (IS_ERR(ctx->i_frame->sgt[0])) {
 			dev_err(sc->dev,
-			"Failed to get sgt from dma_buf_attach of buffer.%d (err %ld)",
-				i, PTR_ERR(ctx->i_frame->sgt[i]));
-			ctx->i_frame->sgt[i] = NULL;
+			"Failed to get sgt from dma_buf_attach of y (err %ld)",
+			PTR_ERR(ctx->i_frame->sgt[0]));
+			ctx->i_frame->sgt[0] = NULL;
 			goto err_ion_alloc;
 		}
 
-		ctx->i_frame->src_addr.ioaddr[i] = ion_iovmm_map(ctx->i_frame->attachment[i], 0,
-					frame->addr.size[i], DMA_TO_DEVICE, 0);
-		if (IS_ERR_VALUE(ctx->i_frame->src_addr.ioaddr[i])) {
+		ctx->i_frame->src_addr.y = ion_iovmm_map(ctx->i_frame->attachment[0], 0,
+					frame->addr.ysize, DMA_TO_DEVICE, 0);
+		if (IS_ERR_VALUE(ctx->i_frame->src_addr.y)) {
 			dev_err(sc->dev,
-				"Failed to allocate iova of buffer.%d (err %pa)",
-				i, &ctx->i_frame->src_addr.ioaddr[i]);
-			ctx->i_frame->src_addr.ioaddr[i] = 0;
+				"Failed to allocate iova of y (err %pa)",
+				&ctx->i_frame->src_addr.y);
+			ctx->i_frame->src_addr.y = 0;
 			goto err_ion_alloc;
 		}
 
-		ctx->i_frame->dst_addr.ioaddr[i] = ion_iovmm_map(ctx->i_frame->attachment[i], 0,
-					frame->addr.size[i], DMA_FROM_DEVICE, 0);
-		if (IS_ERR_VALUE(ctx->i_frame->dst_addr.ioaddr[i])) {
+		ctx->i_frame->dst_addr.y = ion_iovmm_map(ctx->i_frame->attachment[0], 0,
+					frame->addr.ysize, DMA_FROM_DEVICE, 0);
+		if (IS_ERR_VALUE(ctx->i_frame->dst_addr.y)) {
 			dev_err(sc->dev,
-				"Failed to allocate iova of buffer.%d (err %pa)",
-				i, &ctx->i_frame->dst_addr.ioaddr[i]);
-			ctx->i_frame->dst_addr.ioaddr[i] = 0;
+				"Failed to allocate iova of y (err %pa)",
+				&ctx->i_frame->dst_addr.y);
+			ctx->i_frame->dst_addr.y = 0;
 			goto err_ion_alloc;
 		}
 
-		frame->addr.ioaddr[i] = ctx->i_frame->dst_addr.ioaddr[i];
+		frame->addr.y = ctx->i_frame->dst_addr.y;
+	}
+
+	if (frame->addr.cbsize) {
+		ctx->i_frame->handle[1] = ion_alloc(ctx->i_frame->client,
+				frame->addr.cbsize, 0, ion_mask, flag);
+		if (IS_ERR(ctx->i_frame->handle[1])) {
+			dev_err(sc->dev,
+			"Failed to allocate intermediate cb buffer (err %ld)",
+				PTR_ERR(ctx->i_frame->handle[1]));
+			ctx->i_frame->handle[1] = NULL;
+			goto err_ion_alloc;
+		}
+
+		ctx->i_frame->dma_buf[1] = ion_share_dma_buf(ctx->i_frame->client,
+				ctx->i_frame->handle[1]);
+		if (IS_ERR(ctx->i_frame->dma_buf[1])) {
+			dev_err(sc->dev,
+			"Failed to get dma_buf from ion_handle of cb (err %ld)",
+			PTR_ERR(ctx->i_frame->dma_buf[1]));
+			ctx->i_frame->dma_buf[1] = NULL;
+			goto err_ion_alloc;
+		}
+
+		ctx->i_frame->attachment[1] = dma_buf_attach(ctx->i_frame->dma_buf[1],
+				sc->dev);
+		if (IS_ERR(ctx->i_frame->attachment[1])) {
+			dev_err(sc->dev,
+			"Failed to get dma_buf_attach from dma_buf of cb (err %ld)",
+			PTR_ERR(ctx->i_frame->attachment[1]));
+			ctx->i_frame->attachment[1] = NULL;
+			goto err_ion_alloc;
+		}
+
+		ctx->i_frame->sgt[1] = dma_buf_map_attachment(ctx->i_frame->attachment[1],
+				DMA_BIDIRECTIONAL);
+		if (IS_ERR(ctx->i_frame->sgt[1])) {
+			dev_err(sc->dev,
+			"Failed to get sgt from dma_buf_attach of cb (err %ld)",
+			PTR_ERR(ctx->i_frame->sgt[1]));
+			ctx->i_frame->sgt[1] = NULL;
+			goto err_ion_alloc;
+		}
+
+		ctx->i_frame->src_addr.cb = ion_iovmm_map(ctx->i_frame->attachment[1], 0,
+					frame->addr.cbsize, DMA_TO_DEVICE, 0);
+		if (IS_ERR_VALUE(ctx->i_frame->src_addr.cb)) {
+			dev_err(sc->dev,
+				"Failed to allocate iova of cb (err %pa)",
+				&ctx->i_frame->src_addr.cb);
+			ctx->i_frame->src_addr.cb = 0;
+			goto err_ion_alloc;
+		}
+
+		ctx->i_frame->dst_addr.cb = ion_iovmm_map(ctx->i_frame->attachment[1], 0,
+					frame->addr.cbsize, DMA_FROM_DEVICE, 0);
+		if (IS_ERR_VALUE(ctx->i_frame->dst_addr.cb)) {
+			dev_err(sc->dev,
+				"Failed to allocate iova of cb (err %pa)",
+				&ctx->i_frame->dst_addr.cb);
+			ctx->i_frame->dst_addr.cb = 0;
+			goto err_ion_alloc;
+		}
+
+		frame->addr.cb = ctx->i_frame->dst_addr.cb;
+	}
+
+	if (frame->addr.crsize) {
+		ctx->i_frame->handle[2] = ion_alloc(ctx->i_frame->client,
+				frame->addr.crsize, 0, ion_mask, flag);
+		if (IS_ERR(ctx->i_frame->handle[2])) {
+			dev_err(sc->dev,
+			"Failed to allocate intermediate cr buffer (err %ld)",
+				PTR_ERR(ctx->i_frame->handle[2]));
+			ctx->i_frame->handle[2] = NULL;
+			goto err_ion_alloc;
+		}
+
+		ctx->i_frame->dma_buf[2] = ion_share_dma_buf(ctx->i_frame->client,
+				ctx->i_frame->handle[2]);
+		if (IS_ERR(ctx->i_frame->dma_buf[2])) {
+			dev_err(sc->dev,
+			"Failed to get dma_buf from ion_handle of cr (err %ld)",
+			PTR_ERR(ctx->i_frame->dma_buf[2]));
+			ctx->i_frame->dma_buf[2] = NULL;
+			goto err_ion_alloc;
+		}
+
+		ctx->i_frame->attachment[2] = dma_buf_attach(ctx->i_frame->dma_buf[2],
+				sc->dev);
+		if (IS_ERR(ctx->i_frame->attachment[2])) {
+			dev_err(sc->dev,
+			"Failed to get dma_buf_attach from dma_buf of cr (err %ld)",
+			PTR_ERR(ctx->i_frame->attachment[2]));
+			ctx->i_frame->attachment[2] = NULL;
+			goto err_ion_alloc;
+		}
+
+		ctx->i_frame->sgt[2] = dma_buf_map_attachment(ctx->i_frame->attachment[2],
+				DMA_BIDIRECTIONAL);
+		if (IS_ERR(ctx->i_frame->sgt[2])) {
+			dev_err(sc->dev,
+			"Failed to get sgt from dma_buf_attach of cr (err %ld)",
+			PTR_ERR(ctx->i_frame->sgt[2]));
+			ctx->i_frame->sgt[2] = NULL;
+			goto err_ion_alloc;
+		}
+
+		ctx->i_frame->src_addr.cr = ion_iovmm_map(ctx->i_frame->attachment[2], 0,
+					frame->addr.crsize, DMA_TO_DEVICE, 0);
+		if (IS_ERR_VALUE(ctx->i_frame->src_addr.cr)) {
+			dev_err(sc->dev,
+				"Failed to allocate iova of cr (err %pa)",
+				&ctx->i_frame->src_addr.cr);
+			ctx->i_frame->src_addr.cr = 0;
+			goto err_ion_alloc;
+		}
+
+		ctx->i_frame->dst_addr.cr = ion_iovmm_map(ctx->i_frame->attachment[2], 0,
+					frame->addr.crsize, DMA_FROM_DEVICE, 0);
+		if (IS_ERR_VALUE(ctx->i_frame->dst_addr.cr)) {
+			dev_err(sc->dev,
+				"Failed to allocate iova of cr (err %pa)",
+				&ctx->i_frame->dst_addr.cr);
+			ctx->i_frame->dst_addr.cr = 0;
+			goto err_ion_alloc;
+		}
+
+		frame->addr.cr = ctx->i_frame->dst_addr.cr;
 	}
 
 	return true;
@@ -1510,6 +1362,17 @@ static bool allocate_intermediate_frame(struct sc_ctx *ctx)
 		if (ctx->i_frame == NULL) {
 			dev_err(ctx->sc_dev->dev,
 				"Failed to allocate intermediate frame\n");
+			return false;
+		}
+
+		ctx->i_frame->client = exynos_ion_client_create("scaler-int");
+		if (IS_ERR(ctx->i_frame->client)) {
+			dev_err(ctx->sc_dev->dev,
+			"Failed to create ION client for int.buf.(err %ld)\n",
+				PTR_ERR(ctx->i_frame->client));
+			ctx->i_frame->client = NULL;
+			kfree(ctx->i_frame);
+			ctx->i_frame = NULL;
 			return false;
 		}
 	}
@@ -1833,8 +1696,9 @@ static int sc_find_scaling_ratio(struct sc_ctx *ctx)
 }
 
 static int sc_vb2_queue_setup(struct vb2_queue *vq,
-		unsigned int *num_buffers, unsigned int *num_planes,
-		unsigned int sizes[], struct device *alloc_devs[])
+		const void *parg, unsigned int *num_buffers,
+		unsigned int *num_planes, unsigned int sizes[],
+		void *allocators[])
 {
 	struct sc_ctx *ctx = vb2_get_drv_priv(vq);
 	struct sc_frame *frame;
@@ -1849,7 +1713,7 @@ static int sc_vb2_queue_setup(struct vb2_queue *vq,
 	*num_planes = frame->sc_fmt->num_planes;
 	for (i = 0; i < frame->sc_fmt->num_planes; i++) {
 		sizes[i] = frame->bytesused[i];
-		alloc_devs[i] = ctx->sc_dev->dev;
+		allocators[i] = ctx->sc_dev->alloc_ctx;
 	}
 
 	ret = sc_find_scaling_ratio(ctx);
@@ -1897,7 +1761,7 @@ static void sc_vb2_buf_queue(struct vb2_buffer *vb)
 		struct vb2_sc_buffer *svb = container_of(mb, typeof(*svb), mb);
 		queue_work(ctx->sc_dev->fence_wq, &svb->work);
 	} else {
-		if (ctx->m2m_ctx)
+	if (ctx->m2m_ctx)
 			v4l2_m2m_buf_queue(ctx->m2m_ctx, v4l2_buf);
 	}
 }
@@ -2013,22 +1877,6 @@ static bool sc_configure_rotation_degree(struct sc_ctx *ctx, int degree)
 	return true;
 }
 
-static void sc_set_framerate(struct sc_ctx *ctx, int framerate)
-{
-	if (!ctx->sc_dev->qos_table)
-		return;
-
-	if (framerate == 0) {
-		sc_remove_devfreq(&ctx->pm_qos, ctx->sc_dev->qos_table);
-		ctx->framerate = 0;
-	} else if (framerate != ctx->framerate) {
-		ctx->framerate = framerate;
-		if (sc_get_pm_qos_level(ctx, ctx->framerate))
-			sc_request_devfreq(&ctx->pm_qos,
-					ctx->sc_dev->qos_table, ctx->pm_qos_lv);
-	}
-}
-
 static int sc_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct sc_ctx *ctx;
@@ -2083,9 +1931,6 @@ static int sc_s_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	case SC_CID_DNOISE_FT:
 		ctx->dnoise_ft.strength = ctrl->val;
-		break;
-	case SC_CID_FRAMERATE:
-		sc_set_framerate(ctx, ctrl->val);
 		break;
 	}
 
@@ -2145,7 +1990,7 @@ static const struct v4l2_ctrl_config sc_custom_ctrl[] = {
 		.flags = V4L2_CTRL_FLAG_SLIDER,
 		.step = 1,
 		.min = V4L2_COLORSPACE_DEFAULT,
-		.max = V4L2_COLORSPACE_BT2020,
+		.max = V4L2_COLORSPACE_DCI_P3,
 		.def = V4L2_COLORSPACE_DEFAULT,
 	}, {
 		.ops = &sc_ctrl_ops,
@@ -2175,15 +2020,6 @@ static const struct v4l2_ctrl_config sc_custom_ctrl[] = {
 		.step = 1,
 		.min = 0,
 		.max = SC_FT_MAX,
-		.def = 0,
-	}, {
-		.ops = &sc_ctrl_ops,
-		.id = SC_CID_FRAMERATE,
-		.name = "Frame rate setting",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.step = 1,
-		.min = 0,
-		.max = SC_FRAMERATE_MAX,
 		.def = 0,
 	}
 };
@@ -2343,8 +2179,6 @@ static int sc_open(struct file *file)
 		goto err_ctx;
 	}
 
-	ctx->pm_qos_lv = -1;
-
 	return 0;
 
 err_ctx:
@@ -2376,11 +2210,6 @@ static int sc_release(struct file *file)
 	v4l2_m2m_ctx_release(ctx->m2m_ctx);
 
 	destroy_intermediate_frame(ctx);
-
-	if (ctx->framerate) {
-		sc_remove_devfreq(&ctx->pm_qos, ctx->sc_dev->qos_table);
-		ctx->framerate = 0;
-	}
 
 	if (!IS_ERR(sc->aclk))
 		clk_unprepare(sc->aclk);
@@ -2488,8 +2317,6 @@ static void sc_watchdog(unsigned long arg)
 
 	if (test_bit(DEV_RUN, &sc->state)) {
 		sc_hwregs_dump(sc);
-		if (sc->current_ctx)
-			sc_ctx_dump(sc->current_ctx);
 		exynos_sysmmu_show_status(sc->dev);
 		atomic_inc(&sc->wdt.cnt);
 		dev_err(sc->dev, "scaler is still running\n");
@@ -2536,9 +2363,9 @@ static bool sc_process_2nd_stage(struct sc_dev *sc, struct sc_ctx *ctx)
 	s_frame = &ctx->i_frame->frame;
 	d_frame = &ctx->d_frame;
 
-	s_frame->addr.ioaddr[SC_PLANE_Y] = ctx->i_frame->src_addr.ioaddr[SC_PLANE_Y];
-	s_frame->addr.ioaddr[SC_PLANE_CB] = ctx->i_frame->src_addr.ioaddr[SC_PLANE_CB];
-	s_frame->addr.ioaddr[SC_PLANE_CR] = ctx->i_frame->src_addr.ioaddr[SC_PLANE_CR];
+	s_frame->addr.y = ctx->i_frame->src_addr.y;
+	s_frame->addr.cb = ctx->i_frame->src_addr.cb;
+	s_frame->addr.cr = ctx->i_frame->src_addr.cr;
 
 	walign = d_frame->sc_fmt->h_shift;
 	halign = d_frame->sc_fmt->v_shift;
@@ -2591,8 +2418,8 @@ static bool sc_process_2nd_stage(struct sc_dev *sc, struct sc_ctx *ctx)
 	sc_hwset_dst_pos(sc, d_frame->crop.left, d_frame->crop.top);
 	sc_hwset_dst_wh(sc, d_frame->crop.width, d_frame->crop.height);
 
-	sc_hwset_src_addr(sc, s_frame);
-	sc_hwset_dst_addr(sc, d_frame);
+	sc_hwset_src_addr(sc, &s_frame->addr);
+	sc_hwset_dst_addr(sc, &d_frame->addr);
 
 	if ((ctx->flip_rot_cfg & SCALER_ROT_MASK) &&
 		(ctx->dnoise_ft.strength > SC_FT_BLUR))
@@ -2617,6 +2444,51 @@ static void sc_set_dithering(struct sc_ctx *ctx)
 
 	sc_dbg("dither value is 0x%x\n", val);
 	sc_hwset_dith(sc, val);
+}
+
+/*
+ * 'Prefetch' is not required by Scaler
+ * because fetch larger region is more beneficial for rotation
+ */
+#define SC_SRC_PBCONFIG	(SYSMMU_PBUFCFG_TLB_UPDATE |		\
+			SYSMMU_PBUFCFG_ASCENDING | SYSMMU_PBUFCFG_READ)
+#define SC_DST_PBCONFIG	(SYSMMU_PBUFCFG_TLB_UPDATE |		\
+			SYSMMU_PBUFCFG_ASCENDING | SYSMMU_PBUFCFG_WRITE)
+
+static void sc_set_prefetch_buffers(struct device *dev, struct sc_ctx *ctx)
+{
+	struct sc_frame *s_frame = &ctx->s_frame;
+	struct sc_frame *d_frame = &ctx->d_frame;
+	struct sysmmu_prefbuf pb_reg[6];
+	unsigned int i = 0;
+
+	pb_reg[i].base = s_frame->addr.y;
+	pb_reg[i].size = s_frame->addr.ysize;
+	pb_reg[i++].config = SC_SRC_PBCONFIG;
+	if (s_frame->sc_fmt->num_comp >= 2) {
+		pb_reg[i].base = s_frame->addr.cb;
+		pb_reg[i].size = s_frame->addr.cbsize;
+		pb_reg[i++].config = SC_SRC_PBCONFIG;
+	}
+	if (s_frame->sc_fmt->num_comp >= 3) {
+		pb_reg[i].base = s_frame->addr.cr;
+		pb_reg[i].size = s_frame->addr.crsize;
+		pb_reg[i++].config = SC_SRC_PBCONFIG;
+	}
+
+	pb_reg[i].base = d_frame->addr.y;
+	pb_reg[i].size = d_frame->addr.ysize;
+	pb_reg[i++].config = SC_DST_PBCONFIG;
+	if (d_frame->sc_fmt->num_comp >= 2) {
+		pb_reg[i].base = d_frame->addr.cb;
+		pb_reg[i].size = d_frame->addr.cbsize;
+		pb_reg[i++].config = SC_DST_PBCONFIG;
+	}
+	if (d_frame->sc_fmt->num_comp >= 3) {
+		pb_reg[i].base = d_frame->addr.cr;
+		pb_reg[i].size = d_frame->addr.crsize;
+		pb_reg[i++].config = SC_DST_PBCONFIG;
+	}
 }
 
 static void sc_set_initial_phase(struct sc_ctx *ctx)
@@ -2703,7 +2575,6 @@ static int sc_run_next_job(struct sc_dev *sc)
 	s_frame = &ctx->s_frame;
 	d_frame = &ctx->d_frame;
 
-	sc_hwset_clk_request(sc, true);
 	sc_hwset_init(sc);
 
 	if (ctx->i_frame) {
@@ -2778,8 +2649,8 @@ static int sc_run_next_job(struct sc_dev *sc)
 	if (sc->variant->initphase)
 		sc_set_initial_phase(ctx);
 
-	sc_hwset_src_addr(sc, s_frame);
-	sc_hwset_dst_addr(sc, d_frame);
+	sc_hwset_src_addr(sc, &s_frame->addr);
+	sc_hwset_dst_addr(sc, &d_frame->addr);
 
 	sc_set_dithering(ctx);
 
@@ -2793,10 +2664,7 @@ static int sc_run_next_job(struct sc_dev *sc)
 
 	sc_hwset_int_en(sc);
 
-	if (sc_show_stat & 0x1)
-		sc_hwregs_dump(sc);
-	if (sc_show_stat & 0x2)
-		sc_ctx_dump(ctx);
+	sc_set_prefetch_buffers(sc->dev, ctx);
 
 	mod_timer(&sc->wdt.timer, jiffies + SC_TIMEOUT);
 
@@ -2875,8 +2743,6 @@ static irqreturn_t sc_irq_handler(int irq, void *priv)
 	if (!SCALER_INT_OK(irq_status))
 		sc_hwset_soft_reset(sc);
 
-	sc_hwset_clk_request(sc, false);
-
 	clear_bit(DEV_RUN, &sc->state);
 	clear_bit(CTX_RUN, &ctx->flags);
 
@@ -2894,7 +2760,7 @@ static irqreturn_t sc_irq_handler(int irq, void *priv)
 			struct vb2_sc_buffer *svb =
 					container_of(mb, typeof(*svb), mb);
 
-			dst_vb->reserved2 =
+			dst_vb->timestamp.tv_usec =
 				(__u32)ktime_us_delta(ktime_get(), svb->ktime);
 		}
 
@@ -2953,56 +2819,52 @@ static int sc_get_bufaddr(struct sc_dev *sc, struct vb2_buffer *vb2buf,
 	if (!cookie)
 		return -EINVAL;
 
-	ret = sc_get_dma_address(cookie, &frame->addr.ioaddr[SC_PLANE_Y]);
+	ret = sc_get_dma_address(cookie, &frame->addr.y);
 	if (ret != 0)
 		return ret;
 
-	frame->addr.ioaddr[SC_PLANE_CB] = 0;
-	frame->addr.ioaddr[SC_PLANE_CR] = 0;
-	frame->addr.size[SC_PLANE_CB] = 0;
-	frame->addr.size[SC_PLANE_CR] = 0;
+	frame->addr.cb = 0;
+	frame->addr.cr = 0;
+	frame->addr.cbsize = 0;
+	frame->addr.crsize = 0;
 
 	switch (frame->sc_fmt->num_comp) {
 	case 1: /* rgb, yuyv */
-		frame->addr.size[SC_PLANE_Y] = bytesize;
+		frame->addr.ysize = bytesize;
 		break;
 	case 2:
 		if (frame->sc_fmt->num_planes == 1) {
 			if (frame->sc_fmt->pixelformat == V4L2_PIX_FMT_NV12N) {
 				unsigned int w = frame->width;
 				unsigned int h = frame->height;
-				frame->addr.ioaddr[SC_PLANE_CB] =
-					NV12N_CBCR_BASE(frame->addr.ioaddr[SC_PLANE_Y], w, h);
-				frame->addr.size[SC_PLANE_Y] = NV12N_Y_SIZE(w, h);
-				frame->addr.size[SC_PLANE_CB] = NV12N_CBCR_SIZE(w, h);
+				frame->addr.cb =
+					NV12N_CBCR_BASE(frame->addr.y, w, h);
+				frame->addr.ysize = NV12N_Y_SIZE(w, h);
+				frame->addr.cbsize = NV12N_CBCR_SIZE(w, h);
 			} else if (frame->sc_fmt->pixelformat == V4L2_PIX_FMT_NV12N_10B) {
 				unsigned int w = frame->width;
 				unsigned int h = frame->height;
-				frame->addr.ioaddr[SC_PLANE_CB] =
-					NV12N_10B_CBCR_BASE(frame->addr.ioaddr[SC_PLANE_Y], w, h);
-				frame->addr.size[SC_PLANE_Y] = NV12N_Y_SIZE(w, h);
-				frame->addr.size[SC_PLANE_CB] = NV12N_CBCR_SIZE(w, h);
+				frame->addr.cb =
+					NV12N_10B_CBCR_BASE(frame->addr.y, w, h);
+				frame->addr.ysize = NV12N_Y_SIZE(w, h);
+				frame->addr.cbsize = NV12N_CBCR_SIZE(w, h);
 			} else {
-				frame->addr.ioaddr[SC_PLANE_CB] = frame->addr.ioaddr[SC_PLANE_Y] + pixsize;
-				frame->addr.size[SC_PLANE_Y] = pixsize;
-				frame->addr.size[SC_PLANE_CB] = bytesize - pixsize;
+				frame->addr.cb = frame->addr.y + pixsize;
+				frame->addr.ysize = pixsize;
+				frame->addr.cbsize = bytesize - pixsize;
 			}
 		} else if (frame->sc_fmt->num_planes == 2) {
 			cookie = vb2_plane_cookie(vb2buf, 1);
 			if (!cookie)
 				return -EINVAL;
 
-			ret = sc_get_dma_address(cookie, &frame->addr.ioaddr[SC_PLANE_CB]);
+			ret = sc_get_dma_address(cookie, &frame->addr.cb);
 			if (ret != 0)
 				return ret;
-
-			if (sc_fmt_is_s10bit_yuv(frame->sc_fmt->pixelformat))
-				sc_calc_s10b_planesize(frame->sc_fmt->pixelformat,
-						frame->width, frame->height,
-						&frame->addr.size[SC_PLANE_Y],
-						&frame->addr.size[SC_PLANE_CB], false);
-			else
-				sc_calc_planesize(frame, pixsize);
+			frame->addr.ysize =
+				pixsize * frame->sc_fmt->bitperpixel[0] >> 3;
+			frame->addr.cbsize =
+				pixsize * frame->sc_fmt->bitperpixel[1] >> 3;
 		}
 		break;
 	case 3:
@@ -3010,44 +2872,48 @@ static int sc_get_bufaddr(struct sc_dev *sc, struct vb2_buffer *vb2buf,
 			if (sc_fmt_is_ayv12(frame->sc_fmt->pixelformat)) {
 				unsigned int c_span;
 				c_span = ALIGN(frame->width >> 1, 16);
-				frame->addr.size[SC_PLANE_Y] = pixsize;
-				frame->addr.size[SC_PLANE_CB] = c_span * (frame->height >> 1);
-				frame->addr.size[SC_PLANE_CR] = frame->addr.size[SC_PLANE_CB];
-				frame->addr.ioaddr[SC_PLANE_CB] = frame->addr.ioaddr[SC_PLANE_Y] + pixsize;
-				frame->addr.ioaddr[SC_PLANE_CR] = frame->addr.ioaddr[SC_PLANE_CB] + frame->addr.size[SC_PLANE_CB];
+				frame->addr.ysize = pixsize;
+				frame->addr.cbsize = c_span * (frame->height >> 1);
+				frame->addr.crsize = frame->addr.cbsize;
+				frame->addr.cb = frame->addr.y + pixsize;
+				frame->addr.cr = frame->addr.cb + frame->addr.cbsize;
 			} else if (frame->sc_fmt->pixelformat ==
 					V4L2_PIX_FMT_YUV420N) {
 				unsigned int w = frame->width;
 				unsigned int h = frame->height;
-				frame->addr.size[SC_PLANE_Y] = YUV420N_Y_SIZE(w, h);
-				frame->addr.size[SC_PLANE_CB] = YUV420N_CB_SIZE(w, h);
-				frame->addr.size[SC_PLANE_CR] = YUV420N_CR_SIZE(w, h);
-				frame->addr.ioaddr[SC_PLANE_CB] =
-					YUV420N_CB_BASE(frame->addr.ioaddr[SC_PLANE_Y], w, h);
-				frame->addr.ioaddr[SC_PLANE_CR] =
-					YUV420N_CR_BASE(frame->addr.ioaddr[SC_PLANE_Y], w, h);
+				frame->addr.ysize = YUV420N_Y_SIZE(w, h);
+				frame->addr.cbsize = YUV420N_CB_SIZE(w, h);
+				frame->addr.crsize = YUV420N_CR_SIZE(w, h);
+				frame->addr.cb =
+					YUV420N_CB_BASE(frame->addr.y, w, h);
+				frame->addr.cr =
+					YUV420N_CR_BASE(frame->addr.y, w, h);
 			} else {
-				frame->addr.size[SC_PLANE_Y] = pixsize;
-				frame->addr.size[SC_PLANE_CB] = (bytesize - pixsize) / 2;
-				frame->addr.size[SC_PLANE_CR] = frame->addr.size[SC_PLANE_CB];
-				frame->addr.ioaddr[SC_PLANE_CB] = frame->addr.ioaddr[SC_PLANE_Y] + pixsize;
-				frame->addr.ioaddr[SC_PLANE_CR] = frame->addr.ioaddr[SC_PLANE_CB] + frame->addr.size[SC_PLANE_CB];
+				frame->addr.ysize = pixsize;
+				frame->addr.cbsize = (bytesize - pixsize) / 2;
+				frame->addr.crsize = frame->addr.cbsize;
+				frame->addr.cb = frame->addr.y + pixsize;
+				frame->addr.cr = frame->addr.cb + frame->addr.cbsize;
 			}
 		} else if (frame->sc_fmt->num_planes == 3) {
 			cookie = vb2_plane_cookie(vb2buf, 1);
 			if (!cookie)
 				return -EINVAL;
-			ret = sc_get_dma_address(cookie, &frame->addr.ioaddr[SC_PLANE_CB]);
+			ret = sc_get_dma_address(cookie, &frame->addr.cb);
 			if (ret != 0)
 				return ret;
 			cookie = vb2_plane_cookie(vb2buf, 2);
 			if (!cookie)
 				return -EINVAL;
-			ret = sc_get_dma_address(cookie, &frame->addr.ioaddr[SC_PLANE_CR]);
+			ret = sc_get_dma_address(cookie, &frame->addr.cr);
 			if (ret != 0)
 				return ret;
-
-			sc_calc_planesize(frame, pixsize);
+			frame->addr.ysize =
+				pixsize * frame->sc_fmt->bitperpixel[0] >> 3;
+			frame->addr.cbsize =
+				pixsize * frame->sc_fmt->bitperpixel[1] >> 3;
+			frame->addr.crsize =
+				pixsize * frame->sc_fmt->bitperpixel[2] >> 3;
 		} else {
 			dev_err(sc->dev, "Please check the num of comp\n");
 		}
@@ -3058,14 +2924,14 @@ static int sc_get_bufaddr(struct sc_dev *sc, struct vb2_buffer *vb2buf,
 
 	if (frame->sc_fmt->pixelformat == V4L2_PIX_FMT_YVU420 ||
 			frame->sc_fmt->pixelformat == V4L2_PIX_FMT_YVU420M) {
-		u32 t_cb = frame->addr.ioaddr[SC_PLANE_CB];
-		frame->addr.ioaddr[SC_PLANE_CB] = frame->addr.ioaddr[SC_PLANE_CR];
-		frame->addr.ioaddr[SC_PLANE_CR] = t_cb;
+		u32 t_cb = frame->addr.cb;
+		frame->addr.cb = frame->addr.cr;
+		frame->addr.cr = t_cb;
 	}
 
-	sc_dbg("y addr %pa y size %#x\n", &frame->addr.ioaddr[SC_PLANE_Y], frame->addr.size[SC_PLANE_Y]);
-	sc_dbg("cb addr %pa cb size %#x\n", &frame->addr.ioaddr[SC_PLANE_CB], frame->addr.size[SC_PLANE_CB]);
-	sc_dbg("cr addr %pa cr size %#x\n", &frame->addr.ioaddr[SC_PLANE_CR], frame->addr.size[SC_PLANE_CR]);
+	sc_dbg("y addr %pa y size %#x\n", &frame->addr.y, frame->addr.ysize);
+	sc_dbg("cb addr %pa cb size %#x\n", &frame->addr.cb, frame->addr.cbsize);
+	sc_dbg("cr addr %pa cr size %#x\n", &frame->addr.cr, frame->addr.crsize);
 
 	return 0;
 }
@@ -3208,7 +3074,6 @@ static int sc_m2m1shot_init_context(struct m2m1shot_context *m21ctx)
 
 	m21ctx->priv = ctx;
 	ctx->m21_ctx = m21ctx;
-	ctx->pm_qos_lv = -1;
 
 	return 0;
 err_aclk:
@@ -3230,11 +3095,6 @@ static int sc_m2m1shot_free_context(struct m2m1shot_context *m21ctx)
 		clk_unprepare(ctx->sc_dev->pclk);
 	BUG_ON(!list_empty(&ctx->node));
 	destroy_intermediate_frame(ctx);
-	if (ctx->framerate) {
-		sc_remove_devfreq(&ctx->pm_qos, ctx->sc_dev->qos_table);
-		ctx->framerate = 0;
-	}
-
 	kfree(ctx);
 	return 0;
 }
@@ -3249,7 +3109,6 @@ static int sc_m2m1shot_prepare_format(struct m2m1shot_context *m21ctx,
 					&ctx->s_frame : &ctx->d_frame;
 	s32 size_min = (dir == DMA_TO_DEVICE) ? 16 : 4;
 	int i;
-	unsigned int ext_size = 0;
 
 	frame->sc_fmt = sc_find_format(ctx->sc_dev, fmt->fmt,
 						(dir == DMA_TO_DEVICE));
@@ -3314,16 +3173,6 @@ static int sc_m2m1shot_prepare_format(struct m2m1shot_context *m21ctx,
 			bytes_used[i] = fmt->width * fmt->height;
 			bytes_used[i] *= frame->sc_fmt->bitperpixel[i];
 			bytes_used[i] /= 8;
-		}
-		frame->bytesused[i] = bytes_used[i];
-	}
-
-	if (ctx->sc_dev->variant->extra_buf && dir == DMA_TO_DEVICE) {
-		ext_size = sc_ext_buf_size(fmt->width);
-
-		for (i = 0; i < frame->sc_fmt->num_planes; i++) {
-			bytes_used[i] += (i == 0) ? ext_size : ext_size/2;
-			frame->bytesused[i] = bytes_used[i];
 		}
 	}
 
@@ -3413,48 +3262,45 @@ static void sc_m2m1shot_get_bufaddr(struct sc_dev *sc,
 	pixsize = frame->width * frame->height;
 	bytesize = (pixsize * frame->sc_fmt->bitperpixel[0]) >> 3;
 
-	frame->addr.ioaddr[SC_PLANE_Y] = buf->plane[0].dma_addr;
+	frame->addr.y = buf->plane[0].dma_addr;
 
-	frame->addr.ioaddr[SC_PLANE_CB] = 0;
-	frame->addr.ioaddr[SC_PLANE_CR] = 0;
-	frame->addr.size[SC_PLANE_CB] = 0;
-	frame->addr.size[SC_PLANE_CR] = 0;
+	frame->addr.cb = 0;
+	frame->addr.cr = 0;
+	frame->addr.cbsize = 0;
+	frame->addr.crsize = 0;
 
 	switch (frame->sc_fmt->num_comp) {
 	case 1: /* rgb, yuyv */
-		frame->addr.size[SC_PLANE_Y] = bytesize;
+		frame->addr.ysize = bytesize;
 		break;
 	case 2:
 		if (frame->sc_fmt->num_planes == 1) {
 			if (frame->sc_fmt->pixelformat == V4L2_PIX_FMT_NV12N) {
 				unsigned int w = frame->width;
 				unsigned int h = frame->height;
-				frame->addr.ioaddr[SC_PLANE_CB] =
-					NV12N_CBCR_BASE(frame->addr.ioaddr[SC_PLANE_Y], w, h);
-				frame->addr.size[SC_PLANE_Y] = NV12N_Y_SIZE(w, h);
-				frame->addr.size[SC_PLANE_CB] = NV12N_CBCR_SIZE(w, h);
+				frame->addr.cb =
+					NV12N_CBCR_BASE(frame->addr.y, w, h);
+				frame->addr.ysize = NV12N_Y_SIZE(w, h);
+				frame->addr.cbsize = NV12N_CBCR_SIZE(w, h);
 			} else if (frame->sc_fmt->pixelformat == V4L2_PIX_FMT_NV12N_10B) {
 				unsigned int w = frame->width;
 				unsigned int h = frame->height;
-				frame->addr.ioaddr[SC_PLANE_CB] =
-					NV12N_10B_CBCR_BASE(frame->addr.ioaddr[SC_PLANE_Y], w, h);
-				frame->addr.size[SC_PLANE_Y] = NV12N_Y_SIZE(w, h);
-				frame->addr.size[SC_PLANE_CB] = NV12N_CBCR_SIZE(w, h);
+				frame->addr.cb =
+					NV12N_10B_CBCR_BASE(frame->addr.y, w, h);
+				frame->addr.ysize = NV12N_Y_SIZE(w, h);
+				frame->addr.cbsize = NV12N_CBCR_SIZE(w, h);
 			} else {
-				frame->addr.ioaddr[SC_PLANE_CB] = frame->addr.ioaddr[SC_PLANE_Y] + pixsize;
-				frame->addr.size[SC_PLANE_Y] = pixsize;
-				frame->addr.size[SC_PLANE_CB] = bytesize - pixsize;
+				frame->addr.cb = frame->addr.y + pixsize;
+				frame->addr.ysize = pixsize;
+				frame->addr.cbsize = bytesize - pixsize;
 			}
 		} else if (frame->sc_fmt->num_planes == 2) {
-			frame->addr.ioaddr[SC_PLANE_CB] = buf->plane[1].dma_addr;
+			frame->addr.cb = buf->plane[1].dma_addr;
 
-			if (sc_fmt_is_s10bit_yuv(frame->sc_fmt->pixelformat))
-				sc_calc_s10b_planesize(frame->sc_fmt->pixelformat,
-						frame->width, frame->height,
-						&frame->addr.size[SC_PLANE_Y],
-						&frame->addr.size[SC_PLANE_CB], false);
-			else
-				sc_calc_planesize(frame, pixsize);
+			frame->addr.ysize =
+				pixsize * frame->sc_fmt->bitperpixel[0] >> 3;
+			frame->addr.cbsize =
+				pixsize * frame->sc_fmt->bitperpixel[1] >> 3;
 		}
 		break;
 	case 3:
@@ -3462,37 +3308,42 @@ static void sc_m2m1shot_get_bufaddr(struct sc_dev *sc,
 			if (sc_fmt_is_ayv12(frame->sc_fmt->pixelformat)) {
 				unsigned int c_span;
 				c_span = ALIGN(frame->width >> 1, 16);
-				frame->addr.size[SC_PLANE_Y] = pixsize;
-				frame->addr.size[SC_PLANE_CB] =
+				frame->addr.ysize = pixsize;
+				frame->addr.cbsize =
 					c_span * (frame->height >> 1);
-				frame->addr.size[SC_PLANE_CR] = frame->addr.size[SC_PLANE_CB];
-				frame->addr.ioaddr[SC_PLANE_CB] = frame->addr.ioaddr[SC_PLANE_Y] + pixsize;
-				frame->addr.ioaddr[SC_PLANE_CR] =
-					frame->addr.ioaddr[SC_PLANE_CB] + frame->addr.size[SC_PLANE_CB];
+				frame->addr.crsize = frame->addr.cbsize;
+				frame->addr.cb = frame->addr.y + pixsize;
+				frame->addr.cr =
+					frame->addr.cb + frame->addr.cbsize;
 			} else if (frame->sc_fmt->pixelformat ==
 					V4L2_PIX_FMT_YUV420N) {
 				unsigned int w = frame->width;
 				unsigned int h = frame->height;
-				frame->addr.size[SC_PLANE_Y] = YUV420N_Y_SIZE(w, h);
-				frame->addr.size[SC_PLANE_CB] = YUV420N_CB_SIZE(w, h);
-				frame->addr.size[SC_PLANE_CR] = YUV420N_CR_SIZE(w, h);
-				frame->addr.ioaddr[SC_PLANE_CB] =
-					YUV420N_CB_BASE(frame->addr.ioaddr[SC_PLANE_Y], w, h);
-				frame->addr.ioaddr[SC_PLANE_CR] =
-					YUV420N_CR_BASE(frame->addr.ioaddr[SC_PLANE_Y], w, h);
+				frame->addr.ysize = YUV420N_Y_SIZE(w, h);
+				frame->addr.cbsize = YUV420N_CB_SIZE(w, h);
+				frame->addr.crsize = YUV420N_CR_SIZE(w, h);
+				frame->addr.cb =
+					YUV420N_CB_BASE(frame->addr.y, w, h);
+				frame->addr.cr =
+					YUV420N_CR_BASE(frame->addr.y, w, h);
 			} else {
-				frame->addr.size[SC_PLANE_Y] = pixsize;
-				frame->addr.size[SC_PLANE_CB] = (bytesize - pixsize) / 2;
-				frame->addr.size[SC_PLANE_CR] = frame->addr.size[SC_PLANE_CB];
-				frame->addr.ioaddr[SC_PLANE_CB] = frame->addr.ioaddr[SC_PLANE_Y] + pixsize;
-				frame->addr.ioaddr[SC_PLANE_CR] =
-					frame->addr.ioaddr[SC_PLANE_CB] + frame->addr.size[SC_PLANE_CB];
+				frame->addr.ysize = pixsize;
+				frame->addr.cbsize = (bytesize - pixsize) / 2;
+				frame->addr.crsize = frame->addr.cbsize;
+				frame->addr.cb = frame->addr.y + pixsize;
+				frame->addr.cr =
+					frame->addr.cb + frame->addr.cbsize;
 			}
 		} else if (frame->sc_fmt->num_planes == 3) {
-			frame->addr.ioaddr[SC_PLANE_CB] = buf->plane[1].dma_addr;
-			frame->addr.ioaddr[SC_PLANE_CR] = buf->plane[2].dma_addr;
+			frame->addr.cb = buf->plane[1].dma_addr;
+			frame->addr.cr = buf->plane[2].dma_addr;
 
-			sc_calc_planesize(frame, pixsize);
+			frame->addr.ysize =
+				pixsize * frame->sc_fmt->bitperpixel[0] >> 3;
+			frame->addr.cbsize =
+				pixsize * frame->sc_fmt->bitperpixel[1] >> 3;
+			frame->addr.crsize =
+				pixsize * frame->sc_fmt->bitperpixel[2] >> 3;
 		} else {
 			dev_err(sc->dev, "Please check the num of comp\n");
 		}
@@ -3503,9 +3354,9 @@ static void sc_m2m1shot_get_bufaddr(struct sc_dev *sc,
 
 	if (frame->sc_fmt->pixelformat == V4L2_PIX_FMT_YVU420 ||
 			frame->sc_fmt->pixelformat == V4L2_PIX_FMT_YVU420M) {
-		u32 t_cb = frame->addr.ioaddr[SC_PLANE_CB];
-		frame->addr.ioaddr[SC_PLANE_CB] = frame->addr.ioaddr[SC_PLANE_CR];
-		frame->addr.ioaddr[SC_PLANE_CR] = t_cb;
+		u32 t_cb = frame->addr.cb;
+		frame->addr.cb = frame->addr.cr;
+		frame->addr.cr = t_cb;
 	}
 }
 
@@ -3518,9 +3369,6 @@ static int sc_m2m1shot_device_run(struct m2m1shot_context *m21ctx,
 
 	s_frame = &ctx->s_frame;
 	d_frame = &ctx->d_frame;
-
-	if (task->task.reserved[0])
-		sc_set_framerate(ctx, (int)task->task.reserved[0]);
 
 	sc_m2m1shot_get_bufaddr(sc, &task->dma_buf_out, s_frame);
 	sc_m2m1shot_get_bufaddr(sc, &task->dma_buf_cap, d_frame);
@@ -3709,39 +3557,6 @@ static const struct dev_pm_ops sc_pm_ops = {
 	SET_RUNTIME_PM_OPS(NULL, sc_runtime_resume, sc_runtime_suspend)
 };
 
-static int sc_populate_dt(struct sc_dev *sc)
-{
-	struct device *dev = sc->dev;
-	struct sc_qos_table *qos_table;
-	int i, len;
-
-	len = of_property_count_u32_elems(dev->of_node, "mscl_qos_table");
-	if (len < 0) {
-		dev_info(dev, "No qos table for scaler\n");
-		return 0;
-	}
-
-	sc->qos_table_cnt = len / 3;
-
-	qos_table = devm_kzalloc(dev, sizeof(struct sc_qos_table) * sc->qos_table_cnt, GFP_KERNEL);
-	if (!qos_table)
-		return -ENOMEM;
-
-	of_property_read_u32_array(dev->of_node, "mscl_qos_table",
-					(unsigned int *)qos_table, len);
-
-	for (i = 0; i < sc->qos_table_cnt; i++) {
-		dev_info(dev, "MSCL QoS Table[%d] mif : %u int : %u [%u]\n", i,
-			qos_table[i].freq_mif,
-			qos_table[i].freq_int,
-			qos_table[i].data_size);
-	}
-
-	sc->qos_table = qos_table;
-
-	return 0;
-}
-
 static int sc_probe(struct platform_device *pdev)
 {
 	struct sc_dev *sc;
@@ -3802,13 +3617,17 @@ static int sc_probe(struct platform_device *pdev)
 		return PTR_ERR(sc->m21dev);
 	}
 
+	sc->alloc_ctx = vb2_ion_create_context(sc->dev, SZ_4K,
+		VB2ION_CTX_VMCONTIG | VB2ION_CTX_IOMMU | VB2ION_CTX_UNCACHED);
+
+	if (IS_ERR(sc->alloc_ctx)) {
+		ret = PTR_ERR(sc->alloc_ctx);
+		goto err_ctx;
+	}
+
 	platform_set_drvdata(pdev, sc);
 
 	pm_runtime_enable(&pdev->dev);
-
-	ret = sc_populate_dt(sc);
-	if (ret)
-		return ret;
 
 	sc->fence_wq = create_singlethread_workqueue("scaler_fence_work");
 	if (!sc->fence_wq) {
@@ -3838,9 +3657,9 @@ static int sc_probe(struct platform_device *pdev)
 				(u32 *)&sc->cfw))
 		sc->cfw = 0;
 
-	ret = iovmm_activate(sc->dev);
+	ret = vb2_ion_attach_iommu(sc->alloc_ctx);
 	if (ret) {
-		dev_err(&pdev->dev, "failed to activate iommu\n");
+		dev_err(&pdev->dev, "failed to vb2 ion attach iommu\n");
 		goto err_iommu;
 	}
 
@@ -3884,14 +3703,6 @@ static int sc_probe(struct platform_device *pdev)
 		goto err_qch_dbg;
 	}
 
-	sc->client = exynos_ion_client_create("scaler-int");
-	if (IS_ERR(sc->client)) {
-		ret = PTR_ERR(sc->client);
-		dev_err(&pdev->dev,
-			"Failed to create ION client for int.buf.(err %d)\n", ret);
-		goto err_ion_client_create;
-	}
-
 	sc->version = SCALER_VERSION(2, 0, 0);
 
 	hwver = __raw_readl(sc->regs + SCALER_VER);
@@ -3923,9 +3734,6 @@ static int sc_probe(struct platform_device *pdev)
 		hwver, sc->version);
 
 	return 0;
-
-err_ion_client_create:
-	kfree(sc->qch_dbg);
 err_qch_dbg:
 	iounmap(sc->q_reg);
 err_qch_reg:
@@ -3937,7 +3745,7 @@ err_ver_aclk_get:
 err_ver_pclk_get:
 	pm_runtime_put(&pdev->dev);
 err_ver_rpm_get:
-	iovmm_deactivate(sc->dev);
+	vb2_ion_detach_iommu(sc->alloc_ctx);
 err_iommu:
 	if (sc->qosreq_int_level > 0)
 		pm_qos_remove_request(&sc->qosreq_int);
@@ -3945,6 +3753,8 @@ err_iommu:
 err_m2m:
 	destroy_workqueue(sc->fence_wq);
 err_wq:
+	vb2_ion_destroy_context(sc->alloc_ctx);
+err_ctx:
 	m2m1shot_destroy_device(sc->m21dev);
 
 	return ret;
@@ -3954,12 +3764,11 @@ static int sc_remove(struct platform_device *pdev)
 {
 	struct sc_dev *sc = platform_get_drvdata(pdev);
 
-	ion_client_destroy(sc->client);
 	iounmap(sc->q_reg);
 	kfree(sc->qch_dbg);
 	destroy_workqueue(sc->fence_wq);
 
-	iovmm_deactivate(sc->dev);
+	vb2_ion_destroy_context(sc->alloc_ctx);
 
 	sc_clk_put(sc);
 
@@ -3983,7 +3792,7 @@ static void sc_shutdown(struct platform_device *pdev)
 	wait_event(sc->wait,
 			!test_bit(DEV_RUN, &sc->state));
 
-	iovmm_deactivate(sc->dev);
+	vb2_ion_detach_iommu(sc->alloc_ctx);
 }
 
 static const struct of_device_id exynos_sc_match[] = {

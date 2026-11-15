@@ -252,7 +252,7 @@ static int sensor_imx219_init(struct v4l2_subdev *subdev, u32 val)
 	struct fimc_is_module_imx219 *module_imx219;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	module_imx219 = module->private_data;
@@ -318,8 +318,8 @@ static int sensor_imx219_s_param(struct v4l2_subdev *subdev, struct v4l2_streamp
 	struct v4l2_fract *tpf;
 	u64 duration;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!param);
+	BUG_ON(!subdev);
+	BUG_ON(!param);
 
 	pr_info("%s\n", __func__);
 
@@ -385,7 +385,7 @@ int sensor_imx219_stream_on(struct v4l2_subdev *subdev)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	sensor = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!sensor)) {
@@ -417,7 +417,7 @@ int sensor_imx219_stream_off(struct v4l2_subdev *subdev)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	sensor = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!sensor)) {
@@ -457,7 +457,7 @@ int sensor_imx219_s_duration(struct v4l2_subdev *subdev, u64 duration)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	pr_info("%s\n", __func__);
 
@@ -507,7 +507,7 @@ int sensor_imx219_s_exposure(struct v4l2_subdev *subdev, u64 exposure)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	pr_info("%s(%d)\n", __func__, (u32)exposure);
 
@@ -638,8 +638,8 @@ int sensor_imx219_probe(struct i2c_client *client,
 	}
 
 	/* IMX219 */
-	module = &device->module_enum[atomic_read(&device->module_count)];
-	atomic_inc(&device->module_count);
+	module = &device->module_enum[atomic_read(&core->resourcemgr.rsccount_module)];
+	atomic_inc(&core->resourcemgr.rsccount_module);
 	module->sensor_id = SENSOR_IMX219_NAME;
 	module->subdev = subdev_module;
 	module->device = SENSOR_IMX219_INSTANCE;

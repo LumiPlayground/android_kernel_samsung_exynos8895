@@ -206,56 +206,22 @@ static void fl_destroy_filter(struct rcu_head *head)
 	kfree(f);
 }
 
-static void fl_hw_destroy_filter(struct tcf_proto *tp, unsigned long cookie)
+static void fl_destroy_sleepable(struct work_struct *work)
 {
-	struct net_device *dev = tp->q->dev_queue->dev;
-	struct tc_cls_flower_offload offload = {0};
-	struct tc_to_netdev tc;
-
-	if (!tc_should_offload(dev, tp, 0))
-		return;
-
-	offload.command = TC_CLSFLOWER_DESTROY;
-	offload.cookie = cookie;
-
-	tc.type = TC_SETUP_CLSFLOWER;
-	tc.cls_flower = &offload;
-
-	dev->netdev_ops->ndo_setup_tc(dev, tp->q->handle, tp->protocol, &tc);
+	struct cls_fl_head *head = container_of(work, struct cls_fl_head,
+						work);
+	if (head->mask_assigned)
+		rhashtable_destroy(&head->ht);
+	kfree(head);
+	module_put(THIS_MODULE);
 }
 
-static int fl_hw_replace_filter(struct tcf_proto *tp,
-				struct flow_dissector *dissector,
-				struct fl_flow_key *mask,
-				struct fl_flow_key *key,
-				struct tcf_exts *actions,
-				unsigned long cookie, u32 flags)
+static void fl_destroy_rcu(struct rcu_head *rcu)
 {
-	struct net_device *dev = tp->q->dev_queue->dev;
-	struct tc_cls_flower_offload offload = {0};
-	struct tc_to_netdev tc;
-	int err;
+	struct cls_fl_head *head = container_of(rcu, struct cls_fl_head, rcu);
 
-	if (!tc_should_offload(dev, tp, flags))
-		return tc_skip_sw(flags) ? -EINVAL : 0;
-
-	offload.command = TC_CLSFLOWER_REPLACE;
-	offload.cookie = cookie;
-	offload.dissector = dissector;
-	offload.mask = mask;
-	offload.key = key;
-	offload.exts = actions;
-
-	tc.type = TC_SETUP_CLSFLOWER;
-	tc.cls_flower = &offload;
-
-	err = dev->netdev_ops->ndo_setup_tc(dev, tp->q->handle, tp->protocol,
-					    &tc);
-
-	if (tc_skip_sw(flags))
-		return err;
-
-	return 0;
+	INIT_WORK(&head->work, fl_destroy_sleepable);
+	schedule_work(&head->work);
 }
 
 static void fl_hw_update_stats(struct tcf_proto *tp, struct cls_fl_filter *f)

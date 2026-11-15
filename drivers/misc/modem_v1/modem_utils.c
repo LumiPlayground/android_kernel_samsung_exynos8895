@@ -295,11 +295,6 @@ inline unsigned long get_log_flags(void)
 	return wakeup_log_enable ? wakeup_dflags : dflags;
 }
 
-void set_dflags(unsigned long flag)
-{
-	dflags = flag;
-}
-
 static inline bool log_enabled(u8 ch)
 {
 	unsigned long flags = get_log_flags();
@@ -591,7 +586,7 @@ __be32 ipv4str_to_be32(const char *ipv4str, size_t count)
 		char *p;
 
 		p = strsep(&next, ".");
-		if (p && kstrtou8(p, 10, &ip[i]) < 0)
+		if (kstrtou8(p, 10, &ip[i]) < 0)
 			return 0; /* == 0.0.0.0 */
 	}
 
@@ -1267,8 +1262,7 @@ void exit_mif_buff_mng(struct mif_buff_mng *bm)
 void *alloc_mif_buff(struct mif_buff_mng *bm)
 {
 	unsigned char *buff_allocated;
-	int i, j;
-	unsigned int location;
+	unsigned int i, j, location;
 	int find_flag = false;
 	unsigned long flags;
 	uint64_t test_map;

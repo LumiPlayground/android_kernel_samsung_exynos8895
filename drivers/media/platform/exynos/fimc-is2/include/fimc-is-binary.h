@@ -14,28 +14,28 @@
 
 #include "fimc-is-config.h"
 
-#if defined(CONFIG_VENDER_PSV)
+#if defined(CONFIG_EXYNOS_ASB)
 #define FIMC_IS_FW_PATH                        "/system/vendor/firmware/"
 #define FIMC_IS_FW_DUMP_PATH                   "/data/"
 #define FIMC_IS_SETFILE_SDCARD_PATH            "/data/"
 #define FIMC_IS_FW_SDCARD                      "/data/fimc_is_fw2.bin"
 #define FIMC_IS_FW                             "fimc_is_fw2.bin"
-#define FIMC_IS_ISP_LIB_SDCARD_PATH            "/root/stream/data/"
+#define FIMC_IS_ISP_LIB_SDCARD_PATH            "./data/"
 
 #else
 #ifdef VENDER_PATH
 #define FIMC_IS_FW_PATH 			"/system/vendor/firmware/"
-#define FIMC_IS_FW_DUMP_PATH			"/data/vendor/camera/"
-#define FIMC_IS_SETFILE_SDCARD_PATH		"/data/vendor/camera/"
-#define FIMC_IS_FW_SDCARD			"/data/vendor/camera/fimc_is_fw.bin"
+#define FIMC_IS_FW_DUMP_PATH			"/data/camera/"
+#define FIMC_IS_SETFILE_SDCARD_PATH		"/data/media/0/"
+#define FIMC_IS_FW_SDCARD			"/data/media/0/fimc_is_fw.bin"
 #define FIMC_IS_FW				"fimc_is_fw.bin"
 #define FIMC_IS_LIB_PATH			"/system/vendor/firmware/"
 #ifdef CONFIG_SAMSUNG_PRODUCT_SHIP
-#define FIMC_IS_ISP_LIB_SDCARD_PATH		NULL
+#define FIMC_IS_ISP_LIB_SDCARD_PATH        	NULL
 #else
-#define FIMC_IS_ISP_LIB_SDCARD_PATH		"/data/vendor/camera/"
+#define FIMC_IS_ISP_LIB_SDCARD_PATH        	"/data/media/0/"
 #endif
-#define FIMC_IS_REAR_CAL_SDCARD_PATH		"/data/vendor/camera/"
+#define FIMC_IS_REAR_CAL_SDCARD_PATH		"/data/media/0/"
 #define FIMC_IS_FRONT_CAL_SDCARD_PATH		"/data/media/0/"
 #else
 #define FIMC_IS_FW_PATH 			"/system/vendor/firmware/"
@@ -47,7 +47,7 @@
 #define FIMC_IS_REAR_CAL_SDCARD_PATH		"/data/"
 #define FIMC_IS_FRONT_CAL_SDCARD_PATH		"/data/"
 #endif
-#endif /* defined(CONFIG_VENDER_PSV) */
+#endif /* defined(CONFIG_EXYNOS_ASB) */
 
 #ifdef USE_ONE_BINARY
 #define FIMC_IS_ISP_LIB				"fimc_is_lib.bin"
@@ -95,15 +95,11 @@
 #define LIB_SIZE		(VRA_LIB_SIZE + DDK_LIB_SIZE)
 #endif
 
-#define HEAP_START		(LIB_START + LIB_SIZE + 0x80000)
-#define HEAP_SIZE		(FIMC_IS_HEAP_SIZE)
-
 /* reserved memory for FIMC-IS */
-#define SETFILE_SIZE		(0x00390000)
+#define SETFILE_SIZE		(0x002AF000)
 #define REAR_CALDATA_SIZE	(0x00010000)
 #define FRONT_CALDATA_SIZE	(0x00010000)
 #define DEBUG_REGION_SIZE	(0x0007D000)
-#define EVENT_REGION_SIZE	(0x0007D000)
 #define FSHARED_REGION_SIZE	(0x00010000)
 #define DATA_REGION_SIZE	(0x00010000)
 #define PARAM_REGION_SIZE	(0x00005000)	/* 20KB * instance(4) */
@@ -112,7 +108,6 @@
 #define TAAISP_DMA_SIZE		(FIMC_IS_TAAISP_SIZE)	/* 512KB */
 #define LHFD_MAP_SIZE		(0x009F0000)	/* 9.9375MB */
 #define VRA_DMA_SIZE		(FIMC_IS_VRA_SIZE)	/* 8MB */
-#define MCSC_DNR_DMA_SIZE	(FIMC_IS_MCSC_DNR_SIZE)
 
 /* for compatibility */
 #define DEBUGCTL_OFFSET		(0)

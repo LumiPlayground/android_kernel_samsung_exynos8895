@@ -16,7 +16,6 @@ static struct dbg_record rec[MAX_DBG_RECORD];
 void record(const char *str)
 {
 	struct timeval tv;
-
 	do_gettimeofday(&tv);
 	rec[dbg_idx].time = tv.tv_sec * 1000000UL + tv.tv_usec;
 	strncpy(rec[dbg_idx].log, str, MAX_DBG_LOG_LEN);

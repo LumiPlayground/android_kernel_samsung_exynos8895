@@ -176,7 +176,7 @@ static struct mtip_cmd *mtip_get_int_command(struct driver_data *dd)
 	if (mtip_check_surprise_removal(dd->pdev))
 		return NULL;
 
-	rq = blk_mq_alloc_request(dd->queue, 0, BLK_MQ_REQ_RESERVED);
+	rq = blk_mq_alloc_request(dd->queue, 0, __GFP_RECLAIM, true);
 	if (IS_ERR(rq))
 		return NULL;
 
@@ -3878,6 +3878,7 @@ static enum blk_eh_timer_return mtip_cmd_timeout(struct request *req,
 								bool reserved)
 {
 	struct driver_data *dd = req->q->queuedata;
+	int ret = BLK_EH_RESET_TIMER;
 
 	if (reserved)
 		goto exit_handler;
@@ -3890,7 +3891,7 @@ static enum blk_eh_timer_return mtip_cmd_timeout(struct request *req,
 
 	wake_up_interruptible(&dd->port->svc_wait);
 exit_handler:
-	return BLK_EH_RESET_TIMER;
+	return ret;
 }
 
 static struct blk_mq_ops mtip_mq_ops = {

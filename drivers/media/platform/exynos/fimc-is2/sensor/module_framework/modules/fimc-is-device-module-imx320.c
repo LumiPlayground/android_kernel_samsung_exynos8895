@@ -39,48 +39,50 @@
 #include "fimc-is-device-module-base.h"
 
 static struct fimc_is_sensor_cfg config_module_imx320[] = {
-#if 0
-	/* 3280X2464@30fps */
-	FIMC_IS_SENSOR_CFG(3280, 2464, 30, 14, 0, CSI_DATA_LANES_2),
-	/* 1304X980@30fps */
-	FIMC_IS_SENSOR_CFG(1304, 980, 30, 22, 2, CSI_DATA_LANES_2),
-	/* 1304X980@15fps */
-	FIMC_IS_SENSOR_CFG(1304, 980, 15, 7, 3, CSI_DATA_LANES_2),
-	/* 1304X980@10fps */
-	FIMC_IS_SENSOR_CFG(1304, 980, 10, 7, 4, CSI_DATA_LANES_2),
-	/* 1304X980@7fps */
-	FIMC_IS_SENSOR_CFG(1304, 980, 7, 7, 5, CSI_DATA_LANES_2),
-	/* 652X488@112fps */
-	FIMC_IS_SENSOR_CFG(652, 488, 112, 22, 1, CSI_DATA_LANES_2),
-#else /* hack */
-			/* width, height, fps, settle, mode, lane, speed, interleave, pd_mode */
-	FIMC_IS_SENSOR_CFG(3280, 2464, 30, 0, 0, CSI_DATA_LANES_2, 1358, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 3280, 2464), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_EMBEDDED_8BIT, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(3280, 1232, 60, 0, 1, CSI_DATA_LANES_2, 1358, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 3280, 1232), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_EMBEDDED_8BIT, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(1640, 1232, 30, 0, 2, CSI_DATA_LANES_2, 718, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 1640, 1232), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_EMBEDDED_8BIT, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(1640, 1232, 60, 0, 3, CSI_DATA_LANES_2, 718, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 1640, 1232), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_EMBEDDED_8BIT, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(820, 616, 120, 138, 4, CSI_DATA_LANES_2, 718, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 820, 616), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_EMBEDDED_8BIT, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-#endif
+	/* 3264X2448@30fps */
+	FIMC_IS_SENSOR_CFG(3264, 2448, 30, 14, 0, CSI_DATA_LANES_2),
+	/* 2448X2448@30fps */
+	FIMC_IS_SENSOR_CFG(2448, 2448, 30, 14, 1, CSI_DATA_LANES_2),
+	/* 3264X1836@30fps */
+	FIMC_IS_SENSOR_CFG(3264, 1836, 30, 14, 2, CSI_DATA_LANES_2),
+	/* 1632X918@60fps */
+	FIMC_IS_SENSOR_CFG(1632, 918, 60, 7, 3, CSI_DATA_LANES_2),
+	/* 1632X918@30fps */
+	FIMC_IS_SENSOR_CFG(1632, 918, 30, 7, 4, CSI_DATA_LANES_2),
+	/* 1632X1224@30fps */
+	FIMC_IS_SENSOR_CFG(1632, 1224, 30, 7, 5, CSI_DATA_LANES_2),
+	/* 1224X1224@30fps */
+	FIMC_IS_SENSOR_CFG(1224, 1224, 30, 7, 6, CSI_DATA_LANES_2),
+	/* 800X600@30fps */
+	FIMC_IS_SENSOR_CFG(800, 600, 120, 7, 7, CSI_DATA_LANES_2),
+	/* 752X1328@15fps */
+	FIMC_IS_SENSOR_CFG(752, 1328, 15, 14, 8, CSI_DATA_LANES_2),
+	/* 376X664@110fps */
+	FIMC_IS_SENSOR_CFG(376, 664, 110, 14, 9, CSI_DATA_LANES_2),
+	/* 3264X1592@30fps */
+	FIMC_IS_SENSOR_CFG(3264, 1592, 30, 14, 10, CSI_DATA_LANES_2),
+};
 
+static struct fimc_is_vci vci_module_imx320[] = {
+	{
+		.pixelformat = V4L2_PIX_FMT_SBGGR10,
+		.config = {{0, HW_FORMAT_RAW10, VCI_DMA_NORMAL},
+			   {1, 0, VCI_DMA_NORMAL},
+			   {0, HW_FORMAT_EMBEDDED_8BIT, VCI_DMA_INTERNAL},
+			   {3, 0, VCI_DMA_NORMAL}}
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SBGGR12,
+		.config = {{0, HW_FORMAT_RAW10, VCI_DMA_NORMAL},
+			   {1, 0, VCI_DMA_NORMAL},
+			   {0, HW_FORMAT_EMBEDDED_8BIT, VCI_DMA_INTERNAL},
+			   {3, 0, VCI_DMA_NORMAL}}
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SBGGR16,
+		.config = {{0, HW_FORMAT_RAW10, VCI_DMA_NORMAL},
+			   {1, 0, VCI_DMA_NORMAL},
+			   {0, HW_FORMAT_EMBEDDED_8BIT, VCI_DMA_INTERNAL},
+			   {3, 0, VCI_DMA_NORMAL}}
+	}
 };
 
 static const struct v4l2_subdev_core_ops core_ops = {
@@ -94,8 +96,7 @@ static const struct v4l2_subdev_core_ops core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops video_ops = {
-	.s_stream = sensor_module_s_stream,
-	.s_parm = sensor_module_s_param
+	.s_stream = sensor_module_s_stream
 };
 
 static const struct v4l2_subdev_pad_ops pad_ops = {
@@ -113,9 +114,9 @@ static int sensor_module_imx320_power_setpin(struct platform_device *pdev,
 {
 	struct device *dev;
 	struct device_node *dnode;
-	int gpio_none = 0, gpio_reset = 0, gpio_standby = 0;
+	int gpio_none = 0, gpio_reset = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -129,68 +130,35 @@ static int sensor_module_imx320_power_setpin(struct platform_device *pdev,
 		gpio_free(gpio_reset);
 	}
 
-	gpio_standby = of_get_named_gpio(dnode, "gpio_standby", 0);
-	if (!gpio_is_valid(gpio_standby)) {
-		dev_err(dev, "%s: failed to get gpio_standby\n", __func__);
-	} else {
-		gpio_request_one(gpio_standby, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
-		gpio_free(gpio_standby);
-	}
-
 	SET_PIN_INIT(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON);
 	SET_PIN_INIT(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF);
-#ifdef CONFIG_PREPROCESSOR_STANDBY_USE
-	SET_PIN_INIT(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_STANDBY_ON);
-	SET_PIN_INIT(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_STANDBY_OFF);
-#endif
-	SET_PIN_INIT(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON);
-	SET_PIN_INIT(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF);
-	SET_PIN_INIT(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON);
-	SET_PIN_INIT(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_OFF);
-	/******************** VISION ON ********************/
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_standby, "standby_low", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "VDDA_2.9V_VT", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "VDDIO_1.8V_VT", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "VDDD_1.2V_VT", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 2, 2000);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 2000);
 
-	/******************** VISION OFF ********************/
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_standby, "standby_low", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "VDDA_2.9V_VT", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "VDDIO_1.8V_VT", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "VDDD_1.2V_VT", PIN_REGULATOR, 0, 0);
-
-	/******************** NORMAL ON ********************/
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_standby, "standby_low", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
+	/********** FRONT CAMERA  - POWER ON **********/
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "VDD_VTCAM_AF_2.8V", PIN_REGULATOR, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "VDDA_2.9V_VT", PIN_REGULATOR, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "VDDIO_1.8V_VT", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "VDDD_1.2V_VT", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 2, 2000);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 2000);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "VDDD_1.2V_VT", PIN_REGULATOR, 1, 1000);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "rst_high", PIN_OUTPUT, 1, 0);
+	/* Mclock enable */
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 2, 9000);
 
-	/******************** NORMAL OFF ********************/
+	/*********** FRONT CAMERA  - POWER OFF **********/
+	/* Mclock disable */
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_standby, "standby_low", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst", PIN_OUTPUT, 0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 0, 1);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_reset, "rst_low", PIN_OUTPUT, 0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "VDD_VTCAM_AF_2.8V", PIN_REGULATOR, 0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "VDDD_1.2V_VT", PIN_REGULATOR, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "VDDA_2.9V_VT", PIN_REGULATOR, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "VDDIO_1.8V_VT", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "VDDD_1.2V_VT", PIN_REGULATOR, 0, 0);
 
 	dev_info(dev, "%s X v4\n", __func__);
 
 	return 0;
 }
 
-static int __init sensor_module_imx320_probe(struct platform_device *pdev)
+int sensor_module_imx320_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -200,8 +168,10 @@ static int __init sensor_module_imx320_probe(struct platform_device *pdev)
 	struct sensor_open_extended *ext;
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
+	struct pinctrl_state *s;
 
-	FIMC_BUG(!fimc_is_dev);
+	if (!fimc_is_dev)
+		return -EPROBE_DEFER;
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -223,9 +193,9 @@ static int __init sensor_module_imx320_probe(struct platform_device *pdev)
 		goto p_err;
 	}
 
-	probe_info("%s pdta->id(%d), module_enum id = %d \n", __func__, pdata->id, atomic_read(&device->module_count));
-	module = &device->module_enum[atomic_read(&device->module_count)];
-	atomic_inc(&device->module_count);
+	probe_info("%s pdta->id(%d), module_enum id = %d \n", __func__, pdata->id, atomic_read(&core->resourcemgr.rsccount_module));
+	module = &device->module_enum[atomic_read(&core->resourcemgr.rsccount_module)];
+	atomic_inc(&core->resourcemgr.rsccount_module);
 	clear_bit(FIMC_IS_MODULE_GPIO_ON, &module->state);
 	module->pdata = pdata;
 	module->dev = dev;
@@ -233,8 +203,8 @@ static int __init sensor_module_imx320_probe(struct platform_device *pdev)
 	module->subdev = subdev_module;
 	module->device = pdata->id;
 	module->client = NULL;
-	module->active_width = 3264;
-	module->active_height = 2448;
+	module->active_width = 3280;
+	module->active_height = 2464;
 	module->margin_left = 0;
 	module->margin_right = 0;
 	module->margin_top = 0;
@@ -243,8 +213,12 @@ static int __init sensor_module_imx320_probe(struct platform_device *pdev)
 	module->pixel_height = module->active_height;
 	module->max_framerate = 120;
 	module->position = pdata->position;
+	module->mode = CSI_MODE_DT_ONLY;
+	module->lanes = CSI_DATA_LANES_2;
 	module->bitwidth = 10;
-	module->sensor_maker = "SLSI";
+	module->vcis = ARRAY_SIZE(vci_module_imx320);
+	module->vci = vci_module_imx320;
+	module->sensor_maker = "SONY";
 	module->sensor_name = "IMX320";
 	module->setfile_name = "setfile_imx320.bin";
 	module->cfgs = ARRAY_SIZE(config_module_imx320);
@@ -261,6 +235,8 @@ static int __init sensor_module_imx320_probe(struct platform_device *pdev)
 	PERI_SET_MODULE(module);
 
 	ext = &module->ext;
+	ext->mipi_lane_num = module->lanes;
+	ext->I2CSclk = 0;
 
 	ext->sensor_con.product_name = module->sensor_id;
 	ext->sensor_con.peri_type = SE_I2C;
@@ -319,9 +295,25 @@ static int __init sensor_module_imx320_probe(struct platform_device *pdev)
 	v4l2_set_subdev_hostdata(subdev_module, device);
 	snprintf(subdev_module->name, V4L2_SUBDEV_NAME_SIZE, "sensor-subdev.%d", module->sensor_id);
 
+	s = pinctrl_lookup_state(pdata->pinctrl, "release");
+
+	if (pinctrl_select_state(pdata->pinctrl, s) < 0) {
+		probe_err("pinctrl_select_state is fail\n");
+		goto p_err;
+	}
+
 	probe_info("%s done\n", __func__);
 
 p_err:
+	return ret;
+}
+
+static int sensor_module_imx320_remove(struct platform_device *pdev)
+{
+	int ret = 0;
+
+	info("%s\n", __func__);
+
 	return ret;
 }
 
@@ -334,6 +326,8 @@ static const struct of_device_id exynos_fimc_is_sensor_module_imx320_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_imx320_match);
 
 static struct platform_driver sensor_module_imx320_driver = {
+	.probe  = sensor_module_imx320_probe,
+	.remove = sensor_module_imx320_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-MODULE-IMX320",
 		.owner  = THIS_MODULE,
@@ -341,16 +335,5 @@ static struct platform_driver sensor_module_imx320_driver = {
 	}
 };
 
-static int __init fimc_is_sensor_module_imx320_init(void)
-{
-	int ret;
+module_platform_driver(sensor_module_imx320_driver);
 
-	ret = platform_driver_probe(&sensor_module_imx320_driver,
-				sensor_module_imx320_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_imx320_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall(fimc_is_sensor_module_imx320_init);

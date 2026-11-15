@@ -65,8 +65,8 @@ int sensor_cis_set_registers(struct v4l2_subdev *subdev, const u32 *regs, const 
 	int burst_num = 1;
 	u16 *addr_str = NULL;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!regs);
+	BUG_ON(!subdev);
+	BUG_ON(!regs);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -82,8 +82,7 @@ int sensor_cis_set_registers(struct v4l2_subdev *subdev, const u32 *regs, const 
 		goto p_err;
 	}
 
-	/* Need to delay for sensor setting */
-	usleep_range(3000, 3000);
+	msleep(3);
 
 	for (i = 0; i < size; i += I2C_NEXT) {
 		switch (regs[i + I2C_ADDR]) {
@@ -129,86 +128,7 @@ int sensor_cis_set_registers(struct v4l2_subdev *subdev, const u32 *regs, const 
 	ret = fimc_is_sensor_write8(client, 0x0601, CIS_TEST_PATTERN_MODE);
 #endif
 
-	dbg_sensor(1, "[%s] sensor setting done\n", __func__);
-
-p_err:
-	return ret;
-}
-
-int sensor_cis_set_registers_addr8(struct v4l2_subdev *subdev, const u32 *regs, const u32 size)
-{
-	int ret = 0;
-	int i = 0;
-	struct fimc_is_cis *cis;
-	struct i2c_client *client;
-	int index_str = 0, index_next = 0;
-	int burst_num = 1;
-	u16 *addr_str = NULL;
-
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!regs);
-
-	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
-	if (!cis) {
-		err("cis is NULL");
-		ret = -EINVAL;
-		goto p_err;
-	}
-
-	client = cis->client;
-	if (unlikely(!client)) {
-		err("client is NULL");
-		ret = -EINVAL;
-		goto p_err;
-	}
-
-	msleep(3);
-
-	for (i = 0; i < size; i += I2C_NEXT) {
-		switch (regs[i + I2C_ADDR]) {
-		case I2C_MODE_BURST_ADDR:
-			index_str = i;
-			break;
-		case I2C_MODE_BURST_DATA:
-			index_next = i + I2C_NEXT;
-			if ((index_next < size) && (I2C_MODE_BURST_DATA == regs[index_next + I2C_ADDR])) {
-				burst_num++;
-				break;
-			}
-
-			addr_str = (u16 *)&regs[index_str + I2C_NEXT + I2C_DATA];
-			ret = fimc_is_sensor_write16_burst(client, regs[index_str + I2C_DATA], addr_str, burst_num);
-			if (ret < 0) {
-				err("fimc_is_sensor_write16_burst fail, ret(%d), addr(%#x), data(%#x)",
-						ret, regs[i + I2C_ADDR], regs[i + I2C_DATA]);
-			}
-			burst_num = 1;
-			break;
-		case I2C_MODE_DELAY:
-			usleep_range(regs[i + I2C_DATA], regs[i + I2C_DATA]);
-			break;
-		default:
-			if (regs[i + I2C_BYTE] == 0x1) {
-				ret = fimc_is_sensor_addr8_write8(client, regs[i + I2C_ADDR], regs[i + I2C_DATA]);
-				if (ret < 0) {
-					err("fimc_is_sensor_write8 fail, ret(%d), addr(%#x), data(%#x)",
-							ret, regs[i + I2C_ADDR], regs[i + I2C_DATA]);
-				}
-			} else if (regs[i + I2C_BYTE] == 0x2) {
-				ret = fimc_is_sensor_write16(client, regs[i + I2C_ADDR], regs[i + I2C_DATA]);
-				if (ret < 0) {
-					err("fimc_is_sensor_write16 fail, ret(%d), addr(%#x), data(%#x)",
-						ret, regs[i + I2C_ADDR], regs[i + I2C_DATA]);
-				}
-			}
-		}
-	}
-
-#if (CIS_TEST_PATTERN_MODE != 0)
-	ret = fimc_is_sensor_write8(client, 0x0601, CIS_TEST_PATTERN_MODE);
-#endif
-
-	dbg_sensor(1, "[%s] sensor setting done\n", __func__);
+	dbg_sensor("[%s] sensor setting done\n", __func__);
 
 p_err:
 	return ret;
@@ -220,8 +140,8 @@ int sensor_cis_check_rev(struct fimc_is_cis *cis)
 	u8 rev = 0;
 	struct i2c_client *client;
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -238,7 +158,7 @@ int sensor_cis_check_rev(struct fimc_is_cis *cis)
 
 	cis->cis_data->cis_rev = rev;
 
-	dbg_sensor(1, "rev: %#x\n", rev);
+	dbg_sensor("rev: %#x\n", rev);
 
 p_err:
 	return ret;
@@ -280,9 +200,9 @@ int sensor_cis_compensate_gain_for_extremely_br(struct v4l2_subdev *subdev, u32 
 	u16 coarse_int = 0;
 	u32 compensated_again = 0;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!again);
-	FIMC_BUG(!dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!again);
+	BUG_ON(!dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -303,7 +223,7 @@ int sensor_cis_compensate_gain_for_extremely_br(struct v4l2_subdev *subdev, u32 
 
 	coarse_int = ((expo * vt_pic_clk_freq_mhz) - min_fine_int) / line_length_pck;
 	if (coarse_int < cis_data->min_coarse_integration_time) {
-		dbg_sensor(1, "[MOD:D:%d] %s, vsync_cnt(%d), long coarse(%d) min(%d)\n", cis->id, __func__,
+		dbg_sensor("[MOD:D:%d] %s, vsync_cnt(%d), long coarse(%d) min(%d)\n", cis->id, __func__,
 			cis_data->sen_vsync_count, coarse_int, cis_data->min_coarse_integration_time);
 		coarse_int = cis_data->min_coarse_integration_time;
 	}
@@ -319,7 +239,7 @@ int sensor_cis_compensate_gain_for_extremely_br(struct v4l2_subdev *subdev, u32 
 			*again = compensated_again;
 		}
 
-		dbg_sensor(1, "[%s] exp(%d), again(%d), dgain(%d), coarse_int(%d), compensated_again(%d)\n",
+		dbg_sensor("[%s] exp(%d), again(%d), dgain(%d), coarse_int(%d), compensated_again(%d)\n",
 			__func__, expo, *again, *dgain, coarse_int, compensated_again);
 	}
 
@@ -335,8 +255,8 @@ int sensor_cis_dump_registers(struct v4l2_subdev *subdev, const u32 *regs, const
 	struct i2c_client *client;
 	u8 data8 = 0;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!regs);
+	BUG_ON(!subdev);
+	BUG_ON(!regs);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -374,7 +294,7 @@ int sensor_cis_wait_streamoff(struct v4l2_subdev *subdev)
 	u32 wait_cnt = 0, time_out_cnt = 250;
 	u8 sensor_fcount = 0;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!cis)) {
@@ -415,7 +335,7 @@ int sensor_cis_wait_streamoff(struct v4l2_subdev *subdev)
 		if (ret < 0)
 			err("i2c transfer fail addr(%x), val(%x), ret = %d\n", 0x0005, sensor_fcount, ret);
 
-		usleep_range(CIS_STREAM_OFF_WAIT_TIME, CIS_STREAM_OFF_WAIT_TIME);
+		msleep(CIS_STREAM_OFF_WAIT_TIME);
 		wait_cnt++;
 
 		if (wait_cnt >= time_out_cnt) {
@@ -425,81 +345,38 @@ int sensor_cis_wait_streamoff(struct v4l2_subdev *subdev)
 			goto p_err;
 		}
 
-		dbg_sensor(1, "[MOD:D:%d] %s, sensor_fcount(%d), (wait_limit(%d) < time_out(%d))\n",
+		dbg_sensor("[MOD:D:%d] %s, sensor_fcount(%d), (wait_limit(%d) < time_out(%d))\n",
 				cis->id, __func__, sensor_fcount, wait_cnt, time_out_cnt);
 	}
 
 #ifdef CONFIG_SENSOR_RETENTION_USE
 	/* retention mode CRC wait calculation */
-	usleep_range(5000, 5000);
+	usleep_range(2000, 2000);
 #endif
 p_err:
 	return ret;
 }
 
-int sensor_cis_wait_streamon(struct v4l2_subdev *subdev)
+#ifdef USE_FACE_UNLOCK_AE_AWB_INIT
+int sensor_cis_set_initial_exposure(struct v4l2_subdev *subdev)
 {
-	int ret = 0;
 	struct fimc_is_cis *cis;
-	struct i2c_client *client;
-	cis_shared_data *cis_data;
-	u32 wait_cnt = 0, time_out_cnt = 250;
-	u8 sensor_fcount = 0;
-
-	FIMC_BUG(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!cis)) {
-	    err("cis is NULL");
-	    ret = -EINVAL;
-	    goto p_err;
+		err("cis is NULL");
+		return -EINVAL;
 	}
 
-	cis_data = cis->cis_data;
-	if (unlikely(!cis_data)) {
-	    err("cis_data is NULL");
-	    ret = -EINVAL;
-	    goto p_err;
+	if (cis->use_initial_ae) {
+		cis->init_ae_setting = cis->last_ae_setting;
+
+		dbg_sensor(1, "[MOD:D:%d] %s short(exp:%d/again:%d/dgain:%d), long(exp:%d/again:%d/dgain:%d)\n",
+				cis->id, __func__, cis->init_ae_setting.exposure, cis->init_ae_setting.analog_gain,
+				cis->init_ae_setting.digital_gain, cis->init_ae_setting.long_exposure,
+				cis->init_ae_setting.long_analog_gain, cis->init_ae_setting.long_digital_gain);
 	}
 
-	client = cis->client;
-	if (unlikely(!client)) {
-	    err("client is NULL");
-	    ret = -EINVAL;
-	    goto p_err;
-	}
-
-	ret = fimc_is_sensor_read8(client, 0x0005, &sensor_fcount);
-	if (ret < 0)
-	    err("i2c transfer fail addr(%x), val(%x), ret = %d\n", 0x0005, sensor_fcount, ret);
-
-	/*
-	 * Read sensor frame counter (sensor_fcount address = 0x0005)
-	 * stream on (0x00 ~ 0xFE), stream off (0xFF)
-	 */
-	while (sensor_fcount == 0xff) {
-		usleep_range(CIS_STREAM_ON_WAIT_TIME, CIS_STREAM_ON_WAIT_TIME);
-		wait_cnt++;
-
-		ret = fimc_is_sensor_read8(client, 0x0005, &sensor_fcount);
-		if (ret < 0)
-		    err("i2c transfer fail addr(%x), val(%x), ret = %d\n", 0x0005, sensor_fcount, ret);
-
-		if (wait_cnt >= time_out_cnt) {
-			err("[MOD:D:%d] %s, Don't sensor stream on and time out, wait_limit(%d) > time_out(%d), sensor_fcount(%d)",
-				cis->id, __func__, wait_cnt, time_out_cnt, sensor_fcount);
-			ret = -EINVAL;
-			goto p_err;
-		}
-
-		dbg_sensor(1, "[MOD:D:%d] %s, sensor_fcount(%d), (wait_limit(%d) < time_out(%d))\n",
-				cis->id, __func__, sensor_fcount, wait_cnt, time_out_cnt);
-	}
-
-#ifdef CONFIG_SENSOR_RETENTION_USE
-	/* retention mode CRC wait calculation */
-	usleep_range(1000, 1000);
-#endif
-p_err:
-	return ret;
+	return 0;
 }
+#endif

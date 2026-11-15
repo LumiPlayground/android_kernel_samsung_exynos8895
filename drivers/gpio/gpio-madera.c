@@ -1,18 +1,19 @@
 /*
- * GPIO support for Cirrus Logic Madera codecs
+ * gpio-madera.c  --  GPIO support for Cirrus Logic Madera codecs
  *
- * Copyright 2015-2017 Cirrus Logic
+ * Copyright 2015-2016 Cirrus Logic
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
 
-#include <linux/device.h>
-#include <linux/gpio.h>
 #include <linux/kernel.h>
+#include <linux/slab.h>
 #include <linux/module.h>
+#include <linux/gpio.h>
 #include <linux/platform_device.h>
+#include <linux/seq_file.h>
 
 #include <linux/mfd/madera/core.h>
 #include <linux/mfd/madera/pdata.h>
@@ -23,25 +24,14 @@ struct madera_gpio {
 	struct gpio_chip gpio_chip;
 };
 
-static int madera_gpio_get_direction(struct gpio_chip *chip,
-				     unsigned int offset)
+static inline struct madera_gpio *to_madera_gpio(struct gpio_chip *chip)
 {
-	struct madera_gpio *madera_gpio = gpiochip_get_data(chip);
-	struct madera *madera = madera_gpio->madera;
-	unsigned int val;
-	int ret;
-
-	ret = regmap_read(madera->regmap,
-			  MADERA_GPIO1_CTRL_2 + (2 * offset), &val);
-	if (ret < 0)
-		return ret;
-
-	return (val & MADERA_GP1_DIR_MASK) >> MADERA_GP1_DIR_SHIFT;
+	return container_of(chip, struct madera_gpio, gpio_chip);
 }
 
 static int madera_gpio_direction_in(struct gpio_chip *chip, unsigned int offset)
 {
-	struct madera_gpio *madera_gpio = gpiochip_get_data(chip);
+	struct madera_gpio *madera_gpio = to_madera_gpio(chip);
 	struct madera *madera = madera_gpio->madera;
 
 	return regmap_update_bits(madera->regmap,
@@ -51,7 +41,7 @@ static int madera_gpio_direction_in(struct gpio_chip *chip, unsigned int offset)
 
 static int madera_gpio_get(struct gpio_chip *chip, unsigned int offset)
 {
-	struct madera_gpio *madera_gpio = gpiochip_get_data(chip);
+	struct madera_gpio *madera_gpio = to_madera_gpio(chip);
 	struct madera *madera = madera_gpio->madera;
 	unsigned int val;
 	int ret;
@@ -61,21 +51,21 @@ static int madera_gpio_get(struct gpio_chip *chip, unsigned int offset)
 	if (ret < 0)
 		return ret;
 
-	return !!(val & MADERA_GP1_LVL_MASK);
+	if (val & MADERA_GP1_LVL_MASK)
+		return 1;
+	else
+		return 0;
 }
 
 static int madera_gpio_direction_out(struct gpio_chip *chip,
 				     unsigned int offset, int value)
 {
-	struct madera_gpio *madera_gpio = gpiochip_get_data(chip);
+	struct madera_gpio *madera_gpio = to_madera_gpio(chip);
 	struct madera *madera = madera_gpio->madera;
-	unsigned int regval;
 	int ret;
 
 	if (value)
-		regval = MADERA_GP1_LVL;
-	else
-		regval = 0;
+		value = MADERA_GP1_LVL;
 
 	ret = regmap_update_bits(madera->regmap,
 				 MADERA_GPIO1_CTRL_2 + (2 * offset),
@@ -85,34 +75,26 @@ static int madera_gpio_direction_out(struct gpio_chip *chip,
 
 	return regmap_update_bits(madera->regmap,
 				  MADERA_GPIO1_CTRL_1 + (2 * offset),
-				  MADERA_GP1_LVL_MASK, regval);
+				  MADERA_GP1_LVL_MASK, value);
 }
 
 static void madera_gpio_set(struct gpio_chip *chip, unsigned int offset,
 			    int value)
 {
-	struct madera_gpio *madera_gpio = gpiochip_get_data(chip);
+	struct madera_gpio *madera_gpio = to_madera_gpio(chip);
 	struct madera *madera = madera_gpio->madera;
-	unsigned int regval;
-	int ret;
 
 	if (value)
-		regval = MADERA_GP1_LVL;
-	else
-		regval = 0;
+		value = MADERA_GP1_LVL;
 
-	ret = regmap_update_bits(madera->regmap,
-				 MADERA_GPIO1_CTRL_1 + (2 * offset),
-				 MADERA_GP1_LVL_MASK, regval);
-	if (ret)
-		dev_warn(madera->dev, "Failed to write to 0x%x (%d)\n",
-			 MADERA_GPIO1_CTRL_1 + (2 * offset), ret);
+	regmap_update_bits(madera->regmap,
+			   MADERA_GPIO1_CTRL_1 + (2 * offset),
+			   MADERA_GP1_LVL_MASK, value);
 }
 
 static struct gpio_chip template_chip = {
 	.label			= "madera",
 	.owner			= THIS_MODULE,
-	.get_direction		= madera_gpio_get_direction,
 	.direction_input	= madera_gpio_direction_in,
 	.get			= madera_gpio_get,
 	.direction_output	= madera_gpio_direction_out,
@@ -134,12 +116,15 @@ static int madera_gpio_probe(struct platform_device *pdev)
 
 	madera_gpio->madera = madera;
 	madera_gpio->gpio_chip = template_chip;
-	madera_gpio->gpio_chip.parent = &pdev->dev;
-
-	if (IS_ENABLED(CONFIG_OF_GPIO))
-		madera_gpio->gpio_chip.of_node = madera->dev->of_node;
+	madera_gpio->gpio_chip.dev = &pdev->dev;
+#ifdef CONFIG_OF_GPIO
+	madera_gpio->gpio_chip.of_node = madera->dev->of_node;
+#endif
 
 	switch (madera->type) {
+	case CS47L15:
+		madera_gpio->gpio_chip.ngpio = CS47L15_NUM_GPIOS;
+		break;
 	case CS47L35:
 		madera_gpio->gpio_chip.ngpio = CS47L35_NUM_GPIOS;
 		break;
@@ -151,8 +136,13 @@ static int madera_gpio_probe(struct platform_device *pdev)
 	case CS47L91:
 		madera_gpio->gpio_chip.ngpio = CS47L90_NUM_GPIOS;
 		break;
+	case CS47L92:
+	case CS47L93:
+		madera_gpio->gpio_chip.ngpio = CS47L92_NUM_GPIOS;
+		break;
 	default:
-		dev_err(&pdev->dev, "Unknown chip variant %d\n", madera->type);
+		dev_err(&pdev->dev, "Unknown chip variant %d\n",
+			madera->type);
 		return -EINVAL;
 	}
 
@@ -161,28 +151,36 @@ static int madera_gpio_probe(struct platform_device *pdev)
 	else
 		madera_gpio->gpio_chip.base = -1;
 
-	ret = devm_gpiochip_add_data(&pdev->dev, &madera_gpio->gpio_chip,
-				     madera_gpio);
+	ret = gpiochip_add(&madera_gpio->gpio_chip);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "Could not register gpiochip, %d\n", ret);
+		dev_err(&pdev->dev, "Could not register gpiochip, %d\n",
+			ret);
 		return ret;
 	}
 
+	platform_set_drvdata(pdev, madera_gpio);
+
+	return ret;
+}
+
+static int madera_gpio_remove(struct platform_device *pdev)
+{
+	struct madera_gpio *madera_gpio = platform_get_drvdata(pdev);
+
+	gpiochip_remove(&madera_gpio->gpio_chip);
 	return 0;
 }
 
 static struct platform_driver madera_gpio_driver = {
-	.driver = {
-		.name	= "madera-gpio",
-		.owner	= THIS_MODULE,
-		.suppress_bind_attrs = true,
-	},
+	.driver.name	= "madera-gpio",
+	.driver.owner	= THIS_MODULE,
 	.probe		= madera_gpio_probe,
+	.remove		= madera_gpio_remove,
 };
 
 module_platform_driver(madera_gpio_driver);
 
-MODULE_DESCRIPTION("GPIO interface for Madera codecs");
+MODULE_DESCRIPTION("GPIO interface for Madera devices");
 MODULE_AUTHOR("Nariman Poushin <nariman@opensource.wolfsonmicro.com>");
 MODULE_AUTHOR("Richard Fitzgerald <rf@opensource.wolfsonmicro.com>");
 MODULE_LICENSE("GPL v2");

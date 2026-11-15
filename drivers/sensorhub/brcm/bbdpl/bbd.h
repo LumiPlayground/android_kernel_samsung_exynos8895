@@ -18,24 +18,6 @@
 #ifndef __BBD_H__
 #define __BBD_H__
 
-#pragma pack(4)
-typedef unsigned char   uint8_t;
-typedef unsigned short  uint16_t;
-typedef unsigned        uint32_t;
-
-union long_union_t
-{
-	unsigned char uc[sizeof(unsigned long)];
-	unsigned long ul;
-};
-
-union short_union_t
-{
-	unsigned char  uc[sizeof(unsigned short)];
-	unsigned short us;
-};
-#pragma pack()
-
 
 #define BBD_DEVICE_MAJOR	239
 enum {
@@ -61,10 +43,6 @@ enum {
 #define SSP_DEBUG_OFF		"SSP:DEBUG=0"
 #define SSI_DEBUG_ON		"SSI:DEBUG=1"
 #define SSI_DEBUG_OFF		"SSI:DEBUG=0"
-#define PZC_DEBUG_ON		"PZC:DEBUG=1"
-#define PZC_DEBUG_OFF		"PZC:DEBUG=0"
-#define RNG_DEBUG_ON		"RNG:DEBUG=1"
-#define RNG_DEBUG_OFF		"RNG:DEBUG=0"
 #define BBD_CTRL_SSI_PATCH_BEGIN	"SSI:PassThru=1"
 #define BBD_CTRL_SSI_PATCH_END		"SSI:PassThru=0"
 #define GPSD_SENSOR_ON		"GPSD:SENSOR_ON"
@@ -73,20 +51,6 @@ enum {
 #define BBD_CTRL_GPS_OFF		"GPSD:CORE_OFF"
 #define BBD_CTRL_LHD_STOP		"LHD:STOP"
 //#define DEBUG_1HZ_STAT
-
-#define HSI_ERROR_STATUS              0x2C
-#define HSI_ERROR_STATUS_LPBK_ERROR       0x01
-#define HSI_ERROR_STATUS_STRM_FIFO_OVFL   0x02
-#define HSI_ERROR_STATUS_AHB_BUS_ERROR    0x04
-#define HSI_ERROR_STATUS_PATCH_ERROR      0x10
-#define HSI_ERROR_STATUS_ALL_ERRORS       (HSI_ERROR_STATUS_LPBK_ERROR|HSI_ERROR_STATUS_STRM_FIFO_OVFL|HSI_ERROR_STATUS_AHB_BUS_ERROR|HSI_ERROR_STATUS_PATCH_ERROR)
-
-#define HSI_RNGDMA_RX_BASE_ADDR       0x40104040
-#define HSI_RNGDMA_RX_SW_ADDR_OFFSET  0x40104050
-#define HSI_RNGDMA_TX_BASE_ADDR       0x40104060
-#define HSI_RNGDMA_TX_SW_ADDR_OFFSET  0x40104070
-#define HSI_CTRL                      0x40104090
-#define HSI_ADL_ABR_CONTROL           0x401040a0
 
 #ifdef DEBUG_1HZ_STAT
 
@@ -139,12 +103,12 @@ typedef struct {
 	int (*on_packet_alarm)(void *ssh_data);
 	int (*on_control)(void *ssh_data, const char *str_ctrl);
 	int (*on_mcu_ready)(void *ssh_data, bool ready);
-	int (*on_mcu_reset)(void *ssh_data, bool IsNoResp);
+	int (*on_mcu_reset)(void *ssh_data);
 } bbd_callbacks;
 
 extern void	bbd_register(void *ext_data, bbd_callbacks *pcallbacks);
 extern ssize_t	bbd_send_packet(unsigned char *buf, size_t size);
 extern ssize_t	bbd_pull_packet(unsigned char *buf, size_t size, unsigned int timeout_ms);
-extern int	bbd_mcu_reset(bool IsNoResp);
+extern int	bbd_mcu_reset(void);
 extern int	bbd_init(struct device *dev);
 #endif /* __BBD_H__ */

@@ -79,8 +79,12 @@ struct s3c24xx_uart_port {
 	s32				cpu_qos_val;
 	u32				use_default_irq;
 	unsigned long			qos_timeout;
+
+#define DOMAIN_TOP	0
+#define DOMAIN_AUD	1
+	u32				domain;
 	unsigned int			usi_v2;
-	unsigned int		uart_panic_log;
+	unsigned int			uart_panic_log;
 	struct pinctrl_state 	*uart_pinctrl_tx_dat;
 	struct pinctrl_state 	*uart_pinctrl_rts;
 	struct pinctrl_state 	*uart_pinctrl_default;
@@ -119,7 +123,33 @@ struct s3c24xx_uart_port {
 
 #define wr_regb(port, reg, val) writeb_relaxed(val, portaddr(port, reg))
 #define wr_regl(port, reg, val) writel_relaxed(val, portaddr(port, reg))
-static void uart_copy_to_local_buf(int dir, struct uart_local_buf *local_buf, unsigned char *trace_buf, int len);
-#define SS_UART_LOG(dir, local_buf, trace_buf) uart_copy_to_local_buf(dir, local_buf, trace_buf, sizeof(trace_buf))
+
+/* Byte-order aware bit setting/clearing functions. */
+
+static inline void s3c24xx_set_bit(struct uart_port *port, int idx,
+				   unsigned int reg)
+{
+	unsigned long flags;
+	u32 val;
+
+	local_irq_save(flags);
+	val = rd_regl(port, reg);
+	val |= (1 << idx);
+	wr_regl(port, reg, val);
+	local_irq_restore(flags);
+}
+
+static inline void s3c24xx_clear_bit(struct uart_port *port, int idx,
+				     unsigned int reg)
+{
+	unsigned long flags;
+	u32 val;
+
+	local_irq_save(flags);
+	val = rd_regl(port, reg);
+	val &= ~(1 << idx);
+	wr_regl(port, reg, val);
+	local_irq_restore(flags);
+}
 
 #endif

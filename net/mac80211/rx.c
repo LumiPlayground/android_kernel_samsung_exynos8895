@@ -2368,23 +2368,6 @@ ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx)
 		default:
 			return RX_DROP_UNUSABLE;
 		}
-		check_da = NULL;
-		check_sa = NULL;
-	} else switch (rx->sdata->vif.type) {
-		case NL80211_IFTYPE_AP:
-		case NL80211_IFTYPE_AP_VLAN:
-			check_da = NULL;
-			break;
-		case NL80211_IFTYPE_STATION:
-			if (!rx->sta ||
-			    !test_sta_flag(rx->sta, WLAN_STA_TDLS_PEER))
-				check_sa = NULL;
-			break;
-		case NL80211_IFTYPE_MESH_POINT:
-			check_sa = NULL;
-			break;
-		default:
-			break;
 	}
 
 	if (is_multicast_ether_addr(hdr->addr1))

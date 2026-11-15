@@ -45,7 +45,6 @@ struct ecd_pdata {
 	void (*uart_flush)(struct platform_device *pdev);
 	void (*uart_enable)(struct platform_device *pdev);
 	void (*uart_disable)(struct platform_device *pdev);
-	void (*uart_clear_rxfifo)(struct platform_device *pdev);
 
 	int (*uart_dev_suspend)(struct platform_device *pdev);
 	int (*uart_dev_resume)(struct platform_device *pdev);
@@ -53,6 +52,4 @@ struct ecd_pdata {
 	void (*force_irq)(struct platform_device *pdev, unsigned int irq);
 	void (*force_irq_ack)(struct platform_device *pdev, unsigned int irq);
 };
-
-extern bool initial_no_firmware;
 #endif

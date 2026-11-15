@@ -25,12 +25,20 @@
 #include <linux/dma-contiguous.h>
 #include <linux/exynos_ion.h>
 #include <linux/smc.h>
-#include <linux/dma-buf.h>
 
 #include <asm/memory.h>
 #include <asm/cacheflush.h>
 
 #include <soc/samsung/secmem.h>
+
+#if defined(CONFIG_SECURE_OS_BOOSTER_API)
+#if defined(CONFIG_SOC_EXYNOS8895)
+#include <soc/samsung/secos_booster.h>
+#else
+#include <mach/secos_booster.h>
+#endif
+#endif
+#include <linux/delay.h>
 
 #define SECMEM_DEV_NAME	"s5p-smem"
 
@@ -162,43 +170,47 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 #if defined(CONFIG_ION) || defined(CONFIG_ION_EXYNOS)
 	case (uint32_t)SECMEM_IOC_GET_FD_PHYS_ADDR:
 	{
+		struct ion_client *client;
 		struct secfd_info fd_info;
-		struct dma_buf *dmabuf;
-		struct dma_buf_attachment *attachment;
-		struct sg_table *sgt;
+		struct ion_fd_data data;
+		struct ion_handle *ion_handle;
+		size_t len;
 
 		if (copy_from_user(&fd_info, (int __user *)arg,
 					sizeof(fd_info)))
 			return -EFAULT;
 
-		dmabuf = dma_buf_get(fd_info.fd);
-		if (IS_ERR_OR_NULL(dmabuf)) {
-			pr_err("smem ioctl error(%d)\n", __LINE__);
+		client = exynos_ion_client_create("DRM");
+		if (IS_ERR(client)) {
+			pr_err("%s: Failed to get ion_client of DRM\n",
+				__func__);
 			return -ENOMEM;
 		}
 
-		attachment = dma_buf_attach(dmabuf, info->dev);
-		if (!attachment) {
-			pr_err("smem ioctl error(%d)\n", __LINE__);
-			dma_buf_put(dmabuf);
+		data.fd = fd_info.fd;
+		ion_handle = ion_import_dma_buf_fd(client, data.fd);
+		pr_debug("%s: fd from user space = %d\n",
+				__func__, fd_info.fd);
+		if (IS_ERR(ion_handle)) {
+			pr_err("%s: Failed to get ion_handle of DRM\n",
+				__func__);
+			ion_client_destroy(client);
 			return -ENOMEM;
 		}
 
-		sgt = dma_buf_map_attachment(attachment, DMA_TO_DEVICE);
-		if (!sgt) {
-			pr_err("smem ioctl error(%d)\n", __LINE__);
-			dma_buf_detach(dmabuf, attachment);
-			dma_buf_put(dmabuf);
+		if (ion_phys(client, ion_handle, &fd_info.phys, &len)) {
+			pr_err("%s: Failed to get phys. addr of DRM\n",
+				__func__);
+			ion_free(client, ion_handle);
+			ion_client_destroy(client);
 			return -ENOMEM;
 		}
 
-		fd_info.phys = sg_phys(sgt->sgl);
 		pr_debug("%s: physical addr from kernel space = 0x%08x\n",
 				__func__, (unsigned int)fd_info.phys);
 
-		dma_buf_unmap_attachment(attachment, sgt, DMA_TO_DEVICE);
-		dma_buf_detach(dmabuf, attachment);
-		dma_buf_put(dmabuf);
+		ion_free(client, ion_handle);
+		ion_client_destroy(client);
 
 		if (copy_to_user((void __user *)arg, &fd_info, sizeof(fd_info)))
 			return -EFAULT;
@@ -206,15 +218,51 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	}
 #endif
 	case (uint32_t)SECMEM_IOC_GET_DRM_ONOFF:
-	{
-		int drm_status = 0;
-
 		smp_rmb();
-		drm_status = (int)drm_onoff;
-		if (copy_to_user((void __user *)arg, &drm_status, sizeof(int)))
+		if (copy_to_user((void __user *)arg, &drm_onoff, sizeof(int)))
 			return -EFAULT;
 		break;
+
+	case (uint32_t)IRIS_IOCTL_CPU_SPEEDUP:
+	{
+		int onoff = 0;
+#if defined(CONFIG_SECURE_OS_BOOSTER_API)
+		int ret_val = 0;
+#endif
+		if (copy_from_user(&onoff, (void *)arg,
+			sizeof(unsigned int)) != 0) {
+			pr_err("%s Failed copy from user.(CPU_SPEEDUP)\n", __func__);
+			//mutex_unlock(&vfsspi_device->buffer_mutex);
+			return -EFAULT;
+		}
+		if (onoff) {
+			u8 retry_cnt = 0;
+			pr_debug("%s IRIS_IOCTL_CPU_SPEEDUP ON:%d, retry: %d\n",
+				__func__, onoff, retry_cnt);
+#if defined(CONFIG_SECURE_OS_BOOSTER_API)
+			do {
+				ret_val = secos_booster_start(onoff - 1);
+				retry_cnt++;
+				if (ret_val) {
+					pr_err("%s: booster start failed. (%d) retry: %d\n"
+						, __func__, ret_val, retry_cnt);
+					if (retry_cnt < 7)
+							usleep_range(500, 510);
+					}
+				} while (ret_val && retry_cnt < 7);
+#endif
+			} else {
+				pr_debug("%s IRIS_IOCTL_CPU_SPEEDUP OFF\n", __func__);
+#if defined(CONFIG_SECURE_OS_BOOSTER_API)
+				ret_val = secos_booster_stop();
+				if (ret_val)
+					pr_err("%s: booster stop failed. (%d)\n"
+						, __func__, ret_val);
+#endif
+			}
+			break;
 	}
+
 	case (uint32_t)SECMEM_IOC_SET_DRM_ONOFF:
 	{
 		int ret, val = 0;

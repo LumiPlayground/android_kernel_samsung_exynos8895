@@ -41,7 +41,6 @@ void fimc_is_sensor_ois_start(struct fimc_is_device_sensor *device);
 void fimc_is_sensor_ois_stop(struct fimc_is_device_sensor *device);
 #endif
 int fimc_is_sensor_ctl_adjust_sync(struct fimc_is_device_sensor *device, u32 adjust_sync);
-int fimc_is_sensor_ctl_low_noise_mode(struct fimc_is_device_sensor *device, u32 mode);
 
 /* Actuator funtion */
 int fimc_is_actuator_ctl_set_position(struct fimc_is_device_sensor *device, u32 position);

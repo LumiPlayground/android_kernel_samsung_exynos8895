@@ -19,6 +19,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <video/videonode.h>
+#include <media/exynos_mc.h>
 #include <asm/cacheflush.h>
 #include <asm/pgtable.h>
 #include <linux/firmware.h>
@@ -32,13 +33,11 @@
 #include <linux/bug.h>
 #include <linux/v4l2-mediabus.h>
 #include <linux/gpio.h>
-#
+#include <linux/memblock.h>
+
 #ifdef CONFIG_OF
 #include <linux/of.h>
 #include <linux/of_gpio.h>
-#endif
-#if defined(CONFIG_SECURE_CAMERA_USE)
-#include <linux/smc.h>
 #endif
 
 #include "fimc-is-core.h"
@@ -85,41 +84,58 @@ struct fimc_is_sysfs_sensor sysfs_sensor;
 #endif
 #endif
 
-int debug_clk;
-module_param(debug_clk, int, 0644);
-int debug_stream;
-module_param(debug_stream, int, 0644);
-int debug_video;
-module_param(debug_video, int, 0644);
-int debug_hw;
-module_param(debug_hw, int, 0644);
-int debug_device;
-module_param(debug_device, int, 0644);
-int debug_psv;
-module_param(debug_psv, int, 0644);
-int debug_irq;
-module_param(debug_irq, int, 0644);
-int debug_csi;
-module_param(debug_csi, int, 0644);
-int debug_sensor;
-module_param(debug_sensor, int, 0644);
-int debug_time_launch;
-module_param(debug_time_launch, int, 0644);
-int debug_time_queue;
-module_param(debug_time_queue, int, 0644);
-int debug_time_shot;
-module_param(debug_time_shot, int, 0644);
-
-struct fimc_is_device_sensor *fimc_is_get_sensor_device(struct fimc_is_core *core)
+static struct vm_struct fimc_is_lib_vm;
+static int __init fimc_is_lib_mem_alloc(char *str)
 {
-	mutex_lock(&core->sensor_lock);
+	ulong addr = 0;
 
-	return &core->sensor[0];
+	if (kstrtoul(str, 0, (ulong *)&addr) || !addr) {
+		probe_warn("invalid fimc-is library memory address, use default");
+		addr = LIB_START;
+	}
+
+	if (addr != LIB_START)
+		probe_warn("use different address [reserve-fimc=0x%lx default:0x%lx]",
+				addr, LIB_START);
+
+	fimc_is_lib_vm.phys_addr = memblock_alloc(LIB_SIZE, SZ_4K);
+	fimc_is_lib_vm.addr = (void *)addr;
+	fimc_is_lib_vm.size = LIB_SIZE + PAGE_SIZE;
+
+	vm_area_add_early(&fimc_is_lib_vm);
+
+	probe_info("fimc-is library memory: 0x%lx\n", addr);
+
+	return 0;
 }
+__setup("reserve-fimc=", fimc_is_lib_mem_alloc);
 
-int fimc_is_put_sensor_device(struct fimc_is_core *core)
+static int __init fimc_is_lib_mem_map(void)
 {
-	mutex_unlock(&core->sensor_lock);
+	int page_size, i;
+	struct page *page;
+	struct page **pages;
+
+	if (!fimc_is_lib_vm.phys_addr) {
+		probe_err("There is no reserve-fimc= at bootargs.");
+		return -ENOMEM;
+	}
+
+	page_size = fimc_is_lib_vm.size / PAGE_SIZE;
+	pages = kzalloc(sizeof(struct page*) * page_size, GFP_KERNEL);
+	page = phys_to_page(fimc_is_lib_vm.phys_addr);
+
+	for (i = 0; i < page_size; i++)
+		pages[i] = page++;
+
+	if (map_vm_area(&fimc_is_lib_vm, PAGE_KERNEL, pages)) {
+		probe_err("failed to mapping between virt and phys for binary");
+		vunmap(fimc_is_lib_vm.addr);
+		kfree(pages);
+		return -ENOMEM;
+	}
+
+	kfree(pages);
 
 	return 0;
 }
@@ -175,55 +191,16 @@ static int fimc_is_resume(struct device *dev)
 }
 
 #ifdef ENABLE_FAULT_HANDLER
-static void fimc_is_print_target_dva(struct camera2_shot *shot)
-{
-	u32 *target;
-	u32 target_index, plane_index;
-
-	target = shot->uctl.scalerUd.sourceAddress;
-	for (target_index = 0; target_index < 14; target_index++) {
-		for (plane_index = 0; plane_index < FIMC_IS_MAX_PLANES; plane_index++) {
-			if (target[plane_index])
-				pr_err("[%d] target[%d] = 0x%08X\n",
-					target_index, plane_index, target[plane_index]);
-		}
-		target = target + FIMC_IS_MAX_PLANES;
-	}
-}
-
-void fimc_is_print_frame_dva(struct fimc_is_subdev *subdev)
-{
-	u32 j, k;
-	struct fimc_is_framemgr *framemgr;
-	struct camera2_shot *shot;
-
-	framemgr = GET_SUBDEV_FRAMEMGR(subdev);
-	if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
-		for (j = 0; j < framemgr->num_frames; ++j) {
-			for (k = 0; k < framemgr->frames[j].planes; k++) {
-				msinfo(" BUF[%d][%d] = 0x%08X(0x%lX)\n",
-					subdev, subdev, j, k,
-					framemgr->frames[j].dvaddr_buffer[k],
-					framemgr->frames[j].mem_state);
-
-				shot = framemgr->frames[j].shot;
-				if (shot)
-					fimc_is_print_target_dva(shot);
-			}
-		}
-	}
-}
-
 static void __fimc_is_fault_handler(struct device *dev)
 {
-	u32 i, j, k, sd_index;
-	int vc;
+	u32 i, j, k;
 	struct fimc_is_core *core;
 	struct fimc_is_device_sensor *sensor;
 	struct fimc_is_device_ischain *ischain;
 	struct fimc_is_subdev *subdev;
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_resourcemgr *resourcemgr;
+	struct camera2_shot	*shot;
 
 	core = dev_get_drvdata(dev);
 	if (core) {
@@ -253,32 +230,61 @@ static void __fimc_is_fault_handler(struct device *dev)
 				}
 
 				/* vc0 */
-				subdev = &sensor->ssvc0;
-				for (sd_index = 0; sd_index < CSI_VIRTUAL_CH_MAX; sd_index++) {
-					fimc_is_print_frame_dva(subdev);
-					subdev++;
+				framemgr = GET_SUBDEV_FRAMEMGR(&sensor->ssvc0);
+				if (test_bit(FIMC_IS_SUBDEV_START, &sensor->ssvc0.state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[SS%dVC0] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+									framemgr->frames[j].dvaddr_buffer[k],
+									framemgr->frames[j].mem_state);
+						}
+					}
+				}
+
+				/* vc1 */
+				framemgr = GET_SUBDEV_FRAMEMGR(&sensor->ssvc1);
+				if (test_bit(FIMC_IS_SUBDEV_START, &sensor->ssvc1.state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[SS%dVC1] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+									framemgr->frames[j].dvaddr_buffer[k],
+									framemgr->frames[j].mem_state);
+						}
+					}
+				}
+
+				/* vc2 */
+				framemgr = GET_SUBDEV_FRAMEMGR(&sensor->ssvc2);
+				if (test_bit(FIMC_IS_SUBDEV_START, &sensor->ssvc2.state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[SS%dVC2] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+									framemgr->frames[j].dvaddr_buffer[k],
+									framemgr->frames[j].mem_state);
+						}
+					}
+				}
+
+				/* vc3 */
+				framemgr = GET_SUBDEV_FRAMEMGR(&sensor->ssvc3);
+				if (test_bit(FIMC_IS_SUBDEV_START, &sensor->ssvc3.state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[SS%dVC3] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+									framemgr->frames[j].dvaddr_buffer[k],
+									framemgr->frames[j].mem_state);
+						}
+					}
 				}
 
 				/* csis, bns sfr dump */
-				if (sensor->subdev_flite) {
-					flite = (struct fimc_is_device_flite *)v4l2_get_subdevdata(sensor->subdev_flite);
-					if (flite)
-						flite_hw_dump(flite->base_reg);
-				}
+				flite = (struct fimc_is_device_flite *)v4l2_get_subdevdata(sensor->subdev_flite);
+				if (flite)
+					flite_hw_dump(flite->base_reg);
 
 				csi = (struct fimc_is_device_csi *)v4l2_get_subdevdata(sensor->subdev_csi);
-				if (csi) {
+				if (csi)
 					csi_hw_dump(csi->base_reg);
-					csi_hw_phy_dump(csi->phy_reg, csi->instance);
-					for (vc = CSI_VIRTUAL_CH_0; vc < CSI_VIRTUAL_CH_MAX; vc++) {
-						csi_hw_vcdma_dump(csi->vc_reg[vc + csi->offset]);
-						csi_hw_vcdma_cmn_dump(csi->cmn_reg[vc + csi->offset]);
-					}
-					csi_hw_common_dma_dump(csi->csi_dma->base_reg);
-#if defined(ENABLE_PDP_STAT_DMA)
-					csi_hw_common_dma_dump(csi->csi_dma->base_reg_stat);
-#endif
-				}
 			}
 		}
 
@@ -288,76 +294,266 @@ static void __fimc_is_fault_handler(struct device *dev)
 			if (test_bit(FIMC_IS_ISCHAIN_OPEN, &ischain->state)) {
 				/* 3AA */
 				subdev = &ischain->group_3aa.leader;
-				fimc_is_print_frame_dva(subdev);
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][3XS] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
 
-				/* 3AAC ~ 3AAP */
-				subdev = &ischain->txc;
-				for (sd_index = 0; sd_index < NUM_OF_3AA_SUBDEV; sd_index++) {
-					fimc_is_print_frame_dva(subdev);
-					subdev++;
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][3XS] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.sourceAddress[k]);
+						}
+					}
 				}
+				/* 3AAC */
+				subdev = &ischain->txc;
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][3XC] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
 
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][3XC] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.txcTargetAddress[k]);
+						}
+					}
+				}
+				/* 3AAP */
+				subdev = &ischain->txp;
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][3XP] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][3XP] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.txpTargetAddress[k]);
+						}
+					}
+				}
 				/* ISP */
 				subdev = &ischain->group_isp.leader;
-				fimc_is_print_frame_dva(subdev);
-
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][IXS] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
+						}
+					}
+				}
 				/* ISPC */
 				subdev = &ischain->ixc;
-				for (sd_index = 0; sd_index < NUM_OF_ISP_SUBDEV; sd_index++) {
-					fimc_is_print_frame_dva(subdev);
-					subdev++;
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][IXC] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][IXC] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.ixcTargetAddress[k]);
+						}
+					}
 				}
+				/* ISPP */
+				subdev = &ischain->ixp;
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][IXP] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
 
-				/* DCP */
-				subdev = &ischain->group_dcp.leader;
-				fimc_is_print_frame_dva(subdev);
-
-				/* DC1S ~ DC4C*/
-				subdev = &ischain->dc1s;
-				for (sd_index = 0; sd_index < NUM_OF_DCP_SUBDEV; sd_index++) {
-					fimc_is_print_frame_dva(subdev);
-					subdev++;
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][IXP] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.ixpTargetAddress[k]);
+						}
+					}
 				}
-
 				/* DIS */
 				subdev = &ischain->group_dis.leader;
-				fimc_is_print_frame_dva(subdev);
-
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][DIS] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
+						}
+					}
+				}
 				/* SCC */
 				subdev = &ischain->scc;
-				fimc_is_print_frame_dva(subdev);
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][SCC] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
 
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][SCC] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.sccTargetAddress[k]);
+						}
+					}
+				}
 				/* SCP */
 				subdev = &ischain->scp;
-				fimc_is_print_frame_dva(subdev);
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][SCP] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
 
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][SCP] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.scpTargetAddress[k]);
+						}
+					}
+				}
 				/* MCS */
 				subdev = &ischain->group_mcs.leader;
-				fimc_is_print_frame_dva(subdev);
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][MCS] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
 
-				/* M0P ~ M5P */
-				subdev = &ischain->m0p;
-				for (sd_index = 0; sd_index < NUM_OF_MCS_SUBDEV; sd_index++) {
-					fimc_is_print_frame_dva(subdev);
-					subdev++;
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][MCS] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.scpTargetAddress[k]);
+						}
+					}
 				}
+				/* M0P */
+				subdev = &ischain->m0p;
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][M0P] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
 
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][M0P] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.sc0TargetAddress[k]);
+						}
+					}
+				}
+				/* M1P */
+				subdev = &ischain->m1p;
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][M1P] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][M1P] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.sc1TargetAddress[k]);
+						}
+					}
+				}
+				/* M2P */
+				subdev = &ischain->m2p;
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][M2P] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][M2P] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.sc2TargetAddress[k]);
+						}
+					}
+				}
+				/* M3P */
+				subdev = &ischain->m3p;
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][M3P] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][M3P] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.sc3TargetAddress[k]);
+						}
+					}
+				}
+				/* M4P */
+				subdev = &ischain->m4p;
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][M4P] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][M4P] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.sc4TargetAddress[k]);
+						}
+					}
+				}
 				/* VRA */
 				subdev = &ischain->group_vra.leader;
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (test_bit(FIMC_IS_SUBDEV_START, &subdev->state) && framemgr) {
+					for (j = 0; j < framemgr->num_frames; ++j) {
+						for (k = 0; k < framemgr->frames[j].planes; k++) {
+							pr_err("[%d][VRA] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
+								framemgr->frames[j].dvaddr_buffer[k],
+								framemgr->frames[j].mem_state);
+						}
+					}
+				}
 			}
 		}
 	} else {
 		pr_err("failed to get core\n");
 	}
-}
-
-static void wq_func_print_clk(struct work_struct *data)
-{
-	struct fimc_is_core *core;
-
-	core = container_of(data, struct fimc_is_core, wq_data_print_clk);
-
-	CALL_POPS(core, print_clk);
 }
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0))
@@ -523,7 +719,7 @@ static ssize_t store_en_dvfs(struct device *dev,
 	struct fimc_is_resourcemgr *resourcemgr;
 	int i;
 
-	FIMC_BUG(!core);
+	BUG_ON(!core);
 
 	resourcemgr = &core->resourcemgr;
 
@@ -549,58 +745,6 @@ static ssize_t store_en_dvfs(struct device *dev,
 		break;
 	}
 #endif
-	return count;
-}
-
-static ssize_t show_pattern_en(struct device *dev, struct device_attribute *attr,
-				  char *buf)
-{
-	return snprintf(buf, PAGE_SIZE, "%lu\n", sysfs_debug.pattern_en);
-}
-
-static ssize_t store_pattern_en(struct device *dev,
-				 struct device_attribute *attr,
-				 const char *buf, size_t count)
-{
-	int ret = 0;
-	unsigned long cmd;
-
-	ret = kstrtoul(buf, 0, &cmd);
-	if (ret)
-		return ret;
-
-	switch (cmd) {
-	case 0:
-	case 1:
-		sysfs_debug.pattern_en = cmd;
-		break;
-	default:
-		pr_warn("%s: invalid paramter (%lu)\n", __func__, cmd);
-		break;
-	}
-
-	return count;
-}
-
-static ssize_t show_pattern_fps(struct device *dev, struct device_attribute *attr,
-				  char *buf)
-{
-	return snprintf(buf, PAGE_SIZE, "%lu\n", sysfs_debug.pattern_fps);
-}
-
-static ssize_t store_pattern_fps(struct device *dev,
-				 struct device_attribute *attr,
-				 const char *buf, size_t count)
-{
-	int ret = 0;
-	unsigned long cmd;
-
-	ret = kstrtoul(buf, 0, &cmd);
-	if (ret)
-		return ret;
-
-	sysfs_debug.pattern_fps = cmd;
-
 	return count;
 }
 
@@ -657,7 +801,7 @@ static ssize_t show_debug_state(struct device *dev, struct device_attribute *att
 		(struct fimc_is_core *)platform_get_drvdata(to_platform_device(dev));
 	struct fimc_is_resourcemgr *resourcemgr;
 
-	FIMC_BUG(!core);
+	BUG_ON(!core);
 
 	resourcemgr = &core->resourcemgr;
 
@@ -672,7 +816,7 @@ static ssize_t store_debug_state(struct device *dev,
 		(struct fimc_is_core *)platform_get_drvdata(to_platform_device(dev));
 	struct fimc_is_resourcemgr *resourcemgr;
 
-	FIMC_BUG(!core);
+	BUG_ON(!core);
 
 	resourcemgr = &core->resourcemgr;
 
@@ -768,38 +912,6 @@ static ssize_t store_actuator_init_delays(struct device *dev,
 	return count;
 }
 
-static ssize_t store_actuator_enable_fixed(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	if (buf[0] == '1')
-		sysfs_actuator.enable_fixed = true;
-	else
-		sysfs_actuator.enable_fixed = false;
-
-	return count;
-}
-
-static ssize_t store_actuator_fixed_position(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	int ret_count;
-	int fixed_position;
-
-	ret_count = sscanf(buf, "%d", &fixed_position);
-
-	if (ret_count != 1)
-		return -EINVAL;
-
-	if (fixed_position < 0 || fixed_position > 1024)
-		return -EINVAL;
-
-	sysfs_actuator.fixed_position = fixed_position;
-
-	return count;
-}
-
 static ssize_t show_actuator_init_step(struct device *dev, struct device_attribute *attr,
 		char *buf)
 {
@@ -821,19 +933,6 @@ static ssize_t show_actuator_init_delays(struct device *dev, struct device_attri
 							sysfs_actuator.init_delays[1], sysfs_actuator.init_delays[2],
 							sysfs_actuator.init_delays[3], sysfs_actuator.init_delays[4]);
 }
-
-static ssize_t show_actuator_enable_fixed(struct device *dev, struct device_attribute *attr,
-		char *buf)
-{
-	return snprintf(buf, PAGE_SIZE, "%d\n", sysfs_actuator.enable_fixed);
-}
-
-static ssize_t show_actuator_fixed_position(struct device *dev, struct device_attribute *attr,
-		char *buf)
-{
-	return snprintf(buf, PAGE_SIZE, "%d\n", sysfs_actuator.fixed_position);
-}
-
 #ifdef FIXED_SENSOR_DEBUG
 static ssize_t show_fixed_sensor_val(struct device *dev, struct device_attribute *attr,
 				  char *buf)
@@ -903,8 +1002,6 @@ static ssize_t store_en_fixed_sensor(struct device *dev,
 static DEVICE_ATTR(en_clk_gate, 0644, show_en_clk_gate, store_en_clk_gate);
 static DEVICE_ATTR(clk_gate_mode, 0644, show_clk_gate_mode, store_clk_gate_mode);
 static DEVICE_ATTR(en_dvfs, 0644, show_en_dvfs, store_en_dvfs);
-static DEVICE_ATTR(pattern_en, 0644, show_pattern_en, store_pattern_en);
-static DEVICE_ATTR(pattern_fps, 0644, show_pattern_fps, store_pattern_fps);
 static DEVICE_ATTR(hal_debug_mode, 0644, show_hal_debug_mode, store_hal_debug_mode);
 static DEVICE_ATTR(hal_debug_delay, 0644, show_hal_debug_delay, store_hal_debug_delay);
 
@@ -916,8 +1013,6 @@ static DEVICE_ATTR(en_debug_state, 0644, show_debug_state, store_debug_state);
 static DEVICE_ATTR(init_step, 0644, show_actuator_init_step, store_actuator_init_step);
 static DEVICE_ATTR(init_positions, 0644, show_actuator_init_positions, store_actuator_init_positions);
 static DEVICE_ATTR(init_delays, 0644, show_actuator_init_delays, store_actuator_init_delays);
-static DEVICE_ATTR(enable_fixed, 0644, show_actuator_enable_fixed, store_actuator_enable_fixed);
-static DEVICE_ATTR(fixed_position, 0644, show_actuator_fixed_position, store_actuator_fixed_position);
 
 #ifdef FIXED_SENSOR_DEBUG
 static DEVICE_ATTR(fixed_sensor_val, 0644, show_fixed_sensor_val, store_fixed_sensor_val);
@@ -929,8 +1024,6 @@ static struct attribute *fimc_is_debug_entries[] = {
 	&dev_attr_en_clk_gate.attr,
 	&dev_attr_clk_gate_mode.attr,
 	&dev_attr_en_dvfs.attr,
-	&dev_attr_pattern_en.attr,
-	&dev_attr_pattern_fps.attr,
 	&dev_attr_hal_debug_mode.attr,
 	&dev_attr_hal_debug_delay.attr,
 #ifdef ENABLE_DBG_STATE
@@ -940,8 +1033,6 @@ static struct attribute *fimc_is_debug_entries[] = {
 	&dev_attr_init_step.attr,
 	&dev_attr_init_positions.attr,
 	&dev_attr_init_delays.attr,
-	&dev_attr_enable_fixed.attr,
-	&dev_attr_fixed_position.attr,
 #ifdef FIXED_SENSOR_DEBUG
 	&dev_attr_fixed_sensor_val.attr,
 	&dev_attr_en_fixed_sensor.attr,
@@ -954,7 +1045,7 @@ static struct attribute_group fimc_is_debug_attr_group = {
 	.attrs	= fimc_is_debug_entries,
 };
 
-static int __init fimc_is_probe(struct platform_device *pdev)
+static int fimc_is_probe(struct platform_device *pdev)
 {
 	struct exynos_platform_fimc_is *pdata;
 #if defined (ENABLE_IS_CORE) || defined (USE_MCUCTL)
@@ -1007,8 +1098,6 @@ static int __init fimc_is_probe(struct platform_device *pdev)
 	core->current_position = SENSOR_POSITION_REAR;
 	device_init_wakeup(&pdev->dev, true);
 
-	INIT_WORK(&core->wq_data_print_clk, wq_func_print_clk);
-
 	/* for mideaserver force down */
 	atomic_set(&core->rsccount, 0);
 
@@ -1052,13 +1141,19 @@ static int __init fimc_is_probe(struct platform_device *pdev)
 		}
 	}
 
+	ret = fimc_is_lib_mem_map();
+	if (ret) {
+		probe_err("fimc_is_lib_mem_map is fail(%d)", ret);
+		goto p_err3;
+	}
+
 	ret = fimc_is_mem_init(&core->resourcemgr.mem, core->pdev);
 	if (ret) {
 		probe_err("fimc_is_mem_probe is fail(%d)", ret);
 		goto p_err3;
 	}
 
-	ret = fimc_is_resourcemgr_probe(&core->resourcemgr, core, core->pdev);
+	ret = fimc_is_resourcemgr_probe(&core->resourcemgr, core);
 	if (ret) {
 		probe_err("fimc_is_resourcemgr_probe is fail(%d)", ret);
 		goto p_err3;
@@ -1087,7 +1182,7 @@ static int __init fimc_is_probe(struct platform_device *pdev)
 	}
 
 	/* group initialization */
-	ret = fimc_is_groupmgr_probe(pdev, &core->groupmgr);
+	ret = fimc_is_groupmgr_probe(&core->groupmgr);
 	if (ret) {
 		probe_err("fimc_is_groupmgr_probe is fail(%d)", ret);
 		goto p_err3;
@@ -1204,16 +1299,6 @@ static int __init fimc_is_probe(struct platform_device *pdev)
 	fimc_is_d1c_video_probe(core);
 #endif
 
-#ifdef SOC_DCP
-	fimc_is_dcp0s_video_probe(core); /* dcp master */
-	fimc_is_dcp1s_video_probe(core); /* dcp slave */
-	fimc_is_dcp0c_video_probe(core); /* dcp master main capture */
-	fimc_is_dcp1c_video_probe(core); /* dcp slave main capture */
-	fimc_is_dcp2c_video_probe(core); /* dcp diparity capture */
-	fimc_is_dcp3c_video_probe(core); /* dcp master sub capture */
-	fimc_is_dcp4c_video_probe(core); /* dcp slave sub capture */
-#endif
-
 #ifdef SOC_SCC
 	/* video entity - scc */
 	fimc_is_scc_video_probe(core);
@@ -1233,7 +1318,6 @@ static int __init fimc_is_probe(struct platform_device *pdev)
 	fimc_is_m2p_video_probe(core);
 	fimc_is_m3p_video_probe(core);
 	fimc_is_m4p_video_probe(core);
-	fimc_is_m5p_video_probe(core);
 #endif
 
 #ifdef SOC_VRA
@@ -1245,14 +1329,14 @@ static int __init fimc_is_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, core);
 
-	mutex_init(&core->sensor_lock);
-
+#if defined(CONFIG_EXYNOS_DEVICE_MIPI_CSIS_VER3)
 	/* CSIS common dma probe */
 	ret = fimc_is_csi_dma_probe(&core->csi_dma, core->pdev);
 	if (ret) {
 		dev_err(&pdev->dev, "fimc_is_csi_dma_probe fail\n");
 		goto p_err1;
 	}
+#endif
 
 #ifndef ENABLE_IS_CORE
 	ret = fimc_is_interface_ischain_probe(&core->interface_ischain,
@@ -1289,20 +1373,14 @@ static int __init fimc_is_probe(struct platform_device *pdev)
 #endif
 #endif
 
-	EXYNOS_MIF_ADD_NOTIFIER(&exynos_fimc_is_mif_throttling_nb);
-
-#if defined(CONFIG_SECURE_CAMERA_USE) && defined(SECURE_CAMERA_EMULATE)
-	ret = exynos_smc(SMC_SECCAM_SETENV, SECURE_CAMERA_CH, ION_EXYNOS_HEAP_ID_SECURE_CAMERA, 0);
-	if (ret) {
-		dev_err(fimc_is_dev, "[SMC] SMC_SECCAM_SETENV fail(%d)\n", ret);
-		goto p_err3;
-	}
-	ret = exynos_smc(SMC_SECCAM_INIT, SECURE_CAMERA_MEM_ADDR, SECURE_CAMERA_MEM_SIZE, 0);
-	if (ret) {
-		dev_err(fimc_is_dev, "[SMC] SMC_SECCAM_INIT fail(%d)\n", ret);
-		goto p_err3;
-	}
+#if defined(CONFIG_SOC_EXYNOS5430) || defined(CONFIG_SOC_EXYNOS5433)
+#if defined(CONFIG_VIDEOBUF2_ION)
+	if (core->resourcemgr.mem.alloc_ctx)
+		vb2_ion_attach_iommu(core->resourcemgr.mem.alloc_ctx);
 #endif
+#endif
+
+	EXYNOS_MIF_ADD_NOTIFIER(&exynos_fimc_is_mif_throttling_nb);
 
 #if defined(CONFIG_PM)
 	pm_runtime_enable(&pdev->dev);
@@ -1322,8 +1400,6 @@ static int __init fimc_is_probe(struct platform_device *pdev)
 	}
 #endif
 
-	mutex_init(&core->ois_mode_lock);
-
 	/* set sysfs for debuging */
 	sysfs_debug.en_clk_gate = 0;
 	sysfs_debug.en_dvfs = 1;
@@ -1341,20 +1417,13 @@ static int __init fimc_is_probe(struct platform_device *pdev)
 #ifdef ENABLE_DIRECT_CLOCK_GATE
 	sysfs_debug.en_clk_gate = 1;
 #endif
-	sysfs_debug.pattern_en = 0;
-	sysfs_debug.pattern_fps = 0;
-
 	ret = sysfs_create_group(&core->pdev->dev.kobj, &fimc_is_debug_attr_group);
 
 	s = pinctrl_lookup_state(pdata->pinctrl, "release");
 
-	if (!IS_ERR(s)) {
-		if (pinctrl_select_state(pdata->pinctrl, s) < 0) {
-			probe_err("pinctrl_select_state is fail\n");
-			goto p_err3;
-		}
-	} else {
-		probe_err("pinctrl_lookup_state failed!!!\n");
+	if (pinctrl_select_state(pdata->pinctrl, s) < 0) {
+		probe_err("pinctrl_select_state is fail\n");
+		goto p_err3;
 	}
 
 	core->shutdown = false;
@@ -1372,6 +1441,11 @@ p_err2:
 p_err1:
 	kfree(core);
 	return ret;
+}
+
+static int fimc_is_remove(struct platform_device *pdev)
+{
+	return 0;
 }
 
 void fimc_is_cleanup(struct fimc_is_core *core)
@@ -1403,6 +1477,8 @@ void fimc_is_cleanup(struct fimc_is_core *core)
 		}
 	}
 	info("%s:--\n", __func__);
+
+	return;
 }
 
 static void fimc_is_shutdown(struct platform_device *pdev)
@@ -1455,6 +1531,8 @@ static void fimc_is_shutdown(struct platform_device *pdev)
 		}
 	}
 	info("%s:--\n", __func__);
+
+	return;
 }
 
 static const struct dev_pm_ops fimc_is_pm_ops = {
@@ -1474,6 +1552,8 @@ static const struct of_device_id exynos_fimc_is_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_match);
 
 static struct platform_driver fimc_is_driver = {
+	.probe		= fimc_is_probe,
+	.remove		= fimc_is_remove,
 	.shutdown	= fimc_is_shutdown,
 	.driver = {
 		.name	= FIMC_IS_DRV_NAME,
@@ -1485,6 +1565,8 @@ static struct platform_driver fimc_is_driver = {
 
 #else
 static struct platform_driver fimc_is_driver = {
+	.probe		= fimc_is_probe,
+	.remove 	= __devexit_p(fimc_is_remove),
 	.driver = {
 		.name	= FIMC_IS_DRV_NAME,
 		.owner	= THIS_MODULE,
@@ -1492,7 +1574,22 @@ static struct platform_driver fimc_is_driver = {
 	}
 };
 #endif
-builtin_platform_driver_probe(fimc_is_driver, fimc_is_probe);
+
+static int __init fimc_is_init(void)
+{
+	int ret = platform_driver_register(&fimc_is_driver);
+	if (ret)
+		err("platform_driver_register failed: %d\n", ret);
+
+	return ret;
+}
+device_initcall(fimc_is_init);
+
+static void __exit fimc_is_exit(void)
+{
+	platform_driver_unregister(&fimc_is_driver);
+}
+module_exit(fimc_is_exit);
 
 MODULE_AUTHOR("Gilyeon im<kilyeon.im@samsung.com>");
 MODULE_DESCRIPTION("Exynos FIMC_IS2 driver");

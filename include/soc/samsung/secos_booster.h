@@ -1,15 +1,14 @@
-/*
- * linux/arch/arm/mach-exynos/include/mach/secos_booster.h
- *
- * Copyright (c) 2014 Samsung Electronics Co., Ltd.
- *              http://www.samsung.com/
- *
- * Header file for secure OS booster API
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+/* linux/arch/arm/mach-exynos/include/mach/secos_booster.h
+*
+* Copyright (c) 2014 Samsung Electronics Co., Ltd.
+*              http://www.samsung.com/
+*
+* Header file for secure OS booster API
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
 
 
 #ifndef __LINUX_SECOS_BOOST_H__

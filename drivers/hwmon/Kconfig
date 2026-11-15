@@ -1822,16 +1822,9 @@ config SENSORS_ULTRA45
 	  This driver provides support for the Ultra45 workstation environmental
 	  sensors.
 
-config SENSORS_XGENE
-	tristate "APM X-Gene SoC hardware monitoring driver"
-	depends on XGENE_SLIMPRO_MBOX || PCC
-	help
-	  If you say yes here you get support for the temperature
-	  and power sensors for APM X-Gene SoC.
-
 config SENSORS_SEC_THERMISTOR
     tristate "SEC Thermistor support"
-    depends on EXYNOS_ADC
+    depends on EXYNOS_ADC && SEC_PM
     default n
     help
       This driver supports SEC Thermistor sensor reading and its

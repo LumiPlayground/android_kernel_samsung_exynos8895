@@ -1,41 +1,41 @@
 /*
- *
- * File name: mtv319_cifdec.c
- *
- * Description : MTV319 CIF decoder source file for T-DMB and DAB.
- *
- * Copyright (C) (2014, RAONTECH)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation version 2.
- *
- * This program is distributed "as is" WITHOUT ANY WARRANTY of any
- * kind, whether express or implied; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- */
+*
+* File name: mtv319_cifdec.c
+*
+* Description : MTV319 CIF decoder source file for T-DMB and DAB.
+*
+* Copyright (C) (2014, RAONTECH)
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation version 2.
+*
+* This program is distributed "as is" WITHOUT ANY WARRANTY of any
+* kind, whether express or implied; without even the implied warranty
+* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+*/
 
 /******************************************************************************
- * REVISION HISTORY
- *
- *    DATE         NAME          REMARKS
- * ----------  -------------    ------------------------------------------------
- * 07/12/2012  Ko, Kevin        Created.
- ******************************************************************************/
+* REVISION HISTORY
+*
+*    DATE         NAME          REMARKS
+* ----------  -------------    ------------------------------------------------
+* 07/12/2012  Ko, Kevin        Created.
+******************************************************************************/
 
 #include "mtv319_cifdec.h"
 
 
 /*============================================================================
- * Defines the number of CIF buffer pool.
- */
+* Defines the number of CIF buffer pool.
+*===========================================================================*/
 #define MAX_NUM_INPUT_TSP	(16)
 
 /*============================================================================
- * Select the debug options.
- */
+* Select the debug options.
+*===========================================================================*/
 #define _DEBUG_MSG_ENABLE
 #define _DEBUG_ASSERT_ENABLE
 /* #define _DEBUG_CIFDEC_ERR_STATIC */
@@ -64,7 +64,7 @@ static U32 g_aAddedSubChIdBits[2];
 
 #if defined(__KERNEL__) /* Linux kernel */
   #include <linux/mutex.h>
-	static struct mutex cif_mutex;
+  static struct mutex cif_mutex;
 	#define CIF_MUTEX_INIT		mutex_init(&cif_mutex)
 	#define CIF_MUTEX_LOCK		mutex_lock(&cif_mutex)
 	#define CIF_MUTEX_UNLOCK	mutex_unlock(&cif_mutex)
@@ -74,7 +74,7 @@ static U32 g_aAddedSubChIdBits[2];
 		#define CIF_ASSERT(expr)	\
 		do {				\
 			if (!(expr)) {		\
-				printk("assert failed %s: %d: %s\n",\
+				printk(KERN_EMERG "assert failed %s: %d: %s\n",\
 				__FILE__, __LINE__, #expr);	\
 				BUG();				\
 			}					\
@@ -91,8 +91,6 @@ static U32 g_aAddedSubChIdBits[2];
 	#define CIF_MUTEX_UNLOCK	pthread_mutex_unlock(&cif_mutex)
 	#define CIF_MUTEX_DEINIT	((void)0)
 
-	#define READ_ONCE(x)	x
-
 	#ifdef _DEBUG_ASSERT_ENABLE
 		#include <assert.h>
 		#define CIF_ASSERT(expr)	assert(expr)
@@ -107,8 +105,6 @@ static U32 g_aAddedSubChIdBits[2];
 	#define CIF_MUTEX_UNLOCK	LeaveCriticalSection(&cif_mutex)
 	#define CIF_MUTEX_DEINIT	DeleteCriticalSection(&cif_mutex)
 
-	#define READ_ONCE(x)	x
-
 	#ifdef _DEBUG_ASSERT_ENABLE
 		#ifdef WINCE
 			#include <Dbgapi.h>
@@ -122,9 +118,6 @@ static U32 g_aAddedSubChIdBits[2];
 	#endif
 #else
 	#error "Code not present"
-
-	#define READ_ONCE(x)
-
 	/* temp: TODO */
 	#define CIF_MUTEX_INIT		((void)0)
 	#define CIF_MUTEX_LOCK		((void)0)
@@ -154,7 +147,6 @@ static U32 g_aAddedSubChIdBits[2];
 		#define MSC_DEC_FNAME_PREFIX	"/data/dmb_msc"
 
 		static struct file *g_ptDecMscFilp[MAX_NUM_SUBCH];
-
 		static UINT g_nKfileDecSubchID;
 
 		static void cif_kfile_write(const char __user *buf, size_t len)
@@ -223,16 +215,18 @@ static U32 g_aAddedSubChIdBits[2];
 			if (g_ptDecMscFilp[subch_id] == NULL) {
 				sprintf(fname, "%s_%u.ts",
 						MSC_DEC_FNAME_PREFIX, subch_id);
-				fp_msc = filp_open(fname, O_WRONLY, 0400);
+				fp_msc = filp_open(fname, O_WRONLY, S_IRUSR);
 				if (fp_msc == NULL) {
-					RTV_DBGMSG("f_err: %s!\n", fname);
+					printk(KERN_EMERG "[cif_kfile_open] f_err: %s!\n",
+								fname);
 					return -1;
 				}
 
 				g_ptDecMscFilp[subch_id] = fp_msc;
-				RTV_DBGMSG("File opened: %s\n", fname);
+				printk(KERN_INFO "[cif_kfile_open] File opened: %s\n",
+							fname);
 			} else
-				RTV_DBGMSG("Already opened!\n");
+				printk(KERN_INFO "[cif_kfile_open] Already opened!\n");
 
 			return 0;
 		}
@@ -240,8 +234,9 @@ static U32 g_aAddedSubChIdBits[2];
 		#define CIF_KFILE_CLOSE(subch_id) cif_kfile_close(subch_id)
 		#define CIF_KFILE_OPEN(subch_id)	cif_kfile_open(subch_id)
 		#define CIF_KFILE_WRITE(buf, size) cif_kfile_write(buf, size)
-		#define CIF_MSC_KFILE_WRITE_DIS { g_nKfileDecSubchID = 0xFFFF; }
-		#define CIF_MSC_KFILE_WRITE_EN(subch_id) {g_nKfileDecSubchID = subch_id; }
+		#define CIF_MSC_KFILE_WRITE_DIS g_nKfileDecSubchID = 0xFFFF;
+		#define CIF_MSC_KFILE_WRITE_EN(subch_id)\
+					g_nKfileDecSubchID = subch_id;
 	#else
 		#define CIF_KFILE_CLOSE(subch_id)		((void)0)
 		#define CIF_KFILE_OPEN(subch_id)		((void)0)
@@ -255,9 +250,10 @@ static U32 g_aAddedSubChIdBits[2];
 	#define CIF_DATA_COPY(dst_ptr, src_ptr, size)	\
 		do {	\
 			CIF_KFILE_WRITE(src_ptr, size);\
-			if (copy_to_user(dst_ptr, src_ptr, size))\
-				RTV_DBGMSG("copy_to_user error!\n");\
-		} while (0)
+			if (copy_to_user(dst_ptr, src_ptr, size)) {\
+				WARN(1, KERN_ERR "copy_to_user error!\n");
+			}	\
+	} while (0)
 #else
 	#define CIF_KFILE_CLOSE(subch_id)		((void)0)
 	#define CIF_KFILE_OPEN(subch_id)		((void)0)
@@ -266,7 +262,7 @@ static U32 g_aAddedSubChIdBits[2];
 	#define CIF_MSC_KFILE_WRITE_EN(subch_id)	((void)0)
 
 	#define CIF_DATA_COPY(dst_ptr, src_ptr, size)	\
-		memcpy(dst_ptr, src_ptr, size)
+		do { memcpy(dst_ptr, src_ptr, size); } while (0)
 #endif
 
 
@@ -284,8 +280,7 @@ static UINT g_nOutDecBufIdxBits; /* Decoded out buffer index bits */
 static enum E_RTV_SERVICE_TYPE g_eaSvcType[MAX_NUM_SUBCH];
 
 #if (RTV_MAX_NUM_USE_SUBCHANNEL >= 2)
-	/* Decoded out buffer index for sub ch */
-	static U8 g_abOutDecBufIdx[MAX_NUM_SUBCH];
+static U8 g_abOutDecBufIdx[MAX_NUM_SUBCH]; /* Decoded out buffer index for sub ch */
 #endif
 
 #if (RTV_MAX_NUM_USE_SUBCHANNEL == 1)
@@ -294,7 +289,7 @@ static enum E_RTV_SERVICE_TYPE g_eaSvcType[MAX_NUM_SUBCH];
 
 static BOOL g_fCifInited = FALSE;
 
-static BOOL g_fForceDecodeStop;
+static volatile BOOL g_fForceDecodeStop;
 
 
 enum CIFDEC_STATUS_TYPE {
@@ -330,10 +325,8 @@ enum CIFDEC_STATUS_TYPE {
 #ifdef _DEBUG_CIFDEC_ERR_STATIC
 	/* CIF decoder error statistics */
 	static unsigned long g_aErrStat[MAX_NUM_DEC_ERR_TYPE];
-	#define CIF_ERR_STAT_INC(err_type)\
-		{ g_aErrStat[err_type]++; }
-	#define CIF_ERR_STAT_RST(err_type)\
-		{ g_aErrStat[err_type] = 0; }
+	#define CIF_ERR_STAT_INC(err_type)	g_aErrStat[err_type]++;
+	#define CIF_ERR_STAT_RST(err_type)	g_aErrStat[err_type] = 0
 	#define CIF_ERR_STAT_RST_ALL\
 		memset(g_aErrStat, 0, sizeof(g_aErrStat))
 	#define CIF_ERR_STAT_SHOW\
@@ -413,7 +406,6 @@ static INLINE struct CIFB_INFO *cifb_alloc_buffer(const U8 *ts_ptr)
 {
 	if (g_nCifBufPoolFreeCnt) {
 		struct CIFB_INFO *cifb;
-
 		cifb = g_aCifBufPoolList[--g_nCifBufPoolFreeCnt];
 		cifb->ts_ptr = ts_ptr;
 		cifb->ts_size = 0;
@@ -485,12 +477,11 @@ static INLINE void cifb_queue_init(struct CIFB_HEAD_INFO *q)
 	q->tts_len = 0;
 }
 
-/**
- * Copy TS from cifb to decoded output buffer.
- * return: Copying node in next time or Head.
- */
-static INLINE struct CIFB_INFO *cifb_copydec(U8 *dec_buf,
-			struct CIFB_INFO *cifb,
+/*
+* Copy TS from cifb to decoded output buffer.
+* return: Copying node in next time or Head.
+*/
+static INLINE struct CIFB_INFO *cifb_copydec(U8 *dec_buf, struct CIFB_INFO *cifb,
 			struct CIFB_HEAD_INFO *head, UINT len)
 {
 	UINT copied;
@@ -525,8 +516,7 @@ static INLINE struct CIFB_INFO *cifb_copydec(U8 *dec_buf,
 
 /* Copy the Audio/Data MSC into user-buffer with 188-bytes align. */
 static UINT copy_dab_188(struct RTV_CIF_DEC_INFO *dec, UINT idx,
-						struct CIFB_HEAD_INFO *tspq,
-						enum CIFDEC_STATUS_TYPE *status)
+				struct CIFB_HEAD_INFO *tspq, enum CIFDEC_STATUS_TYPE *status)
 {
 	UINT mod, copied;
 	UINT subch_size = dec->subch_size[idx];
@@ -558,8 +548,7 @@ static UINT copy_dab_188(struct RTV_CIF_DEC_INFO *dec, UINT idx,
 		do {
 			/* Copy ts data into fragment-buffer. */
 			if (cifb->ts_size) {
-				memcpy(&msc_frag_buf[idx][len],
-						cifb->ts_ptr, cifb->ts_size);
+				memcpy(&msc_frag_buf[idx][len], cifb->ts_ptr, cifb->ts_size);
 
 				len += cifb->ts_size;
 				cifb->ts_size = 0; /* Reset the size */
@@ -612,7 +601,8 @@ static void proc_msc_dab(struct RTV_CIF_DEC_INFO *dec,
 	if (status != CIFDEC_S__OK) {
 		if (status == CIFDEC_S__NOT_ENOUGH_DECODE_MSC_SIZE) {
 			CIF_ERR_STAT_INC(status);
-		} else {
+		}
+		else {
 			for (i = 0; i < tspq->cnt; i++) /* must first */
 				CIF_ERR_STAT_INC(status);
 
@@ -621,48 +611,9 @@ static void proc_msc_dab(struct RTV_CIF_DEC_INFO *dec,
 	}
 }
 
-static int copy_dmb_last(struct RTV_CIF_DEC_INFO *dec,
-		struct CIFB_HEAD_INFO *tspq, struct CIFB_INFO *cifb,
-		UINT idx, enum CIFDEC_STATUS_TYPE *status,
-		U8 **subch_ptr__)
-{
-	U8 *subch_ptr = *subch_ptr__;
-
-	if (cifb->ts_ptr[0] == 0x47) {
-		if (tspq->cnt > 1) {
-			if (cifb->ptNext->cont == RTV_MCH_HDR_CONT_LAST) {
-				cifb_copydec(subch_ptr,
-						cifb, tspq, 188);
-				subch_ptr += 188;
-				dec->subch_size[idx] += 188;
-			} else {
-				CIF_ERR_STAT_INC(CIFDEC_S__MISSING_LAST_DMB_TS);
-				cifb_queue_free(tspq, cifb); /* Discard TSP */
-			}
-		} else {
-			/* Copy ts data into buffer. NOT input buffer! */
-			memcpy(&msc_frag_buf[idx],
-					cifb->ts_ptr, cifb->ts_size);
-
-			/* Adjust ts pointer */
-			cifb->ts_ptr = (const U8 *)&msc_frag_buf[idx];
-			cifb->frag_buf_used = TRUE;
-
-			*status = CIFDEC_S__NOT_ENOUGH_DECODE_MSC_SIZE;
-			return -1;
-		}
-	} else {
-		CIF_ERR_STAT_INC(CIFDEC_S__INVALID_SYNC_BYTE);
-		cifb_queue_free(tspq, cifb); /* Discard TSP */
-	}
-
-	return 0;
-}
-
 /* Copy the Video MSC into user-buffer with 188-bytes align. */
 static UINT copy_dmb_188(struct RTV_CIF_DEC_INFO *dec, UINT idx,
-				struct CIFB_HEAD_INFO *tspq,
-				enum CIFDEC_STATUS_TYPE *status)
+				struct CIFB_HEAD_INFO *tspq, enum CIFDEC_STATUS_TYPE *status)
 {
 	struct CIFB_INFO *cifb;
 	UINT subch_size = dec->subch_size[idx];
@@ -681,12 +632,35 @@ static UINT copy_dmb_188(struct RTV_CIF_DEC_INFO *dec, UINT idx,
 			cifb_queue_free(tspq, cifb);
 		} else {
 			if (cifb->cont == RTV_MCH_HDR_CONT_FIRST) {
-				if (copy_dmb_last(dec, tspq, cifb, idx,
-						status, &subch_ptr) != 0)
-					goto exit_dmb_copy;
+				if (cifb->ts_ptr[0] == 0x47) {
+					if (tspq->cnt > 1) {
+						if (cifb->ptNext->cont == RTV_MCH_HDR_CONT_LAST) {
+							cifb_copydec(subch_ptr,
+									cifb, tspq, 188);
+							subch_ptr += 188;
+							dec->subch_size[idx] += 188;
+						}
+						else {
+							CIF_ERR_STAT_INC(CIFDEC_S__MISSING_LAST_DMB_TS);
+							cifb_queue_free(tspq, cifb); /* Discard TSP */
+						}
+					} else {
+						/* Copy ts data into buffer. NOT input buffer! */
+						memcpy(&msc_frag_buf[idx], cifb->ts_ptr, cifb->ts_size);
+
+						/* Adjust ts pointer */
+						cifb->ts_ptr = (const U8 *)&msc_frag_buf[idx];
+						cifb->frag_buf_used = TRUE;
+
+						*status = CIFDEC_S__NOT_ENOUGH_DECODE_MSC_SIZE;
+						goto exit_dmb_copy;
+					}
+				} else {
+					CIF_ERR_STAT_INC(CIFDEC_S__INVALID_SYNC_BYTE);
+					cifb_queue_free(tspq, cifb); /* Discard TSP */
+				}
 			} else
-				/* Discard the TSP. */
-				cifb_queue_free(tspq, cifb);
+				cifb_queue_free(tspq, cifb); /* Discard the TSP. */
 		}
 	}
 
@@ -719,11 +693,9 @@ static void proc_msc_dmb_dabp(struct RTV_CIF_DEC_INFO *dec,
 
 			if (g_eaSvcType[cifb->subch_id]
 						== RTV_SERVICE_DMB)
-				copy_size = copy_dmb_188(dec, dec_idx,
-							tspq, &status);
+				copy_size = copy_dmb_188(dec, dec_idx, tspq, &status);
 			else
-				copy_size = copy_dab_188(dec, dec_idx,
-							tspq, &status);
+				copy_size = copy_dab_188(dec, dec_idx, tspq, &status);
 
 			dec->subch_buf_size[dec_idx] -= copy_size;
 			CIF_MSC_KFILE_WRITE_DIS;
@@ -735,13 +707,16 @@ static void proc_msc_dmb_dabp(struct RTV_CIF_DEC_INFO *dec,
 	if (status != CIFDEC_S__OK) {
 		if (status == CIFDEC_S__NOT_ENOUGH_DECODE_MSC_SIZE) {
 			CIF_ERR_STAT_INC(status);
-		} else {
+		}
+		else {
 			for (i = 0; i < tspq->cnt; i++) /* must first */
 				CIF_ERR_STAT_INC(status);
 
 			cifb_queue_release_all(tspq);
 		}
 	}
+
+	return;
 }
 
 #if 0
@@ -769,11 +744,11 @@ static struct CIFB_INFO *copy_fic_192(struct RTV_CIF_DEC_INFO *dec,
 
 			copied = cifb->ts_size/* First */
 				+ cifb->ptNext->ts_size/* Last */;
-			cifb = cifb_copydec(dec->fic_buf_ptr,
-						cifb, tspq, copied);
+			cifb = cifb_copydec(dec->fic_buf_ptr, cifb, tspq, copied);
 		} else
 			*status = CIFDEC_S__TRUNCATED_FIC;
-	} else
+	}
+	else
 		*status = CIFDEC_S__NOT_ENOUGH_DECODE_FIC_SIZE;
 
 	return cifb;
@@ -791,8 +766,7 @@ static struct CIFB_INFO *copy_fic_96_128(struct RTV_CIF_DEC_INFO *dec,
 
 static INLINE struct CIFB_INFO *copy_fic_384(struct RTV_CIF_DEC_INFO *dec,
 				struct CIFB_HEAD_INFO *tspq,
-				struct CIFB_INFO *cifb,
-				enum CIFDEC_STATUS_TYPE *status)
+				struct CIFB_INFO *cifb, enum CIFDEC_STATUS_TYPE *status)
 {
 	UINT copied = 0; /* Copy length */
 
@@ -803,32 +777,15 @@ static INLINE struct CIFB_INFO *copy_fic_384(struct RTV_CIF_DEC_INFO *dec,
 
 			copied = cifb->ts_size/* First */
 					+ cifb->ptNext->ts_size/* Med */
-					+ cifb->ptNext->ptNext->ts_size/*Last*/;
-			cifb = cifb_copydec(dec->fic_buf_ptr,
-						cifb, tspq, copied);
+					+ cifb->ptNext->ptNext->ts_size/* Last */;
+			cifb = cifb_copydec(dec->fic_buf_ptr, cifb, tspq, copied);
 		} else
 			*status = CIFDEC_S__TRUNCATED_FIC;
-	} else
+	}
+	else
 		*status = CIFDEC_S__NOT_ENOUGH_DECODE_FIC_SIZE;
 
 	return cifb;
-}
-
-static void copy_fic_fragment(struct CIFB_INFO *cifb)
-{
-	UINT cnt = 0;
-
-	do {
-		/* Copy ts data into buffer. NOT input buffer! */
-		memcpy(&fic_frag_buf[cnt],
-				cifb->ts_ptr, cifb->ts_size);
-
-		/* Adjust ts pointer */
-		cifb->ts_ptr = (const U8 *)&fic_frag_buf[cnt];
-		cnt++;
-
-		cifb = cifb->ptNext;
-	} while (cifb);
 }
 
 static void proc_fic(struct RTV_CIF_DEC_INFO *dec, struct CIFB_HEAD_INFO *tspq)
@@ -846,17 +803,14 @@ static void proc_fic(struct RTV_CIF_DEC_INFO *dec, struct CIFB_HEAD_INFO *tspq)
 			if (cifb->cont == RTV_MCH_HDR_CONT_FIRST) {
 				switch (cifb->data_len) {
 				case 384:
-					cifb = copy_fic_384(dec, tspq,
-							cifb, &status);
+					cifb = copy_fic_384(dec, tspq, cifb, &status);
 					break;
 				case 96:
 				case 128:
-					cifb = copy_fic_96_128(dec, tspq,
-								cifb, &status);
+					cifb = copy_fic_96_128(dec, tspq, cifb, &status);
 					break;
 				case 192:
-					cifb = copy_fic_192(dec, tspq,
-							cifb, &status);
+					cifb = copy_fic_192(dec, tspq, cifb, &status);
 					break;
 				default:
 					break;
@@ -865,21 +819,33 @@ static void proc_fic(struct RTV_CIF_DEC_INFO *dec, struct CIFB_HEAD_INFO *tspq)
 				if (status != CIFDEC_S__OK) {
 					CIF_ERR_STAT_INC(status);
 
-					if (status
-				== CIFDEC_S__NOT_ENOUGH_DECODE_FIC_SIZE) {
-						copy_fic_fragment(cifb);
+					if (status == CIFDEC_S__NOT_ENOUGH_DECODE_FIC_SIZE) {
+						UINT cnt = 0;
+
+						do {
+							/* Copy ts data into buffer. NOT input buffer! */
+							memcpy(&fic_frag_buf[cnt],
+									cifb->ts_ptr, cifb->ts_size);
+
+							/* Adjust ts pointer */
+							cifb->ts_ptr = (const U8 *)&fic_frag_buf[cnt];
+							cnt++;
+
+							cifb = cifb->ptNext;
+						} while (cifb);
 						goto stop_fic_decode;
 					}
 
 					cifb_queue_free(tspq, cifb);
 				}
-			} else if (cifb->cont == RTV_MCH_HDR_CONT_ALONE) {
+			}
+			else if (cifb->cont == RTV_MCH_HDR_CONT_ALONE) {
 				dec->fic_size = cifb->data_len; /* FINISHED */
 				cifb_copydec(dec->fic_buf_ptr, cifb,
 							tspq, cifb->data_len);
-			} else
-				/* Discard the TSP. */
-				cifb_queue_free(tspq, cifb);
+			}
+			else
+				cifb_queue_free(tspq, cifb); /* Discard the TSP. */
 		} else { /* Already decoded ? */
 			/* Discard the TSP. */
 			cifb_queue_free(tspq, cifb);
@@ -938,7 +904,8 @@ static INLINE enum CIFDEC_STATUS_TYPE
 			if (cifb->id_flag == RTV_MCH_HDR_ID_DMB) {
 				if (cifb->data_len != 188)
 					return CIFDEC_S__INVALID_SUBCH_SIZE;
-			} else {
+			}
+			else {
 				if (cifb->data_len > 6912/*1 CIF size*/)
 					return CIFDEC_S__INVALID_SUBCH_SIZE;
 			}
@@ -980,8 +947,9 @@ static INLINE enum CIFDEC_STATUS_TYPE
 				cifb->id_flag = RTV_MCH_HDR_ID_DMB;
 				cifb->ts_ptr -= RTV_MCH_HDR_SIZE;
 				return CIFDEC_S__OK;
+			} else {
+				CIF_DBGMSG1("[decode_headers] ERR tsp[%d]\n", tsp[0]);
 			}
-			CIF_DBGMSG1("[decode_headers] ERR tsp[%d]\n", tsp[0]);
 		} else
 			return CIFDEC_S__INVALID_SVC_TYPE;
 	#endif
@@ -1008,7 +976,6 @@ int rtvCIFDEC_Decode(struct RTV_CIF_DEC_INFO *ptDecInfo,
 	ptDecInfo->subch_id[0] = CIF_INVALID_SUBCH_ID; /* Default invalid */
 #else
 	UINT i, q_idx;
-
 	for (i = 0; i < RTV_MAX_NUM_USE_SUBCHANNEL; i++) {
 		ptDecInfo->subch_size[i] = 0;
 		ptDecInfo->subch_id[i] = CIF_INVALID_SUBCH_ID; /* Default */
@@ -1019,7 +986,7 @@ int rtvCIFDEC_Decode(struct RTV_CIF_DEC_INFO *ptDecInfo,
 
 	if (nTsLen == 0) {
 		CIF_DBGMSG0("[rtvCIFDEC_Decode] Sourct TS size is zero\n");
-		return 0;
+		return 0 ;
 	}
 
 #if 0 /* for debug */
@@ -1046,8 +1013,7 @@ cifb_alloc_retry:
 		if (!cifb) {
 			/* Free the first entry. */
 			if (cifdec_msc_tspq[0].cnt) /* Not empty? */
-				cifb_queue_free(&cifdec_msc_tspq[0],
-						cifdec_msc_tspq[0].ptFirst);
+				cifb_queue_free(&cifdec_msc_tspq[0], cifdec_msc_tspq[0].ptFirst);
 
 			CIF_DBGMSG0("No more cif buffer!\n");
 			CIF_ERR_STAT_INC(CIFDEC_S__CIFB_ALLOC_ERR);
@@ -1072,12 +1038,12 @@ cifb_alloc_retry:
 				break;
 
 			default: /* FIDC */
-				CIF_DBGMSG1("Invalid ID flag(%d)\n",
-						cifb->id_flag);
+				CIF_DBGMSG1("Invalid ID flag(%d)\n", cifb->id_flag);
 				cifb_free_buffer(cifb);
 				break;
 			}
-		} else {
+		}
+		else {
 			cifb_free_buffer(cifb);
 			CIF_ERR_STAT_INC(status);
 		}
@@ -1101,7 +1067,7 @@ cifb_alloc_retry:
 	}
 #else
 	for (i = 0; i < RTV_MAX_NUM_USE_SUBCHANNEL; i++) {
-		if (cifdec_msc_tspq[i].cnt) { /* Not empty? */
+		if (cifdec_msc_tspq[i].cnt)) { /* Not empty? */
 			tspq = &cifdec_msc_tspq[i];
 			cifb = cifb_peek_frist(tspq);
 			if (cifb->id_flag == RTV_MCH_HDR_ID_DMB)
@@ -1127,8 +1093,7 @@ UINT rtvCIFDEC_SetDiscardTS(int nFicMscType, U8 *pbTsBuf, UINT nTsLen)
 	nTsCnt = nTsLen / RTV_TSP_XFER_SIZE;
 
 	for (i = 0; i < nTsCnt; i++, pbTsBuf += RTV_TSP_XFER_SIZE) {
-		if (pbTsBuf[0] == RTV_MCH_HEADER_SYNC_BYTE) {
-			/* NOT discarded byte */
+		if (pbTsBuf[0] == RTV_MCH_HEADER_SYNC_BYTE) { /* NOT discarded byte */
 			nIdFlag = pbTsBuf[1] >> 6;
 
 			if (nFicMscType == 1) {
@@ -1157,7 +1122,7 @@ UINT rtvCIFDEC_GetDecBufIndex(UINT nSubChID)
 	UINT nDecIdx;
 
 	if (g_fCifInited == FALSE) {
-		RTV_DBGMSG("Not yet init\n");
+		CIF_DBGMSG0("[rtvCIFDEC_GetDecBufIndex] Not yet init\n");
 		return RTV_CIFDEC_INVALID_BUF_IDX;
 	}
 
@@ -1172,10 +1137,9 @@ UINT rtvCIFDEC_GetDecBufIndex(UINT nSubChID)
 	return nDecIdx;
 }
 
-/**
- * This function delete a sub channel ID from the CIF decoder.
- * This function should called after Sub Channel Close.
- */
+/*
+This function delete a sub channel ID from the CIF decoder.
+This function should called after Sub Channel Close. */
 void rtvCIFDEC_DeleteSubChannelID(UINT nSubChID)
 {
 	U8 nIdx;
@@ -1183,7 +1147,7 @@ void rtvCIFDEC_DeleteSubChannelID(UINT nSubChID)
 	U32 dwBitVal = 1 << (nSubChID & 31); /* Modular and Shift */
 
 	if (g_fCifInited == FALSE) {
-		RTV_DBGMSG("Not yet init\n");
+		CIF_DBGMSG0("[rtvCIFDEC_DeleteSubChannelID] Not yet init\n");
 		return;
 	}
 
@@ -1208,10 +1172,9 @@ void rtvCIFDEC_DeleteSubChannelID(UINT nSubChID)
 	CIF_MUTEX_UNLOCK;
 }
 
-/**
- * This function add a sub channel ID to the CIF decoder to verify CIF header.
- * This function should called before Sub Channel Open.
- */
+/*
+This function add a sub channel ID to the CIF decoder to verify CIF header.
+This function should called before Sub Channel Open. */
 BOOL rtvCIFDEC_AddSubChannelID(UINT nSubChID,
 				enum E_RTV_SERVICE_TYPE eServiceType)
 {
@@ -1221,7 +1184,7 @@ BOOL rtvCIFDEC_AddSubChannelID(UINT nSubChID,
 	U32 dwBitVal = 1 << (nSubChID & 31); /* Modular and Shift */
 
 	if (g_fCifInited == FALSE) {
-		RTV_DBGMSG("Not yet init\n");
+		CIF_DBGMSG0("[rtvCIFDEC_AddSubChannelID] Not yet init\n");
 		return FALSE;
 	}
 
@@ -1289,7 +1252,7 @@ void rtvCIFDEC_Deinit(void)
 	g_fCifInited = FALSE;
 	g_fForceDecodeStop = TRUE;
 
-	CIF_DBGMSG0("CIF decode Exit\n");
+	CIF_DBGMSG0("[rtvCIFDEC_Deinit] CIF decode Exit\n");
 
 	CIF_MUTEX_LOCK;
 
@@ -1309,7 +1272,7 @@ void rtvCIFDEC_Init(void)
 	UINT i;
 
 	if (g_fCifInited == TRUE) {
-		CIF_DBGMSG0("Already inited!\n");
+		CIF_DBGMSG0("[rtvCIFDEC_Init] Already inited!\n");
 		return;
 	}
 

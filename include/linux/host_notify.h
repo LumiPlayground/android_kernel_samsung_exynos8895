@@ -6,7 +6,7 @@
  *
 */
 
- /* usb notify layer v3.2 */
+ /* usb notify layer v3.0 */
 
 #ifndef __LINUX_HOST_NOTIFY_H__
 #define __LINUX_HOST_NOTIFY_H__

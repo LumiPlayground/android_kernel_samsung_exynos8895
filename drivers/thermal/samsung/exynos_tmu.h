@@ -33,8 +33,6 @@
 enum soc_type {
 	SOC_ARCH_EXYNOS8890 = 1,
 	SOC_ARCH_EXYNOS8895 = 2,
-	SOC_ARCH_EXYNOS7872,
-	SOC_ARCH_EXYNOS9810,
 };
 
 /**
@@ -121,7 +119,6 @@ struct exynos_tmu_data {
 	bool hotplug_enable;
 	int hotplug_in_threshold;
 	int hotplug_out_threshold;
-	int limited_frequency;
 	struct exynos_tmu_platform_data *pdata;
 	void __iomem *base;
 	int irq;
@@ -132,7 +129,6 @@ struct exynos_tmu_data {
 	struct thermal_zone_device *tzd;
 	unsigned int ntrip;
 	bool enabled;
-	struct thermal_cooling_device *cool_dev;
 	struct list_head node;
 	u32 sensors;
 	int num_probe;

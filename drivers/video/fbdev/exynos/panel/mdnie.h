@@ -1,6 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) Samsung Electronics Co., Ltd.
+ * linux/drivers/video/fbdev/exynos/panel/mdnie.h
+ *
+ * Header file for Samsung Common LCD Driver.
+ *
+ * Copyright (c) 2016 Samsung Electronics
  * Gwanghui Lee <gwanghui.lee@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -66,10 +69,6 @@ typedef u8 mdnie_t;
 #define MAX_WCRD_X	(3060)
 #define MIN_WCRD_Y	(3050)
 #define MAX_WCRD_Y	(3260)
-
-#ifdef CONFIG_SUPPORT_AFC
-#define MAX_AFC_ROI_LEN	(12)
-#endif
 
 enum {
 	MDNIE_OFF_MODE,
@@ -214,6 +213,8 @@ enum HDR {
 	HDR_1 = HDR_ON,
 	HDR_2,
 	HDR_3,
+	HDR_4,
+	HDR_5,
 	HDR_MAX
 };
 
@@ -312,19 +313,8 @@ enum MDNIE_MAPTBL {
 	MAX_MDNIE_MAPTBL,
 };
 
-#ifdef CONFIG_SUPPORT_AFC
-enum AFC_MAPTBL {
-	AFC_ON_MAPTBL,
-	MAX_AFC_MAPTBL,
-};
-#endif
-
 enum MDNIE_SEQ {
 	MDNIE_SET_SEQ,
-#ifdef CONFIG_SUPPORT_AFC
-	MDNIE_AFC_OFF_SEQ,
-	MDNIE_AFC_ON_SEQ,
-#endif
 	/* if necessary, add new seq */
 	MAX_MDNIE_SEQ,
 };
@@ -399,10 +389,6 @@ struct mdnie_tune {
 	u32 nr_scr_white_maptbl;
 	struct maptbl *etc_maptbl;
 	u32 nr_etc_maptbl;
-#ifdef CONFIG_SUPPORT_AFC
-	struct maptbl *afc_maptbl;
-	u32 nr_afc_maptbl;
-#endif
 	struct cal_center center;
 	struct cal_line line[MAX_CAL_LINE];
 	struct cal_coef coef[MAX_QUAD];
@@ -450,10 +436,6 @@ struct mdnie_properties {
 	/* default whiteRGB : color coordinated wrgb */
 	u8 def_wrgb[MAX_COLOR];
 	s8 def_wrgb_ofs[MAX_COLOR];
-#ifdef CONFIG_SUPPORT_AFC
-	u8 afc_roi[MAX_AFC_ROI_LEN];
-	bool afc_on;
-#endif
 
 	u32 num_ldu_mode;
 	u32 num_night_level;
@@ -499,10 +481,6 @@ struct mdnie_info {
 	u32 nr_scr_white_maptbl;
 	struct maptbl *etc_maptbl;
 	u32 nr_etc_maptbl;
-#ifdef CONFIG_SUPPORT_AFC
-	struct maptbl *afc_maptbl;
-	u32 nr_afc_maptbl;
-#endif
 	struct seqinfo *seqtbl;
 	u32 nr_seqtbl;
 	u32 nr_reg;
@@ -520,7 +498,7 @@ static inline int mdnie_disable(struct mdnie_info *mdnie) { return 0; }
 static inline int mdnie_update(struct mdnie_info *mdnie) { return 0; }
 #endif
 extern struct maptbl *mdnie_find_maptbl(struct mdnie_info *);
-extern struct maptbl *mdnie_find_etc_maptbl(struct mdnie_info *mdnie, int index);
-extern int mdnie_get_maptbl_index(struct mdnie_info *mdnie);
-extern ssize_t attr_store_for_each(struct class *cls, const char *name, const char *buf, size_t size);
+extern struct maptbl *mdnie_find_etc_maptbl(struct mdnie_info *, int);
+extern int mdnie_get_maptbl_index(struct mdnie_info *);
+extern ssize_t attr_store_for_each(struct class *, const char *, const char *, size_t);
 #endif /* __MDNIE_H__ */

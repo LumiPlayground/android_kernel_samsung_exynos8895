@@ -197,4 +197,10 @@ bool kthread_cancel_delayed_work_sync(struct kthread_delayed_work *work);
 
 void kthread_destroy_worker(struct kthread_worker *worker);
 
+/* 8895 driver names retained across the upstream worker API rename. */
+#define init_kthread_worker kthread_init_worker
+#define init_kthread_work kthread_init_work
+#define queue_kthread_work kthread_queue_work
+#define flush_kthread_worker kthread_flush_worker
+#define flush_kthread_work kthread_flush_work
 #endif /* _LINUX_KTHREAD_H */

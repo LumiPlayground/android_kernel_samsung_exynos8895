@@ -140,9 +140,8 @@ static int tpm_nsc_recv(struct tpm_chip *chip, u8 * buf, size_t count)
 		dev_err(&chip->dev, "F0 timeout\n");
 		return -EIO;
 	}
-
-	data = inb(priv->base + NSC_DATA);
-	if (data != NSC_COMMAND_NORMAL) {
+	if ((data =
+	     inb(chip->vendor.base + NSC_DATA)) != NSC_COMMAND_NORMAL) {
 		dev_err(&chip->dev, "not in normal mode (0x%x)\n",
 			data);
 		return -EIO;
@@ -166,9 +165,7 @@ static int tpm_nsc_recv(struct tpm_chip *chip, u8 * buf, size_t count)
 		dev_err(&chip->dev, "F0 not set\n");
 		return -EIO;
 	}
-
-	data = inb(priv->base + NSC_DATA);
-	if (data != NSC_COMMAND_EOC) {
+	if ((data = inb(chip->vendor.base + NSC_DATA)) != NSC_COMMAND_EOC) {
 		dev_err(&chip->dev,
 			"expected end of command(0x%x)\n", data);
 		return -EIO;

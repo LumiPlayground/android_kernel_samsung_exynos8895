@@ -56,6 +56,44 @@ config DECON_HIBER
 	bool "DECON hiber mode"
         depends on EXYNOS_DECON_8895
         default n
-endif
 
-source "drivers/video/fbdev/exynos/dpu/panels/Kconfig"
+config SUPPORT_DOZE
+	bool "Suppot Doze mode to aod service"
+	depends on EXYNOS_DECON_8895
+	default n
+
+config SUPPORT_DSU
+	bool "Support DSU(Multi Resolution)"
+	depends on EXYNOS_DECON_8895
+	default n
+
+config SUPPORT_HMD
+	bool "Support HMD(Head Mount Display - VR)"
+	depends on EXYNOS_DECON_8895
+	default n
+	
+config DECON_SELF_REFRESH
+	bool "Support video emulation for daydream"
+	depends on EXYNOS_DECON_8895
+	default n
+
+config DISPLAYPORT_ENG
+	bool "Enable Displayport eng binary"
+	default n
+
+config LOGGING_BIGDATA_BUG
+	bool "Logging extra information when decon bug"
+	depends on EXYNOS_DECON_8895
+	default y
+
+config SUPPORT_INDISPLAY
+	bool "Support HBM for indisplay"
+	depends on EXYNOS_DECON_8895
+	default n
+
+config DUMPSTATE_LOGGING
+	bool "Support DumpState Logging"
+	depends on EXYNOS_DECON_8895
+	default y
+
+endif

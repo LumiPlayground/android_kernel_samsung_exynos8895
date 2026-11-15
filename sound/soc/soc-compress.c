@@ -374,7 +374,7 @@ static int soc_compr_trigger_fe(struct snd_compr_stream *cstream, int cmd)
 			ret = platform->driver->compr_ops->trigger(cstream, cmd);
 			if (ret < 0)
 				goto out;
-			}
+		}
 	}
 
 	fe->dpcm[stream].runtime_update = SND_SOC_DPCM_UPDATE_FE;

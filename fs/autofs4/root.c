@@ -457,7 +457,6 @@ static int autofs4_d_manage(struct dentry *dentry, bool rcu_walk)
 		 * a mount-trap.
 		 */
 		struct inode *inode;
-
 		if (ino->flags & AUTOFS_INF_WANT_EXPIRE)
 			return 0;
 		if (d_mountpoint(dentry))

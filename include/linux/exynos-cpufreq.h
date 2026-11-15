@@ -11,6 +11,9 @@
 #ifdef CONFIG_ARM_EXYNOS_ACME
 extern unsigned int exynos_cpufreq_get_max_freq(struct cpumask *mask);
 extern bool exynos_cpufreq_allow_change_max(unsigned int cpu, unsigned long max);
+#ifdef CONFIG_SOC_EXYNOS8895
+extern void exynos_cpufreq_reset_boot_qos(void);
+#endif
 #else
 static inline unsigned int exynos_cpufreq_get_max_freq(struct cpumask *mask)
 {
@@ -20,4 +23,5 @@ static inline bool exynos_cpufreq_allow_change_max(unsigned int cpu, unsigned lo
 {
 	return 0;
 }
+static inline void exynos_cpufreq_reset_boot_qos(void) {}
 #endif

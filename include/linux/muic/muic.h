@@ -37,11 +37,6 @@ enum {
 	MUIC_INTR_ATTACH
 };
 
-enum muic_op_mode {
-	OPMODE_MUIC = 0<<0,
-	OPMODE_CCIC = 1<<0,
-};
-
 /* MUIC Dock Observer Callback parameter */
 enum {
 	MUIC_DOCK_DETACHED	= 0,
@@ -190,10 +185,6 @@ typedef enum {
 	ATTACHED_DEV_GAMEPAD_MUIC,
 
 	ATTACHED_DEV_TIMEOUT_OPEN_MUIC,
-	ATTACHED_DEV_HICCUP_MUIC,
-	ATTACHED_DEV_POGO_DOCK_MUIC,
-	ATTACHED_DEV_POGO_DOCK_5V_MUIC,
-	ATTACHED_DEV_POGO_DOCK_9V_MUIC,
 	ATTACHED_DEV_UNKNOWN_MUIC,
 	ATTACHED_DEV_NUM,
 } muic_attached_dev_t;
@@ -230,7 +221,6 @@ struct muic_platform_data {
 	int hv_sel;
 	int silent_chg_change_state;
 #endif
-	enum muic_op_mode opmode;
 
 	/* muic switch dev register function for DockObserver */
 	void (*init_switch_dev_cb)(void);
@@ -238,6 +228,7 @@ struct muic_platform_data {
 
 	/* muic GPIO control function */
 	int (*init_gpio_cb)(int switch_sel);
+	void (*jig_uart_cb)(int jig_state);
 	int (*set_gpio_usb_sel)(int usb_path);
 	int (*set_gpio_uart_sel)(int uart_path);
 	int (*set_safeout)(int safeout_path);
@@ -246,24 +237,14 @@ struct muic_platform_data {
 	void (*set_path_switch_suspend)(struct device *dev);
 	void (*set_path_switch_resume)(struct device *dev);
 
-	/* muic AFC voltage switching function */
-	int (*muic_afc_set_voltage_cb)(int voltage);
-
-	/* muic check charger init function */
-	int (*muic_hv_charger_init_cb)(void);
-
-	/* muic set hiccup mode function */
-	int (*muic_set_hiccup_mode_cb)(int on_off);
+	/* muic cable data collecting function */
+	void (*init_cable_data_collect_cb)(void);
 };
 
 int get_switch_sel(void);
 int get_afc_mode(void);
-int get_ccic_info(void);
 void muic_set_hmt_status(int status);
-int muic_afc_set_voltage(int voltage);
-int muic_hv_charger_init(void);
-int muic_set_hiccup_mode(int on_off);
 #ifdef CONFIG_SEC_FACTORY
 extern void muic_send_attached_muic_cable_intent(int type);
-#endif /* CONFIG_SEC_FACTORY */
+#endif
 #endif /* __MUIC_H__ */

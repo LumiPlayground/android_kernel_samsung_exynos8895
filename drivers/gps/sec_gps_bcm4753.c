@@ -8,14 +8,14 @@
 #include <linux/sec_sysfs.h>
 
 static struct device *gps_dev;
-static unsigned int gps_pwr_on;
+static unsigned int gps_pwr_on = 0;
 
 int check_gps_op(void)
 {
 	/* This pin is high when gps is working */
 	int gps_is_running = gpio_get_value(gps_pwr_on);
 
-	pr_debug("LPA : %s(%d)\n", __func__, gps_is_running);
+	pr_debug("LPA : check_gps_op(%d)\n", gps_is_running);
 
 	return gps_is_running;
 }

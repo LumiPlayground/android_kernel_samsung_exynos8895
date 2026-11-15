@@ -867,7 +867,7 @@ TRACE_EVENT(ext4_sync_file_enter,
 		__field(	ino_t,	ino			)
 		__field(	ino_t,	parent			)
 		__field(	int,	datasync		)
-		__array(unsigned char,	d_name,	EXT4_NAME_LEN)
+		__array(unsigned char,	d_name,	EXT4_NAME_LEN	)
 	),
 
 	TP_fast_assign(
@@ -1451,7 +1451,7 @@ TRACE_EVENT(ext4_unlink_enter,
 		__field(	ino_t,	ino			)
 		__field(	ino_t,	parent			)
 		__field(	loff_t,	size			)
-		__array(unsigned char,	d_name,	EXT4_NAME_LEN)
+		__array(unsigned char,	d_name,	EXT4_NAME_LEN	)
 	),
 
 	TP_fast_assign(
@@ -1477,7 +1477,7 @@ TRACE_EVENT(ext4_unlink_exit,
 		__field(	dev_t,	dev			)
 		__field(	ino_t,	ino			)
 		__field(	int,	ret			)
-		__array(unsigned char,	d_name,	EXT4_NAME_LEN)
+		__array(unsigned char,	d_name,	EXT4_NAME_LEN	)
 	),
 
 	TP_fast_assign(

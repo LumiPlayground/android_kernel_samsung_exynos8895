@@ -38,11 +38,7 @@ enum  regdata_type {
 	/* read & write for clear */
 	RWC			= 7,
 	/* read & write as dual setting */
-	RWS			= 8,
-	/* write only*/
-	RIW			= 9,
-	/* read only latched implementation register */
-	ROL			= 10,
+	RWS
 };
 
 struct fimc_is_reg {

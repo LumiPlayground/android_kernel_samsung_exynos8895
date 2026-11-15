@@ -23,16 +23,10 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/exynos_iovmm.h>
-#if defined(CONFIG_EXYNOS8895_BTS)
 #include <soc/samsung/bts.h>
-#endif
 
 #include "decon.h"
-#if defined(CONFIG_SOC_EXYNOS8895)
 #include "regs-dpp.h"
-#else
-#include "regs-dpp_8890.h"
-#endif
 
 extern int dpp_log_level;
 
@@ -100,6 +94,7 @@ extern int dpp_log_level;
 	do {									\
 		if (dpp_log_level >= 3) {					\
 			pr_err(pr_fmt(fmt), ##__VA_ARGS__);			\
+			exynos_ss_printk(fmt, ##__VA_ARGS__);			\
 		}								\
 	} while (0)
 
@@ -107,6 +102,7 @@ extern int dpp_log_level;
 	do {									\
 		if (dpp_log_level >= 4) {					\
 			pr_warn(pr_fmt(fmt), ##__VA_ARGS__);			\
+			exynos_ss_printk(fmt, ##__VA_ARGS__);			\
 		}								\
 	} while (0)
 
@@ -242,6 +238,7 @@ struct dpp_params_info {
 	enum dpp_csc_eq eq_mode;
 	int h_ratio;
 	int v_ratio;
+	int plane_alpha;
 };
 
 extern struct dpp_device *dpp_drvdata[MAX_DPP_CNT];
@@ -286,6 +283,7 @@ static inline void dpp_write_mask(u32 id, u32 reg_id, u32 val, u32 mask)
 /* DPU_DMA Common part */
 static inline u32 dma_com_read(u32 id, u32 reg_id)
 {
+	//struct dpp_device *dpp = get_dpp_drvdata(id);
 	struct dpp_device *dpp = get_dpp_drvdata(0);
 	return readl(dpp->res.dma_com_regs + reg_id);
 }
@@ -363,7 +361,8 @@ static inline void dpp_select_format(struct dpp_device *dpp,
 /* DPU DMA low-level APIs exposed to DPP driver */
 u32 dma_reg_get_irq_status(u32 id);
 void dma_reg_clear_irq(u32 id, u32 irq);
-
+void dma_reg_clear_irq_all(u32 id);
+u32 dma_reg_get_afbc_en(u32 id);
 /* BIST mode */
 void dma_reg_set_test_pattern(u32 id, u32 pat_id, u32 pat_dat[4]);
 void dma_reg_set_ch_map(u32 id, u32 dpp_id, u32 to_pat);
@@ -374,10 +373,12 @@ int dpp_reg_deinit(u32 id, bool reset);
 void dpp_reg_configure_params(u32 id, struct dpp_params_info *p);
 u32 dpp_reg_get_irq_status(u32 id);
 void dpp_reg_clear_irq(u32 id, u32 irq);
+void dpp_reg_set_irq_clear_all(u32 id);
 void dpp_constraints_params(struct dpp_size_constraints *vc,
 					struct dpp_img_format *vi);
 int dpp_reg_wait_idle_status(int id, unsigned long timeout);
 void dma_reg_set_recovery_num(u32 id, u32 rcv_num);
+void dma_reg_set_afbc_sw_recovery(u32 id, u32 en);
 
 /* DPU DMA DEBUG */
 void dma_reg_set_debug(u32 id);
@@ -388,6 +389,9 @@ void dma_reg_set_common_debug(u32 id);
 #define DPP_DUMP			_IOW('P', 2, u32)
 #define DPP_WB_WAIT_FOR_FRAMEDONE	_IOR('P', 3, u32)
 #define DPP_WAIT_IDLE			_IOR('P', 4, unsigned long)
-#define DPP_SET_RECOVERY_NUM		_IOR('P', 5, unsigned long)
+#define DPP_SET_RECOVERY_NUM		_IOW('P', 5, unsigned long)
+#define DPP_SET_SW_RECOVERY		_IOW('P', 8, u32)
+#define DPP_GLOBAL_DMA_DUMP		_IOW('P', 10, u32)
+#define DPP_CLEAR_IRQ			_IOW('P', 11, u32)
 
 #endif /* __SAMSUNG_DPP_H__ */

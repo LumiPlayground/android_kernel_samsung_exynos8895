@@ -41,13 +41,6 @@
 
 /* the total count of csis v4.0's regs */
 #define CSIS_REG_CNT 121
-
-/* csis version */
-#define CSIS_V4_0 0x04000000
-#define CSIS_V4_1 0x04010000
-#define CSIS_V4_2 0x04020000
-#define CSIS_V4_3 0x04030000
-
 enum fimc_is_hw_csi_reg_name {
 	CSIS_R_CSIS_VERSION,
 	CSIS_R_CSIS_CMN_CTRL,

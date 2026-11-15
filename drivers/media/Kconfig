@@ -80,9 +80,6 @@ config MEDIA_RC_SUPPORT
 
 	  Say Y when you have a TV or an IR device.
 
-config MEDIA_CEC_EDID
-	bool
-
 config MEDIA_M2M1SHOT
         bool "Non-streaming m2m media processing (m2m1shot) API"
         ---help---
@@ -200,14 +197,14 @@ source "drivers/media/firewire/Kconfig"
 # Common driver options
 source "drivers/media/common/Kconfig"
 
-comment "Media ancillary drivers (tuners, sensors, i2c, spi, frontends)"
+comment "Media ancillary drivers (tuners, sensors, i2c, frontends)"
 
 #
-# Ancillary drivers (tuners, i2c, spi, frontends)
+# Ancillary drivers (tuners, i2c, frontends)
 #
 
 config MEDIA_SUBDRV_AUTOSELECT
-	bool "Autoselect ancillary drivers (tuners, sensors, i2c, spi, frontends)"
+	bool "Autoselect ancillary drivers (tuners, sensors, i2c, frontends)"
 	depends on MEDIA_ANALOG_TV_SUPPORT || MEDIA_DIGITAL_TV_SUPPORT || MEDIA_CAMERA_SUPPORT || MEDIA_SDR_SUPPORT
 	depends on HAS_IOMEM
 	select I2C
@@ -236,12 +233,12 @@ config MEDIA_ATTACH
 	default MODULES
 
 source "drivers/media/i2c/Kconfig"
-source "drivers/media/spi/Kconfig"
 source "drivers/media/tuners/Kconfig"
 source "drivers/media/dvb-frontends/Kconfig"
 
 #
 # TDMB drivers
 #
+
 source "drivers/media/tdmb/Kconfig"
 endif # MEDIA_SUPPORT

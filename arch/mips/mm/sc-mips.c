@@ -187,6 +187,10 @@ static int __init mips_sc_probe_cm3(void)
 	return 0;
 }
 
+void __weak platform_early_l2_init(void)
+{
+}
+
 static inline int __init mips_sc_probe(void)
 {
 	struct cpuinfo_mips *c = &current_cpu_data;

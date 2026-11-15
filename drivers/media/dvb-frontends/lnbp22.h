@@ -28,6 +28,8 @@
 #ifndef _LNBP22_H
 #define _LNBP22_H
 
+#include <linux/kconfig.h>
+
 /* Enable */
 #define LNBP22_EN	  0x10
 /* Voltage selection */

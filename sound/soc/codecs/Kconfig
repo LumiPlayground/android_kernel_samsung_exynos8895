@@ -58,13 +58,11 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_CS4271_SPI if SPI_MASTER
 	select SND_SOC_CS42XX8_I2C if I2C
 	select SND_SOC_CS4349 if I2C
-	select SND_SOC_CS47L24 if MFD_CS47L24
+	select SND_SOC_CS47L15 if MFD_CS47L15
 	select SND_SOC_CS47L35 if MFD_CS47L35
 	select SND_SOC_CS47L85 if MFD_CS47L85
 	select SND_SOC_CS47L90 if MFD_CS47L90
 	select SND_SOC_CS47L92 if MFD_CS47L92
-
-	select SND_SOC_CS53L30 if I2C
 	select SND_SOC_CX20442 if TTY
 	select SND_SOC_DA7210 if SND_SOC_I2C_AND_SPI
 	select SND_SOC_DA7213 if I2C
@@ -91,15 +89,12 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_MAX9867 if I2C
 	select SND_SOC_MAX98925 if I2C
 	select SND_SOC_MAX98926 if I2C
-	select SND_SOC_MAX98506 if I2C
-	select SND_SOC_MAX98512 if I2C
 	select SND_SOC_MAX9850 if I2C
 	select SND_SOC_MAX9860 if I2C
 	select SND_SOC_MAX9768 if I2C
 	select SND_SOC_MAX9877 if I2C
 	select SND_SOC_MC13783 if MFD_MC13XXX
 	select SND_SOC_ML26124 if I2C
-	select SND_SOC_NAU8810 if I2C
 	select SND_SOC_NAU8825 if I2C
 	select SND_SOC_HDMI_CODEC
 	select SND_SOC_PCM1681 if I2C
@@ -120,8 +115,6 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_RT5645 if I2C
 	select SND_SOC_RT5651 if I2C
 	select SND_SOC_RT5659 if I2C
-	select SND_SOC_RT5660 if I2C
-	select SND_SOC_RT5663 if I2C
 	select SND_SOC_RT5670 if I2C
 	select SND_SOC_RT5677 if I2C && SPI_MASTER
 	select SND_SOC_SGTL5000 if I2C
@@ -246,12 +239,10 @@ config SND_SOC_WM_ADSP
 	tristate
 	select SND_SOC_COMPRESS
 	default y if SND_SOC_MADERA=y
-	default y if SND_SOC_CS47L24=y
 	default y if SND_SOC_WM5102=y
 	default y if SND_SOC_WM5110=y
 	default y if SND_SOC_WM2200=y
 	default m if SND_SOC_MADERA=m
-	default m if SND_SOC_CS47L24=m
 	default m if SND_SOC_WM5102=m
 	default m if SND_SOC_WM5110=m
 	default m if SND_SOC_WM2200=m
@@ -475,7 +466,7 @@ config SND_SOC_CS4349
 	tristate "Cirrus Logic CS4349 CODEC"
 	depends on I2C
 
-config SND_SOC_CS47L24
+config SND_SOC_CS47L15
 	tristate
 
 config SND_SOC_CS47L35
@@ -498,6 +489,9 @@ config SND_SOC_CS53L30
 config SND_SOC_CX20442
 	tristate
 	depends on TTY
+
+config SND_SOC_COD3033X
+	tristate
 
 config SND_SOC_JZ4740_CODEC
 	select REGMAP_MMIO
@@ -568,10 +562,12 @@ config SND_SOC_LM49453
 
 config SND_SOC_MADERA
 	tristate
+	default y if SND_SOC_CS47L15=y
 	default y if SND_SOC_CS47L35=y
 	default y if SND_SOC_CS47L85=y
 	default y if SND_SOC_CS47L90=y
 	default y if SND_SOC_CS47L92=y
+	default m if SND_SOC_CS47L15=m
 	default m if SND_SOC_CS47L35=m
 	default m if SND_SOC_CS47L85=m
 	default m if SND_SOC_CS47L90=m
@@ -596,30 +592,6 @@ config SND_SOC_MAX98504
 	tristate "Maxim MAX98504 speaker amplifier"
 	depends on I2C
 
-config SND_SOC_MAX98506
-	bool "Support MAX98506"
-	depends on I2C
-	help
-	MAX98506 driver
-
-config SND_SOC_MAX98512
-	bool "Support MAX98512"
-	depends on I2C
-	help
-	MAX98512 driver
-
-config SND_SOC_MAXIM_DSM
-	bool "Support MAXIM DSM"
-	depends on SND_SOC_MAX98506 || SND_SOC_MAX98512
-	help
-	MAXIM DSM driver
-
-config SND_SOC_MAXIM_DSM_CAL
-	tristate "Support MAXIM DSM Calibration"
-	depends on SND_SOC_MAXIM_DSM
-	help
-	MAX985xx Calibration Driver
-
 config SND_SOC_MAX9867
 	tristate
 
@@ -628,6 +600,25 @@ config SND_SOC_MAX98925
 
 config SND_SOC_MAX98926
 	tristate
+
+config SND_SOC_MAX98506
+	tristate "Support MAX98506"
+	depends on I2C
+	help
+	MAX98506 driver
+
+config SND_SOC_MAXIM_DSM
+	tristate "Support MAXIM DSM"
+	depends on SND_SOC_MAX98504 || SND_SOC_MAX98505 || SND_SOC_MAX98506
+	help
+	MAXIM DSM driver
+
+config SND_SOC_MAXIM_DSM_CAL
+	tristate "Support MAXIM DSM Calibration"
+	default y if SND_SOC_MAX98506=y
+	default m if SND_SOC_MAX98506=m
+	help
+	MAX9850x Calibration Driver
 
 config SND_SOC_MAX9850
 	tristate
@@ -704,8 +695,6 @@ config SND_SOC_RL6231
 	default y if SND_SOC_RT5645=y
 	default y if SND_SOC_RT5651=y
 	default y if SND_SOC_RT5659=y
-	default y if SND_SOC_RT5660=y
-	default y if SND_SOC_RT5663=y
 	default y if SND_SOC_RT5670=y
 	default y if SND_SOC_RT5677=y
 	default m if SND_SOC_RT5514=m
@@ -714,8 +703,6 @@ config SND_SOC_RL6231
 	default m if SND_SOC_RT5645=m
 	default m if SND_SOC_RT5651=m
 	default m if SND_SOC_RT5659=m
-	default m if SND_SOC_RT5660=m
-	default m if SND_SOC_RT5663=m
 	default m if SND_SOC_RT5670=m
 	default m if SND_SOC_RT5677=m
 
@@ -728,7 +715,6 @@ config SND_SOC_RL6347A
 
 config SND_SOC_RT286
 	tristate
-	select SND_SOC_RT5663
 	depends on I2C
 
 config SND_SOC_RT298
@@ -759,12 +745,6 @@ config SND_SOC_RT5651
 	tristate
 
 config SND_SOC_RT5659
-	tristate
-
-config SND_SOC_RT5660
-	tristate
-
-config SND_SOC_RT5663
 	tristate
 
 config SND_SOC_RT5670
@@ -1118,6 +1098,9 @@ config SND_SOC_WM9713
 	tristate
 	select REGMAP_AC97
 
+config SND_SOC_DUMMY_CODEC
+	tristate
+
 # Amp
 config SND_SOC_LM4857
 	tristate
@@ -1133,10 +1116,6 @@ config SND_SOC_MC13783
 
 config SND_SOC_ML26124
 	tristate
-
-config SND_SOC_NAU8810
-	tristate "Nuvoton Technology Corporation NAU88C10 CODEC"
-	depends on I2C
 
 config SND_SOC_NAU8825
 	tristate

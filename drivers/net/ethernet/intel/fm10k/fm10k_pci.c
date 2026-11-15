@@ -204,8 +204,7 @@ static int fm10k_handle_reset(struct fm10k_intfc *interface)
 
 	err = fm10k_init_queueing_scheme(interface);
 	if (err) {
-		dev_err(&interface->pdev->dev,
-			"init_queueing_scheme failed: %d\n", err);
+		dev_err(&interface->pdev->dev, "init_queueing_scheme failed: %d\n", err);
 		goto reinit_err;
 	}
 
@@ -238,6 +237,10 @@ static int fm10k_handle_reset(struct fm10k_intfc *interface)
 		goto err_open;
 
 	fm10k_iov_resume(interface->pdev);
+
+reinit_err:
+	if (err)
+		netif_device_detach(netdev);
 
 	rtnl_unlock();
 

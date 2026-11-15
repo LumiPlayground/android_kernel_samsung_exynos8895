@@ -365,9 +365,6 @@ struct mem_link_device {
 	unsigned int sbi_cp_status_mask;
 	unsigned int sbi_cp_status_pos;
 
-	unsigned int sbi_cp_smapper_mask;
-	unsigned int sbi_cp_smapper_pos;
-
 	unsigned int mbx_perf_req;
 	unsigned int mbx_perf_req_cpu;
 	unsigned int mbx_perf_req_mif;
@@ -380,8 +377,6 @@ struct mem_link_device {
 	struct work_struct pm_qos_work_cpu;
 	struct work_struct pm_qos_work_mif;
 	struct work_struct pm_qos_work_int;
-
-	unsigned int irq_smapper;
 
 	struct freq_table cl0_table;
 	struct freq_table cl1_table;
@@ -512,6 +507,8 @@ struct mem_link_device {
 
 	struct crash_reason crash_reason;
 
+	struct notifier_block reboot_nb;
+
 #ifdef CONFIG_LINK_DEVICE_NAPI
 	struct net_device dummy_net;
 	struct napi_struct mld_napi;
@@ -520,9 +517,6 @@ struct mem_link_device {
 	unsigned int rx_poll_count;
 	unsigned long long rx_int_disabled_time;
 #endif /* CONFIG_LINK_DEVICE_NAPI */
-#ifdef CONFIG_MODEM_IF_NET_GRO
-	struct timespec flush_time;
-#endif
 };
 
 #define to_mem_link_device(ld) \
@@ -745,11 +739,12 @@ static inline enum dev_format get_mmap_idx(enum sipc_ch_id ch,
 {
 	if (sipc5_fmt_ch(ch))
 		return IPC_MAP_FMT;
+	else
 #ifdef CONFIG_MODEM_IF_LEGACY_QOS
-	return (skb->queue_mapping == 1) ?
-		IPC_MAP_HPRIO_RAW : IPC_MAP_NORM_RAW;
+		return (skb->queue_mapping == 1) ?
+			IPC_MAP_HPRIO_RAW : IPC_MAP_NORM_RAW;
 #else
-	return IPC_MAP_NORM_RAW;
+		return IPC_MAP_NORM_RAW;
 #endif
 }
 

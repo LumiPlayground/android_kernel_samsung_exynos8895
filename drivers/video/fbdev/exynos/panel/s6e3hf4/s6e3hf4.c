@@ -13,7 +13,8 @@
 #include <linux/of_gpio.h>
 #include <video/mipi_display.h>
 /* TODO : remove dsim dependent code */
-#include "../../dpu_9810/decon.h"
+#include "../../dpu/decon.h"
+#include "../../dpu/dsim.h"
 #include "../panel.h"
 #include "s6e3hf4.h"
 #include "s6e3hf4_panel.h"
@@ -66,38 +67,6 @@ static void mtp_ctoi(s32 (*dst)[MAX_COLOR], char *src, int nr_tp)
 	dst[0][RED] = (src[pos] >> 4) & 0xF;
 	dst[0][GREEN] = src[pos] & 0xF;
 	dst[0][BLUE] = src[pos + 1] & 0xF;
-}
-
-static void copy_tpout_center(u8 *output, u32 value, u32 v, u32 color)
-{
-	int index = (S6E3HF4_NR_TP - v - 1);
-
-	if (v == S6E3HF4_NR_TP - 1) {
-		output[color * 2] = ((value & 0x0100) ? 1 : 0);
-		output[color * 2 + 1] = value & 0x00FF;
-		if (value > 511)
-			pr_err("%s, error : exceed output range tp:%d c:%d value:%d!!\n",
-					__func__, index, color, value);
-	} else if (v == 0) {
-		if (color == RED) {
-			output[(index + 1) * MAX_COLOR] &= ~(0xF << 4);
-			output[(index + 1) * MAX_COLOR] |= (value & 0xF) << 4;
-		} else if (color == GREEN) {
-			output[(index + 1) * MAX_COLOR] &= ~0xF;
-			output[(index + 1) * MAX_COLOR] |= value & 0xF;
-		} else if (color == BLUE) {
-			output[(index + 1) * MAX_COLOR + 1] &= ~0xF;
-			output[(index + 1) * MAX_COLOR + 1] |= value & 0xF;
-		}
-		if (value > 15)
-			pr_err("%s, error : exceed output range tp:%d c:%d value:%d!!\n",
-					__func__, index, color, value);
-	} else {
-		output[(index + 1) * MAX_COLOR + color] = value & 0x00FF;
-		if (value > 255)
-			pr_err("%s, error : exceed output range tp:%d c:%d value:%d!!\n",
-					__func__, index, color, value);
-	}
 }
 
 static int init_dimming(struct panel_info *panel_data, int id,
@@ -161,13 +130,13 @@ static int init_dimming(struct panel_info *panel_data, int id,
 	nr_hbm_luminance = panel_dim_info->nr_hbm_luminance;
 	nr_extend_hbm_luminance = panel_dim_info->nr_extend_hbm_luminance;
 
-
+	if (id == PANEL_BL_SUBDEV_TYPE_HMD) {
 #ifdef CONFIG_SUPPORT_HMD
-	if (id == PANEL_BL_SUBDEV_TYPE_HMD)
 		gamma_maptbl = find_panel_maptbl_by_index(panel_data, HMD_GAMMA_MAPTBL);
-	else
 #endif
+	} else {
 		gamma_maptbl = find_panel_maptbl_by_index(panel_data, GAMMA_MAPTBL);
+	}
 	if (unlikely(!gamma_maptbl)) {
 		pr_err("%s panel_bl-%d gamma_maptbl not found\n", __func__, id);
 		kfree(dim_info);
@@ -186,9 +155,8 @@ static int init_dimming(struct panel_info *panel_data, int id,
 			luminance = brt_tbl->lum[nr_luminance + nr_hbm_luminance - 1];
 		else
 			luminance = brt_tbl->lum[i];
-		get_dimming_gamma(dim_info, luminance,
-				(u8 *)&gamma_maptbl->arr[i * gamma_maptbl->ncol],
-				copy_tpout_center);
+		get_dimming_gamma_compact(dim_info, luminance,
+				(u8 *)&gamma_maptbl->arr[i * gamma_maptbl->ncol]);
 	}
 
 	panel_data->dim_info[id] = dim_info;
@@ -482,6 +450,21 @@ int getidx_acl_onoff_table(struct maptbl *tbl)
 	return panel_bl_get_acl_pwrsave(&panel->panel_bl);
 }
 
+int getidx_hbm_onoff_table(struct maptbl *tbl)
+{
+	struct panel_device *panel = (struct panel_device *)tbl->pdata;
+	struct panel_bl_device *panel_bl;
+
+	if (panel == NULL) {
+		panel_err("PANEL:ERR:%s:panel is null\n", __func__);
+		return -EINVAL;
+	}
+
+	panel_bl = &panel->panel_bl;
+
+	return is_hbm_brightness(panel_bl, panel_bl->props.brightness);
+}
+
 int getidx_acl_opr_table(struct maptbl *tbl)
 {
 	struct panel_device *panel = (struct panel_device *)tbl->pdata;
@@ -535,9 +518,9 @@ int getidx_resolution_table(struct maptbl *tbl)
 int getidx_lpm_table(struct maptbl *tbl)
 {
 	int row = 0;
+#ifdef CONFIG_SUPPORT_DOZE
 	struct panel_device *panel = (struct panel_device *)tbl->pdata;
 	struct panel_properties *props = &panel->panel_data.props;
-#ifdef CONFIG_SUPPORT_DOZE
 		switch (props->alpm_mode) {
 			case ALPM_LOW_BR:
 				row = 0;
@@ -559,16 +542,8 @@ int getidx_lpm_table(struct maptbl *tbl)
 	}
 	props->cur_alpm_mode = props->alpm_mode;
 #endif
-	pr_info("%s: mode:%d ncol:%d\n", __func__, props->alpm_mode, tbl->ncol);
 	return tbl->ncol * row;
 }
-
-#ifdef CONFIG_EXYNOS_DECON_MDNIE_LITE
-void copy_dummy_maptbl(struct maptbl *tbl, u8 *dst)
-{
-	return;
-}
-#endif
 
 void copy_common_maptbl(struct maptbl *tbl, u8 *dst)
 {
@@ -778,42 +753,6 @@ int init_mdnie_night_mode_table(struct maptbl *tbl)
 	return 0;
 }
 
-int init_mdnie_color_lens_table(struct maptbl *tbl)
-{
-	struct mdnie_info *mdnie;
-	struct maptbl *color_lens_maptbl;
-
-	if (tbl == NULL) {
-		panel_err("PANEL:ERR:%s:maptbl is null\n", __func__);
-		return -EINVAL;
-	}
-
-	if (tbl->pdata == NULL) {
-		panel_err("PANEL:ERR:%s:pdata is null\n", __func__);
-		return -EINVAL;
-	}
-
-	mdnie = tbl->pdata;
-
-	color_lens_maptbl = mdnie_find_etc_maptbl(mdnie, MDNIE_ETC_COLOR_LENS_MAPTBL);
-	if (!color_lens_maptbl) {
-		panel_err("%s, COLOR_LENS_MAPTBL not found\n", __func__);
-		return -EINVAL;
-	}
-
-	if (sizeof_maptbl(tbl) < (S6E3HF4_COLOR_LENS_OFS +
-			sizeof_row(color_lens_maptbl))) {
-		panel_err("%s invalid size (maptbl_size %d, color_lens_maptbl_size %d)\n",
-			__func__, sizeof_maptbl(tbl), sizeof_row(color_lens_maptbl));
-		return -EINVAL;
-	}
-
-	if (IS_COLOR_LENS_MODE(mdnie))
-		maptbl_copy(color_lens_maptbl, &tbl->arr[S6E3HF4_COLOR_LENS_OFS]);
-
-	return 0;
-}
-
 void update_current_scr_white(struct maptbl *tbl, u8 *dst)
 {
 	struct mdnie_info *mdnie;
@@ -925,24 +864,6 @@ int getidx_adjust_ldu_maptbl(struct maptbl *tbl)
 	return maptbl_index(tbl, wcrd_type[mdnie->props.mode], mdnie->props.ldu, 0);
 }
 
-int getidx_color_lens_maptbl(struct maptbl *tbl)
-{
-	struct mdnie_info *mdnie = (struct mdnie_info *)tbl->pdata;
-
-	if (!IS_COLOR_LENS_MODE(mdnie))
-		return -EINVAL;
-
-	if ((mdnie->props.color_lens_color < 0) || (mdnie->props.color_lens_color >= COLOR_LENS_COLOR_MAX)) {
-		pr_err("%s, out of color lens color range %d\n", __func__, mdnie->props.color_lens_color);
-		return -EINVAL;
-	}
-	if ((mdnie->props.color_lens_level < 0) || (mdnie->props.color_lens_level >= COLOR_LENS_LEVEL_MAX)) {
-		pr_err("%s, out of color lens level range %d\n", __func__, mdnie->props.color_lens_level);
-		return -EINVAL;
-	}
-	return maptbl_index(tbl, mdnie->props.color_lens_color, mdnie->props.color_lens_level, 0);
-}
-
 void copy_color_coordinate_maptbl(struct maptbl *tbl, u8 *dst)
 {
 	struct mdnie_info *mdnie;
@@ -1026,7 +947,7 @@ int getidx_trans_maptbl(struct pkt_update_info *pktui)
 		MDNIE_ETC_NONE_MAPTBL : MDNIE_ETC_TRANS_MAPTBL;
 }
 
-int getidx_mdnie_maptbl(struct pkt_update_info *pktui, int offset)
+static int getidx_mdnie_maptbl(struct pkt_update_info *pktui, int offset)
 {
 	struct panel_device *panel = pktui->pdata;
 	struct mdnie_info *mdnie = &panel->mdnie;
@@ -1092,13 +1013,13 @@ int getidx_mdnie_scr_white_maptbl(struct pkt_update_info *pktui)
 
 
 #ifdef CONFIG_LOGGING_BIGDATA_BUG
-static unsigned int g_rddpm = 0xff;
-static unsigned int g_rddsm = 0xff;
+unsigned int g_rddpm = 0xff;
+unsigned int g_rddsm = 0xff;
 
 unsigned int get_panel_bigdata(void)
 {
 	unsigned int val = 0;
-
+	
 	val = (g_rddsm << 8) | g_rddpm;
 
 	return val;
@@ -1258,6 +1179,8 @@ void show_err_fg(struct dumpinfo *info)
 	}
 
 	panel_info("==================================================\n");
+
+	inc_dpui_u32_field(DPUI_KEY_PNESDE, (err_fg & 0x4D) ? 1 : 0);
 }
 
 void show_dsi_err(struct dumpinfo *info)
@@ -1278,7 +1201,7 @@ void show_dsi_err(struct dumpinfo *info)
 	if (dsi_err)
 		panel_info("* DSI Error Count : %d\n", dsi_err);
 	panel_info("====================================================\n");
-
+	
 	inc_dpui_u32_field(DPUI_KEY_PNDSIE, dsi_err);
 }
 

@@ -12,6 +12,7 @@
  *
  */
 
+#include <linux/kconfig.h>
 #include <linux/stddef.h>
 #include <linux/acpi.h>
 

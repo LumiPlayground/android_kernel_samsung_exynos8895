@@ -308,11 +308,8 @@ static void dedotify(Elf64_Sym *syms, unsigned int numsyms, char *strtab)
 	for (i = 1; i < numsyms; i++) {
 		if (syms[i].st_shndx == SHN_UNDEF) {
 			char *name = strtab + syms[i].st_name;
-			if (name[0] == '.') {
-				if (strcmp(name+1, "TOC.") == 0)
-					syms[i].st_shndx = SHN_ABS;
+			if (name[0] == '.')
 				syms[i].st_name++;
-			}
 		}
 	}
 }

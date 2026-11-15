@@ -277,11 +277,11 @@ static struct smtc_reg_data setup_reg[] = {
 },
 {
 	.reg = SX9320_ADVCTRL10_REG,// 30
-	.val = 0x00,
+	.val = 0x40,
 },
 {
 	.reg = SX9320_ADVCTRL11_REG,
-	.val = 0x00,
+	.val = 0x21,
 },
 {
 	.reg = SX9320_ADVCTRL12_REG,
@@ -289,7 +289,7 @@ static struct smtc_reg_data setup_reg[] = {
 },
 {
 	.reg = SX9320_ADVCTRL13_REG,
-	.val = 0x00,
+	.val = 0x04,
 },
 {
 	.reg = SX9320_ADVCTRL14_REG,

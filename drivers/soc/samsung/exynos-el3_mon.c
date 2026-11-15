@@ -40,11 +40,7 @@ static int __init exynos_protect_kernel_text(void)
 		return -1;
 	}
 
-#ifdef CONFIG_UH_RKP
-	ktext_end_va = kallsyms_lookup_name("rkp_pgt_bitmap");
-#else
 	ktext_end_va = kallsyms_lookup_name("_etext");
-#endif
 	if (!ktext_end_va) {
 		pr_err("%s: [ERROR] Kernel text end address is invalid\n",
 								__func__);
@@ -96,7 +92,11 @@ static int  __init exynos_set_debug_mem(void)
 {
 	int ret;
 	char *phys;
+#ifdef CONFIG_SOC_EXYNOS8895
+	unsigned int size = PAGE_SIZE;
+#else
 	unsigned int size = PAGE_SIZE * 2;
+#endif
 
 	smc_debug_mem = kmalloc(size, GFP_KERNEL);
 
@@ -277,7 +277,11 @@ static void exynos_smart_exception_handler(unsigned int id,
 		pr_err("tcr_el3   : 0x%016lx, \tscr_el3  : 0x%016lx\n\n",
 								tcr, x6);
 
+#ifdef CONFIG_SOC_EXYNOS8895
+		if ((offset > 0x0 && offset < PAGE_SIZE)
+#else
 		if ((offset > 0x0 && offset < (PAGE_SIZE * 2))
+#endif
 				&& !(offset % 0x8) && (smc_debug_mem)) {
 			tmp = (unsigned long)smc_debug_mem;
 			tmp += (unsigned long)offset;

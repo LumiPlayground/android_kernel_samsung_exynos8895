@@ -128,7 +128,7 @@ int xstateregs_set(struct task_struct *target, const struct user_regset *regset,
 
 	xsave = &fpu->state.xsave;
 
-	fpu__activate_fpstate_write(fpu);
+	ret = user_regset_copyin(&pos, &count, &kbuf, &ubuf, xsave, 0, -1);
 
 	if (boot_cpu_has(X86_FEATURE_XSAVES)) {
 		ret = copyin_to_xsaves(kbuf, ubuf, xsave);
@@ -155,6 +155,12 @@ int xstateregs_set(struct task_struct *target, const struct user_regset *regset,
 	 * These bits must be zero.
 	 */
 	memset(&xsave->header.reserved, 0, 48);
+
+	/*
+	 * In case of failure, mark all states as init:
+	 */
+	if (ret)
+		fpstate_init(&fpu->state);
 
 	return ret;
 }

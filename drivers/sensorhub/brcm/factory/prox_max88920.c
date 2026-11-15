@@ -17,7 +17,7 @@
 #define	VENDOR		"MAXIM"
 #define	CHIP_ID		"MAX88920"
 
-#define CANCELLATION_FILE_PATH	"/efs/FactoryApp/prox_cal"
+#define CANCELATION_FILE_PATH	"/efs/FactoryApp/prox_cal"
 #define LCD_LDI_FILE_PATH	"/sys/class/lcd/panel/window_type"
 
 #define LINE_1		'4'
@@ -173,12 +173,12 @@ exit:
 		data->uProxLoThresh_default = WHITE_LOW_THRESHOLD;
 		break;
 	case LDI_OTHERS:
-		data->uProxHiThresh_default = DEFAULT_HIGH_THRESHOLD;
-		data->uProxLoThresh_default = DEFAULT_LOW_THRESHOLD;
+		data->uProxHiThresh_default = DEFUALT_HIGH_THRESHOLD;
+		data->uProxLoThresh_default = DEFUALT_LOW_THRESHOLD;
 		break;
 	default:
-		data->uProxHiThresh_default = DEFAULT_HIGH_THRESHOLD;
-		data->uProxLoThresh_default = DEFAULT_LOW_THRESHOLD;
+		data->uProxHiThresh_default = DEFUALT_HIGH_THRESHOLD;
+		data->uProxLoThresh_default = DEFUALT_LOW_THRESHOLD;
 		break;
 	}
 
@@ -204,11 +204,11 @@ int proximity_open_calibration(struct ssp_data *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	cancel_filp = filp_open(CANCELLATION_FILE_PATH, O_RDONLY, 0660);
+	cancel_filp = filp_open(CANCELATION_FILE_PATH, O_RDONLY, 0660);
 	if (IS_ERR(cancel_filp)) {
 		iRet = PTR_ERR(cancel_filp);
 		if (iRet != -ENOENT)
-			pr_err("[SSP]: %s - Can't open cancellation file\n",
+			pr_err("[SSP]: %s - Can't open cancelation file\n",
 				__func__);
 		set_fs(old_fs);
 		goto exit;
@@ -264,7 +264,7 @@ static int calculate_proximity_threshold(struct ssp_data *data)
 	return SUCCESS;
 }
 
-static int proximity_store_cancellation(struct ssp_data *data, int iCalCMD)
+static int proximity_store_cancelation(struct ssp_data *data, int iCalCMD)
 {
 	int iRet = 0;
 	mm_segment_t old_fs;
@@ -286,10 +286,10 @@ static int proximity_store_cancellation(struct ssp_data *data, int iCalCMD)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	cancel_filp = filp_open(CANCELLATION_FILE_PATH,
+	cancel_filp = filp_open(CANCELATION_FILE_PATH,
 			O_CREAT | O_TRUNC | O_WRONLY | O_SYNC, 0660);
 	if (IS_ERR(cancel_filp)) {
-		pr_err("%s: Can't open cancellation file\n", __func__);
+		pr_err("%s: Can't open cancelation file\n", __func__);
 		set_fs(old_fs);
 		iRet = PTR_ERR(cancel_filp);
 		return iRet;
@@ -326,18 +326,18 @@ static ssize_t proximity_cancel_store(struct device *dev,
 	int iCalCMD = 0, iRet = 0;
 	struct ssp_data *data = dev_get_drvdata(dev);
 
-	if (sysfs_streq(buf, "1")) /* calibrate cancellation value */
+	if (sysfs_streq(buf, "1")) /* calibrate cancelation value */
 		iCalCMD = 1;
-	else if (sysfs_streq(buf, "0")) /* reset cancellation value */
+	else if (sysfs_streq(buf, "0")) /* reset cancelation value */
 		iCalCMD = 0;
 	else {
 		pr_debug("%s: invalid value %d\n", __func__, *buf);
 		return -EINVAL;
 	}
 
-	iRet = proximity_store_cancellation(data, iCalCMD);
+	iRet = proximity_store_cancelation(data, iCalCMD);
 	if (iRet < 0) {
-		pr_err("[SSP]: - %s proximity_store_cancellation() failed\n",
+		pr_err("[SSP]: - %s proximity_store_cancelation() failed\n",
 			__func__);
 		return iRet;
 	}

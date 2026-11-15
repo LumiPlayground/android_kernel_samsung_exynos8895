@@ -31,18 +31,18 @@
 #define GROUP_ID_ISP1		3
 #define GROUP_ID_DIS0		4
 #define GROUP_ID_DIS1		5
-#define GROUP_ID_DCP		6
-#define GROUP_ID_MCS0		7
-#define GROUP_ID_MCS1		8
-#define GROUP_ID_VRA0		9
-#define GROUP_ID_SS0		10
-#define GROUP_ID_SS1		11
-#define GROUP_ID_SS2		12
-#define GROUP_ID_SS3		13
-#define GROUP_ID_SS4		14
-#define GROUP_ID_SS5		15
-#define GROUP_ID_MAX		16
-#define GROUP_ID_PARM_MASK	((1 << (GROUP_ID_SS0)) - 1)
+#define GROUP_ID_MCS0		6
+#define GROUP_ID_MCS1		7
+#define GROUP_ID_VRA0		8
+#define GROUP_ID_SS0		9
+#define GROUP_ID_SS1		10
+#define GROUP_ID_SS2		11
+#define GROUP_ID_SS3		12
+#define GROUP_ID_SS4		13
+#define GROUP_ID_SS5		14
+#define GROUP_ID_MAX		15
+#define GROUP_ID_INVALID	0xFFFFFFFF
+#define GROUP_ID_PARM_MASK	(0xFF)
 #define GROUP_ID_SHIFT		(16)
 #define GROUP_ID_MASK		(0xFFFF)
 #define GROUP_ID(id)		(1 << (id))
@@ -51,10 +51,9 @@
 #define GROUP_SLOT_3AA		1
 #define GROUP_SLOT_ISP		2
 #define GROUP_SLOT_DIS		3
-#define GROUP_SLOT_DCP		4
-#define GROUP_SLOT_MCS		5
-#define GROUP_SLOT_VRA		6
-#define GROUP_SLOT_MAX		7
+#define GROUP_SLOT_MCS		4
+#define GROUP_SLOT_VRA		5
+#define GROUP_SLOT_MAX		6
 #else
 #define TRACE_GROUP
 #define GROUP_ID_3AA0		0
@@ -63,12 +62,12 @@
 #define GROUP_ID_ISP1		3
 #define GROUP_ID_DIS0		4
 #define GROUP_ID_DIS1		5
-#define GROUP_ID_DCP		6
-#define GROUP_ID_MCS0		7
-#define GROUP_ID_MCS1		8
-#define GROUP_ID_VRA0		9
-#define GROUP_ID_MAX		10
-#define GROUP_ID_PARM_MASK	((1 << (GROUP_ID_MAX)) - 1)
+#define GROUP_ID_MCS0		6
+#define GROUP_ID_MCS1		7
+#define GROUP_ID_VRA0		8
+#define GROUP_ID_MAX		9
+#define GROUP_ID_INVALID	0xFFFFFFFF
+#define GROUP_ID_PARM_MASK	(0xFF)
 #define GROUP_ID_SHIFT		(16)
 #define GROUP_ID_MASK		(0xFFFF)
 #define GROUP_ID(id)		(1 << (id))
@@ -76,13 +75,12 @@
 #define GROUP_SLOT_3AA		0
 #define GROUP_SLOT_ISP		1
 #define GROUP_SLOT_DIS		2
-#define GROUP_SLOT_DCP		3
-#define GROUP_SLOT_MCS		4
-#define GROUP_SLOT_VRA		5
-#define GROUP_SLOT_MAX		6
+#define GROUP_SLOT_MCS		3
+#define GROUP_SLOT_VRA		4
+#define GROUP_SLOT_MAX		5
 #endif
 
-#define FIMC_IS_MAX_GFRAME	(VIDEO_MAX_FRAME) /* max shot buffer of F/W : 32 */
+#define FIMC_IS_MAX_GFRAME	(VIDEO_MAX_FRAME * 2) /* max shot buffer of F/W : 32, MAX 2 groups */
 #define MIN_OF_ASYNC_SHOTS	1
 #define MIN_OF_SYNC_SHOTS	2
 
@@ -110,22 +108,14 @@ enum fimc_is_group_state {
 	FIMC_IS_GROUP_PIPE_INPUT,
 	FIMC_IS_GROUP_PIPE_OUTPUT,
 	FIMC_IS_GROUP_SEMI_PIPE_INPUT,
-	FIMC_IS_GROUP_SEMI_PIPE_OUTPUT,
-	FIMC_IS_GROUP_VIRTUAL_OTF_INPUT,
-	FIMC_IS_GROUP_VIRTUAL_OTF_OUTPUT,
+	FIMC_IS_GROUP_SEMI_PIPE_OUTPUT
 };
 
 enum fimc_is_group_input_type {
 	GROUP_INPUT_MEMORY,
 	GROUP_INPUT_OTF,
 	GROUP_INPUT_PIPE,
-	GROUP_INPUT_SEMI_PIPE,
-	GROUP_INPUT_VIRTUAL_OTF
-};
-
-enum fimc_is_group_votf_mode {
-	START_VIRTUAL_OTF,
-	END_VIRTUAL_OTF
+	GROUP_INPUT_SEMI_PIPE
 };
 
 struct fimc_is_frame;
@@ -144,7 +134,7 @@ struct fimc_is_group_frame {
 };
 
 struct fimc_is_group_framemgr {
-	struct fimc_is_group_frame	*gframes;
+	struct fimc_is_group_frame	gframe[FIMC_IS_MAX_GFRAME];
 	spinlock_t			gframe_slock;
 	struct list_head		gframe_head;
 	u32				gframe_cnt;
@@ -155,8 +145,6 @@ struct fimc_is_group {
 	struct fimc_is_group		*prev;
 	struct fimc_is_group		*gnext;
 	struct fimc_is_group		*gprev;
-	struct fimc_is_group		*vnext;
-	struct fimc_is_group		*vprev;
 	struct fimc_is_group		*parent;
 	struct fimc_is_group		*child;
 	struct fimc_is_group		*head;
@@ -167,13 +155,11 @@ struct fimc_is_group {
 	struct fimc_is_subdev		*subdev[ENTRY_END];
 	struct fimc_is_framemgr		*locked_sub_framemgr[ENTRY_END];
 
-	struct list_head		subdev_list;
-	struct list_head		votf_list;
-
 	/* for otf interface */
 	atomic_t			sensor_fcount;
 	atomic_t			backup_fcount;
 	struct semaphore		smp_trigger;
+	struct semaphore		smp_shot;
 	atomic_t			smp_shot_count;
 	u32				init_shots;
 	u32				asyn_shots;
@@ -183,7 +169,6 @@ struct fimc_is_group {
 	struct camera2_ctl		fast_ctl;
 #endif
 	struct camera2_aa_ctl		intent_ctl;
-	struct camera2_lens_ctl		lens_ctl;
 
 	u32				id; /* group id */
 	u32				slot; /* group slot */
@@ -234,7 +219,6 @@ struct fimc_is_group_task {
 
 #ifdef ENABLE_SYNC_REPROCESSING
 	atomic_t			rep_tick; /* Sync reprocessing tick */
-	struct list_head		sync_list;
 #endif
 };
 
@@ -245,8 +229,7 @@ struct fimc_is_groupmgr {
 	struct fimc_is_group_task	gtask[GROUP_ID_MAX];
 };
 
-int fimc_is_groupmgr_probe(struct platform_device *pdev,
-	struct fimc_is_groupmgr *groupmgr);
+int fimc_is_groupmgr_probe(struct fimc_is_groupmgr *groupmgr);
 int fimc_is_groupmgr_init(struct fimc_is_groupmgr *groupmgr,
 	struct fimc_is_device_ischain *device);
 int fimc_is_groupmgr_start(struct fimc_is_groupmgr *groupmgr,

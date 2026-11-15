@@ -140,10 +140,35 @@ int s2dos03_update_reg(struct i2c_client *i2c, u8 reg, u8 val, u8 mask)
 }
 EXPORT_SYMBOL_GPL(s2dos03_update_reg);
 
+#ifdef CONFIG_SEC_PM_DEBUG
+static char debug_temp[100] = "\0";
+
+static int __init pmic_setup(char *s)
+{
+	if (!s)
+		return -EINVAL;
+	strcpy(debug_temp, s);
+	pr_info("%s: %s\n", __func__, debug_temp);
+
+	return 0;
+}
+early_param("dp_pmic", pmic_setup);
+#endif
+
 static int s2m_enable(struct regulator_dev *rdev)
 {
 	struct s2dos03_data *info = rdev_get_drvdata(rdev);
 	struct i2c_client *i2c = info->iodev->i2c;
+
+#ifdef CONFIG_SEC_PM_DEBUG
+	pr_info("%s: %s enable (0x%x)\n", __func__, rdev->desc->name, rdev->desc->enable_reg);
+
+	if (*debug_temp != '\0') {
+		if (strstr(debug_temp, rdev->desc->name)) {
+			dump_stack();
+		}
+	}
+#endif
 
 	return s2dos03_update_reg(i2c, rdev->desc->enable_reg,
 				  info->opmode[rdev_get_id(rdev)],
@@ -160,6 +185,16 @@ static int s2m_disable_regmap(struct regulator_dev *rdev)
 		val = rdev->desc->enable_mask;
 	else
 		val = 0;
+
+#ifdef CONFIG_SEC_PM_DEBUG
+	pr_info("%s: %s disable (0x%x)\n", __func__, rdev->desc->name, rdev->desc->enable_reg);
+
+	if (*debug_temp != '\0') {
+		if (strstr(debug_temp, rdev->desc->name)) {
+			dump_stack();
+		}
+	}
+#endif
 
 	return s2dos03_update_reg(i2c, rdev->desc->enable_reg,
 				   val, rdev->desc->enable_mask);

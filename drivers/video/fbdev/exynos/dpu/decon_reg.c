@@ -11,8 +11,7 @@
 */
 
 #include "decon.h"
-/* current setting for 3HF4 & 3HA6 does not support VESA_SCR_V4 */
-//#define VESA_SCR_V4
+
 /******************* CAL raw functions implementation *************************/
 
 u32 decon_reg_get_cam_status(void __iomem *cam_status)
@@ -94,6 +93,17 @@ void decon_reg_get_dispif_size(u32 id, u32 *w, u32 *h)
 	*h = DISPIF_HEIGHT_GET(val);
 }
 
+/* DECON2 only */
+void decon_reg_set_dispif_sync_pol(u32 id, u8 h_sync_pol, u8 v_sync_pol)
+{
+	if (id != 2)
+		return;
+
+	decon_write_mask(id, DISPIF_CONTROL,
+			DISPIF_HSYNC_ACTIVE_VALUE(h_sync_pol) | DISPIF_VSYNC_ACTIVE_VALUE(v_sync_pol),			
+			DISPIF_HSYNC_ACTIVE_VALUE_MASK | DISPIF_VSYNC_ACTIVE_VALUE_MASK);
+}
+
 int decon_reg_reset(u32 id)
 {
 	int tries;
@@ -152,6 +162,41 @@ void decon_reg_set_clkgate_mode(u32 id, u32 en)
 	else
 		mask = CLOCK_CONTROL_0_F_MASK;
 	decon_write_mask(id, CLOCK_CONTROL_0, val, mask);
+}
+
+/*
+* Check the connection of DECON & DMA(DPP)
+*
+* CH0[5:4](vg0=2) - CH1[9:8](vgf0=4) - CH2[13:12](vgf1=5)
+* - CH3[17:16](g1=1) - CH4[21:20](vg1=3)
+*
+* return : 0=decon0, 1=decon1, 2=decon2, 3=idle
+*/
+u32 decon_reg_get_rsc_dma_info(u32 id, u32 dpp_id)
+{
+	u32 val = 0;
+	/* NA, G1-VG0-VG1-VGF0-VGF1 */
+	u32 bit_pos[6] = {0, 16, 4, 20, 8, 12};
+	u32 decon_id = 0;
+
+	if (dpp_id == 0)
+		val = 0;
+	else
+		val = decon_read(id, RESOURCE_OCCUPANCY_INFO_1);
+
+	decon_id = (val >> bit_pos[dpp_id]) & 0x3;
+	return decon_id;
+}
+
+int decon_reg_instant_stop(u32 id, unsigned long timeout)
+{
+	int ret = 0;
+
+	decon_reg_direct_on_off(id, 0);
+	decon_reg_update_req_global(id);
+	ret = decon_reg_wait_idle_status_timeout(id, timeout);
+
+	return ret;
 }
 
 /*
@@ -555,6 +600,7 @@ void decon_reg_config_data_path_size(u32 id,
 	u32 dual_dsi = 0;
 	u32 dsim_if0 = 1;
 	u32 dsim_if1 = 0;
+	struct decon_device *decon = get_decon_drvdata(id);
 
 	dual_dsc = decon_reg_get_data_path_cfg(id, PATH_CON_ID_DUAL_DSC);
 	dsim_if0 = decon_reg_get_data_path_cfg(id, PATH_CON_ID_DSIM_IF0);
@@ -591,7 +637,9 @@ void decon_reg_config_data_path_size(u32 id,
 		decon_reg_set_formatter_size(id, 0, width, height);
 		decon_reg_set_formatter_size(id, 1, width, height);
 	} else {
-		decon_err("decon%d : not specified case for FORMATTER\n", id);
+		/* When Decon WrightBack, Remove Log. Too many logs*/
+		if (decon->dt.out_type != DECON_OUT_WB)
+			decon_err("decon%d : not specified case for FORMATTER\n", id);
 		decon_reg_set_formatter_size(id, 0, width, height);
 	}
 }
@@ -626,6 +674,7 @@ void dpu_sysreg_set_lpmux(void __iomem *sysreg)
 *    0 = TE_FROM_SPEEDY
 *    1 = TE_FROM_GPIO
 */
+
 void dpu_sysreg_set_te_sel(u32 id, u32 te_sel)
 {
 	u32 val;
@@ -714,6 +763,13 @@ void decon_reg_set_disp_ss_cfg(u32 id, struct decon_mode_info *psr)
 	sysreg_write(id, DISP_DLMUX_CFG, val);
 	decon_dbg("%s: DLMUX_CFG = 0x%x\n", __func__, val);
 
+	/* TE_SEL : GPIO -> change SPEEDY if necessary */
+	val = SEL_TE_PATH(0, TE_FROM_GPIO)
+		| SEL_TE_PATH(1, TE_FROM_GPIO)
+		| SEL_TE_PATH(2, TE_FROM_GPIO);
+	sysreg_write(id, DISP_DPU_TE_SEL, val);
+	decon_dbg("%s: TE_SEL = 0x%x\n", __func__, val);
+
 	/*
 	* LPMUX_CFG configuration : DSIM - MIPI_DPHY connection
 	* -> will be configured at DSIM
@@ -745,6 +801,11 @@ void decon_reg_get_crc_data(u32 id, u32 *w0_data, u32 *w1_data)
 	*w1_data = CRC_DATA_WCLK1_GET(val);
 }
 
+void decon_reg_clear_all_update_req(u32 id)
+{
+	decon_write(id, SHADOW_REG_UPDATE_REQ, 0);
+}
+
 void decon_reg_update_req_global(u32 id)
 {
 	u32 mask;
@@ -774,6 +835,7 @@ void decon_reg_all_win_shadow_update_req(u32 id)
 
 	decon_write_mask(id, SHADOW_REG_UPDATE_REQ, ~0, mask);
 }
+
 
 u32 decon_reg_get_idle_status(u32 id)
 {
@@ -949,17 +1011,21 @@ void decon_reg_set_trigger(u32 id, struct decon_mode_info *psr,
 	if (psr->psr_mode == DECON_VIDEO_MODE)
 		return;
 
-	if (psr->trig_mode == DECON_SW_TRIG)
-	{
+	if (psr->trig_mode == DECON_SW_TRIG) {
 		val = (en == DECON_TRIG_ENABLE) ? SW_TRIG_EN : 0;
 		mask = HW_TRIG_EN | SW_TRIG_EN;
-	} else { /* DECON_HW_TRIG */
+	} else {
 		val = (en == DECON_TRIG_ENABLE) ?
-				HW_TRIG_EN : HW_TRIG_MASK_DECON;
+			HW_TRIG_EN : HW_TRIG_MASK_DECON;
 		mask = HW_TRIG_EN | HW_TRIG_MASK_DECON;
 	}
 
 	decon_write_mask(id, HW_SW_TRIG_CONTROL, val, mask);
+}
+
+void decon_reg_set_timeout_value(u32 id, u32 to_val)
+{
+	decon_write(id, TIME_OUT_VALUE, to_val);
 }
 
 /****************** DSC related functions ********************/
@@ -1559,6 +1625,7 @@ void dsc_reg_set_pps(u32 dsc_id, struct decon_dsc *dsc_enc)
 
 	dsc_reg_set_pps_16_17_init_xmit_delay(dsc_id,
 		dsc_enc->initial_xmit_delay);
+
 #ifndef VESA_SCR_V4
 	dsc_reg_set_pps_18_19_init_dec_delay(dsc_id, 0x01B4);
 #else
@@ -1591,6 +1658,7 @@ void dsc_reg_set_pps(u32 dsc_id, struct decon_dsc *dsc_enc)
 	dsc_write(dsc_id, 0x0070, 0x2B342B74);
 	dsc_write(dsc_id, 0x0074, 0x3B746BF4);
 #endif
+
 }
 
 /*
@@ -1955,12 +2023,6 @@ static void decon_reg_init_probe(u32 id, u32 dsi_idx, struct decon_param *p)
 		decon_reg_set_dispif_size(id, lcd_info->xres, lcd_info->yres);
 	}
 
-	decon_reg_update_req_global(id);
-
-	if (psr->psr_mode == DECON_MIPI_COMMAND_MODE) {
-		decon_reg_set_trigger(id, psr, DECON_TRIG_DISABLE);
-	}
-
 	decon_reg_get_data_path(id, &d_path, &e_path);
 	decon_dbg("%s: decon%d, enhance path(0x%x), data path(0x%x)\n",
 			__func__, id, e_path, d_path);
@@ -1983,6 +2045,8 @@ int decon_reg_init(u32 id, u32 dsi_idx, struct decon_param *p)
 	}
 
 	dpu_sysreg_set_te_sel(id, TE_FROM_GPIO);
+
+	//decon_reg_reset(id);
 
 	decon_reg_set_clkgate_mode(id, 1);
 
@@ -2113,12 +2177,14 @@ int decon_reg_stop_nreset(u32 id, struct decon_mode_info *psr)
 	return ret;
 }
 
+
 int decon_reg_stop(u32 id, u32 dsi_idx, struct decon_mode_info *psr)
 {
 	int ret = 0;
+	//int ret1 = 0, ret2 = 0;
 	int timeout_value = 0;
 	struct decon_device *decon = get_decon_drvdata(id);
-
+        
 	if ((psr->psr_mode == DECON_MIPI_COMMAND_MODE) &&
 			(psr->trig_mode == DECON_HW_TRIG)) {
 		decon_reg_set_trigger(id, psr, DECON_TRIG_DISABLE);
@@ -2137,6 +2203,12 @@ int decon_reg_stop(u32 id, u32 dsi_idx, struct decon_mode_info *psr)
 		ret = decon_reg_wait_run_is_off_timeout(id, timeout_value * 1000);
 	}
 
+#if 0 
+	ret2 = decon_reg_reset(id);
+
+	if (ret1 || ret2)
+		ret = -EBUSY;
+#endif
 	return ret;
 }
 
@@ -2168,6 +2240,7 @@ void decon_reg_clear_int_all(u32 id)
 			| DPU_FIFO_SEL_MASK
 			| DPU_UNDER_FLOW_INT_EN);
 	}
+	mask |= DPU_EXTRA_INT_EN;
 	decon_write_mask(id, INTERRUPT_PENDING, ~0, mask);
 
 	mask = (DPU_RESOURCE_CONFLICT_INT_EN
@@ -2196,8 +2269,10 @@ void decon_reg_set_int(u32 id, struct decon_mode_info *psr, u32 en)
 		if (psr->psr_mode == DECON_VIDEO_MODE && psr->out_type == DECON_OUT_DP) {
 			val = (DPU_FIFO_SEL_DISPIF
 				| DPU_UNDER_FLOW_INT_EN
+				| DPU_FRAME_DONE_INT_EN
 				| DPU_DISPIF_VSTATUS_INT_EN
 				| DPU_DISPIF_VSTATUS_INT_SEL(DPU_VERTICAL_VSYNC_START)
+				| DPU_EXTRA_INT_EN
 				| DPU_INT_EN);
 		}
 
@@ -2373,7 +2448,7 @@ void decon_reg_set_win_bnd_function(u32 id, u32 win_idx,
 	} else if (blend == DECON_BLENDING_NONE) {
 		decon_dbg("%s:%d none blending mode\n", __func__, __LINE__);
 	} else {
-		decon_warn("%s:%d undefined blending mode\n", __func__, __LINE__);
+ 		decon_warn("%s:%d undefined blending mode\n", __func__, __LINE__);
 	}
 
 	decon_reg_set_win_plane_alpha(id, win_idx, alpha0, alpha1);
@@ -2403,6 +2478,7 @@ void decon_reg_set_window_control(u32 id, int win_idx,
 
 	decon_dbg("%s: regs->type(%d)\n", __func__, regs->type);
 }
+
 
 void decon_reg_update_req_and_unmask(u32 id, struct decon_mode_info *psr)
 {
@@ -2573,3 +2649,50 @@ void decon_reg_get_clock_ratio(struct decon_clocks *clks, struct decon_lcd *lcd_
 		clks->decon[CLK_ID_PCLK],
 		clks->decon[CLK_ID_DPLL]);
 }
+#ifdef CONFIG_SUPPORT_DSU
+void decon_set_dsu_update(u32 id, enum decon_dsi_mode dsi_mode, 
+		struct decon_param *p)
+{
+	u32 width;
+	u32 overlap_w = 0;
+	enum decon_data_path d_path = DPATH_DSCC_DSCENC01_FF01_FORMATTER0_DSIMIF0;
+	enum decon_rgb_order rgb = DECON_RGB;
+	enum decon_enhance_path e_path = ENHANCEPATH_ENHANCE_ALL_OFF;
+	struct decon_lcd *lcd_info = p->lcd_info;
+	
+	width = lcd_info->xres;
+
+	decon_reg_set_blender_bg_image_size(id, dsi_mode, lcd_info);
+	decon_reg_set_dispif_porch(id, lcd_info);
+
+	if (lcd_info->dsc_enabled) {
+		if (lcd_info->dsc_cnt == 1)
+			d_path = DPATH_DSCENC0_FF0_FORMATTER0_DSIMIF0;
+		else if (lcd_info->dsc_cnt == 2)
+			d_path = DPATH_DSCC_DSCENC01_FF01_FORMATTER0_DSIMIF0;
+		else
+			decon_err("[decon%d] dsc_cnt=%d : not supported\n",
+				id, lcd_info->dsc_cnt);
+		decon_reg_set_data_path(id, d_path, e_path);
+		dsc_reg_init(id, p, overlap_w, 0);
+
+	} else {
+		rgb = DECON_BGR;
+		if (dsi_mode == DSI_MODE_DUAL_DSI)
+			d_path = DPATH_NOCOMP_SPLITTER_FF0FF1_FORMATTER01_DSIMIF01;
+		else if (id == 2)
+			d_path = DECON2_NOCOMP_FF0_FORMATTER0_DISPIF;
+		else
+			d_path = DPATH_NOCOMP_FF0_FORMATTER0_DSIMIF0;
+
+		decon_reg_set_data_path(id, d_path, e_path);
+		decon_reg_config_data_path_size(id,
+			lcd_info->xres, lcd_info->yres, overlap_w);
+		decon_reg_set_dispif_size(id, lcd_info->xres, lcd_info->yres);
+	}
+
+	decon_reg_set_rgb_order(id, rgb);
+	//decon_reg_config_data_path_size(id, width, lcd_info->yres, overlap_w);
+	//decon_reg_set_dispif_size(id, width, lcd_info->yres);
+}
+#endif

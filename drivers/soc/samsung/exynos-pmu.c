@@ -45,22 +45,18 @@ EXPORT_SYMBOL(exynos_pmu_update);
 
 /**
  * CPU power control registers in PMU are arranged at regular intervals
- * (interval = 0x8). pmu_cpu_offset calculates how far cpu is from address
+ * (interval = 0x80). pmu_cpu_offset calculates how far cpu is from address
  * of first cpu. This expression is based on cpu and cluster id in MPIDR,
  * refer below.
 
- * cpu address offset : ((cluster id << 2) | (cpu id)) * 0x8
+ * cpu address offset : ((cluster id << 2) | (cpu id)) * 0x80
  */
 
-#ifdef CONFIG_SOC_EXYNOS9810
-#define phy_cluster(cpu)	!MPIDR_AFFINITY_LEVEL(cpu_logical_map(cpu), 1)
-#else
 #define phy_cluster(cpu)	MPIDR_AFFINITY_LEVEL(cpu_logical_map(cpu), 1)
-#endif
 
 #define phy_cpu(cpu)	MPIDR_AFFINITY_LEVEL(cpu_logical_map(cpu), 0)
 
-#define pmu_cpu_offset(cpu)	(((phy_cluster(cpu) << 2)| phy_cpu(cpu)) * 0x8)
+#define pmu_cpu_offset(cpu)	(((phy_cluster(cpu) << 2)| phy_cpu(cpu)) * 0x80)
 
 #define PMU_CPU_CONFIG_BASE			0x2000
 #define PMU_CPU_STATUS_BASE			0x2004
@@ -85,13 +81,12 @@ static int pmu_cpu_state(unsigned int cpu)
 	return ((val & CPU_LOCAL_PWR_CFG) == CPU_LOCAL_PWR_CFG);
 }
 
-#define CLUSTER_ADDR_OFFSET			0x8
-#define PMU_NONCPU_CONFIG_BASE			0x2040
-#define PMU_NONCPU_STATUS_BASE			0x2044
-#define PMU_MEMORY_CLUSTER1_NONCPU_STATUS	0x2380
-#define MEMORY_CLUSTER_ADDR_OFFSET		0x21C
+#define CLUSTER_ADDR_OFFSET			0x20
+#define PMU_CPUSEQ_OPTION_BASE			0x2488
+#define PMU_NONCPU_STATUS_BASE			0x2404
+#define PMU_L2_STATUS_BASE			0x2604
 #define NONCPU_LOCAL_PWR_CFG			0xF
-#define SHARED_CACHE_LOCAL_PWR_CFG		0x1
+#define L2_LOCAL_PWR_CFG			0x7
 
 static void pmu_cluster_ctrl(unsigned int cpu, int enable)
 {
@@ -99,9 +94,7 @@ static void pmu_cluster_ctrl(unsigned int cpu, int enable)
 
 	offset = phy_cluster(cpu) * CLUSTER_ADDR_OFFSET;
 	regmap_update_bits(pmureg,
-			PMU_NONCPU_CONFIG_BASE + offset,
-			NONCPU_LOCAL_PWR_CFG,
-			enable ? NONCPU_LOCAL_PWR_CFG : 0);
+			PMU_CPUSEQ_OPTION_BASE + offset, 1, enable);
 }
 
 static bool pmu_noncpu_state(unsigned int cpu)
@@ -116,17 +109,17 @@ static bool pmu_noncpu_state(unsigned int cpu)
 	return !!(noncpu_stat & NONCPU_LOCAL_PWR_CFG);
 }
 
-static int pmu_shared_cache_state(unsigned int cpu)
+static int pmu_l2_state(unsigned int cpu)
 {
-	unsigned int shared_stat = 0;
+	unsigned int l2_stat = 0;
 	unsigned int offset;
 
-	offset = phy_cluster(cpu) * MEMORY_CLUSTER_ADDR_OFFSET;
+	offset = phy_cluster(cpu) * CLUSTER_ADDR_OFFSET;
 
 	regmap_read(pmureg,
-		PMU_MEMORY_CLUSTER1_NONCPU_STATUS + offset, &shared_stat);
+		PMU_L2_STATUS_BASE + offset, &l2_stat);
 
-	return (shared_stat & SHARED_CACHE_LOCAL_PWR_CFG);
+	return !!(l2_stat & L2_LOCAL_PWR_CFG);
 }
 
 static void exynos_cpu_up(unsigned int cpu)
@@ -156,7 +149,7 @@ static void exynos_cluster_down(unsigned int cpu)
 
 static int exynos_cluster_state(unsigned int cpu)
 {
-	return pmu_shared_cache_state(cpu) &&
+	return pmu_l2_state(cpu) &&
 			pmu_noncpu_state(cpu);
 }
 
@@ -168,6 +161,33 @@ struct exynos_cpu_power_ops exynos_cpu = {
 	.cluster_down = exynos_cluster_down,
 	.cluster_state = exynos_cluster_state,
 };
+
+#ifdef CONFIG_SOC_EXYNOS8895
+#define PMU_CPU_RESET_BASE		(0x200C)
+#define DISABLE_WDT_CPUPORESET		BIT(12)
+#define DISABLE_CORERESET		BIT(9)
+#define DISABLE_CPUPORESET		BIT(8)
+#define DISABLE_RESET			(DISABLE_WDT_CPUPORESET	\
+					| DISABLE_CORERESET	\
+					| DISABLE_CPUPORESET)
+void exynos_cpu_reset_enable(unsigned int cpu)
+{
+	unsigned int offset;
+
+	offset = pmu_cpu_offset(cpu);
+	regmap_update_bits(pmureg, PMU_CPU_RESET_BASE + offset,
+			DISABLE_RESET, 0);
+}
+
+void exynos_cpu_reset_disable(unsigned int cpu)
+{
+	unsigned int offset;
+
+	offset = pmu_cpu_offset(cpu);
+	regmap_update_bits(pmureg, PMU_CPU_RESET_BASE + offset,
+			DISABLE_RESET, DISABLE_RESET);
+}
+#endif
 
 #define PMU_CP_STAT		0x0038
 int exynos_check_cp_status(void)
@@ -198,9 +218,9 @@ static ssize_t core_status_show(struct kobject *kobj,
 		 * the cpu is a first one of each cluster.
 		 */
 		if (!(cpu % NR_CPUS_PER_CLUSTER)) {
-			n += scnprintf(buf + n, 26, "%s shared_cache : %d\n",
+			n += scnprintf(buf + n, 24, "%s L2 : %d\n",
 				(!cpu) ? "boot" : "nonboot",
-				pmu_shared_cache_state(cpu));
+				pmu_l2_state(cpu));
 
 			n += scnprintf(buf + n, 24, "%s Noncpu : %d\n",
 				(!cpu) ? "boot" : "nonboot",

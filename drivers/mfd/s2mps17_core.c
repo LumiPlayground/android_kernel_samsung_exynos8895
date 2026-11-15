@@ -580,6 +580,42 @@ static int s2mps17_resume(struct device *dev)
 #define s2mps17_resume NULL
 #endif /* CONFIG_PM */
 
+#ifdef CONFIG_SEC_PM
+extern unsigned int get_smpl_warn_number(void);
+extern void clear_smpl_warn_number(void);
+
+static unsigned int smpl_warn_counts = 0;
+static int get_smpl_warn_count(char *val, const struct kernel_param *kp)
+{
+	smpl_warn_counts = get_smpl_warn_number();
+
+	pr_info("%s: smpl_warn_counts=0x%x\n", __func__, smpl_warn_counts);
+
+	return param_get_uint(val, kp);
+}
+
+static int clear_smpl_warn_count(const char *val, const struct kernel_param *kp)
+{
+
+	int rv = param_set_uint(val, kp);
+
+	if(*val=='c') {
+		clear_smpl_warn_number();  /* clear after reading */
+		pr_info("%s: smpl_warn_counts clear\n", __func__);
+	}
+
+	return rv;
+}
+
+static struct kernel_param_ops smpl_warn_count_param_ops = {
+	.get = get_smpl_warn_count,
+	.set = clear_smpl_warn_count,
+};
+
+module_param_cb(smpl_warn_count, &smpl_warn_count_param_ops, &smpl_warn_counts, 0660);
+MODULE_PARM_DESC(smpl_warn_count, "check smpl warn count");
+#endif
+
 const struct dev_pm_ops s2mps17_pm = {
 	.suspend_late = s2mps17_suspend,
 	.resume_early = s2mps17_resume,

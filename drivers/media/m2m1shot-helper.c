@@ -52,22 +52,17 @@ void m2m1shot_unmap_dma_buf(struct device *dev,
 }
 EXPORT_SYMBOL(m2m1shot_unmap_dma_buf);
 
-static inline bool is_dma_coherent(struct device *dev)
-{
-	return device_get_dma_attr(dev) == DEV_DMA_COHERENT;
-}
-
 int m2m1shot_dma_addr_map(struct device *dev,
 			struct m2m1shot_buffer_dma *buf,
 			int plane_idx, enum dma_data_direction dir)
 {
 	struct m2m1shot_buffer_plane_dma *plane = &buf->plane[plane_idx];
-	dma_addr_t iova;
 	int prot = IOMMU_READ;
+	dma_addr_t iova;
 
-	if (dir == DMA_FROM_DEVICE)
+	if (dir != DMA_TO_DEVICE)
 		prot |= IOMMU_WRITE;
-	if (is_dma_coherent(dev))
+	if (device_get_dma_attr(dev) == DEV_DMA_COHERENT)
 		prot |= IOMMU_CACHE;
 
 	if (plane->dmabuf) {
@@ -107,9 +102,6 @@ void m2m1shot_sync_for_device(struct device *dev,
 			      struct m2m1shot_buffer_plane_dma *plane,
 			      enum dma_data_direction dir)
 {
-	if (is_dma_coherent(dev))
-		return;
-
 	if (plane->dmabuf)
 		exynos_ion_sync_dmabuf_for_device(dev, plane->dmabuf,
 						  plane->bytes_used, dir);
@@ -123,9 +115,6 @@ void m2m1shot_sync_for_cpu(struct device *dev,
 			   struct m2m1shot_buffer_plane_dma *plane,
 			   enum dma_data_direction dir)
 {
-	if (is_dma_coherent(dev))
-		return;
-
 	if (plane->dmabuf)
 		exynos_ion_sync_dmabuf_for_cpu(dev, plane->dmabuf,
 					       plane->bytes_used, dir);

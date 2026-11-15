@@ -36,13 +36,6 @@ config EXYNOS_DEVICE_MIPI_CSIS_VER3
 	help
 	  Enable Device MIPI-CSIS S/W Version 3(Including WDMA and Sensor Group)
 
-config EXYNOS_DEVICE_MIPI_CSIS_VER4
-	bool "Use Device MIPI-CSIS S/W Version 4(Sensor Group)"
-	depends on USE_SENSOR_GROUP
-	default n
-	help
-	  Enable Device MIPI-CSIS S/W Version 4(Including WDMA and Sensor Group)
-
 source "drivers/media/platform/exynos/fimc-is2/sensor/csi2/Kconfig"
 endmenu
 
@@ -63,7 +56,5 @@ source "drivers/media/platform/exynos/fimc-is2/sensor/module_framework/actuator/
 source "drivers/media/platform/exynos/fimc-is2/sensor/module_framework/flash/Kconfig"
 source "drivers/media/platform/exynos/fimc-is2/sensor/module_framework/ois/Kconfig"
 source "drivers/media/platform/exynos/fimc-is2/sensor/module_framework/dphy/Kconfig"
-source "drivers/media/platform/exynos/fimc-is2/sensor/module_framework/pdp/Kconfig"
-source "drivers/media/platform/exynos/fimc-is2/sensor/module_framework/aperture/Kconfig"
 
 endmenu

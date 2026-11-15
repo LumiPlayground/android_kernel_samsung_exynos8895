@@ -54,7 +54,7 @@ config UPDATE_BATTERY_DATA
 	help
 	 Say Y to include support for step charging
 
-config SAMSUNG_BATTERY_ENG_TEST
+config ENG_BATTERY_CONCEPT
 	tristate "set test mode in eng build"
 	default n
 	depends on BATTERY_SAMSUNG

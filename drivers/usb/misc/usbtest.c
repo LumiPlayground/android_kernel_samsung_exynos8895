@@ -289,9 +289,6 @@ static struct urb *usbtest_alloc_urb(
 	if (usb_pipein(pipe))
 		urb->transfer_flags |= URB_SHORT_NOT_OK;
 
-	if ((bytes + offset) == 0)
-		return urb;
-
 	if (urb->transfer_flags & URB_NO_TRANSFER_DMA_MAP)
 		urb->transfer_buffer = usb_alloc_coherent(udev, bytes + offset,
 			GFP_KERNEL, &urb->transfer_dma);
@@ -2605,7 +2602,7 @@ usbtest_ioctl(struct usb_interface *intf, unsigned int code, void *buf)
 	ktime_get_ts64(&start);
 
 	retval = usbtest_do_ioctl(intf, param_32);
-	if (retval < 0)
+	if (retval)
 		goto free_mutex;
 
 	ktime_get_ts64(&end);

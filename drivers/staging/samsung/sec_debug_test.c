@@ -18,25 +18,13 @@
 #include <linux/cpu.h>
 #include <linux/io.h>
 #include <linux/slab.h>
-#include <linux/exynos-ss.h>
-#include <asm-generic/io.h>
-#include <linux/ctype.h>
-#include <linux/pm_qos.h>
 
 #include <soc/samsung/exynos-pmu.h>
-#include <linux/moduleparam.h>
-
-/* Override the default prefix for the compatibility with other models */
-#undef MODULE_PARAM_PREFIX
-#define MODULE_PARAM_PREFIX "sec_debug."
 
 typedef void (*force_error_func)(char *arg);
 
 static void simulate_KP(char *arg);
 static void simulate_DP(char *arg);
-static void simulate_QDP(char *arg);
-static void simulate_SVC(char *arg);
-static void simulate_SFR(char *arg);
 static void simulate_WP(char *arg);
 static void simulate_TP(char *arg);
 static void simulate_PANIC(char *arg);
@@ -51,9 +39,7 @@ static void simulate_MCRPT(char *arg);
 static void simulate_LOMEM(char *arg);
 static void simulate_SOFT_LOCKUP(char *arg);
 static void simulate_HARD_LOCKUP(char *arg);
-static void simulate_BAD_SCHED(char *arg);
 static void simulate_SPIN_LOCKUP(char *arg);
-static void simulate_ALLSPIN_LOCKUP(char *arg);
 static void simulate_PC_ABORT(char *arg);
 static void simulate_SP_ABORT(char *arg);
 static void simulate_JUMP_ZERO(char *arg);
@@ -61,37 +47,34 @@ static void simulate_BUSMON_ERROR(char *arg);
 static void simulate_UNALIGNED(char *arg);
 static void simulate_WRITE_RO(char *arg);
 static void simulate_OVERFLOW(char *arg);
+static void simulate_SVC(char *arg);
 
 enum {
-	FORCE_KERNEL_PANIC = 0,		/* KP */
-	FORCE_WATCHDOG,			/* DP */
-	FORCE_QUICKWATCHDOG,		/* QDP */
-	FORCE_SVC,			/* SVC */
-	FORCE_SFR,			/* SFR */
-	FORCE_WARM_RESET,		/* WP */
-	FORCE_HW_TRIPPING,		/* TP */
-	FORCE_PANIC,			/* PANIC */
-	FORCE_BUG,			/* BUG */
-	FORCE_WARN,			/* WARN */
-	FORCE_DATA_ABORT,		/* DABRT */
-	FORCE_PREFETCH_ABORT,		/* PABRT */
-	FORCE_UNDEFINED_INSTRUCTION,	/* UNDEF */
-	FORCE_DOUBLE_FREE,		/* DFREE */
-	FORCE_DANGLING_REFERENCE,	/* DREF */
-	FORCE_MEMORY_CORRUPTION,	/* MCRPT */
-	FORCE_LOW_MEMEMORY,		/* LOMEM */
-	FORCE_SOFT_LOCKUP,		/* SOFT LOCKUP */
-	FORCE_HARD_LOCKUP,		/* HARD LOCKUP */
-	FORCE_SPIN_LOCKUP,		/* SPIN LOCKUP */
-	FORCE_ALLSPIN_LOCKUP,		/* ALL SPIN LOCKUP */
-	FORCE_PC_ABORT,			/* PC ABORT */
-	FORCE_SP_ABORT,			/* SP ABORT */
-	FORCE_JUMP_ZERO,		/* JUMP TO ZERO */
-	FORCE_BUSMON_ERROR,		/* BUSMON ERROR */
-	FORCE_UNALIGNED,		/* UNALIGNED WRITE */
-	FORCE_WRITE_RO,			/* WRITE RODATA */
-	FORCE_OVERFLOW,			/* STACK OVERFLOW */
-	FORCE_BAD_SCHEDULING,		/* BAD SCHED */
+	FORCE_KERNEL_PANIC = 0,      /* KP */
+	FORCE_WATCHDOG,              /* DP */
+	FORCE_WARM_RESET,            /* WP */
+	FORCE_HW_TRIPPING,           /* TP */
+	FORCE_PANIC,                 /* PANIC */
+	FORCE_BUG,		     /* BUG */
+	FORCE_WARN,		     /* WARN */
+	FORCE_DATA_ABORT,            /* DABRT */
+	FORCE_PREFETCH_ABORT,	     /* PABRT */
+	FORCE_UNDEFINED_INSTRUCTION, /* UNDEF */
+	FORCE_DOUBLE_FREE,           /* DFREE */
+	FORCE_DANGLING_REFERENCE,    /* DREF */
+	FORCE_MEMORY_CORRUPTION,     /* MCRPT */
+	FORCE_LOW_MEMEMORY,          /* LOMEM */
+	FORCE_SOFT_LOCKUP,           /* SOFT LOCKUP */
+	FORCE_HARD_LOCKUP,           /* HARD LOCKUP */
+	FORCE_SPIN_LOCKUP,	     /* SPIN LOCKUP */
+	FORCE_PC_ABORT,		     /* PC ABORT */
+	FORCE_SP_ABORT,		     /* SP ABORT */
+	FORCE_JUMP_ZERO,	     /* JUMP TO ZERO */
+	FORCE_BUSMON_ERROR,	     /* BUSMON ERROR */
+	FORCE_UNALIGNED,	     /* UNALIGNED WRITE */
+	FORCE_WRITE_RO,		     /* WRITE RODATA */
+	FORCE_OVERFLOW, 	     /* STACK OVERFLOW */
+	FORCE_SVC,			/* SUPERVISOR CALL */
 	NR_FORCE_ERROR,
 };
 
@@ -106,27 +89,23 @@ struct force_error {
 
 struct force_error force_error_vector = {
 	.item = {
-		{"KP",		&simulate_KP},
-		{"DP",		&simulate_DP},
-		{"QDP",		&simulate_QDP},
-		{"SVC",		&simulate_SVC},
-		{"SFR",		&simulate_SFR},
-		{"WP",		&simulate_WP},
-		{"TP",		&simulate_TP},
+		{"KP",          &simulate_KP},
+		{"DP",          &simulate_DP},
+		{"WP",          &simulate_WP},
+		{"TP",          &simulate_TP},
 		{"panic",	&simulate_PANIC},
-		{"bug",		&simulate_BUG},
-		{"warn",	&simulate_WARN},
-		{"dabrt",	&simulate_DABRT},
+		{"bug", 	&simulate_BUG},
+		{"warn", 	&simulate_WARN},
+		{"dabrt",       &simulate_DABRT},
 		{"pabrt",	&simulate_PABRT},
-		{"undef",	&simulate_UNDEF},
-		{"dfree",	&simulate_DFREE},
-		{"danglingref",	&simulate_DREF},
-		{"memcorrupt",	&simulate_MCRPT},
-		{"lowmem",	&simulate_LOMEM},
+		{"undef",       &simulate_UNDEF},
+		{"dfree",       &simulate_DFREE},
+		{"danglingref", &simulate_DREF},
+		{"memcorrupt",  &simulate_MCRPT},
+		{"lowmem",      &simulate_LOMEM},
 		{"softlockup",	&simulate_SOFT_LOCKUP},
-		{"hardlockup",	&simulate_HARD_LOCKUP},
+		{"hardlockup",  &simulate_HARD_LOCKUP},
 		{"spinlockup",	&simulate_SPIN_LOCKUP},
-		{"allspinlockup", &simulate_ALLSPIN_LOCKUP},
 		{"pcabort",	&simulate_PC_ABORT},
 		{"spabort",	&simulate_SP_ABORT},
 		{"jumpzero",	&simulate_JUMP_ZERO},
@@ -134,7 +113,7 @@ struct force_error force_error_vector = {
 		{"unaligned",	&simulate_UNALIGNED},
 		{"writero",	&simulate_WRITE_RO},
 		{"overflow",	&simulate_OVERFLOW},
-		{"badsched",	&simulate_BAD_SCHED},
+		{"svc",		&simulate_SVC},
 	}
 };
 
@@ -152,7 +131,7 @@ static int str_to_num(char *s)
 		case '5':
 		case '6':
 		case '7':
-			return (s[0] - '0');
+			return (s[0]-'0');
 
 		default:
 			return -1;
@@ -168,12 +147,12 @@ static int str_to_num(char *s)
 static void pull_down_other_cpus(void)
 {
 #ifdef CONFIG_HOTPLUG_CPU
-	int cpu, ret;
+	int cpu;
 
-	for (cpu = NR_CPUS - 1; cpu > 0 ; cpu--) {
-		ret = cpu_down(cpu);
-		if (ret)
-			pr_crit("%s: CORE%d ret: %x\n", __func__, cpu, ret);
+	for_each_online_cpu(cpu) {
+		if (cpu == 0)
+			continue;
+		cpu_down(cpu);
 	}
 #endif
 }
@@ -187,96 +166,13 @@ static void simulate_KP(char *arg)
 static void simulate_DP(char *arg)
 {
 	pr_crit("%s()\n", __func__);
-
 	pull_down_other_cpus();
-
-	pr_crit("%s() start to hanging\n", __func__);
 	local_irq_disable();
 	mdelay(DELAY_TIME);
 	local_irq_enable();
 
 	/* should not reach here */
-}
-
-static void simulate_QDP(char *arg)
-{
-	pr_crit("%s()\n", __func__);
-
-	s3c2410wdt_set_emergency_reset(10, 0);
-
-	mdelay(DELAY_TIME);
-
-	/* should not reach here */
-}
-
-static void simulate_SVC(char *arg)
-{
-	pr_crit("%s()\n", __func__);
-
-	asm("svc #0x0");
-
-	/* should not reach here */
-}
-
-static int find_blank(char *arg)
-{
-	int i;
-
-	/* if parameter is not one, a space between parameters is 0
-	 * End of parameter is lf(10)
-	 */
-	for (i = 0; !isspace(arg[i]) && arg[i]; i++)
-		continue;
-
-	return i;
-}
-
-static void simulate_SFR(char *arg)
-{
-	int ret, index = 0;
-	unsigned long reg, val;
-	char tmp[10], *tmparg;
-	void __iomem *addr;
-
-	pr_crit("%s() start\n", __func__);
-
-	index = find_blank(arg);
-	memcpy(tmp, arg, index);
-	tmp[index] = '\0';
-
-	ret = kstrtoul(tmp, 16, &reg);
-	addr = ioremap(reg, 0x10);
-	if (!addr) {
-		pr_crit("%s() failed to remap 0x%lx, quit\n", __func__, reg);
-		return;
-	}
-
-	pr_crit("%s() 1st parameter: 0x%lx\n", __func__, reg);
-
-	tmparg = &arg[index + 1];
-
-	index = find_blank(tmparg);
-	if (index == 0) {
-		pr_crit("%s() there is no 2nd parameter\n", __func__);
-		pr_crit("%s() try to read 0x%lx\n", __func__, reg);
-
-		ret = __raw_readl(addr);
-
-		pr_crit("%s() result : 0x%x\n", __func__, ret);
-
-	} else {
-		memcpy(tmp, tmparg, index);
-		tmp[index] = '\0';
-
-		ret = kstrtoul(tmp, 16, &val);
-		pr_crit("%s() 2nd parameter: 0x%lx\n", __func__, val);
-		pr_crit("%s() try to write 0x%lx to 0x%lx\n", __func__, val, reg);
-
-		__raw_writel(val, addr);
-	}
-
-
-	/* should not reach here */
+	pr_crit("%s() failed\n", __func__);
 }
 
 static void simulate_WP(char *arg)
@@ -297,7 +193,6 @@ static void simulate_PANIC(char *arg)
 {
 	pr_crit("%s()\n", __func__);
 	panic("simulate_panic");
-	pr_crit("DUMMY!\n");
 }
 
 static void simulate_BUG(char *arg)
@@ -315,7 +210,7 @@ static void simulate_WARN(char *arg)
 static void simulate_DABRT(char *arg)
 {
 	pr_crit("%s()\n", __func__);
-	*((int *)0) = 0; /* SVACE: intended */
+	*((int *) 0) = 0; /* SVACE: intended */
 }
 
 static void simulate_PABRT(char *arg)
@@ -327,7 +222,7 @@ static void simulate_PABRT(char *arg)
 static void simulate_UNDEF(char *arg)
 {
 	pr_crit("%s()\n", __func__);
-	asm volatile(".word 0xe7f001f2\n\t");
+	asm volatile(".word 0xdeadc0de\n\t");
 	unreachable();
 }
 
@@ -384,9 +279,7 @@ static void simulate_LOMEM(char *arg)
 static void simulate_SOFT_LOCKUP(char *arg)
 {
 	pr_crit("%s()\n", __func__);
-#ifdef CONFIG_LOCKUP_DETECTOR
 	softlockup_panic = 1;
-#endif
 	preempt_disable();
 	asm("b .");
 	preempt_enable();
@@ -413,40 +306,6 @@ static void simulate_HARD_LOCKUP(char *arg)
 			smp_call_function_single(cpu, simulate_HARD_LOCKUP_handler, 0, 0);
 		}
 	}
-}
-
-static void simulate_ALLSPIN_LOCKUP_handler(void *info)
-{
-	unsigned long flags = 0;
-
-	int cpu = smp_processor_id();
-
-	pr_crit("%s()/cpu:%d\n", __func__, cpu);
-	spin_lock_irqsave(&sec_debug_test_lock, flags);
-	spin_lock_irqsave(&sec_debug_test_lock, flags);
-}
-
-static struct pm_qos_request sec_min_pm_qos;
-
-static void simulate_ALLSPIN_LOCKUP(char *arg)
-{
-	unsigned long flags;
-
-	pr_crit("%s()\n", __func__);
-
-	pm_qos_add_request(&sec_min_pm_qos, PM_QOS_CPU_ONLINE_MIN,
-			   PM_QOS_CPU_ONLINE_MIN_DEFAULT_VALUE);
-	pm_qos_update_request(&sec_min_pm_qos,
-			      PM_QOS_CPU_ONLINE_MAX_DEFAULT_VALUE);
-	while (true) {
-		if (num_online_cpus() == PM_QOS_CPU_ONLINE_MAX_DEFAULT_VALUE)
-			break;
-	}
-
-	preempt_disable();
-	smp_call_function(simulate_ALLSPIN_LOCKUP_handler, NULL, 0);
-	spin_lock_irqsave(&sec_debug_test_lock, flags);
-	spin_lock_irqsave(&sec_debug_test_lock, flags);
 }
 
 static void simulate_SPIN_LOCKUP(char *arg)
@@ -482,6 +341,7 @@ static void simulate_JUMP_ZERO(char *arg)
 static void simulate_BUSMON_ERROR(char *arg)
 {
 	pr_crit("%s()\n", __func__);
+
 }
 
 static void simulate_UNALIGNED(char *arg)
@@ -529,48 +389,14 @@ static void simulate_OVERFLOW(char *arg)
 	recursive_loop(100);
 }
 
-static void simulate_BAD_SCHED_handler(void *info)
+static void simulate_SVC(char *arg)
 {
-	if (idle_cpu(smp_processor_id())) {
-		*(int *)info = 1;
-		msleep(1000);
-	}
-}
-
-static void simulate_BAD_SCHED(char *arg)
-{
-	int cpu;
-	int ret = 0;
-	int tries = 0;
-
 	pr_crit("%s()\n", __func__);
 
-	while (true) {
-		tries++;
-		pr_crit("%dth try.\n", tries);
-		for_each_online_cpu(cpu) {
-			if (idle_cpu(cpu))
-				smp_call_function_single(cpu, simulate_BAD_SCHED_handler, &ret, 1);
-			if (ret)
-				return;	/* success */
-		}
-		mdelay(100);
-	}
+	asm("svc #0x0");
 }
 
-static int sec_debug_get_force_error(char *buffer, const struct kernel_param *kp)
-{
-	int i;
-	int size = 0;
-
-	for (i = 0; i < NR_FORCE_ERROR; i++)
-		size += scnprintf(buffer + size, PAGE_SIZE - size, "%s\n",
-				  force_error_vector.item[i].errname);
-
-	return size;
-}
-
-static int sec_debug_set_force_error(const char *val, const struct kernel_param *kp)
+int sec_debug_force_error(const char *val, struct kernel_param *kp)
 {
 	int i;
 	char *temp;
@@ -586,11 +412,4 @@ static int sec_debug_set_force_error(const char *val, const struct kernel_param 
 	}
 	return 0;
 }
-
-static const struct kernel_param_ops sec_debug_force_error_ops = {
-	.set	= sec_debug_set_force_error,
-	.get	= sec_debug_get_force_error,
-};
-
-module_param_cb(force_error, &sec_debug_force_error_ops, NULL, 0600);
-
+EXPORT_SYMBOL(sec_debug_force_error);

@@ -140,7 +140,7 @@
 #define HVRXBYTE_MAX			16
 
 /* MAX77865 AFC charger W/A Check NUM */
-#define AFC_CHARGER_WA_PING		3
+#define AFC_CHARGER_WA_PING		5
 
 /* MAX77865 MPing miss SW Workaround - delay time */
 #define MPING_MISS_WA_TIME		2000
@@ -239,7 +239,8 @@ extern void max77865_hv_muic_adcmode_oneshot(struct hv_data *phv);
 extern void max77865_muic_prepare_afc_charger(struct hv_data *phv);
 extern bool max77865_muic_check_change_dev_afc_charger
 	(struct hv_data *phv, muic_attached_dev_t new_dev);
-extern int max77865_muic_afc_set_voltage(int voltage);
+extern void max77865_hv_muic_connect_start(struct hv_data *phv);
+extern void hv_muic_chgdet_ready(struct hv_data *phv);
 
 #endif /* __MAX77865_MUIC_HV_H__ */
 

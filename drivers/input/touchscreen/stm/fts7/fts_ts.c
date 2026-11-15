@@ -548,8 +548,6 @@ void fts_systemreset(struct fts_ts_info *info)
 
 	tsp_debug_info(true, &info->client->dev, "FTS SystemReset STM_VER(0x%2X)\n", info->stm_ver);
 	fts_write_reg(info, &regAdd[0], 4);
-
-	fts_release_all_finger(info);
 	fts_delay(10);
 }
 
@@ -654,13 +652,6 @@ static int fts_wait_for_ready(struct fts_ts_info *info)
 		}
 
 		if (data[0] == EVENTID_ERROR) {
-			if (data[1] == 0x03 && (data[2] == 0x01 || data[2] == 0x02)) {
-				tsp_debug_err(true, &info->client->dev, "%s: config error: 0x%02X\n",
-						__func__, data[2]);
-				rc = -FTS_ERROR_EVENT_ID;
-				break;
-			}
-
 			if (err_cnt++ > 32) {
 				rc = -FTS_ERROR_EVENT_ID;
 				break;
@@ -1373,7 +1364,7 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 					 ABS_MT_PRESSURE, info->brush_size);
 #endif
 #ifdef FTS_SUPPORT_SEC_SWIPE
-			input_report_abs(info->input_dev, ABS_MT_PALM,
+			input_report_abs(info->input_dev, ABS_MT_CUSTOM,
 					 palm);
 #endif
 #if defined(FTS_SUPPORT_SIDE_GESTURE)
@@ -1942,6 +1933,7 @@ static int fts_parse_dt(struct i2c_client *client)
 	struct fts_i2c_platform_data *pdata = dev->platform_data;
 	struct device_node *np = dev->of_node;
 	u32 coords[2], lines[2];
+	int lcdtype = 0;
 	int retval = 0;
 
 	pdata->tspid = of_get_named_gpio(np, "stm,tspid_gpio", 0);
@@ -2036,24 +2028,14 @@ static int fts_parse_dt(struct i2c_client *client)
 	}
 #endif
 
-/*	if((strncmp(pdata->project_name, "valley", 6) == 0)){
+	if((strncmp(pdata->project_name, "valley", 6) == 0)){
 		pdata->stm_ver = STM_VER7;
 		tsp_debug_err(true, dev,"%s:FTS7AD56 - VALLEY STM_VER(0x%2X)\n", __func__, pdata->stm_ver);
 		tsp_debug_err(true, dev, "max_coords[%d,%d]\n", pdata->max_x, pdata->max_y);
-	}else if(((lcdtype & LCD_ID2_MODEL_MASK) == MODEL_HEROPLUS) ||
-		(((lcdtype & LCD_ID2_MODEL_MASK) == MODEL_HEROEDGE)) ||*/
-		if ((strncmp(pdata->project_name, "PS-LTE", 6) == 0)) {
-		pdata->stm_ver = STM_VER7;
-		tsp_debug_err(true, dev,"%s:FTS7AD56 - STM_VER(0x%2X)\n", __func__, pdata->stm_ver);
-		pdata->max_x = 1439;
-		pdata->max_y = 2559;
-		pdata->grip_area = 0;
-		tsp_debug_err(true, dev, "max_coords changed[%d,%d]\n", pdata->max_x, pdata->max_y);
-	}/*
-	else{
+	} else {
 		pdata->stm_ver = STM_VER5;
 		tsp_debug_err(true, dev,"%s:FTS7AD56 - NOBLE/ZERO STM_VER(0x%2X)\n", __func__, pdata->stm_ver);
-	}*/
+	}
 
 	if (of_property_read_u32(np, "stm,device_num", &pdata->device_num))
 		tsp_debug_err(true, dev, "Failed to get device_num property\n");
@@ -2065,14 +2047,13 @@ static int fts_parse_dt(struct i2c_client *client)
 		else
 			dev->init_name = "sub  tsp";
 	}
-	if (of_property_read_u32(np, "stm,factory_item_version", &pdata->item_version) < 0)
-		pdata->item_version = 0;
 
-//	pdata->panel_revision = (lcdtype & 0xF000) >> 12;
+	pdata->panel_revision = (lcdtype & 0xF000) >> 12;
 	tsp_debug_info(true, dev,
-		"irq :%d, irq_type: 0x%04x, max[x,y]: [%d,%d], grip_area :%d, project/model_name: %s/%s, gesture: %d, device_num: %d\n",
+		"irq :%d, irq_type: 0x%04x, max[x,y]: [%d,%d], grip_area :%d, project/model_name: %s/%s, panel_revision: %d, lcdtype: 0x%06X, gesture: %d, device_num: %d\n",
 		pdata->gpio, pdata->irq_type, pdata->max_x, pdata->max_y, pdata->grip_area,
-		pdata->project_name, pdata->model_name, pdata->support_sidegesture, pdata->device_num);
+		pdata->project_name, pdata->model_name, pdata->panel_revision, lcdtype,
+		pdata->support_sidegesture, pdata->device_num);
 
 	return retval;
 }
@@ -2274,7 +2255,7 @@ static int fts_probe(struct i2c_client *client, const struct i2c_device_id *idp)
 #endif
 
 #ifdef CONFIG_GLOVE_TOUCH
-/*	input_set_capability(info->input_dev, EV_SW, SW_GLOVE); */
+	input_set_capability(info->input_dev, EV_SW, SW_GLOVE);
 #endif
 	set_bit(EV_SYN, info->input_dev->evbit);
 	set_bit(EV_KEY, info->input_dev->evbit);
@@ -2349,7 +2330,7 @@ static int fts_probe(struct i2c_client *client, const struct i2c_device_id *idp)
 	input_set_abs_params(info->input_dev, ABS_MT_TOUCH_MINOR,
 				 0, 255, 0, 0);
 #ifdef FTS_SUPPORT_SEC_SWIPE
-	input_set_abs_params(info->input_dev, ABS_MT_PALM, 0, 1, 0, 0);
+	input_set_abs_params(info->input_dev, ABS_MT_CUSTOM, 0, 1, 0, 0);
 #endif
 #if defined(FTS_SUPPORT_SIDE_GESTURE)
 	if (info->board->support_sidegesture)

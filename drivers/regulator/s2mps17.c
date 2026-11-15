@@ -89,6 +89,21 @@ static int s2m_set_mode(struct regulator_dev *rdev,
 	return 0;
 }
 
+#ifdef CONFIG_SEC_PM_DEBUG
+static char debug_temp[100] = "\0";
+
+static int __init pmic_setup(char *s)
+{
+	if (!s)
+		return -EINVAL;
+	strcpy(debug_temp, s);
+	pr_info("%s: %s\n", __func__, debug_temp);
+
+	return 0;
+}
+early_param("ap_pmic", pmic_setup);
+#endif
+
 static int s2m_enable(struct regulator_dev *rdev)
 {
 	struct s2mps17_info *s2mps17 = rdev_get_drvdata(rdev);
@@ -98,6 +113,16 @@ static int s2m_enable(struct regulator_dev *rdev)
 	/* disregard BUCK6 enable */
 	if (reg_id == S2MPS17_BUCK6 && s2mps17->g3d_en)
 		return 0;
+
+#ifdef CONFIG_SEC_PM_DEBUG
+	pr_info("%s: %s enable (0x%x)\n", __func__, rdev->desc->name, rdev->desc->enable_reg);
+
+	if (*debug_temp != '\0') {
+		if (strstr(debug_temp, rdev->desc->name)) {
+			dump_stack();
+		}
+	}
+#endif
 
 	return s2mps17_update_reg(s2mps17->i2c, rdev->desc->enable_reg,
 				  s2mps17->opmode[rdev_get_id(rdev)],
@@ -118,6 +143,16 @@ static int s2m_disable_regmap(struct regulator_dev *rdev)
 		val = rdev->desc->enable_mask;
 	else
 		val = 0;
+
+#ifdef CONFIG_SEC_PM_DEBUG
+	pr_info("%s: %s disable (0x%x)\n", __func__, rdev->desc->name, rdev->desc->enable_reg);
+
+	if (*debug_temp != '\0') {
+		if (strstr(debug_temp, rdev->desc->name)) {
+			dump_stack();
+		}
+	}
+#endif
 
 	return s2mps17_update_reg(s2mps17->i2c, rdev->desc->enable_reg,
 				  val, rdev->desc->enable_mask);
@@ -197,7 +232,7 @@ static int s2m_set_ramp_delay(struct regulator_dev *rdev, int ramp_delay)
 		break;
 	case S2MPS17_BUCK8:
 	case S2MPS17_BUCK9:
-/*	case S2MPS17_BB1:*/
+	case S2MPS17_BB1:
 		ramp_shift = 0;
 		break;
 	default:
@@ -427,8 +462,8 @@ static struct regulator_desc regulators[S2MPS17_REGULATOR_MAX] = {
 	LDO_DESC("LDO18", _LDO(18), &_ldo_ops(), _LDO(_MIN1),
 	_LDO(_STEP1), _REG(_L18CTRL), _REG(_L18CTRL), _TIME(_LDO)),
 	LDO_DESC("LDO19", _LDO(19), &_ldo_ops(), _LDO(_MIN1),
-	_LDO(_STEP2), _REG(_L19CTRL), _REG(_L19CTRL), _TIME(_LDO)),*/
-	LDO_DESC("LDO20", _LDO(20), &_ldo_ops(), _LDO(_MIN1),
+	_LDO(_STEP2), _REG(_L19CTRL), _REG(_L19CTRL), _TIME(_LDO)),
+*/	LDO_DESC("LDO20", _LDO(20), &_ldo_ops(), _LDO(_MIN1),
 	_LDO(_STEP1), _REG(_L20CTRL), _REG(_L20CTRL), _TIME(_LDO)),
 /*	LDO_DESC("LDO21", _LDO(21), &_ldo_ops(), _LDO(_MIN1),
 	_LDO(_STEP2), _REG(_L21CTRL), _REG(_L21CTRL), _TIME(_LDO)),
@@ -445,8 +480,8 @@ static struct regulator_desc regulators[S2MPS17_REGULATOR_MAX] = {
 	LDO_DESC("LDO27", _LDO(27), &_ldo_ops(), _LDO(_MIN3),
 	_LDO(_STEP2), _REG(_L27CTRL), _REG(_L27CTRL), _TIME(_LDO)),
 	LDO_DESC("LDO28", _LDO(28), &_ldo_ops(), _LDO(_MIN3),
-	_LDO(_STEP2), _REG(_L28CTRL), _REG(_L28CTRL), _TIME(_LDO)),*/
-	LDO_DESC("LDO29", _LDO(29), &_ldo_ops(), _LDO(_MIN3),
+	_LDO(_STEP2), _REG(_L28CTRL), _REG(_L28CTRL), _TIME(_LDO)),
+*/	LDO_DESC("LDO29", _LDO(29), &_ldo_ops(), _LDO(_MIN3),
 	_LDO(_STEP2), _REG(_L29CTRL), _REG(_L29CTRL), _TIME(_LDO)),
 	LDO_DESC("LDO30", _LDO(30), &_ldo_ops(), _LDO(_MIN3),
 	_LDO(_STEP2), _REG(_L30CTRL), _REG(_L30CTRL), _TIME(_LDO)),
@@ -500,10 +535,9 @@ static struct regulator_desc regulators[S2MPS17_REGULATOR_MAX] = {
 	_BUCK(_STEP3), _REG(_B11OUT), _REG(_B11CTRL), _TIME(_BUCK11)),
 	BUCK_DESC("BUCK12", _BUCK(12), &_buck_ops(), _BUCK(_MIN1),
 	_BUCK(_STEP1), _REG(_B12OUT1), _REG(_B12CTRL), _TIME(_BUCK12)),
-/*	BUCK_DESC("BB", S2MPS17_BB1, &_buck_ops(), _BUCK(_MIN1),
-	_BUCK(_STEP1), _REG(_BB1OUT), _REG(_BB1CTRL),
+	BUCK_DESC("BB", S2MPS17_BB1, &_buck_ops(), _BUCK(_MIN3),
+	_BUCK(_STEP3), _REG(_BB1OUT), _REG(_BB1CTRL),
 	_TIME(_BB)),
-*/
 };
 #ifdef CONFIG_OF
 static int s2mps17_pmic_dt_parse_pdata(struct s2mps17_dev *iodev,

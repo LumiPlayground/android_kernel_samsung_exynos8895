@@ -105,7 +105,7 @@ int select_irq_msg(struct ssp_data *data)
 			}
 
 			if (msg->dead && !msg->free_buffer) {
-				msg->buffer = kzalloc(msg->length, GFP_KERNEL);
+				msg->buffer = (char *) kzalloc(msg->length, GFP_KERNEL);
 				msg->free_buffer = 1;
 			} /* For dead msg, make a temporary buffer to read. */
 
@@ -139,7 +139,13 @@ exit:
 		mutex_unlock(&data->pending_mutex);
 		break;
 	case HUB2AP_WRITE:
-		buffer = kzalloc(chLength, GFP_KERNEL);
+		buffer = (char *) kzalloc(chLength, GFP_KERNEL);
+		if (buffer == NULL) {
+			pr_err("[SSP] %s, failed to alloc memory for buffer\n",
+				__func__);
+			iRet = -ENOMEM;
+			break;
+		}
 		iRet = spi_read(data->spi, buffer, chLength);
 		if (iRet < 0)
 			pr_err("[SSP] %s spi_read fail\n", __func__);
@@ -293,7 +299,7 @@ int send_instruction(struct ssp_data *data, u8 uInst,
 	msg->cmd = command;
 	msg->length = uLength + 1;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(uLength + 1, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(uLength + 1, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = uSensorType;
@@ -545,7 +551,7 @@ int set_sensor_position(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_SENSOR_FORMATION;
 	msg->length = 3;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(3, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(3, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = data->accel_position;
@@ -583,7 +589,7 @@ int set_glass_type(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_GLASS_TYPE;
 	msg->length = 1;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(1, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(1, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = data->glass_type;
@@ -616,7 +622,7 @@ int set_magnetic_static_matrix(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_SET_MAGNETIC_STATIC_MATRIX;
 	msg->length = data->mag_matrix_size;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(data->mag_matrix_size, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(data->mag_matrix_size, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	memcpy(msg->buffer, data->mag_matrix, data->mag_matrix_size);
@@ -648,7 +654,7 @@ void set_proximity_threshold(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_SENSOR_PROXTHRESHOLD;
 	msg->length = 2;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(2, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(2, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = (char)data->uProxHiThresh;
@@ -657,7 +663,7 @@ void set_proximity_threshold(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_SENSOR_PROXTHRESHOLD;
 	msg->length = 8;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(8, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(8, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = ((char) (data->uProxHiThresh >> 8) & 0xff);
@@ -672,7 +678,7 @@ void set_proximity_threshold(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_SENSOR_PROXTHRESHOLD;
 	msg->length = 4;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(4, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(4, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = ((char) (data->uProxHiThresh >> 8) & 0xff);
@@ -716,7 +722,7 @@ void set_proximity_alert_threshold(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_SENSOR_PROX_ALERT_THRESHOLD;
 	msg->length = 2;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(2, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(2, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = ((char) (data->uProxAlertHiThresh >> 8) & 0xff);
@@ -750,7 +756,7 @@ void set_light_coef(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_SET_LIGHT_COEF;
 	msg->length = sizeof(data->light_coef);
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(sizeof(data->light_coef), GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(sizeof(data->light_coef), GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	memcpy(msg->buffer, data->light_coef, sizeof(data->light_coef));
@@ -776,7 +782,7 @@ void set_proximity_barcode_enable(struct ssp_data *data, bool bEnable)
 	msg->cmd = MSG2SSP_AP_SENSOR_BARCODE_EMUL;
 	msg->length = 1;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(1, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(1, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	data->bBarcodeEnabled = bEnable;
@@ -800,7 +806,7 @@ void set_gesture_current(struct ssp_data *data, unsigned char uData1)
 	msg->cmd = MSG2SSP_AP_SENSOR_GESTURE_CURRENT;
 	msg->length = 1;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(1, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(1, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = uData1;
@@ -915,7 +921,7 @@ int set_big_data_start(struct ssp_data *data, u8 type, u32 length)
 	msg->cmd = MSG2SSP_AP_START_BIG_DATA;
 	msg->length = 5;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(5, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(5, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = type;
@@ -955,7 +961,7 @@ int set_time(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_MCU_SET_TIME;
 	msg->length = 12;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(12, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(12, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = tm.tm_hour;
@@ -1049,7 +1055,7 @@ void set_gyro_cal_lib_enable(struct ssp_data *data, bool bEnable)
 	msg->cmd = cmd;
 	msg->length = 1;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(1, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(1, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = bEnable;
@@ -1077,7 +1083,7 @@ int send_motor_state(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_MCU_SET_MOTOR_STATUS;
 	msg->length = 1;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(1, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(1, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	/*if 1: start, 0: stop*/

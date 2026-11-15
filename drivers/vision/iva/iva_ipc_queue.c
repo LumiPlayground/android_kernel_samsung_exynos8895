@@ -23,17 +23,13 @@
 #include <linux/wait.h>
 #include <linux/sched.h>
 #include <linux/delay.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 
 #include "iva_ipc_header.h"
-#include "iva_mcu.h"
 #include "iva_mbox.h"
 #include "iva_ipc_param_ll.h"
 #include "iva_ipc_queue.h"
 #include "iva_sh_mem.h"
-#include "iva_ram_dump.h"
-#include "iva_vdma.h"
-#include "iva_pmu.h"
 
 #undef DEBUG
 
@@ -59,9 +55,8 @@
 #define IQ_RESERVED_F		(0x10)	/* from reserved region */
 #define IQ_KMALLOC_F		(0x20)	/* from allocation */
 #define IQ_ISR_F		(0x100)	/* from isr */
-#define IQ_MBOX_F		(0x200)	/* from iva mbox */
 
-#define MAX_IPCQ_PEND_NR	(32)
+#define MAX_IPCQ_PEND_NR	(8)
 
 struct iq_pend_mail {
 	struct list_head node;
@@ -160,7 +155,9 @@ static inline struct iq_pend_mail *__iva_ipcq_alloc_pend_mail_from_kmem(
 	struct iq_pend_mail	*pend_mail;
 
 	/* try to alloc from kernel mem */
-	pend_mail = kmalloc(sizeof(*pend_mail), from_irq ? GFP_ATOMIC : GFP_KERNEL);
+	pend_mail = (struct iq_pend_mail *) devm_kmalloc(ipcq->iva_data->dev,
+				sizeof(*pend_mail),
+				from_irq ? GFP_ATOMIC : GFP_KERNEL);
 	if (!pend_mail)	/* fail at last trial */
 		return NULL;
 
@@ -204,12 +201,12 @@ static void __iva_ipcq_free_pend_mail(struct iva_ipcq *ipcq,
 		return;
 
 	/* allocated from kmalloc */
-	kfree(pend_mail);
+	devm_kfree(ipcq->iva_data->dev, pend_mail);
 }
 
 
 static int iva_ipcq_insert_pending_mail(struct iva_ipcq *ipcq,
-		uint64_t mail, bool from_mbox, bool from_irq)
+		uint64_t mail, bool from_irq)
 {
 	struct iq_pend_mail	*pend_mail;
 	struct iva_dev_data	*iva = ipcq->iva_data;
@@ -222,10 +219,6 @@ static int iva_ipcq_insert_pending_mail(struct iva_ipcq *ipcq,
 			__func__, (uint32_t) sizeof(*pend_mail));
 		return -ENOMEM;
 	}
-
-	if (from_mbox)
-		pend_mail->flags |= IQ_MBOX_F;
-
 	pend_mail->mail	= mail;
 	dev_dbg(dev, "%s() pend_mail(0x%p), mail(0x%llx) flags(0x%llx)\n",
 			__func__, pend_mail, pend_mail->mail, pend_mail->flags);
@@ -248,7 +241,7 @@ static void iva_ipcq_do_work(struct work_struct *work)
 	int			ret;
 
 	ret = iva_ipcq_insert_pending_mail(ipcq,
-			(uint64_t) ipcq_work->msg, true, false);
+			(uint64_t) ipcq_work->msg, false);
 	if (ret) {	/* error */
 		dev_err(dev, "%s() fail to insert mail. ret(%d)\n", ret);
 		return;
@@ -273,7 +266,7 @@ static bool iva_ipcq_callback(struct iva_mbox_cb_block *ctrl_blk, uint32_t msg)
 	ipcq_work->msg = msg;
 	schedule_work(&ipcq_work->work);
 #else
-	ret = iva_ipcq_insert_pending_mail(ipcq, (uint64_t) msg, true, true);
+	ret = iva_ipcq_insert_pending_mail(ipcq, (uint64_t) msg, true);
 	if (ret) {	/* error */
 		dev_err(iva->dev, "%s() fail to insert mail.\n", __func__);
 		return true;
@@ -309,13 +302,13 @@ static inline uint32_t iva_ipcq_find_free_slot(struct ipc_cmd_queue *ap_cmd_q,
 	struct _ipcq_cmd_param_ll *cmd_param = ap_cmd_q->params;
 
 	for (i = 0; i < IPC_CMD_Q_PARAM_SIZE; i++, start_slot++) {
-		if (start_slot >= IPC_CMD_Q_PARAM_SIZE)
+		if (start_slot >= IPC_RES_Q_PARAM_SIZE)
 			start_slot = 0;
 		if (!(cmd_param[start_slot].flags & F_IPC_QUEUE_USED_SLOT))
 			return start_slot;
 	}
 
-	return IPC_CMD_Q_PARAM_SIZE;	/* means no free slot is found */
+	return IPC_RES_Q_PARAM_SIZE;	/* means no free slot is found */
 }
 
 static int8_t __maybe_unused iva_ipcq_get_slot_index(
@@ -348,9 +341,8 @@ static struct ipc_cmd_param __iomem *iva_ipcq_alloc_cmds(struct iva_ipcq *ipcq,
 
 	/* only half of total command queue slots are allowed */
 	if ((nr_cmds > (IPC_CMD_Q_PARAM_SIZE/2)) || nr_cmds == 0) {
-		dev_err(dev,
-			"%s() too many or zero command (%d) is requested\n",
-			__func__, nr_cmds);
+		dev_err(dev, "%s() too many or zero command (%d) is "
+				"requested\n", __func__, nr_cmds);
 		return NULL;
 	}
 
@@ -436,7 +428,7 @@ static int __maybe_unused iva_ipcq_free_cmd(struct iva_ipcq *ipcq,
 	c_param_ll = CMD_PARAM_TO_LL_CMD_PARAM(c_param);
 	flags = c_param_ll->flags;
 	if (!__ipc_queue_is_used_cmd_slot(flags)) {
-		dev_err(dev, "%s() ERR: already freed(%p) flags(0x%08x)\n",
+		dev_err(dev, "%s() ERR: already freed(%p) flags(0x%08x) \n",
 				__func__, c_param_ll, flags);
 		return -EINVAL;
 	}
@@ -452,7 +444,7 @@ static int __maybe_unused iva_ipcq_free_cmd(struct iva_ipcq *ipcq,
 again:
 	slot_id = __ipc_queue_get_cmd_index(ap_cmd_q, c_param_ll);
 	if (slot_id < 0) {
-		dev_err(dev, "%s() unrecognized slot id(%d)\n",
+		dev_err (dev, "%s() unrecognized slot id(%d)\n",
 				__func__, slot_id);
 		ret = -EINVAL;
 		goto out;
@@ -460,15 +452,14 @@ again:
 	c_param_ll->flags &= ~F_IPC_QUEUE_USED_SLOT;
 
 	/* Clear information to avoid wrong action. */
-	c_param->ipc_cmd_type = IPC_CMD_NONE;
+	c_param->ipc_cmd_type = 0;
 
 	dev_dbg(dev, "%s() id %d, c_param_ll(%p) flag(0x%08x)\n", __func__,
 			slot_id, c_param_ll, c_param_ll->flags);
 
 	if (flags & F_IPC_QUEUE_TAIL) {
-		dev_dbg(dev,
-			"%s() success to free command queue, final slot id(%d)\n",
-			__func__, slot_id);
+		dev_dbg(dev, "%s() success to free command queue, "
+				"final slot id(%d)\n", __func__, slot_id);
 		ret = 0;	/* success */
 		goto out;
 	}
@@ -548,7 +539,7 @@ static int iva_ipcq_send_cmd(struct iva_ipcq *ipcq,
 	cmd_param->flags |= F_IPC_QUEUE_SENDING;	/* mark sending */
 #endif
 	/* send really */
-	conv_param_p = __iva_ipcq_get_mcu_from_va(iva, cmd_param);
+	conv_param_p	= __iva_ipcq_get_mcu_from_va(iva, cmd_param);
 
 	return iva_mbox_send_mail_to_mcu(iva, conv_param_p);
 }
@@ -574,11 +565,10 @@ static inline int iva_ipcq_copy_from_user(uint32_t *dest,
 #endif
 }
 
-static bool iva_ipcq_handle_inside_func(struct iva_proc *proc,
-		struct iva_ipcq *ipcq, struct ipc_cmd_param *cmd_param)
+static bool iva_ipcq_handle_inside_func(struct iva_ipcq *ipcq,
+		struct ipc_cmd_param *cmd_param)
 {
-
-	struct device		*dev = ipcq->iva_data->dev;
+	struct device *dev = ipcq->iva_data->dev;
 	struct ipc_res_param	rsp_param;
 	uint32_t		hdr = cmd_param->header;
 
@@ -591,15 +581,9 @@ static bool iva_ipcq_handle_inside_func(struct iva_proc *proc,
 				ipc_iva_ctrl_release_wait, IPC_GET_EXTRA(hdr));
 		rsp_param.rep_id	= 0x0ace0ace;
 		rsp_param.ret		= (uint32_t) 0;
-		rsp_param.ipc_cmd_type	= IPC_CMD_DEINIT;
-		rsp_param.extra		= (uint16_t) 0;
+		rsp_param.ipc_cmd_type	= 2;	/* DEINIT*/
 		iva_ipcq_send_rsp_k(ipcq, &rsp_param, false);
 		break;
-
-	case ipc_iva_ctrl_dump_sfrs:
-		iva_ram_dump_copy_iva_sfrs(proc, (int) cmd_param->param_0);
-		break;
-
 	default:
 		dev_warn(dev, "%s() can't handle inside func(0x%x)\n",
 				__func__, hdr);
@@ -609,12 +593,10 @@ static bool iva_ipcq_handle_inside_func(struct iva_proc *proc,
 	return true;
 }
 
-int iva_ipcq_send_cmd_usr(struct iva_proc *proc,
+int iva_ipcq_send_cmd_usr(struct iva_ipcq *ipcq,
 			struct ipc_cmd_param __user *ipc_param)
 {
-	struct iva_dev_data	*iva	= proc->iva_data;
-	struct device		*dev	= iva->dev;
-	struct iva_ipcq		*ipcq	= &iva->mcu_ipcq;
+	struct device		*dev = ipcq->iva_data->dev;
 	struct ipc_cmd_param	tmp_param;
 	struct ipc_cmd_param	*c_param;
 	int			ret;
@@ -630,10 +612,10 @@ int iva_ipcq_send_cmd_usr(struct iva_proc *proc,
 	}
 
 	/* comm bewteen us and iva driver */
-	if (iva_ipcq_handle_inside_func(proc, ipcq, &tmp_param))
+	if (iva_ipcq_handle_inside_func(ipcq, &tmp_param))
 		return 0;
 
-	if (!iva_ctrl_is_boot(iva)) {
+	if (!test_bit(IVA_ST_MCU_BOOT_DONE, &ipcq->iva_data->state)) {
 		dev_err(dev, "%s() iva mcu is not booted, state(0x%lx)\n",
 				__func__, ipcq->iva_data->state);
 		return -EPERM;
@@ -651,28 +633,25 @@ int iva_ipcq_send_cmd_usr(struct iva_proc *proc,
 	*c_param = tmp_param;
 
 	ret = iva_ipcq_send_cmd(ipcq, c_param);
-	if (ret < 0) {
+	if (ret <0) {
 		dev_err(dev, "%s() fail to send ipcq cmd\n", __func__);
 		return ret;
 	}
 
 	if (IPC_GET_FUNC(tmp_param.header) == ipc_func_sched_table) {
-		if (tmp_param.ipc_cmd_type == IPC_CMD_FRAME_START) {
-			/* clear err count */
-			atomic_set(&iva->mcu_err_cnt, 0);
-
-			if (tmp_param.param_0 != 0/* no TO */) {
-				ipcq->to_in_ms = tmp_param.param_0;
-				dev_dbg(dev, "%s() time out(%d ms) req on FS\n",
+		if (tmp_param.ipc_cmd_type != 10 /* FS */ ||
+				tmp_param.param_0 == 0/* no TO */) {
+			return 0;
+		}
+		ipcq->to_in_ms = tmp_param.param_0;
+		dev_dbg(dev, "%s() time out(%d ms) req on FS\n",
 					__func__, ipcq->to_in_ms);
-				ret = mod_timer(&ipcq->to_timer,
-					jiffies + msecs_to_jiffies(ipcq->to_in_ms));
-				if (ret < 0) {
-					dev_err(dev,
-						"%s() fail to set to timer(%d ms), ret(%d)\n",
-						__func__, ipcq->to_in_ms, ret);
-				}
-			}
+		ret = mod_timer(&ipcq->to_timer,
+				jiffies + msecs_to_jiffies(ipcq->to_in_ms));
+		if (ret < 0) {
+			dev_err(dev, "%s() fail to set to timer(%d ms), "
+					"ret(%d)\n", __func__,
+					ipcq->to_in_ms, ret);
 		}
 	}
 
@@ -706,15 +685,15 @@ static int32_t iva_ipcq_free_rsp(struct iva_ipcq *ipcq,
 	struct _ipcq_res_param_ll *r_param_ll =
 				RES_PARAM_TO_LL_RES_PARAM(r_param);
 
-	dev_dbg(dev,
-		"%s() clear, r_param_ll(%p) flag(0x%08x) ipcq_ctrl_req(%d)\n",
-		__func__, r_param_ll, r_param_ll->flags, ipcq->ipcq_ctrl_req);
+	dev_dbg(dev, "%s() clear, r_param_ll(%p) flag(0x%08x) "
+			"ipcq_ctrl_req(%d)\n", __func__,
+			r_param_ll, r_param_ll->flags, ipcq->ipcq_ctrl_req);
 
 	if (r_param_ll->flags & F_IPC_QUEUE_MALLOC) {
-		kfree(r_param_ll);
+		devm_kfree(dev, r_param_ll);
 	} else {
 		r_param_ll->flags &= ~F_IPC_QUEUE_USED_SLOT;
-		r_param->ipc_cmd_type = IPC_CMD_NONE;
+		r_param->ipc_cmd_type = 0;
 
 		if (ipcq->ipcq_ctrl_req)
 			iva_mbox_send_mail_to_mcu(iva,
@@ -737,8 +716,9 @@ static struct ipc_res_param __iomem *iva_ipcq_read_rsp(struct iva_ipcq *ipcq)
 	uint64_t			mail;
 	unsigned long			flags;
 
+again:
 	spin_lock_irqsave(&ipcq->ipcq_slock, flags);
-	while (list_empty(pend_mlist)) {
+	if (list_empty(pend_mlist)) {
 		spin_unlock_irqrestore(&ipcq->ipcq_slock, flags);
 
 		/* wait */
@@ -783,12 +763,12 @@ static struct ipc_res_param __iomem *iva_ipcq_read_rsp(struct iva_ipcq *ipcq)
 		#endif
 		}
 
-		dev_dbg(dev,
-			"%s() received on wait state, ret(%d), list_empty(%d)\n",
-			__func__, ret, list_empty(pend_mlist));
+		dev_dbg(dev, "%s() received on wait state, ret(%d), "
+				"list_empty(%d)\n", __func__,
+				ret, list_empty(pend_mlist));
 
 		/* wait exit successfully */
-		spin_lock_irqsave(&ipcq->ipcq_slock, flags);
+		goto again;
 	}
 
 	work_mail = list_first_entry(pend_mlist, struct iq_pend_mail, node);
@@ -796,13 +776,19 @@ static struct ipc_res_param __iomem *iva_ipcq_read_rsp(struct iva_ipcq *ipcq)
 	list_del(&work_mail->node);
 	spin_unlock_irqrestore(&ipcq->ipcq_slock, flags);
 
-	if (work_mail->flags & IQ_MBOX_F) {
+	if (work_mail->flags & IQ_ISR_F) {
 		/* convert to va */
 		r_param_ll = (struct _ipcq_res_param_ll __iomem *)
 				__iva_ipcq_get_va_from_mcu(iva, (uint32_t) mail);
 	} else {
 		/* no convert */
-		r_param_ll = (struct _ipcq_res_param_ll *)(long) mail;
+		r_param_ll = (struct _ipcq_res_param_ll *)
+		#ifdef CONFIG_64BIT
+				mail;
+		#else
+				(uint32_t) mail;
+		#endif
+
 	}
 
 	iva_ipcq_save_transaction(ipcq, false, &r_param_ll->res_param);
@@ -841,30 +827,34 @@ static inline int iva_ipcq_copy_to_user(uint32_t __user *dest,
 /* called from interrupt context */
 static void iva_ipcq_no_rsp_timer(unsigned long data)
 {
-	struct iva_ipcq		*ipcq	= (struct iva_ipcq *)data;
-	struct iva_dev_data	*iva	= ipcq->iva_data;
-	struct device		*dev	= ipcq->iva_data->dev;
+	struct iva_ipcq 	*ipcq = (struct iva_ipcq *)data;
+	struct device		*dev = ipcq->iva_data->dev;
+	struct ipc_res_param	rsp_param;
 
 	dev_err(dev, "%s() no repsonse from mcu during (%d) ms\n",
 			__func__, ipcq->to_in_ms);
 
-	iva_mcu_handle_error_k(iva, mcu_err_from_irq, 32);
+	rsp_param.header	= IPC_MK_HDR(ipc_func_iva_ctrl, 0x0, 0x0);
+	rsp_param.rep_id	= 0x0ace0bad;
+	rsp_param.ret		= (uint32_t) 0;
+	rsp_param.ipc_cmd_type	= 22;	/* TIMEOUT*/
+
+	iva_ipcq_send_rsp_k(ipcq, &rsp_param, true);
 }
 
-int iva_ipcq_wait_res_usr(struct iva_proc *proc,
+
+int iva_ipcq_wait_res_usr(struct iva_ipcq *ipcq,
 			struct ipc_res_param __user *r_param)
 {
-	struct iva_dev_data	*iva	= proc->iva_data;
-	struct device		*dev	= iva->dev;
-	struct iva_ipcq		*ipcq	= &iva->mcu_ipcq;
+	struct iva_dev_data	*iva = ipcq->iva_data;
 	struct ipc_res_param	*ret_param;
 	struct ipc_res_param	tmp_resp;
 	int			ret;
 
-	if (!r_param) {
-		dev_err(dev, "%s() @res_param is null\n", __func__);
+ 	if (!r_param) {
+		dev_err(iva->dev, "%s() @res_param is null\n", __func__);
 		return -EINVAL;
-	}
+ 	}
 
 	ret_param = iva_ipcq_read_rsp(ipcq);
 	if (IS_ERR(ret_param)) {
@@ -876,51 +866,28 @@ int iva_ipcq_wait_res_usr(struct iva_proc *proc,
 		tmp_resp.rep_id	= 0x0ace0ace;
 		tmp_resp.ret	= (uint32_t) 0;
 		if (PTR_ERR(ret_param) == (long) -EIO)
-			tmp_resp.ipc_cmd_type	= IPC_CMD_TIMEOUT_NOTIFY;
-		else if (PTR_ERR(ret_param) == (long) -ERESTARTSYS)
-			tmp_resp.ipc_cmd_type	= IPC_CMD_SIGNAL_NOTIFY;
+			tmp_resp.ipc_cmd_type	= 22;	/* TIMEOUT*/
+		else if(PTR_ERR(ret_param) == (long) -ERESTARTSYS )
+			tmp_resp.ipc_cmd_type	= 23;	/* SIGNAL */
 		else
-			tmp_resp.ipc_cmd_type	= IPC_CMD_UNKNOWN_NOTIFY;
+			tmp_resp.ipc_cmd_type	= 24;	/* UNKNOWN */
+
 		ret_param = &tmp_resp;
-
-		iva_mcu_print_flush_pending_mcu_log(iva);
-
-		iva_pmu_show_status(iva);
-		iva_vdma_show_status(iva);
 	} else {
-		switch (IPC_GET_FUNC(ret_param->header)) {
-		case ipc_func_sched_table:
-			if (ret_param->ipc_cmd_type == IPC_CMD_FRAME_DONE) {
-				dev_dbg(dev, "%s() FD, so delete timer\n",
+		if (IPC_GET_FUNC(ret_param->header) == ipc_func_sched_table) {
+			if (ret_param->ipc_cmd_type == 12) {
+				dev_dbg(iva->dev, "%s() FD, so delete timer\n",
 						__func__);
 				del_timer_sync(&ipcq->to_timer);
 				ipcq->to_in_ms = 0;
 			}
-			break;
-		case ipc_func_iva_ctrl:
-			if (ret_param->ipc_cmd_type >= IPC_CMD_ERR_BASE) {
-				dev_err(dev, "%s() err cmd(%d) cnt(%d)\n",
-					__func__, ret_param->ipc_cmd_type,
-					atomic_read(&iva->mcu_err_cnt));
-				del_timer_sync(&ipcq->to_timer);
-				ipcq->to_in_ms = 0;
-
-				iva_mcu_print_flush_pending_mcu_log(iva);
-
-				iva_pmu_show_status(iva);
-				iva_vdma_show_status(iva);
-			}
-			break;
-		default:
-			/* no error */
-			break;
 		}
 	}
 
 	ret = iva_ipcq_copy_to_user((uint32_t __user *) r_param,
 			(uint32_t *) ret_param, sizeof(*r_param));
 	if (ret < 0) {
-		dev_err(dev, "%s() fail to copy_to_user(%p, %p)\n",
+		dev_err(iva->dev, "%s() fail to copy_to_user(%p, %p)\n",
 				__func__, r_param, ret_param);
 	}
 
@@ -941,10 +908,10 @@ int iva_ipcq_send_rsp_k(struct iva_ipcq *ipcq,
 #else
 	int			ret;
 #endif
-	r_param_ll = kmalloc(sizeof(*r_param_ll),
+	r_param_ll = devm_kmalloc(dev, sizeof(*r_param_ll),
 			from_irq ? GFP_ATOMIC : GFP_KERNEL);
 	if (!r_param_ll) {
-		dev_err(dev, "%s() fail to alloc mem for r_param_ll(%p)\n",
+		dev_err(dev, "%s() fail to alloc _ipcq_res_param_ll from %pF\n",
 			__func__, __builtin_return_address(0));
 		return -ENOMEM;
 	}
@@ -964,7 +931,7 @@ int iva_ipcq_send_rsp_k(struct iva_ipcq *ipcq,
 	#else
 			(uint32_t) r_param_ll,
 	#endif
-			false, false);
+			false);
 
 	if (ret) {
 		dev_err(dev, "%s() fail to insert pend mail, from %pF\n",
@@ -1002,8 +969,8 @@ static inline int __maybe_unused iva_ipcq_check_param_regions(
 	for (i = 0; i < IPC_CMD_Q_PARAM_SIZE; i++) {
 		addr = (unsigned long) &cmd_q->params[i].cmd_param;
 		if (addr % align) {
-			dev_err(dev, "%s() [%d] addr(0x%lx)/align(0x%x) != 0 on  arch %s\n",
-				       __func__, i, addr, align,
+			dev_err(dev, "%s() [%d] addr(0x%lx)/align(0x%x) != 0 on"
+					" arch %s\n", __func__, i, addr, align,
 		#ifdef CONFIG_64BIT
 					"64");
 		#else
@@ -1013,8 +980,8 @@ static inline int __maybe_unused iva_ipcq_check_param_regions(
 		}
 #if 0
 		else {
-			dev_dbg(dev, "%s() [%d] addr(0x%lx)/align(0x%x) == 0 on arch %s\n",
-					__func__, i, addr, align,
+			dev_dbg(dev, "%s() [%d] addr(0x%lx)/align(0x%x) == 0 on"
+					" arch %s\n", __func__, i, addr, align,
 		#ifdef CONFIG_64BIT
 					"64");
 		#else
@@ -1028,8 +995,8 @@ static inline int __maybe_unused iva_ipcq_check_param_regions(
 	for (i = 0; i < IPC_RES_Q_PARAM_SIZE; i++) {
 		addr = (unsigned long) &rsp_q->params[i].res_param;
 		if (addr % align) {
-			dev_err(dev, "%s() [%d] addr(0x%lx)/align(0x%x) != 0 on arch %s\n",
-				       __func__, i, addr, align,
+			dev_err(dev, "%s() [%d] addr(0x%lx)/align(0x%x) != 0 on"
+					" arch %s\n", __func__, i, addr, align,
 	#ifdef CONFIG_64BIT
 					"64");
 	#else
@@ -1039,8 +1006,8 @@ static inline int __maybe_unused iva_ipcq_check_param_regions(
 		}
 #if 0
 		else {
-			dev_dbg(dev, "%s() [%d] addr(0x%lx)/align(0x%x) == 0 on arch %s\n",
-					__func__, i, addr, align,
+			dev_dbg(dev, "%s() [%d] addr(0x%lx)/align(0x%x) == 0 on"
+					" arch %s\n", __func__, i, addr, align,
 	#ifdef CONFIG_64BIT
 					"64");
 	#else
@@ -1059,7 +1026,6 @@ static inline int __maybe_unused iva_ipcq_check_param_regions(
 static inline void iva_ipcq_init_param_regions(struct ipc_res_queue *ap_rsp_q)
 {
 	int i;
-
 	for (i = 0; i < IPC_RES_Q_PARAM_SIZE; i++)
 		ap_rsp_q->params[i].flags = 0x0;
 }
@@ -1121,7 +1087,6 @@ int iva_ipcq_probe(struct iva_dev_data *iva)
 				__func__);
 		return -ENOMEM;
 	}
-	ipcq->rsv_hint = 0;
 
 	/* initialize data structure */
 	ipcq->iva_data	= iva;

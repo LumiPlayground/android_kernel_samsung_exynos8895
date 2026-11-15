@@ -35,10 +35,34 @@
 #include "fimc-is-dt.h"
 #include "fimc-is-device-af.h"
 #include "fimc-is-vender-specific.h"
-#include "fimc-is-i2c-config.h"
-#include "fimc-is-device-sensor-peri.h"
 
 #define FIMC_IS_AF_DEV_NAME "exynos-fimc-is-af"
+
+static void fimc_is_af_i2c_config(struct i2c_client *client, bool onoff)
+{
+	struct device *i2c_dev = client->dev.parent->parent;
+	struct pinctrl *pinctrl_i2c = NULL;
+
+	info("(%s):onoff(%d)\n", __func__, onoff);
+	if (onoff) {
+		/* ON */
+		pinctrl_i2c = devm_pinctrl_get_select(i2c_dev, "on_i2c");
+		if (IS_ERR_OR_NULL(pinctrl_i2c)) {
+			printk(KERN_ERR "%s: Failed to configure i2c pin\n", __func__);
+		} else {
+			devm_pinctrl_put(pinctrl_i2c);
+		}
+	} else {
+		/* OFF */
+		pinctrl_i2c = devm_pinctrl_get_select(i2c_dev, "off_i2c");
+		if (IS_ERR_OR_NULL(pinctrl_i2c)) {
+			printk(KERN_ERR "%s: Failed to configure i2c pin\n", __func__);
+		} else {
+			devm_pinctrl_put(pinctrl_i2c);
+		}
+    }
+
+}
 
 int fimc_is_af_i2c_read(struct i2c_client *client, u16 addr, u16 *data)
 {
@@ -163,35 +187,34 @@ int fimc_is_af_power(struct fimc_is_device_af *af_device, bool onoff)
 {
 	int ret = 0;
 
-	/* VDDAF_COMMON_CAM */
-	ret = fimc_is_af_ldo_enable("VDDAF_COMMON_CAM", onoff);
+	/*VDDAF_2.8V_CAM*/
+	ret = fimc_is_af_ldo_enable("VDDAF_2.8V_CAM", onoff);
 	if (ret) {
-		err("failed to power control VDDAF_COMMON_CAM, onoff = %d", onoff);
+		err("failed to power control VDDAF_2.8V_CAM, onoff = %d", onoff);
 		return -EINVAL;
 	}
 
 #ifdef CONFIG_OIS_USE
 	/* OIS_VDD_2.8V */
-	ret = fimc_is_af_ldo_enable("VDDD_2.8V_OIS", onoff);
+	ret = fimc_is_af_ldo_enable("OIS_VDD_2.8V", onoff);
 	if (ret) {
-		err("failed to power control VDDD_2.8V_OIS, onoff = %d", onoff);
+		err("failed to power control OIS_VDD_2.8V, onoff = %d", onoff);
 		return -EINVAL;
 	}
 
-	/* VDD_VM_2.8V_OIS */
-	ret = fimc_is_af_ldo_enable("VDD_VM_2.8V_OIS", onoff);
+	/* OIS_VM_2.8V */
+	ret = fimc_is_af_ldo_enable("OIS_VM_2.8V", onoff);
 	if (ret) {
-		err("failed to power control VDD_VM_2.8V_OIS, onoff = %d", onoff);
+		err("failed to power control OIS_VM_2.8V, onoff = %d", onoff);
 		return -EINVAL;
 	}
-#ifdef CAMERA_USE_OIS_VDD_1_8V
+
 	/* OIS_VDD_1.8V */
-	ret = fimc_is_af_ldo_enable("VDDD_1.8V_OIS", onoff);
+	ret = fimc_is_af_ldo_enable("OIS_VDD_1.8V", onoff);
 	if (ret) {
-		err("failed to power control VDDD_1.8V_OIS, onoff = %d", onoff);
+		err("failed to power control OIS_VDD_1.8V, onoff = %d", onoff);
 		return -EINVAL;
 	}
-#endif /* CAMERA_USE_OIS_VDD_1_8V */
 #endif
 
 	/*VDDIO_1.8V_CAM*/
@@ -251,6 +274,10 @@ int16_t fimc_is_af_enable(void *device, bool onoff)
 
 	pr_info("af_noise : running_rear_camera = %d, onoff = %d\n", specific->running_rear_camera, onoff);
 	if (!specific->running_rear_camera) {
+		if (specific->use_ois_hsi2c) {
+			fimc_is_af_i2c_config(af_device->client, true);
+		}
+
 		if (onoff) {
 			fimc_is_af_power(af_device, true);
 			ret = fimc_is_af_i2c_write(af_device->client, 0x02, 0x00);
@@ -274,7 +301,7 @@ int16_t fimc_is_af_enable(void *device, bool onoff)
 			pr_info("af_noise : count = %d\n", af_device->af_noise_count);
 		} else {
 			/* Check the Power Pins */
-			af_regulator = fimc_is_check_regulator_status("VDDAF_COMMON_CAM");
+			af_regulator = fimc_is_check_regulator_status("VDDAF_2.8V_CAM");
 			io_regulator = fimc_is_check_regulator_status("VDDIO_1.8V_CAM");
 
 			if (af_regulator && io_regulator) {
@@ -287,13 +314,21 @@ int16_t fimc_is_af_enable(void *device, bool onoff)
 				pr_info("already power off.(%d)\n", __LINE__);
 			}
 		}
+
+		if (specific->use_ois_hsi2c) {
+			fimc_is_af_i2c_config(af_device->client, false);
+		}
 	}
 
 	return ret;
 
 power_off:
 	if (!specific->running_rear_camera) {
-		af_regulator = fimc_is_check_regulator_status("VDDAF_COMMON_CAM");
+		if (specific->use_ois_hsi2c) {
+			fimc_is_af_i2c_config(af_device->client, false);
+		}
+
+		af_regulator = fimc_is_check_regulator_status("VDDAF_2.8V_CAM");
 		io_regulator = fimc_is_check_regulator_status("VDDIO_1.8V_CAM");
 		if (af_regulator && io_regulator) {
 			fimc_is_af_power(af_device, false);
@@ -307,19 +342,14 @@ power_off:
 int16_t fimc_is_af_move_lens(struct fimc_is_core *core)
 {
 	int ret = 0;
+	struct i2c_client *client = core->client2;
 	struct fimc_is_vender_specific *specific = core->vender.private_data;
-	struct fimc_is_actuator *actuator = NULL;
-	struct i2c_client *client = NULL;
-	struct fimc_is_device_sensor *device;
-
-	device = &core->sensor[SENSOR_POSITION_REAR];
-	actuator = device->actuator[SENSOR_POSITION_REAR];
-	client = actuator->client;
 
 	pr_info("fimc_is_af_move_lens : running_rear_camera = %d\n", specific->running_rear_camera);
 	if (!specific->running_rear_camera) {
-		/* wide cam AF i2c pin is controlled at 2l3 power sequence. So not controlled here.*/
-		//fimc_is_i2c_pin_config(client, true);
+		if (specific->use_ois_hsi2c) {
+			fimc_is_af_i2c_config(client, true);
+		}
 
 		ret = fimc_is_af_i2c_write(client, 0x00, 0x80);
 		if (ret) {
@@ -336,7 +366,9 @@ int16_t fimc_is_af_move_lens(struct fimc_is_core *core)
 			err("i2c write fail\n");
 		}
 
-		//fimc_is_i2c_pin_config(client, false);
+		if (specific->use_ois_hsi2c) {
+			fimc_is_af_i2c_config(client, false);
+		}
 	}
 
 	return ret;
@@ -346,19 +378,14 @@ int16_t fimc_is_af_move_lens(struct fimc_is_core *core)
 int16_t fimc_is_af_move_lens_rear2(struct fimc_is_core *core)
 {
 	int ret = 0;
+	struct i2c_client *client = core->client4;
 	struct fimc_is_vender_specific *specific = core->vender.private_data;
-	struct fimc_is_actuator *actuator = NULL;
-	struct i2c_client *client = NULL;
-	struct fimc_is_device_sensor *device;
-
-	device = &core->sensor[SENSOR_POSITION_REAR2];
-	actuator = device->actuator[SENSOR_POSITION_REAR2];
-	client = actuator->client;
 
 	pr_info("fimc_is_af_move_lens : running_rear2_camera = %d\n", specific->running_rear_second_camera);
 	if (!specific->running_rear_second_camera) {
-		fimc_is_i2c_pin_config(client, true);
-
+		if (specific->use_ois_hsi2c) {
+			fimc_is_af_i2c_config(client, true);
+		}
 		ret = fimc_is_af_i2c_write(client, 0x00, 0x80);
 		if (ret) {
 			err("i2c write fail\n");
@@ -374,7 +401,9 @@ int16_t fimc_is_af_move_lens_rear2(struct fimc_is_core *core)
 			err("i2c write fail\n");
 		}
 
-		fimc_is_i2c_pin_config(client, false);
+		if (specific->use_ois_hsi2c) {
+			fimc_is_af_i2c_config(client, false);
+		}
 	}
 
 	return ret;

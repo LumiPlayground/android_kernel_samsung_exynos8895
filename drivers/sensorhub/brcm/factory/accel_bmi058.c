@@ -97,7 +97,7 @@ int set_accel_cal(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_MCU_SET_ACCEL_CAL;
 	msg->length = 6;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(6, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(6, GFP_KERNEL);
 	if (!(msg->buffer)) {
 		kfree(msg);
 		return -ENOMEM;

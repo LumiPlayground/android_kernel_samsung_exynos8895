@@ -9,7 +9,6 @@
 #include <linux/battery/battery_notifier.h>
 #endif
 #include <linux/usb_notify.h>
-#include <linux/ccic/ccic_core.h>
 
 #define DEBUG
 #define SET_CCIC_NOTIFIER_BLOCK(nb, fn, dev) do {	\
@@ -22,9 +21,61 @@
 
 static struct ccic_notifier_struct ccic_notifier;
 
-extern struct device *ccic_device;
-static int ccic_notifier_init_done;
+struct device *ccic_device;
+static int ccic_notifier_init_done = 0;
 int ccic_notifier_init(void);
+
+char CCIC_NOTI_DEST_Print[CCIC_NOTI_DEST_NUM][10] =
+{
+    {"INITIAL"},
+    {"USB"},
+    {"BATTERY"},
+    {"PDIC"},
+    {"MUIC"},
+    {"CCIC"},
+    {"MANAGER"},
+    {"DP"},
+    {"DPUSB"},
+    {"ALL"},
+};
+
+char CCIC_NOTI_ID_Print[CCIC_NOTI_ID_NUM][20] =
+{
+    {"ID_INITIAL"},
+    {"ID_ATTACH"},
+    {"ID_RID"},
+    {"ID_USB"},
+    {"ID_POWER_STATUS"},
+    {"ID_WATER"},
+    {"ID_VCONN"},
+    {"ID_DP_CONNECT"},
+    {"ID_DP_HPD"},
+    {"ID_DP_LINK_CONF"},
+    {"ID_DP_USB"},
+    {"ID_ROLE_SWAP"},
+    {"ID_FAC"},
+};
+
+char CCIC_NOTI_RID_Print[CCIC_NOTI_RID_NUM][15] =
+{
+    {"RID_UNDEFINED"},
+    {"RID_000K"},
+    {"RID_001K"},
+    {"RID_255K"},
+    {"RID_301K"},
+    {"RID_523K"},
+    {"RID_619K"},
+    {"RID_OPEN"},
+};
+
+char CCIC_NOTI_USB_STATUS_Print[CCIC_NOTI_USB_STATUS_NUM][20] =
+{
+    {"USB_DETACH"},
+    {"USB_ATTACH_DFP"},
+    {"USB_ATTACH_UFP"},
+    {"USB_ATTACH_DRP"},
+    {"USB_ATTACH_NO_USB"},
+};
 
 int ccic_notifier_register(struct notifier_block *nb, notifier_fn_t notifier,
 			ccic_notifier_device_t listener)
@@ -34,9 +85,9 @@ int ccic_notifier_register(struct notifier_block *nb, notifier_fn_t notifier,
 	pr_info("%s: listener=%d register\n", __func__, listener);
 
 	/* Check if CCIC Notifier is ready. */
-	if (!ccic_notifier_init_done)
+	if(!ccic_notifier_init_done)
 		ccic_notifier_init();
-
+	
 	if (!ccic_device) {
 		pr_err("%s: Not Initialized...\n", __func__);
 		return -1;
@@ -80,42 +131,34 @@ static void ccic_uevent_work(int id, int state)
 	char *rid[2] = {ccicrid, NULL};
 	char ccicFacErr[20] = {0,};
 	char *facErr[2] = {ccicFacErr, NULL};
-	char ccicPinStat[20] = {0,};
-	char *pinStat[2] = {ccicPinStat, NULL};
 #endif
 
 	pr_info("usb: %s: id=%s state=%d\n", __func__, CCIC_NOTI_ID_Print[id], state);
 
 	switch (id) {
-	case CCIC_NOTIFY_ID_WATER:
-		if (state)
-			kobject_uevent_env(&ccic_device->kobj, KOBJ_CHANGE, water);
-		else
-			kobject_uevent_env(&ccic_device->kobj, KOBJ_CHANGE, dry);
-		break;
-	case CCIC_NOTIFY_ID_VCONN:
-		kobject_uevent_env(&ccic_device->kobj, KOBJ_CHANGE, vconn);
-		break;
+		case CCIC_NOTIFY_ID_WATER:
+			if (state)
+				kobject_uevent_env(&ccic_device->kobj, KOBJ_CHANGE, water);
+			else
+				kobject_uevent_env(&ccic_device->kobj, KOBJ_CHANGE, dry);
+			break;
+		case CCIC_NOTIFY_ID_VCONN:
+			kobject_uevent_env(&ccic_device->kobj, KOBJ_CHANGE, vconn);
+			break;
 #if defined(CONFIG_SEC_FACTORY)
-	case CCIC_NOTIFY_ID_RID:
-		snprintf(ccicrid, sizeof(ccicrid), "%s",
-			(state < CCIC_NOTI_RID_NUM) ? CCIC_NOTI_RID_Print[state] : CCIC_NOTI_RID_Print[0]);
-		kobject_uevent_env(&ccic_device->kobj, KOBJ_CHANGE, rid);
-		break;
-	case CCIC_NOTIFY_ID_FAC:
-		snprintf(ccicFacErr, sizeof(ccicFacErr), "%s:%d",
-			"ERR_STATE", state);
-		kobject_uevent_env(&ccic_device->kobj, KOBJ_CHANGE, facErr);
-		break;
-	case CCIC_NOTIFY_ID_CC_PIN_STATUS:
-		snprintf(ccicPinStat, sizeof(ccicPinStat), "%s",
-			(state < CCIC_NOTI_PIN_STATUS_NUM) ?
-				CCIC_NOTI_PIN_STATUS_Print[state] : CCIC_NOTI_PIN_STATUS_Print[0]);
-		kobject_uevent_env(&ccic_device->kobj, KOBJ_CHANGE, pinStat);
-		break;
+		case CCIC_NOTIFY_ID_RID:
+			snprintf(ccicrid, sizeof(ccicrid), "%s",
+				(state<CCIC_NOTI_RID_NUM)? CCIC_NOTI_RID_Print[state] : CCIC_NOTI_RID_Print[0]);
+			kobject_uevent_env(&ccic_device->kobj, KOBJ_CHANGE, rid);			
+			break;
+		case CCIC_NOTIFY_ID_FAC:
+			snprintf(ccicFacErr, sizeof(ccicFacErr), "%s:%d",
+				"ERR_STATE", state);
+			kobject_uevent_env(&ccic_device->kobj, KOBJ_CHANGE, facErr);			
+			break;
 #endif
-	default:
-		break;
+		default:
+			break;
 	}
 }
 
@@ -185,6 +228,9 @@ int ccic_notifier_notify(CC_NOTI_TYPEDEF *p_noti, void *pd, int pdic_attach)
 			((CC_NOTI_ATTACH_TYPEDEF *)p_noti)->id,
 			((CC_NOTI_ATTACH_TYPEDEF *)p_noti)->attach);
 			ccic_uevent_work(CCIC_NOTIFY_ID_WATER, ((CC_NOTI_ATTACH_TYPEDEF *)p_noti)->attach);
+#ifdef CONFIG_SEC_FACTORY
+			return 0;
+#endif
 		break;
 	case CCIC_NOTIFY_ID_VCONN:
 		ccic_uevent_work(CCIC_NOTIFY_ID_VCONN, 0);
@@ -196,13 +242,6 @@ int ccic_notifier_notify(CC_NOTI_TYPEDEF *p_noti, void *pd, int pdic_attach)
 			((CC_NOTI_ATTACH_TYPEDEF *)p_noti)->id,
 			((CC_NOTI_ATTACH_TYPEDEF *)p_noti)->attach);
 		break;
-#ifdef CONFIG_SEC_FACTORY
-	case CCIC_NOTIFY_ID_CC_PIN_STATUS:
-		pr_info("%s: src:%01x dest:%01x id:%02x pinStatus:%02x\n", __func__,
-			p_noti->src, p_noti->dest, p_noti->id, p_noti->sub1);
-			ccic_uevent_work(CCIC_NOTIFY_ID_CC_PIN_STATUS, p_noti->sub1);
-			return 0;
-#endif
 	default:
 		pr_info("%s: src:%01x dest:%01x id:%02x "
 			"sub1:%d sub2:%02x sub3:%02x\n", __func__,
@@ -215,7 +254,7 @@ int ccic_notifier_notify(CC_NOTI_TYPEDEF *p_noti, void *pd, int pdic_attach)
 		break;
 	}
 #ifdef CONFIG_USB_NOTIFY_PROC_LOG
-	store_usblog_notify(NOTIFY_CCIC_EVENT, (void *)p_noti, NULL);
+	store_usblog_notify(NOTIFY_CCIC_EVENT, (void*)p_noti , NULL);
 #endif
 	ret = blocking_notifier_call_chain(&(ccic_notifier.notifier_call_chain),
 			p_noti->id, &(ccic_notifier.ccic_template));
@@ -244,12 +283,27 @@ int ccic_notifier_init(void)
 	int ret = 0;
 
 	pr_info("%s\n", __func__);
-	if (ccic_notifier_init_done) {
+	if(ccic_notifier_init_done)
+	{
 		pr_err("%s already registered\n", __func__);
-		goto out;
+		goto out;	
 	}
 	ccic_notifier_init_done = 1;
-	ccic_core_init();
+	ccic_device = sec_device_create(NULL, "ccic");
+	if (IS_ERR(ccic_device)) {
+		pr_err("%s Failed to create device(switch)!\n", __func__);
+		ret = -ENODEV;
+		goto out;
+	}
+
+	/* create sysfs group */
+	ret = sysfs_create_group(&ccic_device->kobj, &ccic_sysfs_group);
+	if (ret) {
+		pr_err("%s: ccic sysfs fail, ret %d", __func__, ret);
+		goto out;
+	}
+
+
 	BLOCKING_INIT_NOTIFIER_HEAD(&(ccic_notifier.notifier_call_chain));
 
 out:

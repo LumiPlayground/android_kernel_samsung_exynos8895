@@ -436,7 +436,7 @@ cifs_echo_request(struct work_struct *work)
 	if (server->tcpStatus == CifsNeedNegotiate)
 		echo_interval = 0;
 	else
-		echo_interval = server->echo_interval;
+		echo_interval = SMB_ECHO_INTERVAL;
 
 	/*
 	 * We cannot send an echo if it is disabled.

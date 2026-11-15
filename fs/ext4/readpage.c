@@ -23,7 +23,7 @@
  *
  * then this code just gives up and calls the buffer_head-based read function.
  * It does handle a page which has holes at the end - that is a common case:
- * the end-of-file on blocksize < PAGE_SIZE setups.
+ * the end-of-file on blocksize < PAGE_CACHE_SIZE setups.
  *
  */
 
@@ -47,25 +47,56 @@
 #include "ext4.h"
 #include <trace/events/android_fs.h>
 
-#include <crypto/fmp.h>
+/*
+ * Call ext4_decrypt on every single page, reusing the encryption
+ * context.
+ */
+static void completion_pages(struct work_struct *work)
+{
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
+	struct ext4_crypto_ctx *ctx =
+		container_of(work, struct ext4_crypto_ctx, r.work);
+	struct bio	*bio	= ctx->r.bio;
+	struct bio_vec	*bv;
+	int		i;
+
+	bio_for_each_segment_all(bv, bio, i) {
+		struct page *page = bv->bv_page;
+
+		int ret = ext4_decrypt(page);
+		if (ret) {
+			WARN_ON_ONCE(1);
+			SetPageError(page);
+		} else
+			SetPageUptodate(page);
+		unlock_page(page);
+	}
+	ext4_release_crypto_ctx(ctx);
+	bio_put(bio);
+#else
+	BUG();
+#endif
+}
 
 static inline bool ext4_bio_encrypted(struct bio *bio)
 {
 #ifdef CONFIG_EXT4_FS_ENCRYPTION
-#ifdef CONFIG_FS_PRIVATE_ENCRYPTION
-	struct page *page;
+#ifdef CONFIG_FMP_EXT4CRYPT_FS
+        struct page *page;
+        int private_enc_mode;
 
-	page = bio->bi_io_vec->bv_page;
+        page = bio->bi_io_vec->bv_page;
+        private_enc_mode = page->mapping->private_enc_mode;
 
-	if (page->mapping->fmp_ci.private_algo_mode)
-		return false;
-	else
-		return unlikely(bio->bi_private != NULL);
+        if (private_enc_mode)
+                return false;
+        else
+                return unlikely(bio->bi_private != NULL);
 #else
 	return unlikely(bio->bi_private != NULL);
-#endif /* CONFIG_FS_PRIVATE_ENCRYPTION */
+#endif /* CONFIG_FMP_EXT4CRYPT_FS */
 #else
-	return false;
+        return false;
 #endif
 }
 
@@ -101,10 +132,14 @@ static void mpage_end_io(struct bio *bio)
 		ext4_trace_read_completion(bio);
 
 	if (ext4_bio_encrypted(bio)) {
+		struct ext4_crypto_ctx *ctx = bio->bi_private;
+
 		if (bio->bi_error) {
-			fscrypt_release_ctx(bio->bi_private);
+			ext4_release_crypto_ctx(ctx);
 		} else {
-			fscrypt_enqueue_decrypt_bio(bio->bi_private, bio);
+			INIT_WORK(&ctx->r.work, completion_pages);
+			ctx->r.bio = bio;
+			queue_work(ext4_read_workqueue, &ctx->r.work);
 			return;
 		}
 	}
@@ -144,6 +179,7 @@ ext4_submit_bio_read(struct bio *bio)
 				current->comm);
 		}
 	}
+	bio_set_op_attrs(bio, REQ_OP_READ, 0);
 	submit_bio(bio);
 }
 
@@ -152,11 +188,12 @@ int ext4_mpage_readpages(struct address_space *mapping,
 			 unsigned nr_pages)
 {
 	struct bio *bio = NULL;
+	unsigned page_idx;
 	sector_t last_block_in_bio = 0;
 
 	struct inode *inode = mapping->host;
 	const unsigned blkbits = inode->i_blkbits;
-	const unsigned blocks_per_page = PAGE_SIZE >> blkbits;
+	const unsigned blocks_per_page = PAGE_CACHE_SIZE >> blkbits;
 	const unsigned blocksize = 1 << blkbits;
 	sector_t block_in_file;
 	sector_t last_block;
@@ -173,7 +210,7 @@ int ext4_mpage_readpages(struct address_space *mapping,
 	map.m_len = 0;
 	map.m_flags = 0;
 
-	for (; nr_pages; nr_pages--) {
+	for (page_idx = 0; nr_pages; page_idx++, nr_pages--) {
 		int fully_mapped = 1;
 		unsigned first_hole = blocks_per_page;
 
@@ -182,14 +219,14 @@ int ext4_mpage_readpages(struct address_space *mapping,
 			page = list_entry(pages->prev, struct page, lru);
 			list_del(&page->lru);
 			if (add_to_page_cache_lru(page, mapping, page->index,
-				  readahead_gfp_mask(mapping)))
+				  mapping_gfp_constraint(mapping, GFP_KERNEL)))
 				goto next_page;
 		}
 
 		if (page_has_buffers(page))
 			goto confused;
 
-		block_in_file = (sector_t)page->index << (PAGE_SHIFT - blkbits);
+		block_in_file = (sector_t)page->index << (PAGE_CACHE_SHIFT - blkbits);
 		last_block = block_in_file + nr_pages * blocks_per_page;
 		last_block_in_file = (i_size_read(inode) + blocksize - 1) >> blkbits;
 		if (last_block > last_block_in_file)
@@ -233,7 +270,7 @@ int ext4_mpage_readpages(struct address_space *mapping,
 				set_error_page:
 					SetPageError(page);
 					zero_user_segment(page, 0,
-							  PAGE_SIZE);
+							  PAGE_CACHE_SIZE);
 					unlock_page(page);
 					goto next_page;
 				}
@@ -266,7 +303,7 @@ int ext4_mpage_readpages(struct address_space *mapping,
 		}
 		if (first_hole != blocks_per_page) {
 			zero_user_segment(page, first_hole << blkbits,
-					  PAGE_SIZE);
+					  PAGE_CACHE_SIZE);
 			if (first_hole == 0) {
 				SetPageUptodate(page);
 				unlock_page(page);
@@ -291,15 +328,16 @@ int ext4_mpage_readpages(struct address_space *mapping,
 			bio = NULL;
 		}
 		if (bio == NULL) {
-			struct fscrypt_ctx *ctx = NULL;
-#ifdef CONFIG_FS_PRIVATE_ENCRYPTION
+			struct ext4_crypto_ctx *ctx = NULL;
+
+#ifdef CONFIG_FMP_EXT4CRYPT_FS
 			if (ext4_encrypted_inode(inode) &&
-			    S_ISREG(inode->i_mode) && !inode->i_mapping->fmp_ci.private_algo_mode) {
+			    S_ISREG(inode->i_mode) && !inode->i_mapping->private_enc_mode) {
 #else
 			if (ext4_encrypted_inode(inode) &&
 			    S_ISREG(inode->i_mode)) {
-#endif /* CONFIG_FS_PRIVATE_ENCRYPTION */
-				ctx = fscrypt_get_ctx(inode, GFP_NOFS);
+#endif /* CONFIG_FMP_EXT4CRYPT_FS */
+				ctx = ext4_get_crypto_ctx(inode, GFP_NOFS);
 				if (IS_ERR(ctx))
 					goto set_error_page;
 			}
@@ -307,14 +345,13 @@ int ext4_mpage_readpages(struct address_space *mapping,
 				min_t(int, nr_pages, BIO_MAX_PAGES));
 			if (!bio) {
 				if (ctx)
-					fscrypt_release_ctx(ctx);
+					ext4_release_crypto_ctx(ctx);
 				goto set_error_page;
 			}
 			bio->bi_bdev = bdev;
 			bio->bi_iter.bi_sector = blocks[0] << (blkbits - 9);
 			bio->bi_end_io = mpage_end_io;
 			bio->bi_private = ctx;
-			bio_set_op_attrs(bio, REQ_OP_READ, 0);
 		}
 
 		length = first_hole << blkbits;

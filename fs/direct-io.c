@@ -416,11 +416,11 @@ static inline void dio_bio_submit(struct dio *dio, struct dio_submit *sdio)
 
 	dio->bio_bdev = bio->bi_bdev;
 	inode = dio->inode;
-	bio->fmp_ci.bi_dio_inode = dio->inode;
-	bio->fmp_ci.private_enc_mode = EXYNOS_FMP_FILE_ENC;
-	bio->fmp_ci.private_algo_mode = inode->i_mapping->fmp_ci.private_algo_mode;
-	bio->fmp_ci.key = inode->i_mapping->fmp_ci.key;
-	bio->fmp_ci.key_length = inode->i_mapping->fmp_ci.key_length;
+	bio->bi_dio_inode = dio->inode;
+	bio->private_enc_mode = inode->i_mapping->private_enc_mode;
+	bio->private_algo_mode = inode->i_mapping->private_algo_mode;
+	bio->key = inode->i_mapping->key;
+	bio->key_length = inode->i_mapping->key_length;
 
 	if (sdio->submit_io) {
 		sdio->submit_io(bio, dio->inode, sdio->logical_offset_in_bio);

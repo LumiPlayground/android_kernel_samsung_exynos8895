@@ -114,7 +114,6 @@ SECTIONS
 		*(.discard)
 		*(.discard.*)
 		*(.interp .dynamic)
-		*(.dynsym .dynstr .hash)
 	}
 
 	. = KIMAGE_VADDR + TEXT_OFFSET;
@@ -238,6 +237,14 @@ SECTIONS
 		__reloc_end = .;
 	}
 
+	/* Samsung FIPS relocation hashing consumes these ELF tables. */
+	.dynsym : ALIGN(8) {
+		__dynsym_start = .;
+		*(.dynsym)
+	}
+	.dynstr : { *(.dynstr) }
+	.hash : { *(.hash) }
+
 	__rela_offset	= ABSOLUTE(ADDR(.rela) - KIMAGE_VADDR);
 	__rela_size	= SIZEOF(.rela);
 
@@ -314,3 +321,8 @@ ASSERT((__entry_tramp_text_end - __entry_tramp_text_start) == PAGE_SIZE,
  * If padding is applied before .head.text, virt<->phys conversions will fail.
  */
 ASSERT(_text == (KIMAGE_VADDR + TEXT_OFFSET), "HEAD is misaligned")
+
+#if defined(CONFIG_SOC_EXYNOS8895) && defined(CONFIG_RELOCATABLE_KERNEL) && !defined(CONFIG_EFI)
+/* Subtract section symbols before comparing: old ld PIE equality is unreliable. */
+ASSERT((stext - _text) == 0x40, "Samsung primary entry must follow Image header")
+#endif

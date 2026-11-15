@@ -71,11 +71,6 @@
 #include <net/tcp_states.h>
 #include <linux/net_tstamp.h>
 
-/* START_OF_KNOX_NPA */
-#define NAP_PROCESS_NAME_LEN	128
-#define NAP_DOMAIN_NAME_LEN	255
-/* END_OF_KNOX_NPA */
-
 /*
  * This structure really needs to be cleaned up.
  * Most of it is for TCP, and not used by any of
@@ -257,7 +252,6 @@ struct sock_common {
   *	@sk_pacing_rate: Pacing rate (if supported by transport/packet scheduler)
   *	@sk_max_pacing_rate: Maximum pacing rate (%SO_MAX_PACING_RATE)
   *	@sk_sndbuf: size of send buffer in bytes
-  *	@sk_padding: unused element for alignment
   *	@sk_no_check_tx: %SO_NO_CHECK setting, set checksum in TX packets
   *	@sk_no_check_rx: allow zero checksum in RX packets
   *	@sk_route_caps: route capabilities (e.g. %NETIF_F_TSO)
@@ -308,8 +302,7 @@ struct sock_common {
   *	@sk_backlog_rcv: callback to process the backlog
   *	@sk_destruct: called at sock freeing time, i.e. when all refcnt == 0
   *	@sk_reuseport_cb: reuseport group container
-  *	@sk_rcu: used during RCU grace period
-  */
+ */
 struct sock {
 	/*
 	 * Now struct inet_timewait_sock also uses sock_common, so please just
@@ -424,7 +417,6 @@ struct sock {
 	u32			sk_max_ack_backlog;
 	__u32			sk_priority;
 	__u32			sk_mark;
-	kuid_t			sk_uid;
 	struct pid		*sk_peer_pid;
 	const struct cred	*sk_peer_cred;
 	long			sk_rcvtimeo;
@@ -443,20 +435,13 @@ struct sock {
 #ifdef CONFIG_SECURITY
 	void			*sk_security;
 #endif
+	kuid_t			sk_uid;
+#ifdef CONFIG_CGROUP_NET_CLASSID
+	u32			sk_classid;
+#endif
+	struct cg_proto		*sk_cgrp;
 	struct sock_cgroup_data	sk_cgrp_data;
 	struct mem_cgroup	*sk_memcg;
-	/* START_OF_KNOX_NPA */
-	uid_t			knox_uid;
-	pid_t			knox_pid;
-	uid_t			knox_dns_uid;
-	char 			domain_name[NAP_DOMAIN_NAME_LEN];
-	char			process_name[NAP_PROCESS_NAME_LEN];
-	uid_t			knox_puid;
-	pid_t			knox_ppid;
-	char			parent_process_name[NAP_PROCESS_NAME_LEN];
-	pid_t			knox_dns_pid;
-	char 			dns_process_name[NAP_PROCESS_NAME_LEN];
-	/* END_OF_KNOX_NPA */
 	void			(*sk_state_change)(struct sock *sk);
 	void			(*sk_data_ready)(struct sock *sk);
 	void			(*sk_write_space)(struct sock *sk);
@@ -666,7 +651,11 @@ static inline void sk_add_node_rcu(struct sock *sk, struct hlist_head *list)
 
 static inline void __sk_nulls_add_node_rcu(struct sock *sk, struct hlist_nulls_head *list)
 {
-	hlist_nulls_add_head_rcu(&sk->sk_nulls_node, list);
+	if (IS_ENABLED(CONFIG_IPV6) && sk->sk_reuseport &&
+	    sk->sk_family == AF_INET6)
+		hlist_nulls_add_tail_rcu(&sk->sk_nulls_node, list);
+	else
+		hlist_nulls_add_head_rcu(&sk->sk_nulls_node, list);
 }
 
 static inline void sk_nulls_add_node_rcu(struct sock *sk, struct hlist_nulls_head *list)
@@ -757,9 +746,6 @@ enum sock_flags {
 	SOCK_FILTER_LOCKED, /* Filter cannot be changed anymore */
 	SOCK_SELECT_ERR_QUEUE, /* Wake select on error queue */
 	SOCK_RCU_FREE, /* wait rcu grace period in sk_destruct() */
-#ifdef CONFIG_MPTCP
-	SOCK_MPTCP, /* MPTCP set on this socket */
-#endif
 };
 
 #define SK_FLAGS_TIMESTAMP ((1UL << SOCK_TIMESTAMP) | (1UL << SOCK_TIMESTAMPING_RX_SOFTWARE))
@@ -964,17 +950,6 @@ static inline bool sk_flush_backlog(struct sock *sk)
 }
 
 int sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb);
-#ifdef CONFIG_MPTCP
-/* START - needed for MPTCP */
-struct sock *sk_prot_alloc(struct proto *prot, gfp_t priority, int family);
-void sock_lock_init(struct sock *sk);
-
-extern struct lock_class_key af_callback_keys[AF_MAX];
-extern char *const af_family_clock_key_strings[AF_MAX+1];
-
-#define SK_FLAGS_TIMESTAMP ((1UL << SOCK_TIMESTAMP) | (1UL << SOCK_TIMESTAMPING_RX_SOFTWARE))
-/* END - needed for MPTCP */
-#endif
 
 struct request_sock_ops;
 struct timewait_sock_ops;
@@ -1050,9 +1025,8 @@ struct proto {
 	void			(*unhash)(struct sock *sk);
 	void			(*rehash)(struct sock *sk);
 	int			(*get_port)(struct sock *sk, unsigned short snum);
-#ifdef CONFIG_MPTCP
 	void			(*clear_sk)(struct sock *sk, int size);
-#endif
+
 	/* Keeping track of sockets in use */
 #ifdef CONFIG_PROC_FS
 	unsigned int		inuse_idx;
@@ -1098,6 +1072,18 @@ struct proto {
 	struct list_head	node;
 #ifdef SOCK_REFCNT_DEBUG
 	atomic_t		socks;
+#endif
+#ifdef CONFIG_MEMCG_KMEM
+	/*
+	 * cgroup specific init/deinit functions. Called once for all
+	 * protocols that implement it, from cgroups populate function.
+	 * This function has to setup any files the protocol want to
+	 * appear in the kmem cgroup filesystem.
+	 */
+	int			(*init_cgroup)(struct mem_cgroup *memcg,
+					       struct cgroup_subsys *ss);
+	void			(*destroy_cgroup)(struct mem_cgroup *memcg);
+	struct cg_proto		*(*proto_cgroup)(struct mem_cgroup *memcg);
 #endif
 	int			(*diag_destroy)(struct sock *sk, int err);
 };
@@ -1145,16 +1131,6 @@ static inline bool sk_stream_is_writeable(const struct sock *sk)
 	       sk_stream_memory_free(sk);
 }
 
-static inline int sk_under_cgroup_hierarchy(struct sock *sk,
-					    struct cgroup *ancestor)
-{
-#ifdef CONFIG_SOCK_CGROUP_DATA
-	return cgroup_is_descendant(sock_cgroup_ptr(&sk->sk_cgrp_data),
-				    ancestor);
-#else
-	return -ENOTSUPP;
-#endif
-}
 
 static inline bool sk_has_memory_pressure(const struct sock *sk)
 {
@@ -1272,6 +1248,8 @@ static inline int __sk_prot_rehash(struct sock *sk)
 	sk->sk_prot->unhash(sk);
 	return sk->sk_prot->hash(sk);
 }
+
+void sk_prot_clear_portaddr_nulls(struct sock *sk, int size);
 
 /* About 10 seconds */
 #define SOCK_DESTROY_TIME (10*HZ)
@@ -1626,11 +1604,11 @@ static inline void sock_put(struct sock *sk)
 void sock_gen_put(struct sock *sk);
 
 int __sk_receive_skb(struct sock *sk, struct sk_buff *skb, const int nested,
-		     unsigned int trim_cap, bool refcounted);
+		     unsigned int trim_cap);
 static inline int sk_receive_skb(struct sock *sk, struct sk_buff *skb,
 				 const int nested)
 {
-	return __sk_receive_skb(sk, skb, nested, 1, true);
+	return __sk_receive_skb(sk, skb, nested, 1);
 }
 
 static inline void sk_tx_queue_set(struct sock *sk, int tx_queue)
@@ -1693,6 +1671,7 @@ static inline kuid_t sock_net_uid(const struct net *net, const struct sock *sk)
 {
 	return sk ? sk->sk_uid : make_kuid(net->user_ns, 0);
 }
+
 
 static inline u32 net_tx_rndhash(void)
 {
@@ -2318,5 +2297,20 @@ extern int sysctl_optmem_max;
 
 extern __u32 sysctl_wmem_default;
 extern __u32 sysctl_rmem_default;
+
+static inline gfp_t sk_gfp_atomic(const struct sock *sk, gfp_t gfp_mask)
+{
+	return GFP_ATOMIC | (sk->sk_allocation & __GFP_MEMALLOC);
+}
+static inline int sk_under_cgroup_hierarchy(struct sock *sk,
+					    struct cgroup *ancestor)
+{
+#ifdef CONFIG_SOCK_CGROUP_DATA
+	return cgroup_is_descendant(sock_cgroup_ptr(&sk->sk_cgrp_data),
+				    ancestor);
+#else
+	return -ENOTSUPP;
+#endif
+}
 
 #endif	/* _SOCK_H */

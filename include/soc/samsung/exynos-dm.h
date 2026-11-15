@@ -25,12 +25,8 @@ enum exynos_dm_type {
 	DM_MIF,
 	DM_INT,
 	DM_INTCAM,
-	DM_FSYS0,
-	DM_CAM,
 	DM_DISP,
-	DM_AUD,
-	DM_IVA,
-	DM_SCORE,
+	DM_CAM,
 	DM_GPU,
 	DM_TYPE_END
 };
@@ -41,12 +37,8 @@ static const char dm_type_name[DM_TYPE_END][EXYNOS_DM_TYPE_NAME_LEN] = {
 	"dm_mif",
 	"dm_int",
 	"dm_intcam",
-	"dm_fsys0",
-	"dm_cam",
 	"dm_disp",
-	"dm_aud",
-	"dm_iva",
-	"dm_score",
+	"dm_cam",
 	"dm_gpu",
 };
 

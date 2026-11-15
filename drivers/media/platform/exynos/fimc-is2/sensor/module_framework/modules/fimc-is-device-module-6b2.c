@@ -40,21 +40,21 @@
 
 static struct fimc_is_sensor_cfg config_module_6b2[] = {
 	/* 5968x3368@30fps */
-	FIMC_IS_SENSOR_CFG(1936, 1090, 30, 19, 0, CSI_DATA_LANES_1),
+	FIMC_IS_SENSOR_CFG(1936, 1090, 30, 19, 0, CSI_DATA_LANES_2),
 	/* for FPGA, actual FPS is 1fps */
-	FIMC_IS_SENSOR_CFG(656, 490, 30, 12, 1, CSI_DATA_LANES_1),
+	FIMC_IS_SENSOR_CFG(656, 490, 30, 12, 1, CSI_DATA_LANES_2),
 };
 
 static struct fimc_is_vci vci_module_6b2[] = {
 	{
 		.pixelformat = V4L2_PIX_FMT_SBGGR10,
-		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_EMBEDDED_8BIT} , {2, HW_FORMAT_USER}, {3, 0}}
+		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_UNKNOWN}, {2, HW_FORMAT_USER}, {3, 0}}
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SBGGR12,
-		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_EMBEDDED_8BIT} , {2, HW_FORMAT_USER}, {3, 0}}
+		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_UNKNOWN}, {2, HW_FORMAT_USER}, {3, 0}}
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SBGGR16,
-		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_EMBEDDED_8BIT} , {2, HW_FORMAT_USER}, {3, 0}}
+		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_UNKNOWN}, {2, HW_FORMAT_USER}, {3, 0}}
 	}
 };
 
@@ -69,8 +69,7 @@ static const struct v4l2_subdev_core_ops core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops video_ops = {
-	.s_stream = sensor_module_s_stream,
-	.s_parm = sensor_module_s_param
+	.s_stream = sensor_module_s_stream
 };
 
 static const struct v4l2_subdev_pad_ops pad_ops = {
@@ -83,16 +82,18 @@ static const struct v4l2_subdev_ops subdev_ops = {
 	.pad = &pad_ops
 };
 
-static int sensor_module_6b2_power_setpin(struct device *dev,
+static int sensor_module_6b2_power_setpin(struct platform_device *pdev,
 	struct exynos_platform_fimc_is_module *pdata)
 {
+	struct device *dev;
 	struct device_node *dnode;
 	int gpio_reset = 0;
 	int gpio_comp_rst = 0;
 	int gpio_none = 0;
 
-	FIMC_BUG(!dev);
+	BUG_ON(!pdev);
 
+	dev = &pdev->dev;
 	dnode = dev->of_node;
 
 	dev_info(dev, "%s E v4\n", __func__);
@@ -125,17 +126,17 @@ static int sensor_module_6b2_power_setpin(struct device *dev,
 
 	/* FRONT CAMERA - POWER ON */
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
-	SET_PIN_VOLTAGE(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "DOVDD_VT_CAM_1V8", PIN_REGULATOR, 1, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "VDD_VT_CAM_2V8", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 1, 0);
+	SET_PIN_VOLTAGE(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "CAM_DOVDD_1V8", PIN_REGULATOR, 1, 0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "ldo1", PIN_REGULATOR, 1, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 0);
 
 	/* FRONT CAMERA - POWER OFF */
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst", PIN_RESET, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst input", PIN_INPUT, 0 ,0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "DOVDD_VT_CAM_1V8", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "VDD_VT_CAM_2V8", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "CAM_DOVDD_1V8", PIN_REGULATOR, 0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "ldo1", PIN_REGULATOR, 0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 1, 0);
 
 	/* FRONT CAEMRA - VISION POWER ON */
 	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
@@ -151,7 +152,7 @@ static int sensor_module_6b2_power_setpin(struct device *dev,
 	return 0;
 }
 
-static int __init sensor_module_6b2_probe(struct platform_device *pdev)
+int sensor_module_6b2_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -162,7 +163,7 @@ static int __init sensor_module_6b2_probe(struct platform_device *pdev)
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -172,7 +173,7 @@ static int __init sensor_module_6b2_probe(struct platform_device *pdev)
 
 	dev = &pdev->dev;
 
-	fimc_is_module_parse_dt(dev, sensor_module_6b2_power_setpin);
+	fimc_is_sensor_module_parse_dt(pdev, sensor_module_6b2_power_setpin);
 
 	pdata = dev_get_platdata(dev);
 	device = &core->sensor[pdata->id];
@@ -184,8 +185,8 @@ static int __init sensor_module_6b2_probe(struct platform_device *pdev)
 		goto p_err;
 	}
 
-	module = &device->module_enum[atomic_read(&device->module_count)];
-	atomic_inc(&device->module_count);
+	module = &device->module_enum[atomic_read(&core->resourcemgr.rsccount_module)];
+	atomic_inc(&core->resourcemgr.rsccount_module);
 	clear_bit(FIMC_IS_MODULE_GPIO_ON, &module->state);
 	module->pdata = pdata;
 	module->dev = dev;
@@ -204,7 +205,7 @@ static int __init sensor_module_6b2_probe(struct platform_device *pdev)
 	module->max_framerate = 30;
 	module->position = pdata->position;
 	module->mode = CSI_MODE_DT_ONLY;
-	module->lanes = CSI_DATA_LANES_1;
+	module->lanes = CSI_DATA_LANES_2;
 	module->bitwidth = 10;
 	module->vcis = ARRAY_SIZE(vci_module_6b2);
 	module->vci = vci_module_6b2;
@@ -226,6 +227,7 @@ static int __init sensor_module_6b2_probe(struct platform_device *pdev)
 
 	ext = &module->ext;
 	ext->mipi_lane_num = module->lanes;
+	ext->I2CSclk = 0;
 
 	ext->sensor_con.product_name = module->sensor_id;
 	ext->sensor_con.peri_type = SE_I2C;
@@ -290,6 +292,15 @@ p_err:
 	return ret;
 }
 
+static int sensor_module_6b2_remove(struct platform_device *pdev)
+{
+        int ret = 0;
+
+        info("%s\n", __func__);
+
+        return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_module_6b2_match[] = {
 	{
 		.compatible = "samsung,sensor-module-6b2",
@@ -299,6 +310,8 @@ static const struct of_device_id exynos_fimc_is_sensor_module_6b2_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_6b2_match);
 
 static struct platform_driver sensor_module_6b2_driver = {
+	.probe  = sensor_module_6b2_probe,
+	.remove = sensor_module_6b2_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-MODULE-6B2",
 		.owner  = THIS_MODULE,
@@ -306,16 +319,4 @@ static struct platform_driver sensor_module_6b2_driver = {
 	}
 };
 
-static int __init fimc_is_sensor_module_6b2_init(void)
-{
-	int ret;
-
-	ret = platform_driver_probe(&sensor_module_6b2_driver,
-				sensor_module_6b2_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_6b2_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall(fimc_is_sensor_module_6b2_init);
+module_platform_driver(sensor_module_6b2_driver);

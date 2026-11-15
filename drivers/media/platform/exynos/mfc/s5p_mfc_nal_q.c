@@ -15,8 +15,7 @@
 #include "s5p_mfc_watchdog.h"
 #include "s5p_mfc_sync.h"
 
-#include "s5p_mfc_pm.h"
-#include "s5p_mfc_cal.h"
+#include "s5p_mfc_cmd.h"
 #include "s5p_mfc_reg.h"
 
 #include "s5p_mfc_qos.h"
@@ -24,16 +23,19 @@
 #include "s5p_mfc_utils.h"
 #include "s5p_mfc_buf.h"
 #include "s5p_mfc_mem.h"
-#include "s5p_mfc_irq.h"
+
+#include "s5p_mfc_pm.h"
 
 #ifdef NAL_Q_ENABLE
-#define CBR_I_LIMIT_MAX			5
+
+extern int nal_q_disable;
+extern int nal_q_dump;
+
 int s5p_mfc_nal_q_check_enable(struct s5p_mfc_dev *dev)
 {
 	struct s5p_mfc_ctx *temp_ctx;
 	struct s5p_mfc_dec *dec = NULL;
 	struct s5p_mfc_enc *enc = NULL;
-	struct s5p_mfc_enc_params *p = NULL;
 	int i;
 
 	mfc_debug_enter();
@@ -61,16 +63,6 @@ int s5p_mfc_nal_q_check_enable(struct s5p_mfc_dev *dev)
 				mfc_debug(2, "There is a last frame. index: %d\n", i);
 				return 0;
 			}
-			/* NAL-Q doesn't support OTF mode */
-			if (temp_ctx->otf_handle) {
-				mfc_debug(2, "There is a OTF node.\n");
-				return 0;
-			}
-			/* NAL-Q doesn't support BPG */
-			if (IS_BPG_DEC(temp_ctx) || IS_BPG_ENC(temp_ctx)) {
-				mfc_debug(2, "BPG codec type\n");
-				return 0;
-			}
 			/* NAL-Q doesn't support multi-frame, interlaced, black bar */
 			if (temp_ctx->type == MFCINST_DECODER) {
 				dec = temp_ctx->dec_priv;
@@ -94,20 +86,15 @@ int s5p_mfc_nal_q_check_enable(struct s5p_mfc_dev *dev)
 					mfc_debug(2, "black bar detection is enabled\n");
 					return 0;
 				}
-			/* NAL-Q doesn't support fixed byte(slice mode), CBR_VT(rc mode) */
+			/* NAL-Q doesn't support fixed byte(slice mode) */
 			} else if (temp_ctx->type == MFCINST_ENCODER) {
 				enc = temp_ctx->enc_priv;
 				if (!enc) {
-					mfc_debug(2, "There is no enc\n");
+					mfc_debug (2, "There is no enc\n");
 					return 0;
 				}
 				if (enc->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_FIXED_BYTES) {
 					mfc_debug(2, "There is fixed bytes option(slice mode)\n");
-					return 0;
-				}
-				p = &enc->params;
-				if (p->rc_reaction_coeff <= CBR_I_LIMIT_MAX) {
-					mfc_debug(2, "There is CBR_VT option(rc mode)\n");
 					return 0;
 				}
 			}
@@ -157,19 +144,20 @@ static nal_queue_in_handle* mfc_nal_q_create_in_q(struct s5p_mfc_dev *dev,
 	}
 
 	nal_q_in_handle->nal_q_handle = nal_q_handle;
-	nal_q_in_handle->in_buf.buftype = MFCBUF_NORMAL;
-	nal_q_in_handle->in_buf.size = NAL_Q_IN_ENTRY_SIZE * (NAL_Q_IN_QUEUE_SIZE + 2);
-	if (s5p_mfc_mem_ion_alloc(dev, &nal_q_in_handle->in_buf)) {
+	nal_q_in_handle->in_alloc = s5p_mfc_mem_alloc(dev->alloc_ctx,
+			NAL_Q_IN_ENTRY_SIZE * (NAL_Q_IN_QUEUE_SIZE + 2));
+
+	if (IS_ERR(nal_q_in_handle->in_alloc)) {
 		mfc_err_dev("NAL Q: failed to get memory\n");
 		kfree(nal_q_in_handle);
 		return NULL;
 	}
 
 	nal_q_in_handle->nal_q_in_addr
-		= (nal_in_queue *)s5p_mfc_mem_get_vaddr(dev, &nal_q_in_handle->in_buf);
+		= (nal_in_queue *)s5p_mfc_mem_get_vaddr(nal_q_in_handle->in_alloc);
 	if (!nal_q_in_handle->nal_q_in_addr) {
 		mfc_err_dev("NAL Q: failed to get vaddr\n");
-		s5p_mfc_mem_ion_free(dev, &nal_q_in_handle->in_buf);
+		s5p_mfc_mem_free(nal_q_in_handle->in_alloc);
 		kfree(nal_q_in_handle);
 		return NULL;
 	}
@@ -198,19 +186,20 @@ static nal_queue_out_handle* mfc_nal_q_create_out_q(struct s5p_mfc_dev *dev,
 	}
 
 	nal_q_out_handle->nal_q_handle = nal_q_handle;
-	nal_q_out_handle->out_buf.buftype = MFCBUF_NORMAL;
-	nal_q_out_handle->out_buf.size = NAL_Q_OUT_ENTRY_SIZE * (NAL_Q_OUT_QUEUE_SIZE + 2);
-	if (s5p_mfc_mem_ion_alloc(dev, &nal_q_out_handle->out_buf)) {
+	nal_q_out_handle->out_alloc = s5p_mfc_mem_alloc(dev->alloc_ctx,
+			NAL_Q_OUT_ENTRY_SIZE * (NAL_Q_OUT_QUEUE_SIZE + 2));
+
+	if (IS_ERR(nal_q_out_handle->out_alloc)) {
 		mfc_err_dev("NAL Q: failed to get memory\n");
 		kfree(nal_q_out_handle);
 		return NULL;
 	}
 
 	nal_q_out_handle->nal_q_out_addr
-		= (nal_out_queue *)s5p_mfc_mem_get_vaddr(dev, &nal_q_out_handle->out_buf);
+		= (nal_out_queue *)s5p_mfc_mem_get_vaddr(nal_q_out_handle->out_alloc);
 	if (!nal_q_out_handle->nal_q_out_addr) {
 		mfc_err_dev("NAL Q : failed to get vaddr\n");
-		s5p_mfc_mem_ion_free(dev, &nal_q_out_handle->out_buf);
+		s5p_mfc_mem_free(nal_q_out_handle->out_alloc);
 		kfree(nal_q_out_handle);
 		return NULL;
 	}
@@ -220,26 +209,23 @@ static nal_queue_out_handle* mfc_nal_q_create_out_q(struct s5p_mfc_dev *dev,
 	return nal_q_out_handle;
 }
 
-static void mfc_nal_q_destroy_in_q(struct s5p_mfc_dev *dev,
-			nal_queue_in_handle *nal_q_in_handle)
+static void mfc_nal_q_destroy_in_q(nal_queue_in_handle *nal_q_in_handle)
 {
 	mfc_debug_enter();
 
 	if (nal_q_in_handle) {
-		s5p_mfc_mem_ion_free(dev, &nal_q_in_handle->in_buf);
+		s5p_mfc_mem_free(nal_q_in_handle->in_alloc);
 		kfree(nal_q_in_handle);
 	}
 
 	mfc_debug_leave();
 }
-
-static void mfc_nal_q_destroy_out_q(struct s5p_mfc_dev *dev,
-			nal_queue_out_handle *nal_q_out_handle)
+static void mfc_nal_q_destroy_out_q(nal_queue_out_handle *nal_q_out_handle)
 {
 	mfc_debug_enter();
 
 	if (nal_q_out_handle) {
-		s5p_mfc_mem_ion_free(dev, &nal_q_out_handle->out_buf);
+		s5p_mfc_mem_free(nal_q_out_handle->out_alloc);
 		kfree(nal_q_out_handle);
 	}
 
@@ -277,7 +263,7 @@ nal_queue_handle *s5p_mfc_nal_q_create(struct s5p_mfc_dev *dev)
 
 	nal_q_handle->nal_q_out_handle = mfc_nal_q_create_out_q(dev, nal_q_handle);
 	if (!nal_q_handle->nal_q_out_handle) {
-		mfc_nal_q_destroy_in_q(dev, nal_q_handle->nal_q_in_handle);
+		mfc_nal_q_destroy_in_q(nal_q_handle->nal_q_in_handle);
 		kfree(nal_q_handle);
 		mfc_err_dev("NAL Q: no nal_q_out_handle\n");
 		return NULL;
@@ -297,10 +283,10 @@ void s5p_mfc_nal_q_destroy(struct s5p_mfc_dev *dev, nal_queue_handle *nal_q_hand
 	mfc_debug_enter();
 
 	if (nal_q_handle->nal_q_out_handle)
-		mfc_nal_q_destroy_out_q(dev, nal_q_handle->nal_q_out_handle);
+		mfc_nal_q_destroy_out_q(nal_q_handle->nal_q_out_handle);
 
 	if (nal_q_handle->nal_q_in_handle)
-		mfc_nal_q_destroy_in_q(dev, nal_q_handle->nal_q_in_handle);
+		mfc_nal_q_destroy_in_q(nal_q_handle->nal_q_in_handle);
 
 	kfree(nal_q_handle);
 	dev->nal_q_handle = NULL;
@@ -373,7 +359,7 @@ void s5p_mfc_nal_q_start(struct s5p_mfc_dev *dev, nal_queue_handle *nal_q_handle
 		return;
 	}
 
-	addr = nal_q_handle->nal_q_in_handle->in_buf.daddr;
+	addr = s5p_mfc_mem_get_daddr(nal_q_handle->nal_q_in_handle->in_alloc);
 
 	s5p_mfc_update_nal_queue_input(dev, addr, NAL_Q_IN_ENTRY_SIZE * NAL_Q_IN_QUEUE_SIZE);
 
@@ -382,7 +368,7 @@ void s5p_mfc_nal_q_start(struct s5p_mfc_dev *dev, nal_queue_handle *nal_q_handle
 	mfc_debug(2, "NAL Q: S5P_FIMV_NAL_QUEUE_INPUT_SIZE=%d\n",
 		s5p_mfc_get_nal_q_input_size());
 
-	addr = nal_q_handle->nal_q_out_handle->out_buf.daddr;
+	addr = s5p_mfc_mem_get_daddr(nal_q_handle->nal_q_out_handle->out_alloc);
 
 	s5p_mfc_update_nal_queue_output(dev, addr, NAL_Q_OUT_ENTRY_SIZE * NAL_Q_OUT_QUEUE_SIZE);
 
@@ -533,7 +519,6 @@ static int mfc_nal_q_run_in_buf_enc(struct s5p_mfc_ctx *ctx, EncoderInputStr *pI
 	struct s5p_mfc_buf *src_mb, *dst_mb;
 	struct s5p_mfc_raw_info *raw = NULL;
 	dma_addr_t src_addr[3] = {0, 0, 0};
-	dma_addr_t addr_2bit[2];
 	unsigned int index, i;
 
 	mfc_debug_enter();
@@ -570,22 +555,6 @@ static int mfc_nal_q_run_in_buf_enc(struct s5p_mfc_ctx *ctx, EncoderInputStr *pI
 
 	for (i = 0; i < raw->num_planes; i++)
 		pInStr->FrameAddr[i] = src_addr[i];
-
-	if (ctx->src_fmt->fourcc == V4L2_PIX_FMT_NV12M_S10B ||
-		ctx->src_fmt->fourcc == V4L2_PIX_FMT_NV21M_S10B) {
-		addr_2bit[0] = src_addr[0] + NV12N_Y_SIZE(ctx->img_width, ctx->img_height);
-		addr_2bit[1] = src_addr[1] + NV12N_CBCR_SIZE(ctx->img_width, ctx->img_height);
-
-		for (i = 0; i < raw->num_planes; i++)
-			pInStr->Frame2bitAddr[i] = addr_2bit[i];
-	} else if (ctx->src_fmt->fourcc == V4L2_PIX_FMT_NV16M_S10B ||
-		ctx->src_fmt->fourcc == V4L2_PIX_FMT_NV61M_S10B) {
-		addr_2bit[0] = src_addr[0] + NV16M_Y_SIZE(ctx->img_width, ctx->img_height);
-		addr_2bit[1] = src_addr[1] + NV16M_CBCR_SIZE(ctx->img_width, ctx->img_height);
-
-		for (i = 0; i < raw->num_planes; i++)
-			pInStr->Frame2bitAddr[i] = addr_2bit[i];
-	}
 
 	/* move dst_queue -> dst_queue_nal_q */
 	dst_mb = s5p_mfc_get_move_buf(&ctx->buf_queue_lock,
@@ -707,9 +676,9 @@ static int mfc_nal_q_run_in_buf_dec(struct s5p_mfc_ctx *ctx, DecoderInputStr *pI
 	for (i = 0; i < raw->num_planes; i++) {
 		pInStr->FrameSize[i] = raw->plane_size[i];
 		pInStr->FrameAddr[i] = dst_mb->planes.raw[i];
-		ctx->last_dst_addr[i] = dst_mb->planes.raw[i];
 		if (ctx->is_10bit)
 			pInStr->Frame2BitSize[i] = raw->plane_size_2bits[i];
+		ctx->last_dst_addr[i] = dst_mb->planes.raw[i];
 	}
 	mfc_debug(2, "NAL Q: dst addr[0]: 0x%08llx\n",
 			dst_mb->planes.raw[0]);
@@ -1001,198 +970,51 @@ static void mfc_nal_q_handle_frame_copy_timestamp(struct s5p_mfc_ctx *ctx, Decod
 
 	ref_mb = s5p_mfc_find_buf_vb(&ctx->buf_queue_lock,
 			&ctx->ref_buf_queue, dec_y_addr);
-	if (ref_mb)
-		ref_mb->vb.vb2_buf.timestamp = src_mb->vb.vb2_buf.timestamp;
+	if (ref_mb) {
+		memcpy(&ref_mb->vb.timestamp,
+				&src_mb->vb.timestamp,
+				sizeof(struct timeval));
+	}
 
 	mfc_debug_leave();
 }
 
-static void mfc_nal_q_handle_frame_output_move(struct s5p_mfc_ctx *ctx,
-			dma_addr_t dspl_y_addr, unsigned int released_flag)
+static void mfc_nal_q_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err, DecoderOutputStr *pOutStr)
 {
-	struct s5p_mfc_dec *dec = ctx->dec_priv;
-	struct s5p_mfc_dev *dev = ctx->dev;
-	struct s5p_mfc_buf *dst_mb;
-	unsigned int index;
-
-	dst_mb = s5p_mfc_find_move_buf_vb(&ctx->buf_queue_lock,
-			&ctx->dst_buf_queue, &ctx->ref_buf_queue, dspl_y_addr, released_flag);
-	if (dst_mb) {
-		mfc_debug(2, "NAL Q: find display buf, index: %d\n", dst_mb->vb.vb2_buf.index);
-		/* Check if this is the buffer we're looking for */
-		mfc_debug(2, "NAL Q: buf addr: 0x%08llx, disp addr: 0x%08llx\n",
-				s5p_mfc_mem_get_daddr_vb(&dst_mb->vb.vb2_buf, 0), dspl_y_addr);
-
-		index = dst_mb->vb.vb2_buf.index;
-
-		if (released_flag & (1 << index)) {
-			dec->available_dpb &= ~(1 << index);
-			released_flag &= ~(1 << index);
-			mfc_debug(2, "NAL Q: Corrupted frame(%d), it will be re-used(release)\n",
-					s5p_mfc_get_warn(s5p_mfc_get_int_err()));
-		} else {
-			dec->err_reuse_flag |= 1 << index;
-			mfc_debug(2, "NAL Q: Corrupted frame(%d), it will be re-used(not released)\n",
-					s5p_mfc_get_warn(s5p_mfc_get_int_err()));
-		}
-		dec->dynamic_used |= released_flag;
-	}
-}
-
-static void mfc_nal_q_handle_frame_output_del(struct s5p_mfc_ctx *ctx,
-		DecoderOutputStr *pOutStr, unsigned int err, unsigned int released_flag)
-{
-	struct s5p_mfc_dec *dec = ctx->dec_priv;
-	struct s5p_mfc_dev *dev = ctx->dev;
-	struct s5p_mfc_raw_info *raw = &ctx->raw_buf;
-	struct s5p_mfc_buf *ref_mb;
+	struct s5p_mfc_dec *dec;
+	struct s5p_mfc_dev *dev;
+	struct s5p_mfc_buf *dst_mb, *ref_mb;
+	struct s5p_mfc_raw_info *raw;
 	dma_addr_t dspl_y_addr;
+	unsigned int index;
 	unsigned int frame_type;
-	unsigned int dst_frame_status;
 	unsigned int is_video_signal_type = 0, is_colour_description = 0;
 	unsigned int is_content_light = 0, is_display_colour = 0;
-	unsigned int disp_err;
-	int i, index;
-
-	if (FW_HAS_VIDEO_SIGNAL_TYPE(dev)) {
-		is_video_signal_type = ((pOutStr->VideoSignalType
-					>> S5P_FIMV_D_VIDEO_SIGNAL_TYPE_FLAG_SHIFT)
-					& S5P_FIMV_D_VIDEO_SIGNAL_TYPE_FLAG_MASK);
-		is_colour_description = ((pOutStr->VideoSignalType
-					>> S5P_FIMV_D_COLOUR_DESCRIPTION_FLAG_SHIFT)
-					& S5P_FIMV_D_COLOUR_DESCRIPTION_FLAG_MASK);
-	}
-
-	if (FW_HAS_SEI_INFO_FOR_HDR(dev)) {
-		is_content_light = ((pOutStr->SeiAvail >> S5P_FIMV_D_SEI_AVAIL_CONTENT_LIGHT_SHIFT)
-					& S5P_FIMV_D_SEI_AVAIL_CONTENT_LIGHT_MASK);
-		is_display_colour = ((pOutStr->SeiAvail >> S5P_FIMV_D_SEI_AVAIL_MASTERING_DISPLAY_SHIFT)
-					& S5P_FIMV_D_SEI_AVAIL_MASTERING_DISPLAY_MASK);
-	}
-
-	if (dec->immediate_display == 1) {
-		dspl_y_addr = pOutStr->DecodedAddr[0];
-		frame_type = pOutStr->DecodedFrameType & S5P_FIMV_DECODED_FRAME_MASK;
-	} else {
-		dspl_y_addr = pOutStr->DisplayAddr[0];
-		frame_type = pOutStr->DisplayFrameType & S5P_FIMV_DISPLAY_FRAME_MASK;
-	}
-
-	ref_mb = s5p_mfc_find_del_buf_vb(&ctx->buf_queue_lock,
-			&ctx->ref_buf_queue, dspl_y_addr);
-	if (ref_mb) {
-		mfc_debug(2, "NAL Q: find display buf, index: %d\n", ref_mb->vb.vb2_buf.index);
-		/* Check if this is the buffer we're looking for */
-		mfc_debug(2, "NAL Q: buf addr: 0x%08llx, disp addr: 0x%08llx\n",
-				s5p_mfc_mem_get_daddr_vb(&ref_mb->vb.vb2_buf, 0), dspl_y_addr);
-
-		index = ref_mb->vb.vb2_buf.index;
-
-		ref_mb->vb.sequence = ctx->sequence;
-
-		/* Set reserved2 bits in order to inform SEI information */
-		ref_mb->vb.reserved2 = 0;
-
-		if (is_content_light) {
-			ref_mb->vb.reserved2 |= (1 << 0);
-			mfc_debug(2, "NAL Q: content light level parsed\n");
-		}
-		if (is_display_colour) {
-			ref_mb->vb.reserved2 |= (1 << 1);
-			mfc_debug(2, "NAL Q: mastering display colour parsed\n");
-		}
-		if (is_video_signal_type) {
-			ref_mb->vb.reserved2 |= (1 << 4);
-			mfc_debug(2, "NAL Q: video signal type parsed\n");
-			if (is_colour_description) {
-				ref_mb->vb.reserved2 |= (1 << 2);
-				mfc_debug(2, "NAL Q: matrix coefficients parsed\n");
-				ref_mb->vb.reserved2 |= (1 << 3);
-				mfc_debug(2, "NAL Q: colour description parsed\n");
-			}
-		}
-
-		if (IS_VP9_DEC(ctx) && FW_HAS_VP9_HDR(dev)) {
-			if (dec->color_space != S5P_FIMV_D_COLOR_UNKNOWN) {
-				ref_mb->vb.reserved2 |= (1 << 3);
-				mfc_debug(2, "NAL Q: color space parsed\n");
-			}
-			ref_mb->vb.reserved2 |= (1 << 4);
-			mfc_debug(2, "NAL Q: color range parsed\n");
-		}
-
-		for (i = 0; i < raw->num_planes; i++)
-			vb2_set_plane_payload(&ref_mb->vb.vb2_buf, i,
-					raw->plane_size[i]);
-
-		clear_bit(index, &dec->available_dpb);
-
-		ref_mb->vb.flags &= ~(V4L2_BUF_FLAG_KEYFRAME |
-					V4L2_BUF_FLAG_PFRAME |
-					V4L2_BUF_FLAG_BFRAME |
-					V4L2_BUF_FLAG_ERROR);
-
-		switch (frame_type) {
-			case S5P_FIMV_DISPLAY_FRAME_I:
-				ref_mb->vb.flags |= V4L2_BUF_FLAG_KEYFRAME;
-				break;
-			case S5P_FIMV_DISPLAY_FRAME_P:
-				ref_mb->vb.flags |= V4L2_BUF_FLAG_PFRAME;
-				break;
-			case S5P_FIMV_DISPLAY_FRAME_B:
-				ref_mb->vb.flags |= V4L2_BUF_FLAG_BFRAME;
-				break;
-			default:
-				break;
-		}
-
-		disp_err = s5p_mfc_get_warn(pOutStr->ErrorCode);
-		if (disp_err) {
-			mfc_err_ctx("NAL Q: Warning for displayed frame: %d\n",
-					disp_err);
-			ref_mb->vb.flags |= V4L2_BUF_FLAG_ERROR;
-		}
-
-		if (call_cop(ctx, get_buf_ctrls_val_nal_q_dec, ctx,
-					&ctx->dst_ctrls[index], pOutStr) < 0)
-			mfc_err_ctx("NAL Q: failed in get_buf_ctrls_val\n");
-
-		s5p_mfc_handle_released_info(ctx, released_flag, index);
-
-		if (dec->immediate_display == 1) {
-			dst_frame_status = pOutStr->DecodedStatus
-				& S5P_FIMV_DEC_STATUS_DECODED_STATUS_MASK;
-
-			call_cop(ctx, get_buf_update_val, ctx,
-					&ctx->dst_ctrls[index],
-					V4L2_CID_MPEG_MFC51_VIDEO_DISPLAY_STATUS,
-					dst_frame_status);
-
-			call_cop(ctx, get_buf_update_val, ctx,
-					&ctx->dst_ctrls[index],
-					V4L2_CID_MPEG_MFC51_VIDEO_FRAME_TAG,
-					dec->stored_tag);
-
-			dec->immediate_display = 0;
-		}
-
-		s5p_mfc_qos_update_last_framerate(ctx, ref_mb->vb.vb2_buf.timestamp);
-		vb2_buffer_done(&ref_mb->vb.vb2_buf, disp_err ?
-				VB2_BUF_STATE_ERROR : VB2_BUF_STATE_DONE);
-	}
-}
-
-static void mfc_nal_q_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err,
-					DecoderOutputStr *pOutStr)
-{
-	struct s5p_mfc_dec *dec = ctx->dec_priv;
-	dma_addr_t dspl_y_addr;
-	unsigned int frame_type;
+	unsigned int dst_frame_status;
 	unsigned int prev_flag, released_flag = 0;
 	unsigned int disp_err;
+	int i;
 
 	mfc_debug_enter();
 
+	if (!ctx) {
+		mfc_err_dev("NAL Q: no mfc context to run\n");
+		return;
+	}
+
+	dev = ctx->dev;
+	if (!dev) {
+		mfc_err_dev("NAL Q: no mfc device to run\n");
+		return;
+	}
+
+	dec = ctx->dec_priv;
+	if (!dec) {
+		mfc_err_dev("NAL Q: no mfc decoder to run\n");
+		return;
+	}
+
+	raw = &ctx->raw_buf;
 	frame_type = pOutStr->DisplayFrameType & S5P_FIMV_DISPLAY_FRAME_MASK;
 	disp_err = s5p_mfc_get_warn(pOutStr->ErrorCode);
 
@@ -1213,6 +1035,21 @@ static void mfc_nal_q_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err
 			return;
 	}
 
+	if (FW_HAS_VIDEO_SIGNAL_TYPE(dev)) {
+		is_video_signal_type = ((pOutStr->VideoSignalType
+					>> S5P_FIMV_D_VIDEO_SIGNAL_TYPE_FLAG_SHIFT)
+					& S5P_FIMV_D_VIDEO_SIGNAL_TYPE_FLAG_MASK);
+		is_colour_description = ((pOutStr->VideoSignalType
+					>> S5P_FIMV_D_COLOUR_DESCRIPTION_FLAG_SHIFT)
+					& S5P_FIMV_D_COLOUR_DESCRIPTION_FLAG_MASK);
+	}
+	if (FW_HAS_SEI_INFO_FOR_HDR(dev)) {
+		is_content_light = ((pOutStr->SeiAvail >> S5P_FIMV_D_SEI_AVAIL_CONTENT_LIGHT_SHIFT)
+					& S5P_FIMV_D_SEI_AVAIL_CONTENT_LIGHT_MASK);
+		is_display_colour = ((pOutStr->SeiAvail >> S5P_FIMV_D_SEI_AVAIL_MASTERING_DISPLAY_SHIFT)
+					& S5P_FIMV_D_SEI_AVAIL_MASTERING_DISPLAY_MASK);
+	}
+
 	prev_flag = dec->dynamic_used;
 	dec->dynamic_used = pOutStr->UsedDpbFlagLower;
 	released_flag = prev_flag & (~dec->dynamic_used);
@@ -1222,83 +1059,161 @@ static void mfc_nal_q_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err
 
 	if ((IS_VC1_RCV_DEC(ctx) &&
 			(disp_err == S5P_FIMV_ERR_SYNC_POINT_NOT_RECEIVED)) ||
-			(disp_err == S5P_FIMV_ERR_BROKEN_LINK))
-		mfc_nal_q_handle_frame_output_move(ctx, dspl_y_addr, released_flag);
-	else
-		mfc_nal_q_handle_frame_output_del(ctx, pOutStr, err, released_flag);
+			(disp_err == S5P_FIMV_ERR_BROKEN_LINK)) {
+
+		dst_mb = s5p_mfc_find_move_buf_vb(&ctx->buf_queue_lock,
+				&ctx->dst_buf_queue, &ctx->ref_buf_queue, dspl_y_addr, released_flag);
+		if (dst_mb) {
+			mfc_debug(2, "NAL Q: find display buf, index: %d\n", dst_mb->vb.vb2_buf.index);
+			/* Check if this is the buffer we're looking for */
+			mfc_debug(2, "NAL Q: buf addr: 0x%08llx, disp addr: 0x%08llx\n",
+				s5p_mfc_mem_get_daddr_vb(&dst_mb->vb.vb2_buf, 0), dspl_y_addr);
+
+			index = dst_mb->vb.vb2_buf.index;
+
+			if (released_flag & (1 << index)) {
+				dec->available_dpb &= ~(1 << index);
+				released_flag &= ~(1 << index);
+				mfc_debug(2, "NAL Q: Corrupted frame(%d), it will be re-used(release)\n",
+						s5p_mfc_get_warn(err));
+			} else {
+				dec->err_reuse_flag |= 1 << index;
+				mfc_debug(2, "NAL Q: Corrupted frame(%d), it will be re-used(not released)\n",
+						s5p_mfc_get_warn(err));
+			}
+			dec->dynamic_used |= released_flag;
+		}
+	} else {
+		ref_mb = s5p_mfc_find_del_buf_vb(&ctx->buf_queue_lock,
+				&ctx->ref_buf_queue, dspl_y_addr);
+		if (ref_mb) {
+			mfc_debug(2, "NAL Q: find display buf, index: %d\n", ref_mb->vb.vb2_buf.index);
+			/* Check if this is the buffer we're looking for */
+			mfc_debug(2, "NAL Q: buf addr: 0x%08llx, disp addr: 0x%08llx\n",
+				s5p_mfc_mem_get_daddr_vb(&ref_mb->vb.vb2_buf, 0), dspl_y_addr);
+
+			index = ref_mb->vb.vb2_buf.index;
+
+			ref_mb->vb.sequence = ctx->sequence;
+
+			/* Set reserved2 bits in order to inform SEI information */
+			ref_mb->vb.reserved2 = 0;
+
+			if (is_content_light) {
+				ref_mb->vb.reserved2 |= (1 << 0);
+				mfc_debug(2, "NAL Q: content light level parsed\n");
+			}
+			if (is_display_colour) {
+				ref_mb->vb.reserved2 |= (1 << 1);
+				mfc_debug(2, "NAL Q: mastering display colour parsed\n");
+			}
+			if (is_video_signal_type) {
+				ref_mb->vb.reserved2 |= (1 << 4);
+				mfc_debug(2, "NAL Q: video signal type parsed\n");
+				if (is_colour_description) {
+					ref_mb->vb.reserved2 |= (1 << 2);
+					mfc_debug(2, "NAL Q: matrix coefficients parsed\n");
+					ref_mb->vb.reserved2 |= (1 << 3);
+					mfc_debug(2, "NAL Q: colour description parsed\n");
+				}
+			}
+
+			for (i = 0; i < raw->num_planes; i++)
+				vb2_set_plane_payload(&ref_mb->vb.vb2_buf, i,
+						raw->plane_size[i]);
+
+			clear_bit(index, &dec->available_dpb);
+
+			ref_mb->vb.flags &=
+					~(V4L2_BUF_FLAG_KEYFRAME |
+					V4L2_BUF_FLAG_PFRAME |
+					V4L2_BUF_FLAG_BFRAME |
+					V4L2_BUF_FLAG_ERROR);
+
+			switch (frame_type) {
+			case S5P_FIMV_DISPLAY_FRAME_I:
+				ref_mb->vb.flags |=
+					V4L2_BUF_FLAG_KEYFRAME;
+				break;
+			case S5P_FIMV_DISPLAY_FRAME_P:
+				ref_mb->vb.flags |=
+					V4L2_BUF_FLAG_PFRAME;
+				break;
+			case S5P_FIMV_DISPLAY_FRAME_B:
+				ref_mb->vb.flags |=
+					V4L2_BUF_FLAG_BFRAME;
+				break;
+			default:
+				break;
+			}
+
+			if (disp_err) {
+				mfc_err_ctx("NAL Q: Warning for displayed frame: %d\n",
+						disp_err);
+				ref_mb->vb.flags |=
+						V4L2_BUF_FLAG_ERROR;
+			}
+
+			if (call_cop(ctx, get_buf_ctrls_val_nal_q_dec, ctx,
+					&ctx->dst_ctrls[index], pOutStr) < 0)
+				mfc_err_ctx("NAL Q: failed in get_buf_ctrls_val\n");
+
+			s5p_mfc_handle_released_info(ctx, released_flag, index);
+
+			if (dec->immediate_display == 1) {
+				dst_frame_status = pOutStr->DecodedStatus
+					& S5P_FIMV_DEC_STATUS_DECODED_STATUS_MASK;
+
+				call_cop(ctx, get_buf_update_val, ctx,
+						&ctx->dst_ctrls[index],
+						V4L2_CID_MPEG_MFC51_VIDEO_DISPLAY_STATUS,
+						dst_frame_status);
+
+				call_cop(ctx, get_buf_update_val, ctx,
+					&ctx->dst_ctrls[index],
+					V4L2_CID_MPEG_MFC51_VIDEO_FRAME_TAG,
+					dec->stored_tag);
+
+				dec->immediate_display = 0;
+			}
+
+			s5p_mfc_qos_update_last_framerate(ctx, &ref_mb->vb);
+			vb2_buffer_done(&ref_mb->vb.vb2_buf,
+				disp_err ?
+				VB2_BUF_STATE_ERROR : VB2_BUF_STATE_DONE);
+		}
+	}
 
 	mfc_debug_leave();
 }
 
-static void mfc_nal_q_handle_frame_input(struct s5p_mfc_ctx *ctx, unsigned int err,
-					DecoderOutputStr *pOutStr)
-{
-	struct s5p_mfc_dec *dec = ctx->dec_priv;
-	struct s5p_mfc_dev *dev = ctx->dev;
-	struct s5p_mfc_buf *src_mb;
-	unsigned int index;
-	int deleted = 0;
-	unsigned long consumed;
-
-	/* If there is consumed byte, it is abnormal status,
-	 * We have to return remained stream buffer
-	 */
-	if (dec->consumed) {
-		mfc_err_dev("NAL Q: previous buffer was not fully consumed\n");
-		src_mb = s5p_mfc_get_del_buf(&ctx->buf_queue_lock, &ctx->src_buf_nal_queue,
-				MFC_BUF_NO_TOUCH_USED);
-		if (src_mb)
-			vb2_buffer_done(&src_mb->vb.vb2_buf, VB2_BUF_STATE_DONE);
-	}
-
-	/* Check multi-frame */
-	consumed = pOutStr->DecodedNalSize;
-	src_mb = s5p_mfc_get_del_if_consumed(&ctx->buf_queue_lock, &ctx->src_buf_nal_queue,
-			consumed, STUFF_BYTE, err, &deleted);
-	if (!src_mb) {
-		mfc_err_dev("no src buffers.\n");
-		return;
-	}
-
-	if (!deleted) {
-		/* Run MFC again on the same buffer */
-		mfc_debug(2, "NAL Q: Running again the same buffer.\n");
-
-		if (CODEC_MULTIFRAME(ctx))
-			dec->y_addr_for_pb = (dma_addr_t)pOutStr->DecodedAddr[0];
-
-		dec->consumed = consumed;
-		dec->remained_size = src_mb->vb.vb2_buf.planes[0].bytesused
-			- dec->consumed;
-		dec->has_multiframe = 1;
-
-		MFC_TRACE_CTX("** consumed:%ld, remained:%ld, addr:0x%08llx\n",
-			dec->consumed, dec->remained_size, dec->y_addr_for_pb);
-		/* Do not move src buffer to done_list */
-		return;
-	}
-
-	index = src_mb->vb.vb2_buf.index;
-	if (call_cop(ctx, get_buf_ctrls_val_nal_q_dec, ctx,
-				&ctx->src_ctrls[index], pOutStr) < 0)
-		mfc_err_ctx("NAL Q: failed in get_buf_ctrls_val\n");
-
-	mfc_debug(2, "NAL Q: MFC needs next buffer.\n");
-	dec->consumed = 0;
-	dec->remained_size = 0;
-
-	vb2_buffer_done(&src_mb->vb.vb2_buf, VB2_BUF_STATE_DONE);
-}
-
 void mfc_nal_q_handle_frame(struct s5p_mfc_ctx *ctx, DecoderOutputStr *pOutStr)
 {
-	struct s5p_mfc_dev *dev = ctx->dev;
-	struct s5p_mfc_dec *dec = ctx->dec_priv;
+	struct s5p_mfc_dev *dev;
+	struct s5p_mfc_dec *dec;
 	unsigned int dst_frame_status, sei_avail_status, need_empty_dpb;
+	struct s5p_mfc_buf *src_mb;
 	unsigned int res_change, need_dpb_change, need_scratch_change;
-	unsigned int is_interlaced, err;
+	unsigned int index, err;
 
 	mfc_debug_enter();
+
+	if (!ctx) {
+		mfc_err_dev("NAL Q: no mfc context to run\n");
+		return;
+	}
+
+	dev = ctx->dev;
+	if (!dev) {
+		mfc_err_dev("NAL Q: no mfc device to run\n");
+		return;
+	}
+
+	dec = ctx->dec_priv;
+	if (!dec) {
+		mfc_err_dev("NAL Q: no mfc decoder to run\n");
+		return;
+	}
 
 	dst_frame_status = pOutStr->DisplayStatus
 				& S5P_FIMV_DISP_STATUS_DISPLAY_STATUS_MASK;
@@ -1314,9 +1229,6 @@ void mfc_nal_q_handle_frame(struct s5p_mfc_ctx *ctx, DecoderOutputStr *pOutStr)
 	need_scratch_change = (pOutStr->DisplayStatus
 				 >> S5P_FIMV_DISP_STATUS_NEED_SCRATCH_CHANGE_SHIFT)
 				& S5P_FIMV_DISP_STATUS_NEED_SCRATCH_CHANGE_MASK;
-	is_interlaced = (pOutStr->DisplayStatus
-				>> S5P_FIMV_DISP_STATUS_INTERLACE_SHIFT)
-				& S5P_FIMV_DISP_STATUS_INTERLACE_MASK;
 	sei_avail_status = pOutStr->SeiAvail;
 	err = pOutStr->ErrorCode;
 
@@ -1354,13 +1266,6 @@ void mfc_nal_q_handle_frame(struct s5p_mfc_ctx *ctx, DecoderOutputStr *pOutStr)
 		mfc_info_ctx("NAL Q: nal_q_exception is set (interframe res change)\n");
 		goto leave_handle_frame;
 	}
-	if (is_interlaced) {
-		mfc_debug(2, "NAL Q: Progressive -> Interlaced\n");
-		dec->is_interlaced = is_interlaced;
-		dev->nal_q_handle->nal_q_exception = 1;
-		mfc_info_ctx("NAL Q: nal_q_exception is set (interlaced)\n");
-		goto leave_handle_frame;
-	}
 
 	if (s5p_mfc_is_queue_count_same(&ctx->buf_queue_lock, &ctx->src_buf_nal_queue, 0) &&
 		s5p_mfc_is_queue_count_same(&ctx->buf_queue_lock, &ctx->dst_buf_nal_queue, 0)) {
@@ -1369,12 +1274,6 @@ void mfc_nal_q_handle_frame(struct s5p_mfc_ctx *ctx, DecoderOutputStr *pOutStr)
 	}
 
 	/* Detection for QoS weight */
-	if (!dec->num_of_tile_over_4 && (((pOutStr->DisplayStatus
-				>> S5P_FIMV_DEC_STATUS_NUM_OF_TILE_SHIFT)
-				& S5P_FIMV_DEC_STATUS_NUM_OF_TILE_MASK) >= 4)) {
-		dec->num_of_tile_over_4 = 1;
-		s5p_mfc_qos_on(ctx);
-	}
 	if (!dec->super64_bframe && IS_SUPER64_BFRAME(ctx,
 				(pOutStr->HevcInfo & S5P_FIMV_D_HEVC_INFO_LCU_SIZE_MASK),
 				(pOutStr->DecodedFrameType & S5P_FIMV_DECODED_FRAME_MASK))) {
@@ -1396,19 +1295,72 @@ void mfc_nal_q_handle_frame(struct s5p_mfc_ctx *ctx, DecoderOutputStr *pOutStr)
 	}
 
 	/* A frame has been decoded and is in the buffer  */
-	if (s5p_mfc_dec_status_display(dst_frame_status))
+	if (dst_frame_status == S5P_FIMV_DEC_STATUS_DISPLAY_ONLY ||
+	    dst_frame_status == S5P_FIMV_DEC_STATUS_DECODING_DISPLAY) {
 		mfc_nal_q_handle_frame_new(ctx, err, pOutStr);
-	else
+	} else {
 		mfc_debug(2, "NAL Q: No display frame.\n");
+	}
 
 	/* Mark source buffer as complete */
-	if (dst_frame_status != S5P_FIMV_DEC_STATUS_DISPLAY_ONLY)
-		mfc_nal_q_handle_frame_input(ctx, err, pOutStr);
-	else
+	if (dst_frame_status != S5P_FIMV_DEC_STATUS_DISPLAY_ONLY) {
+		int deleted = 0;
+		unsigned long consumed;
+
+		/* If there is consumed byte, it is abnormal status,
+		 * We have to return remained stream buffer
+		 */
+		if (dec->consumed) {
+			mfc_err_dev("NAL Q: previous buffer was not fully consumed\n");
+			src_mb = s5p_mfc_get_del_buf(&ctx->buf_queue_lock, &ctx->src_buf_nal_queue,
+					MFC_BUF_NO_TOUCH_USED);
+			if (src_mb)
+				vb2_buffer_done(&src_mb->vb.vb2_buf, VB2_BUF_STATE_DONE);
+		}
+
+		/* Check multi-frame */
+		consumed = pOutStr->DecodedNalSize;
+		src_mb = s5p_mfc_get_del_if_consumed(&ctx->buf_queue_lock, &ctx->src_buf_nal_queue,
+				consumed, STUFF_BYTE, err, &deleted);
+		if (!src_mb) {
+			mfc_err_dev("no src buffers.\n");
+			goto leave_handle_frame;
+		}
+
+		if (!deleted) {
+			/* Run MFC again on the same buffer */
+			mfc_debug(2, "NAL Q: Running again the same buffer.\n");
+
+			if (CODEC_MULTIFRAME(ctx))
+				dec->y_addr_for_pb = (dma_addr_t)pOutStr->DecodedAddr[0];
+
+			dec->consumed = consumed;
+			dec->remained_size = src_mb->vb.vb2_buf.planes[0].bytesused
+					- dec->consumed;
+			dec->has_multiframe = 1;
+
+			MFC_TRACE_CTX("** consumed:%ld, remained:%ld, addr:0x%08llx\n",
+				dec->consumed, dec->remained_size, dec->y_addr_for_pb);
+			/* Do not move src buffer to done_list */
+			goto leave_handle_frame;
+		}
+
+		index = src_mb->vb.vb2_buf.index;
+		if (call_cop(ctx, get_buf_ctrls_val_nal_q_dec, ctx,
+				&ctx->src_ctrls[index], pOutStr) < 0)
+			mfc_err_ctx("NAL Q: failed in get_buf_ctrls_val\n");
+
+		mfc_debug(2, "NAL Q: MFC needs next buffer.\n");
+		dec->consumed = 0;
+		dec->remained_size = 0;
+
+		vb2_buffer_done(&src_mb->vb.vb2_buf, VB2_BUF_STATE_DONE);
+	} else {
 		mfc_debug(2, "NAL Q: can't support display only in NAL-Q, is_dpb_full: %d\n",
 				dec->is_dpb_full);
-
+	}
 leave_handle_frame:
+
 	mfc_debug_leave();
 }
 

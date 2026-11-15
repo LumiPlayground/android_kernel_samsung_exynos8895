@@ -13,6 +13,12 @@
 #
 
 
+config DDK_VERSION_OS
+	string "version"
+	default ANDROID_MAJOR_VERSION
+	help
+		Android OS major version
+
 menuconfig MALI_TMIX
 	tristate "Mali-TMIX support"
 	default n
@@ -25,16 +31,16 @@ menuconfig MALI_TMIX
 choice
 	prompt "version Configuration"
 	depends on MALI_TMIX
-	default MALI_TMIX_R5P0
+	default MALI_TMIX_R16P0 if ANDROID_VERSION >= "90000"
 	help
 	  Select the gpu support version.
 
-config MALI_TMIX_R5P0
+config MALI_TMIX_R16P0
 	depends on MALI_TMIX
-	bool "mimir r5p0 driver"
+	bool "Bifrost r16p0 driver"
 
 endchoice
 
-if MALI_TMIX_R5P0
-source "drivers/gpu/arm/tMIx/r5p0/Kconfig"
+if MALI_TMIX_R16P0
+source "drivers/gpu/arm/b_r16p0/Kconfig"
 endif

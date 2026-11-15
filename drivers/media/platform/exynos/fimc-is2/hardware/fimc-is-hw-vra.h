@@ -45,8 +45,27 @@ struct fimc_is_hw_vra {
 };
 
 int fimc_is_hw_vra_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface *itf,
-	struct fimc_is_interface_ischain *itfc, int id, const char *name);
+	struct fimc_is_interface_ischain *itfc, int id);
+int fimc_is_hw_vra_open(struct fimc_is_hw_ip *hw_ip, u32 instance, u32 *size);
+int fimc_is_hw_vra_init(struct fimc_is_hw_ip *hw_ip, struct fimc_is_group *group,
+	bool flag, u32 module_id);
+int fimc_is_hw_vra_close(struct fimc_is_hw_ip *hw_ip, u32 instance);
+int fimc_is_hw_vra_enable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map);
+int fimc_is_hw_vra_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map);
+int fimc_is_hw_vra_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
+	ulong hw_map);
+int fimc_is_hw_vra_set_param(struct fimc_is_hw_ip *hw_ip,
+	struct is_region *region, u32 lindex, u32 hindex, u32 instance, ulong hw_map);
 int fimc_is_hw_vra_update_param(struct fimc_is_hw_ip *hw_ip,
 	struct vra_param *param, u32 lindex, u32 hindex, u32 instance, u32 fcount);
+int fimc_is_hw_vra_frame_ndone(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
+	u32 instance, enum ShotErrorType done_type);
 void fimc_is_hw_vra_reset(struct fimc_is_hw_ip *hw_ip);
+int fimc_is_hw_vra_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map);
+int fimc_is_hw_vra_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenario,
+	u32 instance, ulong hw_map);
+int fimc_is_hw_vra_delete_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance,
+	ulong hw_map);
+int fimc_is_hw_vra_get_meta(struct fimc_is_hw_ip *hw_ip,
+	struct fimc_is_frame *frame, unsigned long hw_map);
 #endif

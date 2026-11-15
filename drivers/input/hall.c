@@ -37,15 +37,16 @@ struct hall_drvdata {
 	u8 event_val;
 };
 
-static bool flip_cover;
+static bool flip_cover = 1;
 
 static ssize_t hall_detect_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
-	if (flip_cover)
+	if (flip_cover) {
 		sprintf(buf, "OPEN\n");
-	else
+	} else {
 		sprintf(buf, "CLOSE\n");
+	}
 
 	return strlen(buf);
 }
@@ -63,22 +64,22 @@ static struct attribute_group hall_attr_group = {
 #ifdef CONFIG_SEC_FACTORY
 static void flip_cover_work(struct work_struct *work)
 {
-	bool first, second;
+	bool first,second;
 	struct hall_drvdata *ddata =
 		container_of(work, struct hall_drvdata,
 				flip_cover_dwork.work);
 
 	first = gpio_get_value(ddata->gpio_flip_cover);
 
-	pr_info("[keys] %s flip_status #1 : %d (%s)\n", __func__, first, first?"open":"close");
+	printk("[keys] %s flip_status #1 : %d (%s)\n", __func__, first, first?"open":"close");
 
 	msleep(50);
 
 	second = gpio_get_value(ddata->gpio_flip_cover);
 
-	pr_info("[keys] %s flip_status #2 : %d (%s)\n", __func__, second, second?"open":"close");
+	printk("[keys] %s flip_status #2 : %d (%s)\n", __func__, second, second?"open":"close");
 
-	if (first == second) {
+	if(first == second) {
 		flip_cover = first;
 
 #ifdef CONFIG_HALL_EVENT_REVERSE
@@ -100,7 +101,7 @@ static void flip_cover_work(struct work_struct *work)
 
 	first = gpio_get_value(ddata->gpio_flip_cover);
 
-	pr_info("[keys] %s flip_status : %d (%s)\n", __func__, first, first?"open":"close");
+	printk("[keys] %s flip_status : %d (%s)\n", __func__, first, first?"open":"close");
 
 	flip_cover = first;
 
@@ -119,7 +120,7 @@ static void __flip_cover_detect(struct hall_drvdata *ddata, bool flip_status)
 #ifdef CONFIG_SEC_FACTORY
 	schedule_delayed_work(&ddata->flip_cover_dwork, HZ / 20);
 #else
-	if (flip_status) {
+	if(flip_status)	{
 		wake_lock_timeout(&ddata->flip_wake_lock, HZ * 5 / 100); /* 50ms */
 		schedule_delayed_work(&ddata->flip_cover_dwork, HZ * 1 / 100); /* 10ms */
 	} else {
@@ -136,7 +137,7 @@ static irqreturn_t flip_cover_detect(int irq, void *dev_id)
 
 	flip_status = gpio_get_value(ddata->gpio_flip_cover);
 
-	pr_info("keys:%s flip_status : %d\n",
+	printk(KERN_DEBUG "keys:%s flip_status : %d\n",
 		 __func__, flip_status);
 
 	__flip_cover_detect(ddata, flip_status);
@@ -171,12 +172,16 @@ static void init_hall_ic_irq(struct input_dev *input)
 
 	INIT_DELAYED_WORK(&ddata->flip_cover_dwork, flip_cover_work);
 
-	ret = request_threaded_irq(irq, NULL, flip_cover_detect,
+	ret =
+		request_threaded_irq(
+		irq, NULL,
+		flip_cover_detect,
 		IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 		"flip_cover", ddata);
 	if (ret < 0) {
-		pr_err("keys: failed to request flip cover irq %d gpio %d\n",
-			irq, ddata->gpio_flip_cover);
+		printk(KERN_ERR
+		"keys: failed to request flip cover irq %d gpio %d\n",
+		irq, ddata->gpio_flip_cover);
 	} else {
 		pr_info("%s : success\n", __func__);
 	}
@@ -191,21 +196,20 @@ static int of_hall_data_parsing_dt(struct hall_drvdata *ddata)
 
 	np_haptic = of_find_node_by_path("/hall");
 	if (np_haptic == NULL) {
-		pr_err("%s : error to get dt node\n", __func__);
+		printk("%s : error to get dt node\n", __func__);
 		return -EINVAL;
 	}
 
 	gpio = of_get_named_gpio_flags(np_haptic, "hall,gpio_flip_cover", 0, &flags);
 	if (gpio < 0) {
-		pr_err("%s: fail to get flip_cover\n", __func__);
+		pr_info("%s: fail to get flip_cover \n", __func__ );
 		return -EINVAL;
 	}
 	ddata->gpio_flip_cover = gpio;
-	pr_info("%s: hall gpio=%d\n", __func__, gpio);
 
 	gpio = gpio_to_irq(gpio);
 	if (gpio < 0) {
-		pr_err("%s: fail to return irq corresponding gpio\n", __func__);
+		pr_info("%s: fail to return irq corresponding gpio \n", __func__ );
 		return -EINVAL;
 	}
 	ddata->irq_flip_cover = gpio;
@@ -223,14 +227,16 @@ static int hall_probe(struct platform_device *pdev)
 	int wakeup = 0;
 
 	ddata = kzalloc(sizeof(struct hall_drvdata), GFP_KERNEL);
-	if (!ddata)
+	if (!ddata) {
+		dev_err(dev, "failed to allocate state\n");
 		return -ENOMEM;
+	}
 
 #ifdef CONFIG_OF
-	if (dev->of_node) {
+	if(dev->of_node) {
 		error = of_hall_data_parsing_dt(ddata);
 		if (error < 0) {
-			pr_err("%s : fail to get the dt (HALL)\n", __func__);
+			pr_info("%s : fail to get the dt (HALL)\n", __func__);
 			goto fail1;
 		}
 	}
@@ -304,7 +310,7 @@ static int hall_remove(struct platform_device *pdev)
 	struct hall_drvdata *ddata = platform_get_drvdata(pdev);
 	struct input_dev *input = ddata->input;
 
-	pr_info("%s start\n", __func__);
+	printk("%s start\n", __func__);
 	sysfs_remove_group(&pdev->dev.kobj, &hall_attr_group);
 
 	device_init_wakeup(&pdev->dev, 0);
@@ -319,7 +325,7 @@ static int hall_remove(struct platform_device *pdev)
 }
 
 #if defined(CONFIG_OF)
-static const struct of_device_id hall_dt_ids[] = {
+static struct of_device_id hall_dt_ids[] = {
 	{ .compatible = "hall" },
 	{ },
 };
@@ -333,9 +339,9 @@ static int hall_suspend(struct device *dev)
 	struct input_dev *input = ddata->input;
 	bool status;
 
-	pr_info("%s start\n", __func__);
+	printk("%s start\n", __func__);
 	status = gpio_get_value(ddata->gpio_flip_cover);
-	pr_info("[keys] %s flip_status : %d (%s)\n", __func__, status, status?"open":"close");
+	printk("[keys] %s flip_status : %d (%s)\n", __func__, status, status?"open":"close");
 
 /* need to be change */
 /* Without below one line, it is not able to get the irq during freezing */
@@ -360,9 +366,9 @@ static int hall_resume(struct device *dev)
 	struct input_dev *input = ddata->input;
 	bool status;
 
-	pr_info("%s start\n", __func__);
+	printk("%s start\n", __func__);
 	status = gpio_get_value(ddata->gpio_flip_cover);
-	pr_info("[keys] %s flip_status : %d (%s)\n", __func__, status, status?"open":"close");
+	printk("[keys] %s flip_status : %d (%s)\n", __func__, status, status?"open":"close");
 	input_sync(input);
 
 	return 0;
@@ -386,13 +392,13 @@ static struct platform_driver hall_device_driver = {
 
 static int __init hall_init(void)
 {
-	pr_info("%s start\n", __func__);
+	printk("%s start\n", __func__);
 	return platform_driver_register(&hall_device_driver);
 }
 
 static void __exit hall_exit(void)
 {
-	pr_info("%s start\n", __func__);
+	printk("%s start\n", __func__);
 	platform_driver_unregister(&hall_device_driver);
 }
 

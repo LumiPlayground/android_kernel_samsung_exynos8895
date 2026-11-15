@@ -25,6 +25,7 @@
 #include "serial_acm.c"
 #endif
 
+
 /*
  * This CDC ACM function support just wraps control functions and
  * notifications around the generic serial-over-usb code.
@@ -541,15 +542,17 @@ static int acm_notify_serial_state(struct f_acm *acm)
 	struct usb_composite_dev *cdev = acm->port.func.config->cdev;
 	int			status;
 	__le16			serial_state;
+	unsigned long	flags;
 
-	spin_lock(&acm->lock);
+	spin_lock_irqsave(&acm->lock, flags);
+
 	if (acm->notify->enabled) {
 		if (acm->notify_req) {
 			dev_dbg(&cdev->gadget->dev, "acm ttyGS%d serial state %04x\n",
 				acm->port_num, acm->serial_state);
 			serial_state = cpu_to_le16(acm->serial_state);
 			status = acm_cdc_notify(acm, USB_CDC_NOTIFY_SERIAL_STATE,
-					0, &serial_state, sizeof(acm->serial_state));
+				0, &serial_state, sizeof(acm->serial_state));
 		} else {
 			acm->pending = true;
 			status = 0;
@@ -558,7 +561,7 @@ static int acm_notify_serial_state(struct f_acm *acm)
 		status = -EAGAIN;
 		printk(KERN_DEBUG "usb: %s acm function already disabled\n", __func__);
 	}
-	spin_unlock(&acm->lock);
+	spin_unlock_irqrestore(&acm->lock, flags);
 	return status;
 }
 
@@ -566,15 +569,16 @@ static void acm_cdc_notify_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_acm		*acm = req->context;
 	u8			doit = false;
+	unsigned long	flags;
 
 	/* on this call path we do NOT hold the port spinlock,
 	 * which is why ACM needs its own spinlock
 	 */
-	spin_lock(&acm->lock);
+	spin_lock_irqsave(&acm->lock, flags);
 	if (req->status != -ESHUTDOWN)
 		doit = acm->pending;
 	acm->notify_req = req;
-	spin_unlock(&acm->lock);
+	spin_unlock_irqrestore(&acm->lock, flags);
 
 	if (doit)
 		acm_notify_serial_state(acm);
@@ -584,19 +588,17 @@ static void acm_cdc_notify_complete(struct usb_ep *ep, struct usb_request *req)
 int acm_notify(void *dev, u16 state)
 {
 	struct f_acm    *acm = (struct f_acm *)dev;
-	int status = 0;
 
 	if (acm && acm->notify->enabled) {
 		acm->serial_state = state;
-		status = acm_notify_serial_state(acm);
+		acm_notify_serial_state(acm);
 	} else {
 		printk(KERN_DEBUG "usb: %s not ready\n", __func__);
-		status = -EAGAIN;
+		return -EAGAIN;
 	}
-	return status;
+	return 0;
 }
 #endif
-
 /* connect == the TTY link is open */
 
 static void acm_connect(struct gserial *port)
@@ -714,7 +716,7 @@ acm_bind(struct usb_configuration *c, struct usb_function *f)
 	acm_ss_out_desc.bEndpointAddress = acm_fs_out_desc.bEndpointAddress;
 
 	status = usb_assign_descriptors(f, acm_fs_function, acm_hs_function,
-			acm_ss_function, NULL);
+			acm_ss_function);
 	if (status)
 		goto fail;
 
@@ -743,6 +745,9 @@ static void acm_unbind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct f_acm		*acm = func_to_acm(f);
 
+	/* acm_string_defs[].id is limited to 256
+	if id is cleared on disconneting, The increased number is allocated on connecting.
+	ACM driver can't connect to host when id is over 256 */
 #ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	acm_string_defs[0].id = 0;
 #endif
@@ -814,10 +819,10 @@ static ssize_t f_acm_port_num_show(struct config_item *item, char *page)
 	return sprintf(page, "%u\n", to_f_serial_opts(item)->port_num);
 }
 
-CONFIGFS_ATTR_RO(f_acm_, port_num);
+CONFIGFS_ATTR_RO(f_acm_port_, num);
 
 static struct configfs_attribute *acm_attrs[] = {
-	&f_acm_attr_port_num,
+	&f_acm_port_attr_num,
 	NULL,
 };
 
@@ -855,6 +860,7 @@ static struct usb_function_instance *acm_alloc_instance(void)
 	return &opts->func_inst;
 }
 DECLARE_USB_FUNCTION_INIT(acm, acm_alloc_instance, acm_alloc_func);
+
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 static int __init acm_init(void)
 {
@@ -876,4 +882,5 @@ static void __exit acm_exit(void)
 module_init(acm_init);
 module_exit(acm_exit);
 #endif
+
 MODULE_LICENSE("GPL");

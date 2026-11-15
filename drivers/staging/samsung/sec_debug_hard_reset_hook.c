@@ -19,7 +19,6 @@
 #include <linux/of_gpio.h>
 #endif
 #include <linux/gpio_keys.h>
-#include <linux/moduleparam.h>
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
@@ -40,14 +39,9 @@ static struct hrtimer hard_reset_hook_timer;
 static bool hard_reset_occurred;
 static int all_pressed;
 
-/* Proc node to enable hard reset */
-static bool hard_reset_hook_enable = 1;
-module_param_named(hard_reset_hook_enable, hard_reset_hook_enable, bool, 0664);
-MODULE_PARM_DESC(hard_reset_hook_enable, "1: Enabled, 0: Disabled");
-
 static bool is_hard_reset_key(unsigned int code)
 {
-	size_t i;
+	int i;
 
 	for (i = 0; i < ARRAY_SIZE(hard_reset_keys); i++)
 		if (code == hard_reset_keys[i])
@@ -57,7 +51,7 @@ static bool is_hard_reset_key(unsigned int code)
 
 static int hard_reset_key_set(unsigned int code)
 {
-	size_t i;
+	int i;
 
 	for (i = 0; i < ARRAY_SIZE(hard_reset_keys); i++)
 		if (code == hard_reset_keys[i])
@@ -67,7 +61,7 @@ static int hard_reset_key_set(unsigned int code)
 
 static int hard_reset_key_unset(unsigned int code)
 {
-	size_t i;
+	int i;
 
 	for (i = 0; i < ARRAY_SIZE(hard_reset_keys); i++)
 		if (code == hard_reset_keys[i])
@@ -83,7 +77,7 @@ static int hard_reset_key_all_pressed(void)
 
 static int get_gpio_info(unsigned int code, int *gpio, bool *active_low)
 {
-	size_t i;
+	int i;
 
 	for (i = 0; i < ARRAY_SIZE(keys_info); i++)
 		if (code == keys_info[i].keycode) {
@@ -107,7 +101,7 @@ static bool is_pressed_gpio_key(int gpio, bool active_low)
 
 static bool is_gpio_keys_all_pressed(void)
 {
-	size_t i;
+	int i;
 
 	for (i = 0; i < ARRAY_SIZE(hard_reset_keys); i++) {
 		int gpio;
@@ -142,7 +136,7 @@ static enum hrtimer_restart hard_reset_hook_callback(struct hrtimer *hrtimer)
 static int load_gpio_key_info(void)
 {
 #ifdef CONFIG_OF
-	size_t i;
+	int i;
 	struct device_node *np, *pp;
 	static int nk;
 
@@ -175,13 +169,10 @@ static int load_gpio_key_info(void)
 }
 
 static int hard_reset_hook(struct notifier_block *nb,
-			   unsigned long c, void *v)
+				   unsigned long c, void *v)
 {
-	unsigned int code = (unsigned int)c;
+	unsigned int code = c;
 	int pressed = *(int *)v;
-
-	if (unlikely(!hard_reset_hook_enable))
-		return NOTIFY_DONE;
 
 	if (!is_hard_reset_key(code))
 		return NOTIFY_DONE;
@@ -191,18 +182,14 @@ static int hard_reset_hook(struct notifier_block *nb,
 	else
 		hard_reset_key_unset(code);
 
-	if (hard_reset_key_all_pressed()) {
+	if (hard_reset_key_all_pressed())
 		hrtimer_start(&hard_reset_hook_timer,
-			      hold_time, HRTIMER_MODE_REL);		
-		pr_info("%s : hrtimer_start\n", __func__);
-	}
-	else {
-		hrtimer_try_to_cancel(&hard_reset_hook_timer);
-	}
+			      hold_time, HRTIMER_MODE_REL);
+	else
+		hrtimer_cancel(&hard_reset_hook_timer);
 
 	return NOTIFY_OK;
 }
-
 static struct notifier_block nb_gpio_keys = {
 	.notifier_call = hard_reset_hook
 };
@@ -227,7 +214,7 @@ void hard_reset_delay(void)
 
 int __init hard_reset_hook_init(void)
 {
-	size_t i;
+	int i;
 
 	hrtimer_init(&hard_reset_hook_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
 	hard_reset_hook_timer.function = hard_reset_hook_callback;

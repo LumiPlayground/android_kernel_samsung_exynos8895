@@ -65,11 +65,11 @@ int fimc_is_spi_s_pin(struct fimc_is_spi *spi, int state)
 	}
 
 	if (ssn_pin != NULL) {
-		ret2 = pinctrl_select_state(spi->pinctrl, ssn_pin);
-		if (ret2 < 0) {
-			pr_err("pinctrl_select_state is fail(%d)\n", ret2);
-			ret |= ret2;
-		}
+	ret2 = pinctrl_select_state(spi->pinctrl, ssn_pin);
+	if (ret2 < 0) {
+		pr_err("pinctrl_select_state is fail(%d)\n", ret2);
+		ret |= ret2;
+	}
 	} else {
 		info("pinctrl_select_state(%d) is not found", state);
 		ret = 0;
@@ -87,7 +87,7 @@ int fimc_is_spi_reset(struct fimc_is_spi *spi)
 	struct spi_transfer t_r;
 	struct spi_message m;
 
-	FIMC_BUG(!spi->device);
+	BUG_ON(!spi->device);
 
 	memset(&t_c, 0x00, sizeof(t_c));
 	memset(&t_r, 0x00, sizeof(t_r));
@@ -118,7 +118,7 @@ int fimc_is_spi_read(struct fimc_is_spi *spi, void *buf, u32 addr, size_t size)
 	struct spi_transfer t_r;
 	struct spi_message m;
 
-	FIMC_BUG(!spi->device);
+	BUG_ON(!spi->device);
 
 	memset(&t_c, 0x00, sizeof(t_c));
 	memset(&t_r, 0x00, sizeof(t_r));
@@ -169,6 +169,8 @@ static int fimc_is_spi_probe(struct spi_device *device)
 	int ret = 0;
 	struct fimc_is_core *core;
 	struct fimc_is_spi *spi;
+
+	dbg_core("%s\n", __func__);
 
 	if (fimc_is_dev == NULL) {
 		probe_warn("fimc_is_dev is not yet probed(spi)");

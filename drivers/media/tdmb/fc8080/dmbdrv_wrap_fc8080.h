@@ -1,26 +1,27 @@
 /*
- *	Copyright(c) 2008 SEC Corp. All Rights Reserved
- *
- *	File name : dmbdrv_wrap_fc8080.h
- *
- *	Description : fc8080 tuner control driver
- *	This program is free software; you can redistribute it and/or modify
- *	it under the terms of the GNU General Public License as published by
- *	the Free Software Foundation; either version 2 of the License, or
- *	(at your option) any later version.
- *
- *	This program is distributed in the hope that it will be useful,
- *	but WITHOUT ANY WARRANTY; without even the implied warranty of
- *	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *	GNU General Public License for more details.
- *
- *	You should have received a copy of the GNU General Public License
- *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- *	History :
- *	----------------------------------------------------------------------
- *
- */
+*	Copyright(c) 2008 SEC Corp. All Rights Reserved
+*
+*	File name : dmbdrv_wrap_fc8080.h
+*
+*	Description : fc8080 tuner control driver
+*	This program is free software; you can redistribute it and/or modify
+*	it under the terms of the GNU General Public License as published by
+*	the Free Software Foundation; either version 2 of the License, or
+*	(at your option) any later version.
+*
+*	This program is distributed in the hope that it will be useful,
+*	but WITHOUT ANY WARRANTY; without even the implied warranty of
+*	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+*	GNU General Public License for more details.
+*
+*	You should have received a copy of the GNU General Public License
+*	along with this program; if not, write to the Free Software
+*	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+*
+*	History :
+*	----------------------------------------------------------------------
+*
+*/
 
 #ifndef __DMBDRV_WRAP_FC8080_H
 #define __DMBDRV_WRAP_FC8080_H
@@ -46,7 +47,8 @@ struct sub_channel_info_type {
 	unsigned char num_of_user_appl;
 	unsigned short user_appl_type[USER_APPL_NUM_MAX];
 	unsigned char user_appl_length[USER_APPL_NUM_MAX];
-	unsigned char user_appl_data[USER_APPL_NUM_MAX][USER_APPL_DATA_SIZE_MAX];
+	unsigned char user_appl_data
+		[USER_APPL_NUM_MAX][USER_APPL_DATA_SIZE_MAX];
 	unsigned char scids;
 	unsigned char ecc;
 };

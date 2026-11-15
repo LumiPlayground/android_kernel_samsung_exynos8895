@@ -207,6 +207,13 @@ enum max77865_muic_reg_item {
 	HVCONTROL2_HVDigEn	= REG_ITEM(REG_HVCONTROL2, _BIT0, _MASK1),
 };
 
+/* For adcmode
+struct reg_value_set {
+	int value;
+	char *alias;
+};
+*/
+
 /*
  * Path Switching (Control1)
  * D+ [5:3] / D- [2:0]
@@ -537,17 +544,17 @@ static int max77854_usb_to_ta(struct regmap_desc *pdesc, int mode)
 	muic_data_t *pmuic = pdesc->muic;
 	vps_data_t *pmsr = &pmuic->vps;
 
-	pr_info("%s\n", __func__);
+	pr_info("%s\n",__func__);
 
 	if (mode == 0) {
-		pr_info("%s, Disable USB to TA\n", __func__);
+		pr_info("%s, Disable USB to TA\n",__func__);
 		if (pmuic->attached_dev == ATTACHED_DEV_TA_MUIC && pmuic->usb_to_ta_state) {
 			switch (pmsr->t.chgtyp) {
 			case 1:
 				pmuic->attached_dev = ATTACHED_DEV_USB_MUIC;
 				break;
 			case 2:
-				pmuic->attached_dev = ATTACHED_DEV_CDP_MUIC;
+				pmuic->attached_dev =ATTACHED_DEV_CDP_MUIC;
 				break;
 			}
 			muic_notifier_detach_attached_dev(ATTACHED_DEV_TA_MUIC);
@@ -555,7 +562,7 @@ static int max77854_usb_to_ta(struct regmap_desc *pdesc, int mode)
 			pmuic->usb_to_ta_state = false;
 		}
 	} else if (mode == 1) {
-		pr_info("%s, Enable USB to TA\n", __func__);
+		pr_info("%s, Enable USB to TA\n",__func__);
 		if ((pdesc->muic->attached_dev == ATTACHED_DEV_CDP_MUIC ||
 				pdesc->muic->attached_dev == ATTACHED_DEV_USB_MUIC)
 				&& !pmuic->usb_to_ta_state) {
@@ -565,11 +572,11 @@ static int max77854_usb_to_ta(struct regmap_desc *pdesc, int mode)
 			pmuic->usb_to_ta_state = true;
 		}
 	} else if (mode == 2) {
-		pr_info("%s, USB to TA %s\n", __func__,
+		pr_info("%s, USB to TA %s\n",__func__,
 				pmuic->usb_to_ta_state?"Enabled":"Disabled");
 		ret = pmuic->usb_to_ta_state;
 	} else {
-		pr_info("%s, Unknown CMD\n", __func__);
+		pr_info("%s, Unknown CMD\n",__func__);
 	}
 	return ret;
 }

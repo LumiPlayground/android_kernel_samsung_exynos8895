@@ -1,19 +1,6 @@
 #ifndef __CAL_IF_H__
 #define __CAL_IF_H__
 
-#ifdef CONFIG_PWRCAL
-#include "../../../drivers/soc/samsung/pwrcal/pwrcal.h"
-
-static inline int cal_qch_init(unsigned int vclkid, unsigned int use_qch)
-{
-	return 0;
-}
-
-static inline int cal_if_init(void)
-{
-	return 0;
-}
-#else
 #include "../../../drivers/soc/samsung/cal-if/pmucal_system.h"
 
 #define BLKPWR_MAGIC	0xB1380000
@@ -108,5 +95,4 @@ extern int cal_if_init(void *);
 /* It is for debugging. */
 #define cal_vclk_dbg_info(a)	do{} while(0);
 //extern void cal_vclk_dbg_info(unsigned int id);
-#endif
 #endif

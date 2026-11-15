@@ -106,7 +106,7 @@ static struct device_attribute sec_battery_attrs[] = {
 	SEC_BATTERY_ATTR(event),
 	SEC_BATTERY_ATTR(batt_temp_table),
 	SEC_BATTERY_ATTR(batt_high_current_usb),
-#if defined(CONFIG_SAMSUNG_BATTERY_ENG_TEST)
+#if defined(CONFIG_ENG_BATTERY_CONCEPT)
 	SEC_BATTERY_ATTR(test_charge_current),
 #endif
 	SEC_BATTERY_ATTR(set_stability_test),
@@ -1560,7 +1560,7 @@ static void sec_bat_aging_check(struct sec_battery_info *battery)
 	int calc_step = -1;
 	bool ret;
 
-	if (battery->pdata->num_age_step <= 0)
+	if (battery->pdata->num_age_step <= 0 || battery->batt_cycle < 0)
 		return;
 
 	if (battery->temperature < 50) {
@@ -3720,7 +3720,7 @@ continue_monitor:
 		, battery->batt_cycle
 #endif
 		 );
-#if defined(CONFIG_SAMSUNG_BATTERY_ENG_TEST)
+#if defined(CONFIG_ENG_BATTERY_CONCEPT)
 	dev_info(battery->dev,
 			"%s: battery->stability_test(%d), battery->eng_not_full_status(%d)\n",
 			__func__, battery->stability_test, battery->eng_not_full_status);
@@ -4437,7 +4437,7 @@ ssize_t sec_bat_show_attrs(struct device *dev,
 		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n",
 			battery->is_hc_usb);
 		break;
-#if defined(CONFIG_SAMSUNG_BATTERY_ENG_TEST)
+#if defined(CONFIG_ENG_BATTERY_CONCEPT)
 	case BATT_TEST_CHARGE_CURRENT:
 		{
 			union power_supply_propval value;
@@ -4463,12 +4463,12 @@ ssize_t sec_bat_show_attrs(struct device *dev,
 			value.intval = 0;
 			psy_do_property(battery->pdata->fgsrc_switch_name, set,
 					POWER_SUPPLY_PROP_ENERGY_NOW, value);
-			msleep(200);
+			mdelay(200);
 			psy_do_property(battery->pdata->fuelgauge_name, get,
 					POWER_SUPPLY_PROP_VOLTAGE_NOW, value);
 			dev_info(battery->dev, "voltage(%d)\n", value.intval/10);
 			ret = value.intval /10;
-			msleep(200);
+			mdelay(200);
 			value.intval = 1;
 			psy_do_property(battery->pdata->fgsrc_switch_name, set,
 					POWER_SUPPLY_PROP_ENERGY_NOW, value);
@@ -5175,7 +5175,7 @@ ssize_t sec_bat_store_attrs(
 			ret = count;
 		}
 		break;
-#if defined(CONFIG_SAMSUNG_BATTERY_ENG_TEST)
+#if defined(CONFIG_ENG_BATTERY_CONCEPT)
 	case BATT_TEST_CHARGE_CURRENT:
 		if (sscanf(buf, "%d\n", &x) == 1) {
 			if (x >= 0 && x <= 2000) {
@@ -6009,7 +6009,7 @@ static int sec_bat_get_property(struct power_supply *psy,
 			val->intval = 90;
 			pr_info("%s : capacity(%d)\n", __func__, val->intval);
 		} else {
-#if defined(CONFIG_SAMSUNG_BATTERY_ENG_TEST)
+#if defined(CONFIG_ENG_BATTERY_CONCEPT)
 			if (battery->status == POWER_SUPPLY_STATUS_FULL) {
 				if(battery->eng_not_full_status)
 					val->intval = battery->capacity;
@@ -6282,7 +6282,7 @@ static int sec_bat_cable_check(struct sec_battery_info *battery,
 		break;
 	case ATTACHED_DEV_JIG_UART_OFF_VB_MUIC:
 	case ATTACHED_DEV_JIG_UART_OFF_VB_FG_MUIC:
-#if defined(CONFIG_SAMSUNG_BATTERY_ENG_TEST) || defined(CONFIG_SEC_FACTORY)
+#if defined(CONFIG_ENG_BATTERY_CONCEPT) || defined(CONFIG_SEC_FACTORY)
 		current_cable_type = POWER_SUPPLY_TYPE_UARTOFF;
 		break;
 #endif
@@ -6455,7 +6455,7 @@ static int batt_handle_notification(struct notifier_block *nb,
 	}
 
 	sec_bat_set_misc_event(battery, BATT_MISC_EVENT_UNDEFINED_RANGE_TYPE,
-#if !defined(CONFIG_SAMSUNG_BATTERY_ENG_TEST) && !defined(CONFIG_SEC_FACTORY)
+#if !defined(CONFIG_ENG_BATTERY_CONCEPT) && !defined(CONFIG_SEC_FACTORY)
 		(battery->muic_cable_type != ATTACHED_DEV_JIG_UART_ON_MUIC) &&
 		(battery->muic_cable_type != ATTACHED_DEV_JIG_USB_ON_MUIC) &&
 		(battery->muic_cable_type != ATTACHED_DEV_JIG_UART_OFF_VB_MUIC) &&
@@ -7818,7 +7818,7 @@ static int sec_battery_probe(struct platform_device *pdev)
 	battery->wc_enable_cnt = 0;
 	battery->wc_enable_cnt_value = 3;
 	battery->pre_chg_temp = 0;
-#if defined(CONFIG_SAMSUNG_BATTERY_ENG_TEST)
+#if defined(CONFIG_ENG_BATTERY_CONCEPT)
 	battery->stability_test = 0;
 	battery->eng_not_full_status = 0;
 #endif

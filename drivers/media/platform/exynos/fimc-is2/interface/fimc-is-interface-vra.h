@@ -17,8 +17,6 @@
 #include "fimc-is-config.h"
 #if defined(CONFIG_FIMC_IS_V4_0_0)
 #include "fimc-is-lib-vra_v1_1.h"
-#elif defined(CONFIG_FIMC_IS_V6_0_0)
-#include "fimc-is-lib-vra_v1_4.h"
 #else
 #include "fimc-is-lib-vra_v1_10.h"
 #endif
@@ -52,13 +50,6 @@ enum fimc_is_lib_vra_input_type {
 enum fimc_is_lib_vra_dir {
 	VRA_REAR_ORIENTATION,
 	VRA_FRONT_ORIENTATION
-};
-
-struct lib_vra_tune_set {
-	u32 index;
-	ulong addr;
-	u32 size;
-	int decrypt_flag;
 };
 
 struct lib_vra_fr_work_info {
@@ -122,14 +113,6 @@ struct fimc_is_lib_vra_interface_funcs {
 	enum api_vra_type (*frame_work_abort)(void *fr_obj_ptr,
 			vra_boolean reset_tr_data_base);
 	enum api_vra_type (*frame_work_terminate)(void *fr_obj_ptr);
-#ifdef ENABLE_HYBRID_FD
-	enum api_vra_type (*set_post_detect_output)(void *sen_obj_ptr,
-			vra_boolean post_detect_output);
-#endif
-#ifdef ENABLE_VRA_CHANGE_SETFILE_PARSING
-	int (*copy_tune_set)(void *sen_obj_ptr, vra_uint32 instance_id, struct lib_vra_tune_set *set);
-	int (*apply_tune_set)(void *sen_obj_ptr, vra_uint32 instance_id, vra_uint32 index);
-#endif
 };
 
 struct fimc_is_lib_vra_debug {
@@ -205,30 +188,6 @@ struct fimc_is_lib_vra {
 	void					*test_input_buffer;
 	bool					image_load;
 #endif
-#ifdef ENABLE_REPROCESSING_FD
-	struct fimc_is_hw_ip	*hw_ip;
-	unsigned long			done_vra_callback_out_ready;
-	unsigned long			done_vra_hw_intr;
-	spinlock_t				reprocess_fd_lock;
-	ulong					reprocess_fd_flag;
-#endif
-#ifdef ENABLE_VRA_CHANGE_SETFILE_PARSING
-	ulong				tune_count;
-#endif
-#ifdef ENABLE_HYBRID_FD
-	unsigned int			post_detection_enable[VRA_TOTAL_SENSORS];
-	u32					pdt_all_face_num[VRA_TOTAL_SENSORS];
-	struct api_vra_out_list_info		pdt_out_list_info[VRA_TOTAL_SENSORS];
-	struct api_vra_pdt_out_face		pdt_out_faces[VRA_TOTAL_SENSORS][MAX_FACE_COUNT];
-#endif
-
-	/* Fast FDAE & FDAF */
-	u32					af_all_face_num[VRA_TOTAL_SENSORS];
-	struct api_vra_out_list_info		af_out_list_info[VRA_TOTAL_SENSORS];
-	struct api_vra_face_base_str		af_face_base[VRA_TOTAL_SENSORS][MAX_FACE_COUNT];
-	spinlock_t				af_fd_slock[VRA_TOTAL_SENSORS];
-	spinlock_t				ae_fd_slock[VRA_TOTAL_SENSORS];
-
 };
 
 void fimc_is_lib_vra_os_funcs(void);
@@ -257,14 +216,6 @@ int fimc_is_lib_vra_handle_interrupt(struct fimc_is_lib_vra *lib_vra, u32 id);
 int fimc_is_lib_vra_get_meta(struct fimc_is_lib_vra *lib_vra,
 	struct fimc_is_frame *frame);
 int fimc_is_lib_vra_test_image_load(struct fimc_is_lib_vra *lib_vra);
-int fimc_is_lib_vra_copy_tune_set(struct fimc_is_lib_vra *this,
-	ulong addr, u32 size, u32 index, int flag, u32 instance_id);
-int fimc_is_lib_vra_apply_tune_set(struct fimc_is_lib_vra *this,
-	u32 index, u32 instance_id);
-#ifdef ENABLE_HYBRID_FD
-int fimc_is_lib_vra_set_post_detect_output(struct fimc_is_lib_vra *lib_vra,
-	unsigned int hfd_enable, u32 instance);
-#endif
 
 #ifdef DEBUG_HW_SIZE
 #define lib_vra_check_size(desc, param, fcount) \

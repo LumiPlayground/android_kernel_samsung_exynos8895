@@ -138,6 +138,12 @@ void ion_free(struct ion_client *client, struct ion_handle *handle);
  * Map the given handle into the kernel and return a kernel address that
  * can be used to access this address.
  */
+/* Compatibility APIs for existing Exynos8895 secure/media clients. */
+int ion_phys(struct ion_client *client, struct ion_handle *handle,
+	     ion_phys_addr_t *addr, size_t *len);
+struct sg_table *ion_sg_table(struct ion_client *client,
+			    struct ion_handle *handle);
+
 void *ion_map_kernel(struct ion_client *client, struct ion_handle *handle);
 
 /**

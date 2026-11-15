@@ -309,15 +309,14 @@ static ssize_t proximity_avg_store(struct device *dev,
 	iRet = kstrtoll(buf, 10, &dEnable);
 	if (iRet < 0)
 		return iRet;
-	if (atomic64_read(&data->aSensorEnable) & (1 << PROXIMITY_SENSOR)) {
-		if (dEnable) {
-			send_instruction(data, ADD_SENSOR, PROXIMITY_RAW, chTempbuf, 4);
-			data->bProximityRawEnabled = true;
-		} else {
-			send_instruction(data, REMOVE_SENSOR, PROXIMITY_RAW,
-				chTempbuf, 4);
-			data->bProximityRawEnabled = false;
-		}
+
+	if (dEnable) {
+		send_instruction(data, ADD_SENSOR, PROXIMITY_RAW, chTempbuf, 4);
+		data->bProximityRawEnabled = true;
+	} else {
+		send_instruction(data, REMOVE_SENSOR, PROXIMITY_RAW,
+			chTempbuf, 4);
+		data->bProximityRawEnabled = false;
 	}
 
 	return size;
@@ -401,7 +400,7 @@ static ssize_t proximity_setting_store(struct device *dev,
 	msg->cmd = MSG2SSP_AP_SET_PROX_SETTING;
 	msg->length = 2;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(2, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(2, GFP_KERNEL);
 
 	msg->free_buffer = 1;
 	memcpy(msg->buffer, val, 2);
@@ -438,7 +437,7 @@ static ssize_t prox_light_get_dhr_sensor_info_show(struct device *dev,
 	u16 threshold_detect_high = 0;
 	u16 threshold_detect_low = 0;
 	u8 p_drive_current = 0;
-	u8 persistent_time = 0;
+	u8 persistant_time = 0;
 	u8 p_pulse = 0;
 	u8 p_gain = 0;
 	u8 p_time = 0;
@@ -465,7 +464,7 @@ static ssize_t prox_light_get_dhr_sensor_info_show(struct device *dev,
 	threshold_detect_high = ((((u16) buffer[6]) << 8) & 0xff00) | ((((u16) buffer[5])) & 0x00ff);
 	threshold_detect_low = ((((u16) buffer[8]) << 8) & 0xff00) | ((((u16) buffer[7])) & 0x00ff);
 	p_drive_current = buffer[9];
-	persistent_time = buffer[10];
+	persistant_time = buffer[10];
 	p_pulse = buffer[11];
 	p_gain = buffer[12];
 	p_time = buffer[13];
@@ -479,7 +478,7 @@ static ssize_t prox_light_get_dhr_sensor_info_show(struct device *dev,
 
 	pr_info("[SSP] %s - %02x, %d, %d, %d, %d, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %d", __func__,
 		chipId, threshold_high, threshold_low, threshold_detect_high, threshold_detect_low,
-		p_drive_current, persistent_time, p_pulse, p_gain, p_time, p_pulse_length, l_atime, offset);
+		p_drive_current, persistant_time, p_pulse, p_gain, p_time, p_pulse_length, l_atime, offset);
 
 	return snprintf(buf, PAGE_SIZE, "\"THD\":\"%d %d %d %d\","\
 		"\"PDRIVE_CURRENT\":\"%02x\","\
@@ -491,7 +490,7 @@ static ssize_t prox_light_get_dhr_sensor_info_show(struct device *dev,
 		"\"ATIME\":\"%02x\","\
 		"\"POFFSET\":\"%d\"\n",
 		threshold_high, threshold_low, threshold_detect_high, threshold_detect_low,
-		p_drive_current, persistent_time, p_pulse, p_gain, p_time, p_pulse_length, l_atime, offset);
+		p_drive_current, persistant_time, p_pulse, p_gain, p_time, p_pulse_length, l_atime, offset);
 }
 
 

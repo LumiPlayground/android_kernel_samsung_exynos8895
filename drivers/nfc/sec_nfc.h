@@ -36,7 +36,7 @@
 #ifdef CONFIG_SEC_NFC_MARGINTIME
 #define SEC_NFC_VEN_WAIT_TIME	(150)
 #else
-#define SEC_NFC_VEN_WAIT_TIME	(20)
+#define SEC_NFC_VEN_WAIT_TIME	(100)
 #endif
 
 /* gpio pin configuration */
@@ -75,7 +75,8 @@ enum sec_nfc_power {
 	SEC_NFC_PW_OFF,
 };
 
-enum sec_nfc_firmpin {
+enum sec_nfc_firmpin
+{
 	SEC_NFC_FW_OFF = 0,
 	SEC_NFC_FW_ON,
 };
@@ -89,8 +90,8 @@ enum sec_nfc_wake {
 enum sec_nfc_npt_mode {
 	SEC_NFC_NPT_OFF = 0,
 	SEC_NFC_NPT_ON,
-	SEC_NFC_NPT_CMD_ON = 0x7E,
-	SEC_NFC_NPT_CMD_OFF,
+        SEC_NFC_NPT_CMD_ON = 0x7E,
+        SEC_NFC_NPT_CMD_OFF,
 };
 // [END] NPT
 

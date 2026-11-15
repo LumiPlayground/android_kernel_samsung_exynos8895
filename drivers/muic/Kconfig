@@ -28,26 +28,6 @@ config MUIC_NOTIFIER
 	  If you say yes here you will get support for
 	  the MUIC attached device status change notification.
 
-config MUIC_MAX77705
-        bool "Using MAX77705 MUIC"
-        depends on USE_MUIC
-        default n
-        help
-          If you say yes here you will get support for
-          the MAX77705 MUIC chip.
-	  To enable this driver,
-	  USE_MUIC should be enabled.
-
-config HV_MUIC_MAX77705_AFC
-        bool "Using MAX77705 AFC MUIC"
-        depends on MUIC_MAX77705
-        default n
-        help
-          If you say yes here you will get support for
-	  the MAX77705 AFC MUIC.
-	  To enable this driver,
-	  MUIC_MAX77705 should be enabled.
-
 config MUIC_UNIVERSAL
 	bool "UNIVERSAL MUIC"
 	depends on USE_MUIC
@@ -99,19 +79,10 @@ config MUIC_HV_MAX77865
 
 config MUIC_SUPPORT_CCIC
 	bool "MUIC supports CCIC chip interface"
+	depends on MUIC_UNIVERSAL
 	default n
 	help
 	  If you say yes here you will get support for the CCIC chip.
-
-config MUIC_MAX77705_CCIC
-        bool "Using MAX77705 MUIC supports CCIC chip interface"
-        depends on MUIC_MAX77705 && MUIC_SUPPORT_CCIC
-        default n
-        help
-          If you say yes here you will get support for
-	  the CCIC chip with MAX77705 MUIC.
-	  To enable this driver,
-	  MUIC_MAX77705 and MUIC_SUPPORT_CCIC should be enabled.
 
 config MUIC_TEST_FUNC
 	bool "MUIC supports several function's in TEST"
@@ -119,26 +90,3 @@ config MUIC_TEST_FUNC
 	default n
 	help
 	  If you say yes here you will get support for the TEST function's.
-
-config HICCUP_CHARGER
-	bool "Using HICCUP charger"
-	depends on USE_MUIC && !SEC_FACTORY
-	default n
-	help
-		If you say yes here you will get support for
-		for the hiccup charger feature.
-
-config MUIC_HV_SUPPORT_POGO_DOCK
-	bool "MUIC_HV_SUPPORT_POGO_DOCK"
-	depends on USE_MUIC
-	default n
-	help
-	  If you say yes here you will get support for the AFC pogo dock.
-
-config MUIC_SM5508
-	bool "SM5508 MUIC"
-	depends on USE_MUIC
-	default n
-	help
-	  If you say yes here you will get support for the SM5508 MUIC chip.
-	  

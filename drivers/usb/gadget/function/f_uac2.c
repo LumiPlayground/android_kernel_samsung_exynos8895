@@ -598,6 +598,18 @@ static struct usb_gadget_strings *fn_strings[] = {
 	NULL,
 };
 
+static struct usb_qualifier_descriptor devqual_desc = {
+	.bLength = sizeof devqual_desc,
+	.bDescriptorType = USB_DT_DEVICE_QUALIFIER,
+
+	.bcdUSB = cpu_to_le16(0x200),
+	.bDeviceClass = USB_CLASS_MISC,
+	.bDeviceSubClass = 0x02,
+	.bDeviceProtocol = 0x01,
+	.bNumConfigurations = 1,
+	.bRESERVED = 0,
+};
+
 static struct usb_interface_assoc_descriptor iad_desc = {
 	.bLength = sizeof iad_desc,
 	.bDescriptorType = USB_DT_INTERFACE_ASSOCIATION,
@@ -1040,8 +1052,6 @@ afunc_bind(struct usb_configuration *cfg, struct usb_function *fn)
 		dev_err(dev, "%s:%d Error!\n", __func__, __LINE__);
 		return ret;
 	}
-	iad_desc.bFirstInterface = ret;
-
 	std_ac_if_desc.bInterfaceNumber = ret;
 	agdev->ac_intf = ret;
 	agdev->ac_alt = 0;
@@ -1090,8 +1100,7 @@ afunc_bind(struct usb_configuration *cfg, struct usb_function *fn)
 	hs_epout_desc.bEndpointAddress = fs_epout_desc.bEndpointAddress;
 	hs_epin_desc.bEndpointAddress = fs_epin_desc.bEndpointAddress;
 
-	ret = usb_assign_descriptors(fn, fs_audio_desc, hs_audio_desc, NULL,
-				     NULL);
+	ret = usb_assign_descriptors(fn, fs_audio_desc, hs_audio_desc, NULL);
 	if (ret)
 		return ret;
 

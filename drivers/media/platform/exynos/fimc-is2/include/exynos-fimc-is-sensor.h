@@ -41,8 +41,6 @@ enum exynos_sensor_channel {
 	SENSOR_CONTROL_I2C2	 = 2,
 	SENSOR_CONTROL_I2C3	 = 3,
 	SENSOR_CONTROL_I2C4	 = 4,
-	SENSOR_CONTROL_I2C5	 = 5,
-	SENSOR_CONTROL_I2C6	 = 6,
 	SENSOR_CONTROL_I2C_MAX
 };
 
@@ -51,15 +49,11 @@ enum exynos_sensor_position {
 	SENSOR_POSITION_FRONT = 1,
 	SENSOR_POSITION_REAR2 = 2,
 	SENSOR_POSITION_SECURE = 3,
-#ifdef CONFIG_VENDER_PSV
-	SENSOR_POSITION_VIRTUAL = 4,
-#endif
 	SENSOR_POSITION_END
 };
 
 enum exynos_sensor_id {
 	SENSOR_NAME_NOTHING		 = 0,
-	/* 1~100: SAMSUNG sensors */
 	SENSOR_NAME_S5K3H2		 = 1,
 	SENSOR_NAME_S5K6A3		 = 2,
 	SENSOR_NAME_S5K3H5		 = 3,
@@ -84,24 +78,15 @@ enum exynos_sensor_id {
 	SENSOR_NAME_S5K5E2		 = 22,
 	SENSOR_NAME_S5K3P3		 = 23,
 	SENSOR_NAME_S5K4H5YC		 = 24,
-	SENSOR_NAME_S5K3L8_MASTER	 = 25,
-	SENSOR_NAME_S5K3L8_SLAVE	 = 26,
-	SENSOR_NAME_S5K4H8		 = 27,
 	SENSOR_NAME_S5K2X8		 = 28,
 	SENSOR_NAME_S5K2L1		 = 29,
-	SENSOR_NAME_S5K3P8		 = 30,
+	SENSOR_NAME_S5K2L7		 = 30,
 	SENSOR_NAME_S5K3H1		 = 31,
 	SENSOR_NAME_S5K2L2		 = 32,
 	SENSOR_NAME_S5K3M3		 = 33,
-	SENSOR_NAME_S5K4H5YC_FF		 = 34,
-	SENSOR_NAME_S5K2L7		 = 35,
-	SENSOR_NAME_SAK2L3		 = 36,
-	SENSOR_NAME_S5K3P8SP		 = 44,
-	SENSOR_NAME_S5K2P7SX		 = 45,
 	SENSOR_NAME_S5K4EC		 = 57,
 
-	/* 101~200: SONY sensors */
-	SENSOR_NAME_IMX135		 = 101,
+	SENSOR_NAME_IMX135		 = 101, /* 101 ~ 200 Sony sensors */
 	SENSOR_NAME_IMX134		 = 102,
 	SENSOR_NAME_IMX175		 = 103,
 	SENSOR_NAME_IMX240		 = 104,
@@ -113,27 +98,20 @@ enum exynos_sensor_id {
 	SENSOR_NAME_IMX258		 = 110,
 	SENSOR_NAME_IMX320		 = 111,
 	SENSOR_NAME_IMX333		 = 112,
-	SENSOR_NAME_IMX241		 = 113,
-	SENSOR_NAME_IMX345		 = 114,
 
-	/* 201~255: Other vendor sensors */
-	SENSOR_NAME_SR261		 = 201,
+	SENSOR_NAME_SR261		 = 201, /* 201 ~ 300 Other vendor sensors */
 	SENSOR_NAME_OV5693		 = 202,
 	SENSOR_NAME_SR544		 = 203,
 	SENSOR_NAME_OV5670		 = 204,
 	SENSOR_NAME_DSIM		 = 205,
-	SENSOR_NAME_SR259		 = 206,
-	SENSOR_NAME_VIRTUAL		 = 207,
+	SENSOR_NAME_VIRTUAL		 = 206,
 
-	/* 256~: currently not used */
+	SENSOR_NAME_S5K5E6		 = 254, // IRIS Camera Sensor
+
 	SENSOR_NAME_CUSTOM		 = 301,
 	SENSOR_NAME_SR200		 = 302, // SoC Module
 	SENSOR_NAME_SR352		 = 303,
 	SENSOR_NAME_SR130PC20	 = 304,
-
-	SENSOR_NAME_S5K5E6		 = 305, // IRIS Camera Sensor
-	SENSOR_NAME_S5K5F1		 = 306, // STAR IRIS Sensor
-
 	SENSOR_NAME_VIRTUAL_ZEBU = 901,
 	SENSOR_NAME_END,
 };
@@ -156,7 +134,6 @@ enum actuator_name {
 	ACTUATOR_NAME_BU63165	= 15,
 	ACTUATOR_NAME_AK7372 = 16,
 	ACTUATOR_NAME_AK7371_DUAL = 17,
-	ACTUATOR_NAME_AK737X = 18,
 	ACTUATOR_NAME_END,
 	ACTUATOR_NAME_NOTHING	= 100,
 };
@@ -201,12 +178,6 @@ enum ois_name {
 	OIS_NAME_NOTHING	= 100,
 };
 
-enum aperture_name {
-	APERTURE_NAME_AK7372	= 1,
-	APERTURE_NAME_END,
-	APERTURE_NAME_NOTHING	= 100,
-};
-
 enum sensor_peri_type {
 	SE_NULL		= 0,
 	SE_I2C		= 1,
@@ -223,9 +194,9 @@ enum sensor_dma_channel_type {
 
 enum sensor_retention_state
 {
-	SENSOR_RETENTION_UNSUPPORTED = 0,
-	SENSOR_RETENTION_INACTIVE = 1,
-	SENSOR_RETENTION_ACTIVATED = 2,
+	SENSOR_RETENTION_DISABLE = 0, /* disable */
+	SENSOR_RETENTION_READY  = 1,  /* cold boot */
+	SENSOR_RETENTION_USE = 2,     /* warm boot */
 };
 
 struct i2c_type {
@@ -288,12 +259,17 @@ struct sensor_open_extended {
 	struct sensor_protocol1 from_con;
 	struct sensor_protocol2 preprocessor_con;
 	struct sensor_protocol1 ois_con;
-	struct sensor_protocol1 aperture_con;
 	u32 mclk;
 	u32 mipi_lane_num;
+	u32 mipi_settle_line;
 	u32 mipi_speed;
 	/* Use sensor retention mode */
 	u32 use_retention_mode;
+	/* Activatiing sensor self calibration mode (6A3) */
+	u32 self_calibration_mode;
+	/* This field is to adjust I2c clock based on ACLK200 */
+	/* This value is varied in case of rev 0.2 */
+	u32 I2CSclk;
 	struct sensor_protocol1 reserved[4];
 };
 
@@ -307,9 +283,6 @@ struct exynos_platform_fimc_is_sensor {
 	u32 id;
 	u32 scenario;
 	u32 csi_ch;
-	int dma_ch[8];
-	int vc_ch[8];
-	bool dma_abstract;
 	u32 flite_ch;
 	u32 is_bns;
 	unsigned long internal_state;

@@ -78,6 +78,7 @@ typedef enum
     C73C3_S5K2L2_CONFIG_2016X1512_30  = 7,
     C73C3_S5K2L2_CONFIG_1504X1504_30  = 8,
     C73C3_S5K2L2_CONFIG_1008X756_120  = 9,
+    C73C3_S5K2L2_CONFIG_4032X1960_30  = 10,
     TOTALCOUNT_C73C3_S5K2L2_CONFIG
 }IS_C73C3_S5K2L2_ConfigEnum;
 
@@ -106,6 +107,7 @@ typedef enum
 	C73C3_S5K3H1_CONFIG_1632X1224_30 = 16,
 	C73C3_S5K3H1_CONFIG_1224X1224_30 = 17,
 	C73C3_S5K3H1_CONFIG_800X600_120 = 18,
+	C73C3_S5K3H1_CONFIG_3264X1592_30 = 19,
 	TOTALCOUNT_C73C3_S5K3H1_CONFIG
 }IS_C73C3_S5K3H1_ConfigEnum;
 
@@ -126,6 +128,7 @@ typedef enum
 	C73C3_IMX320_CONFIG_1632X1224_30 = 16,
 	C73C3_IMX320_CONFIG_1224X1224_30 = 17,
 	C73C3_IMX320_CONFIG_800X600_120 = 18,
+	C73C3_IMX320_CONFIG_3264X1592_30 = 19,
 	TOTALCOUNT_C73C3_IMX320_CONFIG
 }IS_C73C3_IMX320_ConfigEnum;
 
@@ -187,6 +190,7 @@ typedef enum
     C73C3_IMX333_CONFIG_2016X1512_30  = 7,
     C73C3_IMX333_CONFIG_1504X1504_30  = 8,
     C73C3_IMX333_CONFIG_1008X756_120  = 9,
+    C73C3_IMX333_CONFIG_4032X1960_30  = 10,
     TOTALCOUNT_C73C3_IMX333_CONFIG
 }IS_C73C3_IMX333_ConfigEnum;
 
@@ -216,6 +220,7 @@ enum {
 	COMP_CMD_UPDATE_SUPPORT_MODE,
 	COMP_CMD_DEINIT,
 	COMP_CMD_HISTOGRAM_ROI_SET_INFO,
+	COMP_CMD_WDR_MODE_CHANGE,
 	COMP_CMD_END,
 };
 
@@ -425,6 +430,8 @@ typedef enum _AfParameter_73C2 {
 
 typedef enum _AfParameter_73C3 {
 	AF_PARAMETERS_73C3_API_INFO_OTF_AF_PRESET_INDEX,
+
+	AF_PARAMETERS_73C3_API_OTF_AF_INIT_SKIP_FRAME,
 
 	AF_PARAMETERS_73C3_API_PAFSTAT_ROI_TOPLEFT_X,
 	AF_PARAMETERS_73C3_API_PAFSTAT_ROI_TOPLEFT_Y,
@@ -806,7 +813,7 @@ typedef struct {
 	unsigned int product_name;
 	unsigned int sens_config_index_cur;
 	/*u16 pOisCaptureState[4];*/ //temp size
-	is_shared_data *is_data;
+	companion_shared_data *companion_data;;
 } sSharedData_smia;
 
 #define FIMC_IS_PREPROC_CFG(w, h, f, m) {	\
@@ -852,7 +859,8 @@ struct fimc_is_preproc_cfg {
 
 typedef int (*sencmd_func)(struct v4l2_subdev *subdev, preproc_setting_info *setinfo, cis_shared_data *cis_data);
 
-int C73C3_ReadAfStatFromSpi(struct spi_device *spi, preproc_setting_info *setinfo, cis_shared_data *cis_data, u8 **buf);
+int C73C3_ReadAfStatFromSpi(struct spi_device *spi, preproc_setting_info *setinfo, cis_shared_data *cis_data, u8 **buf, 
+							u32 sensor_position);
 
 int init_comp_func_73c3(sencmd_func *func_list, cis_shared_data *cis_data, bool actuator, u32 sensor_name);
 

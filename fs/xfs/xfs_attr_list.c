@@ -106,7 +106,8 @@ xfs_attr_shortform_list(xfs_attr_list_context_t *context)
 					   sfe->flags,
 					   sfe->nameval,
 					   (int)sfe->namelen,
-					   (int)sfe->valuelen);
+					   (int)sfe->valuelen,
+					   &sfe->nameval[sfe->namelen]);
 			if (error)
 				return error;
 			/*

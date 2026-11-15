@@ -30,9 +30,7 @@
 #include <asm/core_regs.h>
 #include <soc/samsung/exynos-condbg.h>
 
-#ifdef CONFIG_SEC_DUMP_SUMMARY
 #include <linux/sec_debug.h>
-#endif
 
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18
@@ -199,7 +197,7 @@ void panic(const char *fmt, ...)
 #endif
 #ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
 	if (strncmp(buf, "Fatal exception", 15))
-		sec_debug_set_extra_info_fault(PANIC_FAULT, (unsigned long)regs.pc, &regs);
+		sec_debug_set_extra_info_panic(buf);
 #endif
 	ecd_printf("Kernel Panic - not syncing: %s\n", buf);
 	pr_auto(ASL5, "Kernel panic - not syncing: %s\n", buf);

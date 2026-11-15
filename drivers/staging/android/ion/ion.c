@@ -862,6 +862,65 @@ static void ion_handle_kmap_put(struct ion_handle *handle)
 		ion_buffer_kmap_put(buffer);
 }
 
+/* Legacy 8895 clients retain handles while querying physical backing. */
+int ion_phys(struct ion_client *client, struct ion_handle *handle,
+	     ion_phys_addr_t *addr, size_t *len)
+{
+	struct ion_buffer *buffer;
+	struct scatterlist *sg;
+	phys_addr_t start, next;
+	size_t size = 0;
+	int i, ret = -EINVAL;
+
+	mutex_lock(&client->lock);
+	if (!ion_handle_validate(client, handle))
+		goto out;
+	buffer = handle->buffer;
+	ret = -ENODEV;
+	if (buffer->heap->type != ION_HEAP_TYPE_CARVEOUT &&
+	    buffer->heap->type != ION_HEAP_TYPE_DMA)
+		goto out;
+	if (!buffer->sg_table || !buffer->sg_table->orig_nents)
+		goto out;
+	start = sg_phys(buffer->sg_table->sgl);
+	next = start;
+	for_each_sg(buffer->sg_table->sgl, sg, buffer->sg_table->orig_nents, i) {
+		if (sg_phys(sg) != next)
+			goto out;
+		next += sg->length;
+		size += sg->length;
+	}
+	if (size < buffer->size)
+		goto out;
+	*addr = start;
+	*len = buffer->size;
+	ret = 0;
+out:
+	mutex_unlock(&client->lock);
+	return ret;
+}
+EXPORT_SYMBOL(ion_phys);
+
+struct sg_table *ion_sg_table(struct ion_client *client,
+			      struct ion_handle *handle)
+{
+	struct ion_buffer *buffer;
+	struct sg_table *table;
+
+	mutex_lock(&client->lock);
+	if (!ion_handle_validate(client, handle)) {
+		pr_err("%s: invalid handle passed to map_dma.\n",
+		       __func__);
+		mutex_unlock(&client->lock);
+		return ERR_PTR(-EINVAL);
+	}
+	buffer = handle->buffer;
+	table = buffer->sg_table;
+	mutex_unlock(&client->lock);
+	return table;
+}
+EXPORT_SYMBOL(ion_sg_table);
+
 void *ion_map_kernel(struct ion_client *client, struct ion_handle *handle)
 {
 	struct ion_buffer *buffer;

@@ -17,7 +17,6 @@
 #include <linux/scatterlist.h>
 #include <linux/mmc/core.h>
 #include <linux/dmaengine.h>
-#include <linux/reset.h>
 #include <linux/pm_qos.h>
 
 #define MAX_MCI_SLOTS	2
@@ -38,6 +37,7 @@ enum {
 	EVENT_XFER_COMPLETE,
 	EVENT_DATA_COMPLETE,
 	EVENT_DATA_ERROR,
+	EVENT_XFER_ERROR
 };
 
 struct mmc_data;
@@ -56,7 +56,6 @@ struct dw_mci_dma_slave {
 /**
  * struct dw_mci - MMC controller state shared between all slots
  * @lock: Spinlock protecting the queue and associated data.
- * @irq_lock: Spinlock protecting the INTMASK setting.
  * @regs: Pointer to MMIO registers.
  * @fifo_reg: Pointer to MMIO registers for data FIFO
  * @sg: Scatterlist entry currently being processed by PIO code, if any.
@@ -67,9 +66,6 @@ struct dw_mci_dma_slave {
  * @cmd: The command currently being sent to the card, or NULL.
  * @data: The data currently being transferred, or NULL if no data
  *	transfer is in progress.
- * @stop_abort: The command currently prepared for stoping transfer.
- * @prev_blksz: The former transfer blksz record.
- * @timing: Record of current ios timing.
  * @use_dma: Whether DMA channel is initialized or not.
  * @using_dma: Whether DMA is in use for the current transfer.
  * @dma_64bit_address: Whether DMA supports 64-bit address mode or not.
@@ -77,10 +73,7 @@ struct dw_mci_dma_slave {
  * @sg_cpu: Virtual address of DMA buffer.
  * @dma_ops: Pointer to platform-specific DMA callbacks.
  * @cmd_status: Snapshot of SR taken upon completion of the current
- * @ring_size: Buffer size for idma descriptors.
  *	command. Only valid when EVENT_CMD_COMPLETE is pending.
- * @dms: structure of slave-dma private data.
- * @phy_regs: physical address of controller's register map
  * @data_status: Snapshot of SR taken upon completion of the current
  *	data transfer. Only valid when EVENT_DATA_COMPLETE or
  *	EVENT_DATA_ERROR is pending.
@@ -88,6 +81,7 @@ struct dw_mci_dma_slave {
  *	to be sent.
  * @dir_status: Direction of current transfer.
  * @tasklet: Tasklet running the request state machine.
+ * @card_tasklet: Tasklet handling card detect.
  * @pending_events: Bitmask of events flagged by the interrupt handler
  *	to be processed by the tasklet.
  * @completed_events: Bitmask of events which the state machine has
@@ -98,7 +92,6 @@ struct dw_mci_dma_slave {
  *	rate and timeout calculations.
  * @current_speed: Configured rate of the controller.
  * @num_slots: Number of slots available.
- * @fifoth_val: The value of FIFOTH register.
  * @verid: Denote Version ID.
  * @dev: Device associated with the MMC controller.
  * @pdata: Platform data associated with the MMC controller.
@@ -115,11 +108,9 @@ struct dw_mci_dma_slave {
  * @push_data: Pointer to FIFO push function.
  * @pull_data: Pointer to FIFO pull function.
  * @quirks: Set of quirks that apply to specific versions of the IP.
- * @vqmmc_enabled: Status of vqmmc, should be true or false.
  * @irq_flags: The flags to be passed to request_irq.
  * @irq: The irq value to be passed to request_irq.
  * @sdio_id0: Number of slot0 in the SDIO interrupt registers.
- * @cmd11_timer: Timer for SD3.0 voltage switch over scheme.
  * @dto_timer: Timer for broken data transfer over scheme.
  *
  * Locking
@@ -178,15 +169,15 @@ struct dw_mci {
 	void			*sg_cpu;
 	const struct dw_mci_dma_ops	*dma_ops;
 	/* For idmac */
-	unsigned int		ring_size;
+	unsigned short		ring_size;
 
 	/* For edmac */
 	struct dw_mci_dma_slave *dms;
 	/* Registers's physical base address */
 	resource_size_t		phy_regs;
 
-	unsigned int            desc_sz;
-	struct pm_qos_request   pm_qos_lock;
+	unsigned short          desc_sz;
+	struct pm_qos_request   pm_qos_int;
 	struct delayed_work	qos_work;
 	bool			qos_cntrl;
 	u32			cmd_status;
@@ -240,6 +231,7 @@ struct dw_mci {
 
 	/* S/W reset timer */
 	struct timer_list       timer;
+
 	bool			vqmmc_enabled;
 	unsigned long		irq_flags; /* IRQ flags */
 	int			irq;
@@ -260,18 +252,18 @@ struct dw_mci {
 	unsigned int transferred_cnt;
 
 	/* Sfr dump */
-	struct dw_mci_sfr_ram_dump      *sfr_dump;
+	struct dw_mci_sfe_ram_dump      *sfr_dump;
 
 	/* S/W Timeout check */
 	bool sw_timeout_chk;
-
-	/* Card Clock In */
-	u32			cclk_in;
 
 	int			sdio_id0;
 
 	struct timer_list       cmd11_timer;
 	struct timer_list       dto_timer;
+
+	/* Card Clock In */
+	u32			cclk_in;
 };
 
 /* DMA ops for Internal/External DMAC interface */
@@ -287,26 +279,25 @@ struct dw_mci_dma_ops {
 };
 
 /* IP Quirks/flags. */
-/* High Speed Capable - Supports HS cards (up to 50MHz) */
-#define DW_MCI_QUIRK_HIGHSPEED                  BIT(0)
 /* Unreliable card detection */
-#define DW_MCI_QUIRK_BROKEN_CARD_DETECTION      BIT(1)
-/* No write protect */
-#define DW_MCI_QUIRK_NO_WRITE_PROTECT           BIT(2)
-/* No detect end bit during read */
-#define DW_MCI_QUIRK_NO_DETECT_EBIT             BIT(3)
-/* Use fixed IO voltage */
-#define DW_MMC_QUIRK_FIXED_VOLTAGE              BIT(4)
-/* Card init W/A HWACG ctrl */
-#define DW_MCI_QUIRK_HWACG_CTRL                 BIT(5)
-/* Enables ultra low power mode */
-#define DW_MCI_QUIRK_ENABLE_ULP                 BIT(6)
-/* Use the security management unit */
-#define DW_MCI_QUIRK_USE_SMU                    BIT(7)
-/* Spread Spectrum Clock Cntrl */
-#define DW_MCI_QUIRK_USE_SSC			BIT(8)
+#define DW_MCI_QUIRK_BROKEN_CARD_DETECTION	BIT(12)
+#define DW_MCI_QUIRK_IDMAC_DTO			BIT(0)
 /* Timer for broken data transfer over scheme */
-#define DW_MCI_QUIRK_BROKEN_DTO			BIT(9)
+#define DW_MCI_QUIRK_BROKEN_DTO			BIT(4)
+/* No write protect */
+#define DW_MCI_QUIRK_NO_WRITE_PROTECT		BIT(5)
+/* No detect end bit during read */
+#define DW_MCI_QUIRK_NO_DETECT_EBIT		BIT(6)
+/* Bypass the security management unit */
+#define DW_MCI_QUIRK_BYPASS_SMU			BIT(7)
+/* Use fixed IO voltage */
+#define DW_MMC_QUIRK_FIXED_VOLTAGE		BIT(8)
+/* Card init W/A HWACG ctrl */
+#define DW_MCI_QUIRK_HWACG_CTRL			BIT(9)
+/* Enables ultra low power mode */
+#define DW_MCI_QUIRK_ENABLE_ULP			BIT(10)
+/* Use the security management unit */
+#define DW_MCI_QUIRK_USE_SMU			BIT(11)
 
 /* Slot level quirks */
 /* This slot has no write protect */
@@ -319,6 +310,14 @@ enum dw_mci_cd_types {
 	DW_MCI_CD_PERMANENT,    /* no CD line, card permanently wired to host */
 };
 struct dma_pdata;
+
+struct block_settings {
+	unsigned short	max_segs;	/* see blk_queue_max_segments */
+	unsigned int	max_blk_size;	/* maximum size of one mmc block */
+	unsigned int	max_blk_count;	/* maximum number of blocks in one req*/
+	unsigned int	max_req_size;	/* maximum number of bytes in one req*/
+	unsigned int	max_seg_size;	/* see blk_queue_max_segment_size */
+};
 
 /* Board platform data */
 struct dw_mci_board {
@@ -339,6 +338,7 @@ struct dw_mci_board {
 
 	/* delay in mS before detecting cards after interrupt */
 	u32 detect_delay_ms;
+
 	u8 clk_smpl;
 	bool is_fine_tuned;
 	bool tuned;
@@ -346,14 +346,10 @@ struct dw_mci_board {
 	bool only_once_tune;
 
 	/* INT QOS khz */
-	unsigned int qos_dvfs_level;
+	unsigned int qos_int_level;
 	unsigned char io_mode;
 
-	/* SSC RATE */
-	unsigned int ssc_rate;
-
 	enum dw_mci_cd_types cd_type;
-	struct reset_control *rstc;
 	struct dw_mci_dma_ops *dma_ops;
 	struct dma_pdata *data;
 	struct block_settings *blk_settings;
@@ -378,7 +374,7 @@ struct dw_mci_board {
 				 SDMMC_IDMAC_INT_FBE | SDMMC_IDMAC_INT_RI | \
 				 SDMMC_IDMAC_INT_TI)
 
-#if defined(CONFIG_MMC_DW_EXYNOS_FMP)
+#if defined(CONFIG_MMC_DW_FMP_DM_CRYPT) || defined(CONFIG_MMC_DW_FMP_ECRYPT_FS)
 struct idmac_desc_64addr {
 	u32		des0;	/* Control Descriptor */
 #define IDMAC_DES0_DIC	BIT(1)
@@ -393,6 +389,12 @@ struct idmac_desc_64addr {
 	((d)->des2 = ((d)->des2 & cpu_to_le32(0x03ffe000)) | \
 	 ((cpu_to_le32(s)) & cpu_to_le32(0x1fff)))
 	u32		des2;	/*Buffer sizes */
+#define IDMAC_DES2_FKL	BIT(26)
+#define IDMAC_DES2_DKL	BIT(27)
+#define IDMAC_SET_FAS(d, v) \
+	((d)->des2 = ((d)->des2 & 0xcfffffff) | v << 28)
+#define IDMAC_SET_DAS(d, v) \
+	((d)->des2 = ((d)->des2 & 0x3fffffff) | v << 30)
 	u32		des3;	/* Reserved */
 	u32		des4;	/* Lower 32-bits of Buffer Address Pointer 1*/
 	u32		des5;	/* Upper 32-bits of Buffer Address Pointer 1*/
@@ -422,40 +424,6 @@ struct idmac_desc_64addr {
 	u32		des29;	/* Disk IV 1 */
 	u32		des30;	/* Disk IV 2 */
 	u32		des31;	/* Disk IV 3 */
-#if defined(CONFIG_EXYNOS_FMP_DUAL_FILE_ENCRYPTION)
-	u32		des32;	/* File2 EncKey 0 */
-	u32		des33;	/* File2 EncKey 1 */
-	u32		des34;	/* File2 EncKey 2 */
-	u32		des35;	/* File2 EncKey 3 */
-	u32		des36;	/* File2 EncKey 4 */
-	u32		des37;	/* File2 EncKey 5 */
-	u32		des38;	/* File2 EncKey 6 */
-	u32		des39;	/* File2 EncKey 7 */
-	u32		des40;	/* File TwKey 0 */
-	u32		des41;	/* File TwKey 1 */
-	u32		des42;	/* File TwKey 2 */
-	u32		des43;	/* File TwKey 3 */
-	u32		des44;	/* File TwKey 4 */
-	u32		des45;	/* File TwKey 5 */
-	u32		des46;	/* File TwKey 6 */
-	u32		des47;	/* File TwKey 7 */
-	u32		des48;	/* Reserved */
-	u32		des49;	/* Reserved */
-	u32		des50;	/* Reserved */
-	u32		des51;	/* Reserved */
-	u32		des52;	/* Reserved */
-	u32		des53;	/* Reserved */
-	u32		des54;	/* Reserved */
-	u32		des55;	/* Reserved */
-	u32		des56;	/* Reserved */
-	u32		des57;	/* Reserved */
-	u32		des58;	/* Reserved */
-	u32		des59;	/* Reserved */
-	u32		des60;	/* Reserved */
-	u32		des61;	/* Reserved */
-	u32		des62;	/* Reserved */
-	u32		des63;	/* Reserved */
-#endif /* CONFIG_EXYNOS_FMP_DUAL_FILE_ENCRYPTION */
 #define IDMAC_64ADDR_SET_DESC_CLEAR(d) \
 do {			\
 	(d)->des1 = 0;	\
@@ -471,8 +439,6 @@ do {			\
 #else
 struct idmac_desc_64addr {
 	u32		des0;	/* Control Descriptor */
-#define IDMAC_OWN_CLR64(x) \
-	!((x) & cpu_to_le32(IDMAC_DES0_OWN))
 
 	u32		des1;	/* Reserved */
 

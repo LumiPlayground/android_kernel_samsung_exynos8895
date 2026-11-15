@@ -45,8 +45,8 @@ static int fimc_is_ischain_3ac_start(struct fimc_is_device_ischain *device,
 	struct fimc_is_module_enum *module;
 	u32 hw_format, hw_bitwidth, hw_order;
 
-	FIMC_BUG(!queue);
-	FIMC_BUG(!queue->framecfg.format);
+	BUG_ON(!queue);
+	BUG_ON(!queue->framecfg.format);
 
 	hw_format = queue->framecfg.format->hw_format;
 	hw_order = queue->framecfg.format->hw_order;
@@ -136,14 +136,16 @@ static int fimc_is_ischain_3ac_tag(struct fimc_is_subdev *subdev,
 
 	device = (struct fimc_is_device_ischain *)device_data;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->is_region);
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!GET_SUBDEV_QUEUE(subdev));
-	FIMC_BUG(!ldr_frame);
-	FIMC_BUG(!ldr_frame->shot);
+	BUG_ON(!device);
+	BUG_ON(!device->is_region);
+	BUG_ON(!subdev);
+	BUG_ON(!GET_SUBDEV_QUEUE(subdev));
+	BUG_ON(!ldr_frame);
+	BUG_ON(!ldr_frame->shot);
 
-	mdbgs_ischain(4, "3AAC TAG(request %d)\n", device, node->request);
+#ifdef DBG_STREAMING
+	mdbgd_ischain("3AAC TAG(request %d)\n", device, node->request);
+#endif
 
 	lindex = hindex = indexes = 0;
 	leader = subdev->leader;
@@ -220,7 +222,7 @@ static int fimc_is_ischain_3ac_tag(struct fimc_is_subdev *subdev,
 				goto p_err;
 			}
 
-			mdbg_pframe(" off\n", device, subdev, ldr_frame);
+			msrinfo(" off\n", device, subdev, ldr_frame);
 		}
 
 		scalerUd->txcTargetAddress[0] = 0;

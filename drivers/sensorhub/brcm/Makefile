@@ -7,7 +7,7 @@ obj-$(CONFIG_SENSORS_SSP)		+= ssp_dev.o ssp_i2c.o ssp_data.o ssp_sysfs.o\
 						ssp_firmware.o ssp_debug.o ssp_dump.o
 obj-$(CONFIG_SENSORS_SYSFS)		+= sensors_core.o
 
-obj-$(CONFIG_IIO)			+= ssp_iio.o ssp_iio_ring.o
+obj-$(CONFIG_IIO)			+= ssp_iio_ring.o ssp_iio_trigger.o
 
 obj-$(CONFIG_SENSORS_SSP_ICM20610)	+= factory/accel_icm20610.o factory/gyro_icm20610.o
 obj-$(CONFIG_SENSORS_SSP_MPU6500)	+= factory/accel_mpu6500.o factory/gyro_mpu6500.o
@@ -22,7 +22,7 @@ obj-$(CONFIG_SENSORS_SSP_MAGNETIC_COMMON)	+= factory/magnetic_common.o
 obj-$(CONFIG_SENSORS_SSP_AK09911)	+= factory/magnetic_ak09911.o
 
 obj-$(CONFIG_SENSORS_SSP_TMG399x)	+= factory/light_tmg399x.o factory/gesture_tmg399x.o
-obj-$(CONFIG_SENSORS_SSP_TMD4903)	+= factory/light_tmg399x.o factory/gesture_tmg399x.o
+obj-$(CONFIG_SENSORS_SSP_TMD4903)	+= factory/light_tmg399x.o factory/gesture_tmg399x.o 
 obj-$(CONFIG_SENSORS_SSP_TMD4905)	+= factory/light_tmg399x.o factory/gesture_tmg399x.o
 obj-$(CONFIG_SENSORS_SSP_TMD4904)	+= factory/light_tmg399x.o
 obj-$(CONFIG_SENSORS_SSP_TMD4906)	+= factory/light_tmg399x.o
@@ -45,9 +45,21 @@ obj-$(CONFIG_SENSORS_SSP_SX9306)	 += factory/grip_sx9306.o
 obj-$(CONFIG_SENSORS_SSP_SENSORHUB)	+= ssp_sensorhub.o ssp_misc.o
 obj-$(CONFIG_SENSORS_SX9310)		+= sx9310.o
 obj-$(CONFIG_SENSORS_SX9320)		+= sx9320.o
+obj-$(CONFIG_SENSORS_SX9320_MULTI)	+= sx9320_multi2.o sx9320_multi3.o sx9320_multi4.o
 
 obj-$(CONFIG_SENSORS_SSP_BBD)           += ssp_bbd.o factory/mcu_bcm4774.o
 obj-$(CONFIG_SENSORS_SSP_BBD)           += bbdpl/
 obj-$(CONFIG_SSP_MOTOR_CALLBACK)        += ssp_motorcallback.o
-obj-$(CONFIG_SENSORS_SSP_THERMISTOR)        += factory/thermistor.o
 
+CURRENT_ANDROID_VERSION := $(shell echo $(ANDROID_VERSION))
+CURRENT_ANDROID_MAJOR_VERSION := $(shell echo $(ANDROID_MAJOR_VERSION))
+
+$(warning ANDROID_MAJOR_VERSION : $(CURRENT_ANDROID_MAJOR_VERSION))
+$(warning ANDROID_PLATFORM_VERSION : $(CURRENT_ANDROID_VERSION))
+
+
+ifeq ($(shell echo $(ANDROID_MAJOR_VERSION)),n)
+	obj-$(CONFIG_SENSORS_SSP) += ssp_input.o
+else
+	obj-$(CONFIG_SENSORS_SSP) += ssp_iio.o
+endif

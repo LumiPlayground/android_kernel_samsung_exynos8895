@@ -594,11 +594,11 @@ void __bio_clone_fast(struct bio *bio, struct bio *bio_src)
 #endif
 
 	bio_clone_blkcg_association(bio, bio_src);
-	bio->fmp_ci.bi_dio_inode = bio_src->fmp_ci.bi_dio_inode;
-	bio->fmp_ci.private_enc_mode = bio_src->fmp_ci.private_enc_mode;
-	bio->fmp_ci.private_algo_mode = bio_src->fmp_ci.private_algo_mode;
-	bio->fmp_ci.key = bio_src->fmp_ci.key;
-	bio->fmp_ci.key_length = bio_src->fmp_ci.key_length;
+	bio->bi_dio_inode = bio_src->bi_dio_inode;
+	bio->private_enc_mode = bio_src->private_enc_mode;
+	bio->private_algo_mode = bio_src->private_algo_mode;
+	bio->key = bio_src->key;
+	bio->key_length = bio_src->key_length;
 	bio->bi_sec_flags = bio_src->bi_sec_flags;
 }
 EXPORT_SYMBOL(__bio_clone_fast);
@@ -684,11 +684,11 @@ struct bio *bio_clone_bioset(struct bio *bio_src, gfp_t gfp_mask,
 #ifdef CONFIG_JOURNAL_DATA_TAG
 	bio->bi_flags |= bio_src->bi_flags & (1 << BIO_JOURNAL);
 #endif
-	bio->fmp_ci.bi_dio_inode	= bio_src->fmp_ci.bi_dio_inode;
-	bio->fmp_ci.private_enc_mode	= bio_src->fmp_ci.private_enc_mode;
-	bio->fmp_ci.private_algo_mode	= bio_src->fmp_ci.private_algo_mode;
-	bio->fmp_ci.key		= bio_src->fmp_ci.key;
-	bio->fmp_ci.key_length		= bio_src->fmp_ci.key_length;
+	bio->bi_dio_inode	= bio_src->bi_dio_inode;
+	bio->private_enc_mode	= bio_src->private_enc_mode;
+	bio->private_algo_mode	= bio_src->private_algo_mode;
+	bio->key		= bio_src->key;
+	bio->key_length		= bio_src->key_length;
 	bio->bi_sec_flags	= bio_src->bi_sec_flags;
 
 	switch (bio_op(bio)) {

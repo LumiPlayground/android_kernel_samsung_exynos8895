@@ -3272,7 +3272,17 @@ static int ath10k_pci_probe(struct pci_dev *pdev,
 	ret = ath10k_pci_claim(ar);
 	if (ret) {
 		ath10k_err(ar, "failed to claim device: %d\n", ret);
-		goto err_free_pipes;
+		goto err_core_destroy;
+	}
+
+	if (QCA_REV_6174(ar) || QCA_REV_9377(ar))
+		ath10k_pci_override_ce_config(ar);
+
+	ret = ath10k_pci_alloc_pipes(ar);
+	if (ret) {
+		ath10k_err(ar, "failed to allocate copy engine pipes: %d\n",
+			   ret);
+		goto err_sleep;
 	}
 
 	ret = ath10k_pci_force_wake(ar);

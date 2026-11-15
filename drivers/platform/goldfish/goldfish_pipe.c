@@ -312,7 +312,7 @@ static ssize_t goldfish_pipe_read_write(struct file *filp, char __user *buffer,
 				     dev->base + PIPE_REG_ADDRESS,
 				     dev->base + PIPE_REG_ADDRESS_HIGH);
 			writel(is_write ? CMD_WRITE_BUFFER : CMD_READ_BUFFER,
-					dev->base + PIPE_REG_COMMAND);
+			       dev->base + PIPE_REG_COMMAND);
 			status = readl(dev->base + PIPE_REG_STATUS);
 		}
 		spin_unlock_irqrestore(&dev->lock, irq_flags);
@@ -334,7 +334,7 @@ static ssize_t goldfish_pipe_read_write(struct file *filp, char __user *buffer,
 			break;
 		} else if (status < 0 && count > 0) {
 			/*
-			 * An error occurred and we already transferred
+			 * An error occured and we already transfered
 			 * something on one of the previous pages.
 			 * Just return what we already copied and log this
 			 * err.
@@ -377,11 +377,15 @@ static ssize_t goldfish_pipe_read_write(struct file *filp, char __user *buffer,
 		while (test_bit(wakeBit, &pipe->flags)) {
 			if (wait_event_interruptible(
 					pipe->wake_queue,
-					!test_bit(wakeBit, &pipe->flags)))
-				return -ERESTARTSYS;
+					!test_bit(wakeBit, &pipe->flags))) {
+				ret = -ERESTARTSYS;
+				break;
+			}
 
-			if (test_bit(BIT_CLOSED_ON_HOST, &pipe->flags))
-				return -EIO;
+			if (test_bit(BIT_CLOSED_ON_HOST, &pipe->flags)) {
+				ret = -EIO;
+				break;
+			}
 		}
 
 		/* Try to re-acquire the lock */
@@ -448,7 +452,7 @@ static irqreturn_t goldfish_pipe_interrupt(int irq, void *dev_id)
 
 	/*
 	 * We're going to read from the emulator a list of (channel,flags)
-	 * pairs corresponding to the wake events that occurred on each
+	 * pairs corresponding to the wake events that occured on each
 	 * blocked pipe (i.e. channel).
 	 */
 	spin_lock_irqsave(&dev->lock, irq_flags);

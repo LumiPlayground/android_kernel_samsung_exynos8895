@@ -50,7 +50,7 @@ enum vdma_planar_mode {
 	vdma_planar	= 0,
 	vdma_2_planes	= 1,
 	vdma_3_planes	= 2,
-	vdma_planar_max,
+	vdma_planar_max	,
 	vdma_known	= vdma_planar_max,/* not supported */
 };
 
@@ -135,6 +135,9 @@ int32_t iva_vdma_config_dram_to_mcu(struct iva_dev_data *iva,
 	/* clear to planar mode w/o flow-control */
 	vdma_clear_planar_config(ch_base);
 
+	/* clear the vCF circular buffer RP(read port) configuration */
+	writel(0x0, ch_base + VDE_CH_CBRCFG_ADDR(0));
+
 	/* clear the vCF circular buffer RP/WP configuration */
 	writel(0x0, ch_base + VDE_CH_CBRCFG_ADDR(0));
 	writel(0x0, ch_base + VDE_CH_CBWCFG_ADDR(0));
@@ -148,7 +151,7 @@ int32_t iva_vdma_enable(struct iva_dev_data *iva, enum vdma_id id, bool enable)
 {
 	enum iva_pmu_ip_id ip;
 
-	switch (id) {
+	switch(id) {
 	case vdma_id_0:
 		ip = pmu_vdma0_id;
 		break;
@@ -173,7 +176,9 @@ int32_t iva_vdma_enable(struct iva_dev_data *iva, enum vdma_id id, bool enable)
 }
 
 #define IVA_VDMA_PRINT(dev, ch_base, reg)				\
-		dev_info(dev, #reg "(0x%x)\n", readl(ch_base + reg))
+	do{								\
+		dev_info(dev, #reg "(0x%x)\n", readl(ch_base + reg));	\
+	} while(0)
 
 void iva_vdma_show_status(struct iva_dev_data *iva)
 {
@@ -181,33 +186,19 @@ void iva_vdma_show_status(struct iva_dev_data *iva)
 	uint32_t	vdma_hd;
 	int		id, ch;
 	void		*ch_base;
-	uint32_t	val;
-	bool		vdma_clk;
 
-	for (id = vdma_id_0; id < vdma_id_max; id++) {
-		vdma_clk = !!iva_pmu_enable_clk(iva, pmu_vdma0_id << id, true);
-
-		for (ch = vdma_ch_0; ch < vdma_ch_max; ch++) {
-			vdma_hd	= ID_CH_TO_HANDLE(id, ch);
-			ch_base	= iva->iva_va + GET_DMA_CH_BASE_F_HANDLE(vdma_hd);
-			val	= readl(ch_base + VDE_CH_STATUS_REG_0_ADDR);
-
-			if (!(val & VDE_CH_STATUS_0_CH_BUSY_M))
-				continue;
+	for (id = vdma_id_0; id < vdma_id_max; id++ ) {
+		for (ch = vdma_ch_0; ch < vdma_ch_max; ch ++) {
+			vdma_hd = ID_CH_TO_HANDLE(id, ch);
+			ch_base = iva->iva_va + GET_DMA_CH_BASE_F_HANDLE(vdma_hd);
 
 			dev_info(dev, "--- iva vdma id(%d), ch(%d)---\n",
 					id, ch);
-			IVA_VDMA_PRINT(dev, ch_base, VDE_CH_STATUS_REG_0_ADDR);
 			IVA_VDMA_PRINT(dev, ch_base, VDE_CH_CFG_REG_0_ADDR);
 			IVA_VDMA_PRINT(dev, ch_base, VDE_CH_CFG_REG_2_ADDR);
-			IVA_VDMA_PRINT(dev, ch_base, VDE_CH_CFG_REG_4_ADDR);
-			IVA_VDMA_PRINT(dev, ch_base, VDE_CH_CFG_REG_5_ADDR);
 			IVA_VDMA_PRINT(dev, ch_base, VDE_CH_CFG_REG_6_ADDR);
 			IVA_VDMA_PRINT(dev, ch_base, VDE_CH_CFG_REG_7_ADDR);
 			IVA_VDMA_PRINT(dev, ch_base, VDE_CH_CFG_REG_8_ADDR);
 		}
-
-		if (!vdma_clk)
-			iva_pmu_enable_clk(iva, pmu_vdma0_id << id, false);
 	}
 }

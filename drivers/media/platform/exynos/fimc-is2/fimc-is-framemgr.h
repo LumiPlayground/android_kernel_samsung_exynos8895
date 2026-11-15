@@ -18,47 +18,40 @@
 #include "fimc-is-config.h"
 
 #define FIMC_IS_MAX_BUFS	VIDEO_MAX_FRAME
-#define FIMC_IS_MAX_PLANES	17
+#define FIMC_IS_MAX_PLANES	VIDEO_MAX_PLANES
 
-#define FRAMEMGR_ID_INVALID	0x00000000
-#define FRAMEMGR_ID_SSX		0x00000100
-#define FRAMEMGR_ID_SSXVC0	0x00000011
-#define FRAMEMGR_ID_SSXVC1	0x00000012
-#define FRAMEMGR_ID_SSXVC2	0x00000013
-#define FRAMEMGR_ID_SSXVC3	0x00000014
-#define FRAMEMGR_ID_3XS		0x00000200
-#define FRAMEMGR_ID_3XC		0x00000400
-#define FRAMEMGR_ID_3XP		0x00000800
-#define FRAMEMGR_ID_IXS		0x00001000
-#define FRAMEMGR_ID_IXC		0x00002000
-#define FRAMEMGR_ID_IXP		0x00004000
-#define FRAMEMGR_ID_DXS		0x00008000
-#define FRAMEMGR_ID_DXC		0x00010000
-#define FRAMEMGR_ID_MXS		0x00020000
-#define FRAMEMGR_ID_M0P		0x00040000
-#define FRAMEMGR_ID_M1P		0x00080000
-#define FRAMEMGR_ID_M2P		0x00100000
-#define FRAMEMGR_ID_M3P		0x00200000
-#define FRAMEMGR_ID_M4P		0x00400000
-#define FRAMEMGR_ID_M5P		0x00800000
-#define FRAMEMGR_ID_VRA		0x01000000
-#define FRAMEMGR_ID_DCP0S	0x02000000
-#define FRAMEMGR_ID_DCP1S	0x04000000
-#define FRAMEMGR_ID_DCP0C	0x08000000
-#define FRAMEMGR_ID_DCP1C	0x10000000
-#define FRAMEMGR_ID_DCP2C	0x20000000
-#define FRAMEMGR_ID_HW		0x40000000
+#define FRAMEMGR_ID_INVALID	0x0000000
+#define FRAMEMGR_ID_SSX 	0x0000100
+#define FRAMEMGR_ID_SSXVC0	0x0000011
+#define FRAMEMGR_ID_SSXVC1	0x0000012
+#define FRAMEMGR_ID_SSXVC2	0x0000013
+#define FRAMEMGR_ID_SSXVC3	0x0000014
+#define FRAMEMGR_ID_3XS 	0x0000200
+#define FRAMEMGR_ID_3XC 	0x0000400
+#define FRAMEMGR_ID_3XP 	0x0000800
+#define FRAMEMGR_ID_IXS 	0x0001000
+#define FRAMEMGR_ID_IXC 	0x0002000
+#define FRAMEMGR_ID_IXP 	0x0004000
+#define FRAMEMGR_ID_DXS 	0x0008000
+#define FRAMEMGR_ID_DXC 	0x0010000
+#define FRAMEMGR_ID_SCC 	0x0010000
+#define FRAMEMGR_ID_SCP 	0x0020000
+#define FRAMEMGR_ID_MXS 	0x0040000
+#define FRAMEMGR_ID_M0P 	0x0080000
+#define FRAMEMGR_ID_M1P 	0x0100000
+#define FRAMEMGR_ID_M2P 	0x0200000
+#define FRAMEMGR_ID_M3P 	0x0400000
+#define FRAMEMGR_ID_M4P 	0x0800000
+#define FRAMEMGR_ID_VRA		0x1000000
+#define FRAMEMGR_ID_HW		0x2000000
 #define FRAMEMGR_ID_SHOT	(FRAMEMGR_ID_SSX | FRAMEMGR_ID_3XS | \
 				 FRAMEMGR_ID_IXS | FRAMEMGR_ID_DXS | \
-				 FRAMEMGR_ID_MXS | FRAMEMGR_ID_VRA | \
-				 FRAMEMGR_ID_DCP0S)
+				 FRAMEMGR_ID_MXS | FRAMEMGR_ID_VRA)
 #define FRAMEMGR_ID_STREAM	(FRAMEMGR_ID_3XC | FRAMEMGR_ID_3XP | \
-				 FRAMEMGR_ID_DXS | FRAMEMGR_ID_DXC | \
-				 FRAMEMGR_ID_M0P | FRAMEMGR_ID_M1P | \
-				 FRAMEMGR_ID_M2P | FRAMEMGR_ID_M3P | \
-				 FRAMEMGR_ID_M4P | FRAMEMGR_ID_M5P | \
-				 FRAMEMGR_ID_DCP1S | FRAMEMGR_ID_DCP0C | \
-				 FRAMEMGR_ID_DCP1C | FRAMEMGR_ID_DCP2C | \
+				 FRAMEMGR_ID_SCC | FRAMEMGR_ID_DXS | FRAMEMGR_ID_DXC | \
+				 FRAMEMGR_ID_SCP | FRAMEMGR_ID_M0P | \
+				 FRAMEMGR_ID_M1P | FRAMEMGR_ID_M2P | \
+				 FRAMEMGR_ID_M3P | FRAMEMGR_ID_M4P | \
 				 FRAMEMGR_ID_SSXVC0 | FRAMEMGR_ID_SSXVC1 | \
 				 FRAMEMGR_ID_SSXVC2 | FRAMEMGR_ID_SSXVC3)
 /* #define TRACE_FRAME */
@@ -215,19 +208,11 @@ struct fimc_is_frame {
 	atomic_t		shot_done_flag;
 #endif
 
-#ifdef ENABLE_SYNC_REPROCESSING
-	struct list_head	sync_list;
-#endif
-	struct list_head	votf_list;
-
-	/* for NI(noise index from DDK) use */
-	u32			noise_idx; /* Noise index */
-
 #ifdef MEASURE_TIME
 	/* time measure externally */
 	struct timeval	*tzone;
 	/* time measure internally */
-	struct fimc_is_monitor	mpoint[TMS_END];
+	struct fimc_is_monitor	mpoint[TMM_END];
 #endif
 
 #ifdef DBG_DRAW_DIGIT
@@ -238,7 +223,6 @@ struct fimc_is_frame {
 
 struct fimc_is_framemgr {
 	u32			id;
-	char			name[FIMC_IS_STR_LEN];
 	spinlock_t		slock;
 	ulong			sindex;
 
@@ -263,7 +247,7 @@ static const char * const frame_state_name[NR_FRAME_STATE] = {
 	"Complete"
 };
 
-ulong frame_fcount(struct fimc_is_frame *frame, void *data);
+int frame_fcount(struct fimc_is_frame *frame, void *data);
 int put_frame(struct fimc_is_framemgr *this, struct fimc_is_frame *frame,
 			enum fimc_is_frame_state state);
 struct fimc_is_frame *get_frame(struct fimc_is_framemgr *this,
@@ -276,11 +260,11 @@ struct fimc_is_frame *peek_frame_tail(struct fimc_is_framemgr *this,
 			enum fimc_is_frame_state state);
 struct fimc_is_frame *find_frame(struct fimc_is_framemgr *this,
 			enum fimc_is_frame_state state,
-			ulong (*fn)(struct fimc_is_frame *, void *), void *data);
+			int (*fn)(struct fimc_is_frame *, void *), void *data);
 void print_frame_queue(struct fimc_is_framemgr *this,
 			enum fimc_is_frame_state state);
 
-int frame_manager_probe(struct fimc_is_framemgr *this, u32 id, const char *name);
+int frame_manager_probe(struct fimc_is_framemgr *this, u32 id);
 int frame_manager_open(struct fimc_is_framemgr *this, u32 buffers);
 int frame_manager_close(struct fimc_is_framemgr *this);
 int frame_manager_flush(struct fimc_is_framemgr *this);

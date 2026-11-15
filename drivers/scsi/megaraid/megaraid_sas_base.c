@@ -7043,7 +7043,7 @@ megasas_aen_polling(struct work_struct *work)
 	int     i, j, doscan = 0;
 	u32 seq_num, wait_time = MEGASAS_RESET_WAIT_TIME;
 	int error;
-	u8  dcmd_ret = DCMD_SUCCESS;
+	u8  dcmd_ret = 0;
 
 	if (!instance) {
 		printk(KERN_ERR "invalid instance!\n");
@@ -7068,7 +7068,7 @@ megasas_aen_polling(struct work_struct *work)
 		case MR_EVT_PD_INSERTED:
 		case MR_EVT_PD_REMOVED:
 			dcmd_ret = megasas_get_pd_list(instance);
-			if (dcmd_ret == DCMD_SUCCESS)
+			if (dcmd_ret == 0)
 				doscan = SCAN_PD_CHANNEL;
 			break;
 
@@ -7080,7 +7080,7 @@ megasas_aen_polling(struct work_struct *work)
 				(instance->requestorId && megasas_get_ld_vf_affiliation(instance, 0)))
 				dcmd_ret = megasas_ld_list_query(instance, MR_LD_QUERY_TYPE_EXPOSED_TO_HOST);
 
-			if (dcmd_ret == DCMD_SUCCESS)
+			if (dcmd_ret == 0)
 				doscan = SCAN_VD_CHANNEL;
 
 			break;
@@ -7090,14 +7090,14 @@ megasas_aen_polling(struct work_struct *work)
 		case MR_EVT_LD_STATE_CHANGE:
 			dcmd_ret = megasas_get_pd_list(instance);
 
-			if (dcmd_ret != DCMD_SUCCESS)
+			if (dcmd_ret != 0)
 				break;
 
 			if (!instance->requestorId ||
 				(instance->requestorId && megasas_get_ld_vf_affiliation(instance, 0)))
 				dcmd_ret = megasas_ld_list_query(instance, MR_LD_QUERY_TYPE_EXPOSED_TO_HOST);
 
-			if (dcmd_ret != DCMD_SUCCESS)
+			if (dcmd_ret != 0)
 				break;
 
 			doscan = SCAN_VD_CHANNEL | SCAN_PD_CHANNEL;
@@ -7162,7 +7162,7 @@ megasas_aen_polling(struct work_struct *work)
 		}
 	}
 
-	if (dcmd_ret == DCMD_SUCCESS)
+	if (dcmd_ret == 0)
 		seq_num = le32_to_cpu(instance->evt_detail->seq_num) + 1;
 	else
 		seq_num = instance->last_seq_num;

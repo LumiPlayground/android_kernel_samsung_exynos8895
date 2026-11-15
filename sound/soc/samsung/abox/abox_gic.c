@@ -1,6 +1,6 @@
 /* sound/soc/samsung/abox/abox_gic.c
  *
- * ALSA SoC Audio Layer - Samsung ABOX GIC driver
+ * ALSA SoC - Samsung ABOX driver
  *
  * Copyright (c) 2016 Samsung Electronics Co. Ltd.
  *
@@ -25,17 +25,17 @@
 
 #define GIC_IS_SECURE_FREE
 
-void abox_gic_generate_interrupt(struct device *dev, unsigned int irq)
+void abox_gic_generate_interrupt(struct platform_device *pdev, int hw_irq)
 {
 #ifdef GIC_IS_SECURE_FREE
-	struct abox_gic_data *data = dev_get_drvdata(dev);
+	struct abox_gic_data *data = platform_get_drvdata(pdev);
 #endif
-	dev_dbg(dev, "%s(%d)\n", __func__, irq);
+	dev_dbg(&pdev->dev, "%s(%d)\n", __func__, hw_irq);
 #ifdef GIC_IS_SECURE_FREE
-	writel((0x1 << 16) | (irq & 0xF),
+	writel((0x1 << 16) | (hw_irq & 0xF),
 			data->gicd_base + GIC_DIST_SOFTINT);
 #else
-	dev_dbg(dev, "exynos_smc() is called\n");
+	dev_dbg(&pdev->dev, "exynos_smc() is called\n");
 	exynos_smc(SMC_CMD_REG,
 			SMC_REG_ID_SFR_W(0x13EF1000 + GIC_DIST_SOFTINT),
 			(0x1 << 16) | (hw_irq & 0xF), 0);
@@ -43,120 +43,87 @@ void abox_gic_generate_interrupt(struct device *dev, unsigned int irq)
 }
 EXPORT_SYMBOL(abox_gic_generate_interrupt);
 
-int abox_gic_register_irq_handler(struct device *dev, unsigned int irq,
-		irq_handler_t handler, void *dev_id)
+void abox_gic_register_irq_handler(struct platform_device *pdev,
+		irq_handler_t irq_handler, void *dev_id)
 {
-	struct abox_gic_data *data = dev_get_drvdata(dev);
+	struct abox_gic_data *data = platform_get_drvdata(pdev);
 
-	dev_info(dev, "%s(%u, %pf)\n", __func__, irq, handler);
+	dev_info(&pdev->dev, "%s\n", __func__);
 
-	if (irq >= ARRAY_SIZE(data->handler)) {
-		dev_err(dev, "invalid irq: %d\n", irq);
-		return -EINVAL;
-	}
-
-	data->handler[irq].handler = handler;
-	data->handler[irq].dev_id = dev_id;
-
-	return 0;
+	data->abox_gic_irq_handler.irq_handler = irq_handler;
+	data->abox_gic_irq_handler.dev_id = dev_id;
 }
 EXPORT_SYMBOL(abox_gic_register_irq_handler);
 
-int abox_gic_unregister_irq_handler(struct device *dev, unsigned int irq)
+void abox_gic_unregister_irq_handler(struct platform_device *pdev)
 {
-	struct abox_gic_data *data = dev_get_drvdata(dev);
+	struct abox_gic_data *data = platform_get_drvdata(pdev);
 
-	dev_info(dev, "%s(%u)\n", __func__, irq);
+	dev_info(&pdev->dev, "%s\n", __func__);
 
-	if (irq >= ARRAY_SIZE(data->handler)) {
-		dev_err(dev, "invalid irq: %d\n", irq);
-		return -EINVAL;
-	}
-
-	data->handler[irq].handler = NULL;
-	data->handler[irq].dev_id = NULL;
-
-	return 0;
+	data->abox_gic_irq_handler.irq_handler = NULL;
+	data->abox_gic_irq_handler.dev_id = NULL;
 }
 EXPORT_SYMBOL(abox_gic_unregister_irq_handler);
 
-static irqreturn_t __abox_gic_irq_handler(struct abox_gic_data *data, u32 irqnr)
-{
-	struct abox_gic_irq_handler_t *handler;
-
-	if (irqnr >= ARRAY_SIZE(data->handler))
-		return IRQ_NONE;
-
-	handler = &data->handler[irqnr];
-	if (!handler->handler)
-		return IRQ_NONE;
-
-	return handler->handler(irqnr, handler->dev_id);
-}
-
 static irqreturn_t abox_gic_irq_handler(int irq, void *dev_id)
 {
-	struct device *dev = dev_id;
-	struct abox_gic_data *data = dev_get_drvdata(dev);
-	irqreturn_t ret = IRQ_NONE;
+	struct platform_device *pdev = dev_id;
+	struct abox_gic_data *data = platform_get_drvdata(pdev);
+	struct abox_gic_irq_handler_t *irq_handler =
+			&data->abox_gic_irq_handler;
+	irqreturn_t result = IRQ_HANDLED;
 	u32 irqstat, irqnr;
 
-	dev_dbg(dev, "%s\n", __func__);
+	dev_dbg(&pdev->dev, "%s\n", __func__);
 
 	do {
 		irqstat = readl(data->gicc_base + GIC_CPU_INTACK);
 		irqnr = irqstat & GICC_IAR_INT_ID_MASK;
-		dev_dbg(dev, "IAR: %08X\n", irqstat);
+		dev_dbg(&pdev->dev, "IAR: %08X\n", irqstat);
 
 		if (likely(irqnr < 16)) {
 			writel(irqstat, data->gicc_base + GIC_CPU_EOI);
 			writel(irqstat, data->gicc_base + GIC_CPU_DEACTIVATE);
-			ret |= __abox_gic_irq_handler(data, irqnr);
+			if (irq_handler->irq_handler) {
+				result = irq_handler->irq_handler(irqnr,
+						irq_handler->dev_id);
+			}
 			continue;
 		} else if (unlikely(irqnr > 15 && irqnr < 1021)) {
 			writel(irqstat, data->gicc_base + GIC_CPU_EOI);
-			ret |= __abox_gic_irq_handler(data, irqnr);
 			continue;
 		}
 		break;
 	} while (1);
 
-	return ret;
+	return result;
 }
 
-void abox_gic_init_gic(struct device *dev)
+void abox_gic_init_gic(struct platform_device *pdev)
 {
-	struct abox_gic_data *data = dev_get_drvdata(dev);
+	struct abox_gic_data *data = platform_get_drvdata(pdev);
 	unsigned long arg;
-	int i, ret;
+	int i, result;
 
-	dev_info(dev, "%s\n", __func__);
+	dev_info(&pdev->dev, "%s\n", __func__);
 
-#ifdef GIC_IS_SECURE_FREE
-	writel(0x000000FF, data->gicc_base + GIC_CPU_PRIMASK);
-	writel(0x3, data->gicd_base + GIC_DIST_CTRL);
-#else
 	arg = SMC_REG_ID_SFR_W(data->gicc_base_phys + GIC_CPU_PRIMASK);
-	ret = exynos_smc(SMC_CMD_REG, arg, 0x000000FF, 0);
+	result = exynos_smc(SMC_CMD_REG, arg, 0x000000FF, 0);
 
 	arg = SMC_REG_ID_SFR_W(data->gicd_base_phys + GIC_DIST_CTRL);
-	ret = exynos_smc(SMC_CMD_REG, arg, 0x3, 0);
-#endif
+	result = exynos_smc(SMC_CMD_REG, arg, 0x3, 0);
 	if (is_secure_gic()) {
 		for (i = 0; i < 1; i++) {
 			arg = SMC_REG_ID_SFR_W(data->gicd_base_phys +
 					GIC_DIST_IGROUP + (i * 4));
-			ret = exynos_smc(SMC_CMD_REG, arg, 0xFFFFFFFF, 0);
+			result = exynos_smc(SMC_CMD_REG, arg, 0xFFFFFFFF, 0);
 		}
 	}
 	for (i = 0; i < 40; i++) {
-#ifdef GIC_IS_SECURE_FREE
-		writel(0x10101010, data->gicd_base + GIC_DIST_PRI + (i * 4));
-#else
 		arg = SMC_REG_ID_SFR_W(data->gicd_base_phys +
 				GIC_DIST_PRI + (i * 4));
-		ret = exynos_smc(SMC_CMD_REG, arg, 0x10101010, 0);
-#endif
+		result = exynos_smc(SMC_CMD_REG, arg, 0x10101010, 0);
 	}
 
 	writel(0x3, data->gicc_base + GIC_CPU_CTRL);
@@ -194,7 +161,7 @@ static int samsung_abox_gic_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct abox_gic_data *data;
-	int ret;
+	int result;
 
 	dev_info(dev, "%s\n", __func__);
 
@@ -214,21 +181,17 @@ static int samsung_abox_gic_probe(struct platform_device *pdev)
 		return PTR_ERR(data->gicc_base);
 
 	data->irq = platform_get_irq(pdev, 0);
-	if (data->irq < 0) {
+	if (IS_ERR_VALUE(data->irq)) {
 		dev_err(dev, "Failed to get irq\n");
 		return data->irq;
 	}
 
-	ret = devm_request_irq(dev, data->irq, abox_gic_irq_handler,
-		IRQF_TRIGGER_RISING, pdev->name, dev);
-	if (ret < 0) {
+	result = devm_request_irq(dev, data->irq, abox_gic_irq_handler,
+		IRQF_TRIGGER_RISING, pdev->name, pdev);
+	if (IS_ERR_VALUE(result)) {
 		dev_err(dev, "Failed to request irq\n");
-		return ret;
+		return result;
 	}
-
-	ret = enable_irq_wake(data->irq);
-	if (ret < 0)
-		dev_err(dev, "Failed to enable irq wake\n");
 
 #ifndef CONFIG_PM
 	abox_gic_resume(dev);

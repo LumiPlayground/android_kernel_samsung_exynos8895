@@ -7,6 +7,7 @@
 #include "fimc-is-type.h"
 #include "fimc-is-framemgr.h"
 #include "fimc-is-subdev-ctrl.h"
+#include "fimc-is-device-sensor.h"
 
 #ifndef ENABLE_IS_CORE
 #define CSI_NOTIFY_VSYNC	10
@@ -25,9 +26,6 @@
 	((frameptr) == 0 ? (num_frames) - offset : (frameptr) - offset)
 #define CSI_GET_NEXT_FRAMEPTR(frameptr, num_frames) \
 	(((frameptr) + 1) % num_frames)
-
-extern int debug_csi;
-extern struct fimc_is_sysfs_debug sysfs_debug;
 
 enum fimc_is_csi_state {
 	/* flite join ischain */
@@ -50,42 +48,34 @@ enum fimc_is_csi_state {
 	CSIS_SET_MULTIBUF_VC3,
 };
 
-/* MIPI-CSI interface */
-enum itf_vc_buf_data_type {
-	VC_BUF_DATA_TYPE_INVALID = -1,
-	VC_BUF_DATA_TYPE_SENSOR_STAT = 0,	/* stat from sensor */
-	VC_BUF_DATA_TYPE_GENERAL_STAT,		/* stat from companion, pdp */
-	VC_BUF_DATA_TYPE_MAX
-};
-
-enum itf_vc_stat_type {
-	VC_STAT_INVALID = -1,
-	VC_STAT_TAIL_MSPD,
-	VC_STAT_MIPI_STAT,
-	VC_STAT_PDP_PDAF,
-};
-
 struct fimc_is_device_csi {
 	/* channel information */
 	u32				instance;
-	u32				offset;
 	u32 __iomem			*base_reg;
-	u32 __iomem			*vc_reg[CSI_VIRTUAL_CH_MAX * 2];
-	u32 __iomem			*cmn_reg[CSI_VIRTUAL_CH_MAX * 2];
-	u32 __iomem			*phy_reg;
 	resource_size_t			regs_start;
 	resource_size_t			regs_end;
 	int				irq;
-	int				vc_irq[CSI_VIRTUAL_CH_MAX * 2];
-	unsigned long			vc_irq_state;
 
+#if defined(CONFIG_EXYNOS_DEVICE_MIPI_CSIS_VER3)
 	/* csi common dma */
 	struct fimc_is_device_csi_dma *csi_dma;
+#endif
 
 	/* for settle time */
+	u32				sensor_cfgs;
 	struct fimc_is_sensor_cfg	*sensor_cfg;
 
+	/* for vci setting */
+	u32				active_vci;
+	u32				vcis;
+	struct fimc_is_vci		*vci;
+	/* only ch1 ~ ch3 use */
+	u32				internal_vc[CSI_VIRTUAL_CH_MAX];
+
 	/* image configuration */
+	u32				mode;
+	u32				lanes;
+	u32				mipi_speed;
 	struct fimc_is_image		image;
 
 	unsigned long			state;
@@ -98,8 +88,7 @@ struct fimc_is_device_csi {
 	struct tasklet_struct		tasklet_csis_str;
 	struct tasklet_struct		tasklet_csis_end;
 	struct tasklet_struct		tasklet_csis_line;
-	struct work_struct		wq_csis_dma[CSI_VIRTUAL_CH_MAX];
-	struct workqueue_struct		*workqueue;
+	struct tasklet_struct		tasklet_csis_dma[CSI_VIRTUAL_CH_MAX];
 	int				pre_dma_enable[CSI_VIRTUAL_CH_MAX];
 
 	/* subdev slots for dma */
@@ -121,12 +110,11 @@ struct fimc_is_device_csi {
 
 	atomic_t			vvalid; /* set 1 while vvalid period */
 #endif
-	wait_queue_head_t		wait_queue;
 };
 
+#if defined(CONFIG_EXYNOS_DEVICE_MIPI_CSIS_VER3)
 struct fimc_is_device_csi_dma {
 	u32 __iomem			*base_reg;
-	u32 __iomem			*base_reg_stat;
 	resource_size_t			regs_start;
 	resource_size_t			regs_end;
 
@@ -136,6 +124,7 @@ struct fimc_is_device_csi_dma {
 };
 
 int __must_check fimc_is_csi_dma_probe(struct fimc_is_device_csi_dma *csi_dma, struct platform_device *pdev);
+#endif
 
 int __must_check fimc_is_csi_probe(void *parent, u32 instance);
 int __must_check fimc_is_csi_open(struct v4l2_subdev *subdev, struct fimc_is_framemgr *framemgr);

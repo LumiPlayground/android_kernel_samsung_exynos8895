@@ -10,11 +10,11 @@
 
 #include "hid-ids.h"
 
-#define MAX_NUM_OF_FINGERS 5
+#define MAX_NUM_OF_FINGERS 		5
 #define FINGER_DATA_SIZE		8
 #define DEFAULT_MAX_ABS_MT_PRESSURE	255
 
-static int debug;
+static int debug = 0;
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "Activate debugging output");
 
@@ -84,8 +84,9 @@ static int hid_synaptics_raw_event(struct hid_device *hdev,
 			inverted_y = (5888 - 1024) - raw_y;
 
 			dev_dbg(&hdev->dev, "Finger Count = %d\n", data[7] >> 4);
-			dev_dbg(&hdev->dev, "ID=%d X=%d Y=%d W=%d Z=%d button=%d\n", i, raw_x, raw_y,
-								raw_w, raw_z, data[1]);
+			dev_dbg(&hdev->dev, "ID=%d X=%d Y=%d W=%d Z=%d "
+				"button=%d\n", i, raw_x, raw_y,
+				raw_w, raw_z, data[1]);
 
 			input_mt_slot(input, i);
 			input_mt_report_slot_state(input, MT_TOOL_FINGER, 1);
@@ -118,7 +119,7 @@ static int hid_synaptics_raw_event(struct hid_device *hdev,
 }
 
 static int hid_synaptics_event(struct hid_device *hdev, struct hid_field *field,
-								struct hid_usage *usage, __s32 value)
+		 		struct hid_usage *usage, __s32 value)
 {
 	if (field->report->id == 9)
 		return 1;
@@ -129,7 +130,7 @@ static int hid_synaptics_event(struct hid_device *hdev, struct hid_field *field,
 static int hid_synaptics_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {
 	struct hid_synaptics_data *syntp_data;
-	struct input_dev *input_dev;
+	struct input_dev * input_dev;
 	unsigned int connect_mask = HID_CONNECT_DEFAULT;
 	int ret;
 
@@ -149,7 +150,7 @@ static int hid_synaptics_probe(struct hid_device *hdev, const struct hid_device_
 
 	syntp_data = devm_kzalloc(&hdev->dev, sizeof(struct hid_synaptics_data), GFP_KERNEL);
 	if (!syntp_data) {
-		ret = -ENOMEM;
+		ret =-ENOMEM;
 		goto hid_stop;
 	}
 
@@ -201,7 +202,8 @@ static int hid_synaptics_probe(struct hid_device *hdev, const struct hid_device_
 
 	syntp_data->input = input_dev;
 	ret = input_register_device(syntp_data->input);
-	if (ret) {
+	if (ret)
+	{
 		input_free_device(syntp_data->input);
 		goto hid_init_failed;
 	}
@@ -215,12 +217,12 @@ static int hid_synaptics_probe(struct hid_device *hdev, const struct hid_device_
 	return 0;
 
 hid_init_failed:
-	hdev->ll_driver->close(hdev);
+        hdev->ll_driver->close(hdev);
 hid_stop:
-	hid_hw_stop(hdev);
+        hid_hw_stop(hdev);
 
 err_free:
-	return ret;
+        return ret;
 }
 
 static void hid_synaptics_remove(struct hid_device *hdev)
@@ -246,24 +248,14 @@ static int samsung_bookcover_input_mapping(struct hid_device *hdev,
 		/* Only for UK keyboard */
 		/* key found */
 #ifdef CONFIG_HID_KK_UPGRADE
-		case 0x32:
-			samsung_kbd_mouse_map_key_clear(KEY_KBDILLUMTOGGLE);
-			break;
-		case 0x64:
-			samsung_kbd_mouse_map_key_clear(KEY_BACKSLASH);
-			break;
+		case 0x32: samsung_kbd_mouse_map_key_clear(KEY_KBDILLUMTOGGLE); break;
+		case 0x64: samsung_kbd_mouse_map_key_clear(KEY_BACKSLASH); break;
 #else
-		case 0x32:
-			samsung_kbd_mouse_map_key_clear(KEY_BACKSLASH);
-			break;
-		case 0x64:
-			samsung_kbd_mouse_map_key_clear(KEY_102ND);
-			break;
+		case 0x32: samsung_kbd_mouse_map_key_clear(KEY_BACKSLASH); break;
+		case 0x64: samsung_kbd_mouse_map_key_clear(KEY_102ND); break;
 #endif
 		/* Only for BR keyboard */
-		case 0x87:
-			samsung_kbd_mouse_map_key_clear(KEY_RO);
-			break;
+		case 0x87: samsung_kbd_mouse_map_key_clear(KEY_RO); break;
 		default:
 			return 0;
 		}
@@ -273,72 +265,34 @@ static int samsung_bookcover_input_mapping(struct hid_device *hdev,
 		switch (usage->hid & HID_USAGE) {
 		/* report 2 */
 		/* MENU */
-		case 0x040:
-			samsung_kbd_mouse_map_key_clear(KEY_MENU);
-			break;
-		case 0x18a:
-			samsung_kbd_mouse_map_key_clear(KEY_MAIL);
-			break;
-		case 0x196:
-			samsung_kbd_mouse_map_key_clear(KEY_WWW);
-			break;
-		case 0x19e:
-			samsung_kbd_mouse_map_key_clear(KEY_SCREENLOCK);
-			break;
-		case 0x221:
-			samsung_kbd_mouse_map_key_clear(KEY_SEARCH);
-			break;
-		case 0x223:
-			samsung_kbd_mouse_map_key_clear(KEY_HOMEPAGE);
-			break;
+		case 0x040: samsung_kbd_mouse_map_key_clear(KEY_MENU); break;
+		case 0x18a: samsung_kbd_mouse_map_key_clear(KEY_MAIL); break;
+		case 0x196: samsung_kbd_mouse_map_key_clear(KEY_WWW); break;
+		case 0x19e: samsung_kbd_mouse_map_key_clear(KEY_SCREENLOCK); break;
+		case 0x221: samsung_kbd_mouse_map_key_clear(KEY_SEARCH); break;
+		case 0x223: samsung_kbd_mouse_map_key_clear(KEY_HOMEPAGE); break;
 		/* RECENTAPPS */
-		case 0x301:
-			samsung_kbd_mouse_map_key_clear(BTN_TRIGGER_HAPPY1);
-			break;
+		case 0x301: samsung_kbd_mouse_map_key_clear(BTN_TRIGGER_HAPPY1); break;
 		/* APPLICATION */
-		case 0x302:
-			samsung_kbd_mouse_map_key_clear(BTN_TRIGGER_HAPPY2);
-			break;
+		case 0x302: samsung_kbd_mouse_map_key_clear(BTN_TRIGGER_HAPPY2); break;
 		/* Voice search */
-		case 0x305:
-			samsung_kbd_mouse_map_key_clear(BTN_TRIGGER_HAPPY4);
-			break;
+		case 0x305: samsung_kbd_mouse_map_key_clear(BTN_TRIGGER_HAPPY4); break;
 		/* QPANEL on/off */
-		case 0x306:
-			samsung_kbd_mouse_map_key_clear(BTN_TRIGGER_HAPPY5);
-			break;
+		case 0x306: samsung_kbd_mouse_map_key_clear(BTN_TRIGGER_HAPPY5); break;
 		/* SIP on/off */
-		case 0x307:
-			samsung_kbd_mouse_map_key_clear(BTN_TRIGGER_HAPPY3);
-			break;
+		case 0x307: samsung_kbd_mouse_map_key_clear(BTN_TRIGGER_HAPPY3); break;
 		/* LANG */
-		case 0x308:
-			samsung_kbd_mouse_map_key_clear(KEY_LANGUAGE);
-			break;
-		case 0x30a:
-			samsung_kbd_mouse_map_key_clear(KEY_BRIGHTNESSDOWN);
-			break;
-		case 0x070:
-			samsung_kbd_mouse_map_key_clear(KEY_BRIGHTNESSDOWN);
-			break;
-		case 0x30b:
-			samsung_kbd_mouse_map_key_clear(KEY_BRIGHTNESSUP);
-			break;
-		case 0x06f:
-			samsung_kbd_mouse_map_key_clear(KEY_BRIGHTNESSUP);
-			break;
+		case 0x308: samsung_kbd_mouse_map_key_clear(KEY_LANGUAGE); break;
+		case 0x30a: samsung_kbd_mouse_map_key_clear(KEY_BRIGHTNESSDOWN); break;
+		case 0x070: samsung_kbd_mouse_map_key_clear(KEY_BRIGHTNESSDOWN); break;
+		case 0x30b: samsung_kbd_mouse_map_key_clear(KEY_BRIGHTNESSUP); break;
+		case 0x06f: samsung_kbd_mouse_map_key_clear(KEY_BRIGHTNESSUP); break;
 		/* S-Finder */
-		case 0x304:
-			samsung_kbd_mouse_map_key_clear(BTN_TRIGGER_HAPPY7);
-			break;
+		case 0x304: samsung_kbd_mouse_map_key_clear(BTN_TRIGGER_HAPPY7); break;
 		/* Screen Capture */
-		case 0x303:
-			samsung_kbd_mouse_map_key_clear(KEY_SYSRQ);
-			break;
+		case 0x303: samsung_kbd_mouse_map_key_clear(KEY_SYSRQ); break;
 		/* Multi Window */
-		case 0x309:
-			samsung_kbd_mouse_map_key_clear(BTN_TRIGGER_HAPPY9);
-			break;
+		case 0x309: samsung_kbd_mouse_map_key_clear(BTN_TRIGGER_HAPPY9); break;
 		default:
 			return 0;
 		}
@@ -353,7 +307,7 @@ static int hid_synaptics_mapping(struct hid_device *hdev, struct hid_input *hi,
 {
 	int ret = 0;
 
-	if (hdev->product == USB_DEVICE_ID_SAMSUNG_WIRELESS_BOOKCOVER)
+	if (USB_DEVICE_ID_SAMSUNG_WIRELESS_BOOKCOVER == hdev->product)
 		ret = samsung_bookcover_input_mapping(hdev,
 			hi, field, usage, bit, max);
 
@@ -373,7 +327,7 @@ static struct hid_driver hid_synaptics_driver = {
 	.name = "hid-synaptics-bt",
 	.driver = {
 		.owner  = THIS_MODULE,
-		.name = "hid-synaptics-bt",
+		.name 	= "hid-synaptics-bt",
 	},
 	.id_table	= hid_synaptics_id,
 	.probe		= hid_synaptics_probe,

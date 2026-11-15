@@ -31,7 +31,7 @@ int fimc_is_ois_fw_open(struct fimc_is_ois *ois, char *name)
 	mm_segment_t old_fs;
 	int fw_requested = 1;
 
-	FIMC_BUG(!ois);
+	BUG_ON(!ois);
 
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
@@ -117,8 +117,9 @@ request_fw:
 
 p_err:
 
-	if (buf)
+	if (buf) {
 		vfree(buf);
+	}
 
 	if (!fw_requested) {
 		if (!IS_ERR_OR_NULL(fp)) {

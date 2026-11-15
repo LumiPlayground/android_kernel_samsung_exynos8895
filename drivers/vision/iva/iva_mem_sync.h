@@ -12,9 +12,10 @@
 
 #include "iva_mem.h"
 
-extern void iva_ion_sync_sg_for_cpu(struct iva_dev_data *iva,
-		struct iva_mem_map *iva_map_node);
-extern void iva_ion_sync_sg_for_device(struct iva_dev_data *iva,
-		struct iva_mem_map *iva_map_node);
+extern void iva_ion_sync_sg_for_cpu(struct device *dev,
+		struct iva_dev_data *iva, struct iva_mem_map *iva_map_node);
+extern void iva_ion_sync_sg_for_device(struct device *dev,
+		struct iva_dev_data *iva, struct iva_mem_map *iva_map_node);
+
 
 #endif /*__IVA_MEM_SYNC_H_*/

@@ -27,6 +27,8 @@
 
 #define USE_GROUP_PARAM_HOLD	(0)
 
+//#define SUPPORT_3M3_EVT0P0
+
 enum sensor_3m3_mode_enum {
 	SENSOR_3M3_4032X3024_30FPS = 0,
 	SENSOR_3M3_4032X2268_30FPS,

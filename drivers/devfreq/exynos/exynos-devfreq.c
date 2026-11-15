@@ -725,18 +725,6 @@ enum exynos_dm_type exynos_devfreq_get_dm_type(enum exynos_devfreq_type devfreq_
 	case DEVFREQ_CAM:
 		dm_type = DM_CAM;
 		break;
-	case DEVFREQ_AUD:
-		dm_type = DM_AUD;
-		break;
-	case DEVFREQ_IVA:
-		dm_type = DM_IVA;
-		break;
-	case DEVFREQ_SCORE:
-		dm_type = DM_SCORE;
-		break;
-	case DEVFREQ_FSYS0:
-		dm_type = DM_FSYS0;
-		break;
 	default:
 		dm_type = DM_TYPE_END;
 		break;
@@ -764,18 +752,6 @@ enum exynos_devfreq_type exynos_devfreq_get_devfreq_type(enum exynos_dm_type dm_
 		break;
 	case DM_CAM:
 		devfreq_type = DEVFREQ_CAM;
-		break;
-	case DM_AUD:
-		devfreq_type = DEVFREQ_AUD;
-		break;
-	case DM_IVA:
-		devfreq_type = DEVFREQ_IVA;
-		break;
-	case DM_SCORE:
-		devfreq_type = DEVFREQ_SCORE;
-		break;
-	case DM_FSYS0:
-		devfreq_type = DEVFREQ_FSYS0;
 		break;
 	default:
 		devfreq_type = DEVFREQ_TYPE_END;
@@ -905,42 +881,6 @@ static int exynos_devfreq_parse_dt(struct device_node *np, struct exynos_devfreq
 		data->pm_qos_class_max = PM_QOS_RESERVED;
 #endif
 		data->ess_flag = ESS_FLAG_ISP;
-	} else if (!strcmp(devfreq_type, "aud")) {
-		data->devfreq_type = DEVFREQ_AUD;
-		data->pm_qos_class = PM_QOS_AUD_THROUGHPUT;
-#ifdef CONFIG_ARM_EXYNOS_DEVFREQ_DEBUG
-		data->pm_qos_class_max = PM_QOS_AUD_THROUGHPUT_MAX;
-#else
-		data->pm_qos_class_max = PM_QOS_RESERVED;
-#endif
-		data->ess_flag = ESS_FLAG_AUD;
-	} else if (!strcmp(devfreq_type, "iva")) {
-		data->devfreq_type = DEVFREQ_IVA;
-		data->pm_qos_class = PM_QOS_IVA_THROUGHPUT;
-#ifdef CONFIG_ARM_EXYNOS_DEVFREQ_DEBUG
-		data->pm_qos_class_max = PM_QOS_IVA_THROUGHPUT_MAX;
-#else
-		data->pm_qos_class_max = PM_QOS_RESERVED;
-#endif
-		data->ess_flag = ESS_FLAG_IVA;
-	} else if (!strcmp(devfreq_type, "score")) {
-		data->devfreq_type = DEVFREQ_SCORE;
-		data->pm_qos_class = PM_QOS_SCORE_THROUGHPUT;
-#ifdef CONFIG_ARM_EXYNOS_DEVFREQ_DEBUG
-		data->pm_qos_class_max = PM_QOS_SCORE_THROUGHPUT_MAX;
-#else
-		data->pm_qos_class_max = PM_QOS_RESERVED;
-#endif
-		data->ess_flag = ESS_FLAG_SCORE;
-	} else if (!strcmp(devfreq_type, "fsys0")) {
-		data->devfreq_type = DEVFREQ_FSYS0;
-		data->pm_qos_class = PM_QOS_FSYS0_THROUGHPUT;
-#ifdef CONFIG_ARM_EXYNOS_DEVFREQ_DEBUG
-		data->pm_qos_class_max = PM_QOS_FSYS0_THROUGHPUT_MAX;
-#else
-		data->pm_qos_class_max = PM_QOS_RESERVED;
-#endif
-		data->ess_flag = ESS_FLAG_FSYS0;
 	} else {
 		dev_err(data->dev, "not support devfreq type (%s)\n", devfreq_type);
 		return -EINVAL;

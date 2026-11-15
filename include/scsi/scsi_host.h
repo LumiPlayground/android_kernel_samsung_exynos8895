@@ -83,7 +83,7 @@ struct scsi_host_template {
 
 
 #ifdef CONFIG_COMPAT
-	/* 
+	/*
 	 * Compat handler. Handle 32bit ABI.
 	 * When unknown ioctl is passed return -ENOIOCTLCMD.
 	 *
@@ -185,7 +185,7 @@ struct scsi_host_template {
 	 * this function, it *must* perform the task of setting the queue
 	 * depth on the device.  All other tasks are optional and depend
 	 * on what the driver supports and various implementation details.
-	 * 
+	 *
 	 * Things currently recommended to be handled at this time include:
 	 *
 	 * 1.  Setting the device queue depth.  Proper setting of this is
@@ -214,7 +214,7 @@ struct scsi_host_template {
 	 * has ceased the mid layer calls this point so that the low level
 	 * driver may completely detach itself from the scsi device and vice
 	 * versa.  The low level driver is responsible for freeing any memory
-	 * it allocated in the slave_alloc or slave_configure calls. 
+	 * it allocated in the slave_alloc or slave_configure calls.
 	 *
 	 * Status: OPTIONAL
 	 */
@@ -456,7 +456,7 @@ struct scsi_host_template {
 	/*
 	 * Default value for the blocking.  If the queue is empty,
 	 * host_blocked counts down in the request_fn until it restarts
-	 * host operations as zero is reached.  
+	 * host operations as zero is reached.
 	 *
 	 * FIXME: This should probably be a value in the template
 	 */
@@ -495,6 +495,9 @@ struct scsi_host_template {
 	 */
 	unsigned int cmd_size;
 	struct scsi_host_cmd_pool *cmd_pool;
+
+	/* temporary flag to disable blk-mq I/O path */
+	bool disable_blk_mq;
 };
 
 /*
@@ -532,6 +535,8 @@ enum scsi_host_state {
 };
 
 struct Scsi_Host {
+	unsigned int medium_err_cnt;
+	unsigned int hw_err_cnt;
 	/*
 	 * __devices is protected by the host_lock, but you should
 	 * usually use scsi_device_lookup / shost_for_each_device
@@ -542,7 +547,7 @@ struct Scsi_Host {
 	 */
 	struct list_head	__devices;
 	struct list_head	__targets;
-	
+
 	struct scsi_host_cmd_pool *cmd_pool;
 	spinlock_t		free_list_lock;
 	struct list_head	free_list; /* backup store of cmd structs */
@@ -576,7 +581,7 @@ struct Scsi_Host {
 	unsigned int host_failed;	   /* commands that failed.
 					      protected by host_lock */
 	unsigned int host_eh_scheduled;    /* EH scheduled without command */
-    
+
 	unsigned int host_no;  /* Used for IOCTL_GET_IDLUN, /proc/scsi et al. */
 
 	/* next two fields are used to bound the time spent in error handling */
@@ -627,12 +632,12 @@ struct Scsi_Host {
 	 * is nr_hw_queues * can_queue.
 	 */
 	unsigned nr_hw_queues;
-	/* 
+	/*
 	 * Used to assign serial numbers to the cmds.
 	 * Protected by the host lock.
 	 */
 	unsigned long cmd_serial_number;
-	
+
 	unsigned active_mode:2;
 	unsigned unchecked_isa_dma:1;
 	unsigned use_clustering:1;
@@ -642,7 +647,7 @@ struct Scsi_Host {
 	 * time being.
 	 */
 	unsigned host_self_blocked:1;
-    
+
 	/*
 	 * Host uses correct SCSI ordering not PC ordering. The bit is
 	 * set for the minority of drivers whose authors actually read
@@ -703,7 +708,7 @@ struct Scsi_Host {
 	unsigned char n_io_port;
 	unsigned char dma_channel;
 	unsigned int  irq;
-	
+
 
 	enum scsi_host_state shost_state;
 	bool wlun_clr_uac;
@@ -728,9 +733,9 @@ struct Scsi_Host {
 
 #ifdef CONFIG_JOURNAL_DATA_TAG
 #define JOURNAL_TAG_UNKNOWN	0
-#define JOURNAL_TAG_ON	1
+#define JOURNAL_TAG_ON 	1
 #define JOURNAL_TAG_OFF	2
-	unsigned int journal_tag; /* enable journal data tag */
+	unsigned journal_tag; /* enable journal data tag */
 #endif
 	/*
 	 * Points to the physical bus device we'd use to do DMA
@@ -741,17 +746,6 @@ struct Scsi_Host {
 	unsigned int  by_usb;
 #endif
 	unsigned int  by_ufs;
-	unsigned int medium_err_cnt;
-	unsigned int hw_err_cnt;
-#define SEC_MAX_LBA_LOGGING	10 
-#define SEC_ISSUE_REGION_STEP	(200*1024/4)	/* 200MB : 1 LBA = 4KB */ 
-	unsigned long issue_LBA_list[SEC_MAX_LBA_LOGGING]; 
-	unsigned int issue_LBA_count; 
-	u64 issue_region_map; 
-	unsigned int  ufs_system_start;
-	unsigned int  ufs_system_end;
-	bool ufs_sys_log_en;
-
 	/*
 	 * We should ensure that this is aligned, both for better performance
 	 * and also because some compilers (m68k) don't automatically force
@@ -791,6 +785,8 @@ static inline int scsi_host_in_recovery(struct Scsi_Host *shost)
 		shost->shost_state == SHOST_DEL_RECOVERY ||
 		shost->tmf_in_progress;
 }
+
+extern bool scsi_use_blk_mq;
 
 static inline bool shost_use_blk_mq(struct Scsi_Host *shost)
 {

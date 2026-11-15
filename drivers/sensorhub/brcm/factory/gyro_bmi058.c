@@ -136,7 +136,7 @@ int set_gyro_cal(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_MCU_SET_GYRO_CAL;
 	msg->length = 6;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(6, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(6, GFP_KERNEL);
 	if (!(msg->buffer)) {
 		kfree(msg);
 		return -ENOMEM;
@@ -304,7 +304,7 @@ exit:
 static ssize_t gyro_selftest_dps_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
-	int64_t iNewDps = 0;
+	int iNewDps = 0;
 	int iRet = 0;
 	char chTempBuf = 0;
 
@@ -322,9 +322,7 @@ static ssize_t gyro_selftest_dps_store(struct device *dev,
 	msg->buffer = &chTempBuf;
 	msg->free_buffer = 0;
 
-	iRet = kstrtoll(buf, 10, &iNewDps);
-		if (iRet < 0)
-			return iRet;
+	sscanf(buf, "%d", &iNewDps);
 
 	if (iNewDps == GYROSCOPE_DPS250)
 		msg->options |= 0 << SSP_GYRO_DPS;

@@ -16,18 +16,11 @@
 #define DEBUG
 
 #ifdef DEBUG
-
-extern unsigned int debug_level;
-extern unsigned int debug_ts;
-extern unsigned int dbg_enable;
-extern unsigned int nal_q_dump;
-extern unsigned int nal_q_disable;
-extern unsigned int nal_q_parallel_disable;
-extern unsigned int otf_dump;
+extern int debug;
 
 #define mfc_debug(level, fmt, args...)				\
 	do {							\
-		if (debug_level >= level)				\
+		if (debug >= level)				\
 			printk(KERN_DEBUG "%s:%d: " fmt,	\
 				__func__, __LINE__, ##args);	\
 	} while (0)
@@ -66,7 +59,7 @@ extern unsigned int otf_dump;
 
 #define MFC_TRACE_STR_LEN		80
 #define MFC_TRACE_COUNT_MAX		1024
-#define MFC_TRACE_COUNT_PRINT		30
+#define MFC_TRACE_COUNT_PRINT		20
 #define MFC_TRACE_LOG_STR_LEN		25
 #define MFC_TRACE_LOG_COUNT_MAX		256
 #define MFC_TRACE_LOG_COUNT_PRINT	20
@@ -125,6 +118,7 @@ struct _mfc_trace_logging {
 		snprintf(dev->mfc_trace_longterm[cnt].str, MFC_TRACE_STR_LEN,			\
 				"[c:%d] " fmt, ctx->num, ##args);				\
 	} while (0)
+
 
 /* If there is no ctx structure */
 #define MFC_TRACE_LOG_DEV(fmt, args...)								\

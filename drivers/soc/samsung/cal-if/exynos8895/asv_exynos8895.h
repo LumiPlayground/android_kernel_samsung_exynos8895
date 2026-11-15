@@ -152,14 +152,12 @@ int asv_get_table_ver(void)
 	return ver;
 }
 
-int id_get_rev(void)
+void id_get_rev(unsigned int *main_rev, unsigned int *sub_rev)
 {
-	int rev = 0;
-
-	if (id_tbl)
-		rev = id_tbl->main_rev;
-
-	return rev;
+	if (id_tbl) {
+		*main_rev = id_tbl->main_rev;
+		*sub_rev = id_tbl->sub_rev;
+	}
 }
 
 int asv_table_init(void)

@@ -23,7 +23,7 @@
 #define S6E3HF4_MAX_BRIGHTNESS	360
 #define S6E3HF4_HBM_BRIGHTNESS	600
 
-static unsigned char SEQ_TEST_KEY_ON_F0[] = {
+static const unsigned char SEQ_TEST_KEY_ON_F0[] = {
 	0xF0,
 	0x5A, 0x5A
 };
@@ -222,7 +222,7 @@ static const unsigned char SEQ_GAMMA_UPDATE_L[] = {
 	0x00,
 };
 
-static unsigned char SEQ_TSET_GLOBAL[] = {
+static const unsigned char SEQ_TSET_GLOBAL[] = {
 	0xB0,
 	0x01
 };
@@ -396,6 +396,20 @@ static const unsigned char SEQ_PPS_3[] = {
 static const unsigned char SEQ_WQXGA_PARTIAL_UPDATE[] = {
 	0x2A,
 	0x00, 0x00, 0x05, 0x9F,
+};
+
+static const unsigned char SEQ_GLOBAL_B0[] = {
+	0xB0, 0x40
+};
+
+static const unsigned char SEQ_PPS_GLO[] = {
+	0x9E,0x09,
+	0xBE, 0x19, 0xFC, 0x19, 0xFA,
+	0x19, 0xF8, 0x1A, 0x38, 0x1A,
+	0x78, 0x1A, 0xB6, 0x2A, 0xF6,
+
+	0x2B, 0x34, 0x2B, 0x74, 0x3B,
+	0x74, 0x6B, 0xF4, 0x00, 0x00
 };
 
 #endif /* __S6E3HF4_PARAM_H__ */

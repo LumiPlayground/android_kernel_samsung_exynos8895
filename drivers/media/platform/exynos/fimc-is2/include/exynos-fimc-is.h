@@ -15,7 +15,8 @@
 #include <linux/clk-provider.h>
 #include "fimc-is-hw-dvfs.h"
 
-extern int debug_clk;
+/* #define DBG_DUMPCMU */
+/* #define DBG_DUMPCLK */
 
 struct fimc_is_clk {
 	const char *name;

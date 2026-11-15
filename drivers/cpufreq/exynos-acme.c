@@ -878,12 +878,33 @@ static __init void set_boot_qos(struct exynos_cpufreq_domain *domain)
 	if (!of_property_read_u32(dn, "pm_qos-booting", &val))
 		boot_qos = min(boot_qos, val);
 
+#ifdef CONFIG_SOC_EXYNOS8895
+	domain->boot_qos = boot_qos;
+#endif
 	pm_qos_update_request_timeout(&domain->min_qos_req,
 			boot_qos, 40 * USEC_PER_SEC);
 	pm_qos_update_request_timeout(&domain->max_qos_req,
 			boot_qos, 40 * USEC_PER_SEC);
 
 }
+
+#ifdef CONFIG_SOC_EXYNOS8895
+void exynos_cpufreq_reset_boot_qos(void)
+{
+	struct exynos_cpufreq_domain *domain;
+
+	list_for_each_entry(domain, &domains, list) {
+		if (!domain->boot_qos)
+			continue;
+
+		pm_qos_update_request_timeout(&domain->min_qos_req,
+				domain->boot_qos, 40 * USEC_PER_SEC);
+		pm_qos_update_request_timeout(&domain->max_qos_req,
+				domain->boot_qos, 40 * USEC_PER_SEC);
+	}
+}
+EXPORT_SYMBOL(exynos_cpufreq_reset_boot_qos);
+#endif
 
 static __init int init_pm_qos(struct exynos_cpufreq_domain *domain,
 					struct device_node *dn)

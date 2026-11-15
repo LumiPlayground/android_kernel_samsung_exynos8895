@@ -40,13 +40,13 @@
 
 static struct fimc_is_sensor_cfg config_module_4h5yc[] = {
 	/* 3280x2458@30fps */
-	FIMC_IS_SENSOR_CFG(3280, 2458, 30, 36, 0, CSI_DATA_LANES_4),
+	FIMC_IS_SENSOR_CFG(3280, 2458, 30, 6, 0, CSI_DATA_LANES_4),
 	/* 3280x1846@30fps */
-	FIMC_IS_SENSOR_CFG(3280, 1846, 30, 29, 1, CSI_DATA_LANES_4),
+	FIMC_IS_SENSOR_CFG(3280, 1846, 30, 6, 1, CSI_DATA_LANES_4),
 	/* 1640x924_60fps */
-	FIMC_IS_SENSOR_CFG(1640, 924, 60, 36, 2, CSI_DATA_LANES_4),
+	FIMC_IS_SENSOR_CFG(1640, 924, 60, 6, 2, CSI_DATA_LANES_4),
 	/* 816x460_120fps */
-	FIMC_IS_SENSOR_CFG(816, 460, 120, 29, 3, CSI_DATA_LANES_4),
+	FIMC_IS_SENSOR_CFG(816, 460, 120, 6, 3, CSI_DATA_LANES_4),
 };
 
 static struct fimc_is_vci vci_module_4h5yc[] = {
@@ -93,15 +93,19 @@ static int sensor_module_4h5yc_power_setpin(struct platform_device *pdev,
 	struct device_node *dnode;
 	int gpio_reset = 0;
 	int gpio_none = 0;
+	u32 use_gpio = 0;
+	int gpio_cam_io_1p8_en = 0;
+	int gpio_cam_a2p8_en = 0;
+	int gpio_cam_1p2_en = 0;
+	int ret;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
 
 	dev_info(dev, "%s E v4\n", __func__);
 
-	/* TODO */
 	gpio_reset = of_get_named_gpio(dnode, "gpio_reset", 0);
 	if (!gpio_is_valid(gpio_reset)) {
 		dev_err(dev, "failed to get PIN_RESET\n");
@@ -111,59 +115,119 @@ static int sensor_module_4h5yc_power_setpin(struct platform_device *pdev,
 		gpio_free(gpio_reset);
 	}
 
+	ret = of_property_read_u32(dnode, "cam_power_gpio_use", &use_gpio);
+	if (ret) {
+		dev_err(dev, "use_gpio read failed(%d)", ret);
+		use_gpio = 1;
+	}
+
 	SET_PIN_INIT(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON);
 	SET_PIN_INIT(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF);
 	SET_PIN_INIT(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON);
 	SET_PIN_INIT(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF);
 
-	/* Normal on */
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "REAR_CAM_AF_2V8", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "REAR_CAM_DOVDD_1V8", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "cam_vddd", PIN_REGULATOR, 1, 0);
-#ifdef CONFIG_MACH_UNIVERSAL3475
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "ldo1", PIN_REGULATOR, 1, 0);
-#endif
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 0);
+	if (use_gpio == 1) {
 
-	/* Normal off */
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "REAR_CAM_AF_2V8", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "cam_vddd", PIN_REGULATOR, 0, 0);
-#ifdef CONFIG_MACH_UNIVERSAL3475
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "ldo1", PIN_REGULATOR, 0, 0);
-#endif
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "REAR_CAM_DOVDD_1V8", PIN_REGULATOR, 0, 0);
+		SET_PIN_INIT(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON);
+		SET_PIN_INIT(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_OFF);
 
-	/* Vision on */
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "REAR_CAM_AF_2V8", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "REAR_CAM_DOVDD_1V8", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "cam_vddd", PIN_REGULATOR, 1, 0);
-#ifdef CONFIG_MACH_UNIVERSAL3475
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "ldo1", PIN_REGULATOR, 1, 0);
-#endif
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 0);
+		gpio_cam_io_1p8_en = of_get_named_gpio(dnode, "gpio_cam_io_1p8_en", 0);
+		if (!gpio_is_valid(gpio_reset)) {
+			dev_err(dev, "failed to get VDD_CAM_IO_1P8_EN\n");
+			return -EINVAL;
+		} else {
+			gpio_request_one(gpio_reset, GPIOF_OUT_INIT_LOW, "VDD_CAM_IO_1P8_EN");
+			gpio_free(gpio_reset);
+		}
 
-	/* Vision off */
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "REAR_CAM_AF_2V8", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "cam_vddd", PIN_REGULATOR, 0, 0);
-#ifdef CONFIG_MACH_UNIVERSAL3475
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "ldo1", PIN_REGULATOR, 0, 0);
-#endif
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "REAR_CAM_DOVDD_1V8", PIN_REGULATOR, 0, 0);
+		gpio_cam_a2p8_en = of_get_named_gpio(dnode, "gpio_cam_a2p8_en", 0);
+		if (!gpio_is_valid(gpio_reset)) {
+			dev_err(dev, "failed to get VDD_CAM_A2P8_EN\n");
+			return -EINVAL;
+		} else {
+			gpio_request_one(gpio_reset, GPIOF_OUT_INIT_LOW, "VDD_CAM_A2P8_EN");
+			gpio_free(gpio_reset);
+		}
 
+		gpio_cam_1p2_en = of_get_named_gpio(dnode, "gpio_cam_1p2_en", 0);
+		if (!gpio_is_valid(gpio_reset)) {
+			dev_err(dev, "failed to get VDD_CAM_1P2_EN\n");
+			return -EINVAL;
+		} else {
+			gpio_request_one(gpio_reset, GPIOF_OUT_INIT_LOW, "VDD_CAM_1P2_EN");
+			gpio_free(gpio_reset);
+		}
+
+		/* Normal on */
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_cam_1p2_en, "gpop_cam_1p2_en high", PIN_OUTPUT, 1, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_cam_a2p8_en, "gpop_cam_a2p8_en high", PIN_OUTPUT, 1, 10);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_cam_io_1p8_en, "gpio_cam_io_1p8_en high", PIN_OUTPUT, 1, 10);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 100);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 2, 200);
+		
+		/* Normal off */
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_cam_a2p8_en, "gpop_cam_a2p8_en low", PIN_OUTPUT, 0, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_cam_1p2_en, "gpop_cam_1p2_en low", PIN_OUTPUT, 0, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 1, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_cam_io_1p8_en, "gpio_cam_io_1p8_en low", PIN_OUTPUT, 0, 0);
+
+		/* READ ROM on */
+		SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_cam_io_1p8_en, "gpio_cam_io_1p8_en high", PIN_OUTPUT, 1, 0);
+
+		/* READ ROM off */
+		SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_OFF, gpio_cam_io_1p8_en, "gpio_cam_io_1p8_en low", PIN_OUTPUT, 0, 0);
+
+	} else {
+		/* Normal on */
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "REAR_CAM_AF_2V8", PIN_REGULATOR, 1, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "REAR_CAM_DOVDD_1V8", PIN_REGULATOR, 1, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "cam_vddd", PIN_REGULATOR, 1, 0);
+#ifdef CONFIG_MACH_UNIVERSAL3475
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "ldo1", PIN_REGULATOR, 1, 0);
+#endif
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 0, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 0);
+
+		/* Normal off */
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "REAR_CAM_AF_2V8", PIN_REGULATOR, 0, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "cam_vddd", PIN_REGULATOR, 0, 0);
+#ifdef CONFIG_MACH_UNIVERSAL3475
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "ldo1", PIN_REGULATOR, 0, 0);
+#endif
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 1, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst", PIN_OUTPUT, 0, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "REAR_CAM_DOVDD_1V8", PIN_REGULATOR, 0, 0);
+
+		/* Vision on */
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "REAR_CAM_AF_2V8", PIN_REGULATOR, 1, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "REAR_CAM_DOVDD_1V8", PIN_REGULATOR, 1, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "cam_vddd", PIN_REGULATOR, 1, 0);
+#ifdef CONFIG_MACH_UNIVERSAL3475
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "ldo1", PIN_REGULATOR, 1, 0);
+#endif
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 0, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 0);
+
+		/* Vision off */
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "REAR_CAM_AF_2V8", PIN_REGULATOR, 0, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "cam_vddd", PIN_REGULATOR, 0, 0);
+#ifdef CONFIG_MACH_UNIVERSAL3475
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "ldo1", PIN_REGULATOR, 0, 0);
+#endif
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 1, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst", PIN_OUTPUT, 0, 0);
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "REAR_CAM_DOVDD_1V8", PIN_REGULATOR, 0, 0);
+	}
 	dev_info(dev, "%s X v4\n", __func__);
 
 	return 0;
 }
 
-static int __init sensor_module_4h5yc_probe(struct platform_device *pdev)
+int sensor_module_4h5yc_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -174,7 +238,7 @@ static int __init sensor_module_4h5yc_probe(struct platform_device *pdev)
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -196,8 +260,8 @@ static int __init sensor_module_4h5yc_probe(struct platform_device *pdev)
 		goto p_err;
 	}
 
-	module = &device->module_enum[atomic_read(&device->module_count)];
-	atomic_inc(&device->module_count);
+	module = &device->module_enum[atomic_read(&core->resourcemgr.rsccount_module)];
+	atomic_inc(&core->resourcemgr.rsccount_module);
 	clear_bit(FIMC_IS_MODULE_GPIO_ON, &module->state);
 	module->pdata = pdata;
 	module->dev = dev;
@@ -238,6 +302,7 @@ static int __init sensor_module_4h5yc_probe(struct platform_device *pdev)
 
 	ext = &module->ext;
 	ext->mipi_lane_num = module->lanes;
+	ext->I2CSclk = 0;
 
 	ext->sensor_con.product_name = module->sensor_id;
 	ext->sensor_con.peri_type = SE_I2C;
@@ -302,6 +367,15 @@ p_err:
 	return ret;
 }
 
+static int sensor_module_4h5yc_remove(struct platform_device *pdev)
+{
+        int ret = 0;
+
+        info("%s\n", __func__);
+
+        return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_module_4h5yc_match[] = {
 	{
 		.compatible = "samsung,sensor-module-4h5yc",
@@ -311,6 +385,8 @@ static const struct of_device_id exynos_fimc_is_sensor_module_4h5yc_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_4h5yc_match);
 
 static struct platform_driver sensor_module_4h5yc_driver = {
+	.probe  = sensor_module_4h5yc_probe,
+	.remove = sensor_module_4h5yc_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-MODULE-4H5YC",
 		.owner  = THIS_MODULE,
@@ -318,16 +394,4 @@ static struct platform_driver sensor_module_4h5yc_driver = {
 	}
 };
 
-static int __init fimc_is_sensor_module_4h5yc_init(void)
-{
-	int ret;
-
-	ret = platform_driver_probe(&sensor_module_4h5yc_driver,
-				sensor_module_4h5yc_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_4h5yc_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall(fimc_is_sensor_module_4h5yc_init);
+module_platform_driver(sensor_module_4h5yc_driver);

@@ -40,7 +40,6 @@ struct shm_plat_data {
 	unsigned t_size;
 	unsigned cp_size;
 	unsigned vss_size;
-	unsigned vparam_size;
 	unsigned acpm_size;
 	unsigned ipc_off;
 	unsigned ipc_size;
@@ -49,7 +48,6 @@ struct shm_plat_data {
 
 	unsigned long p_sysram_addr;
 	unsigned t_sysram_size;
-	int use_cp_memory_map;
 
 #ifdef CONFIG_CP_RAM_LOGGING
 	int cplog_on;
@@ -224,25 +222,9 @@ unsigned shm_get_zmb_size(void)
 	return pdata.zmb_size;
 }
 
-unsigned shm_get_vss_base(void)
-{
-	return shm_get_phys_base() + shm_get_cp_size();
-}
-
 unsigned shm_get_vss_size(void)
 {
 	return pdata.vss_size;
-}
-
-unsigned shm_get_vparam_base(void)
-{
-	return shm_get_phys_base() + shm_get_cp_size() + shm_get_vss_size() +
-			shm_get_ipc_rgn_size() +shm_get_zmb_size();
-}
-
-unsigned shm_get_vparam_size(void)
-{
-	return pdata.vparam_size;
 }
 
 unsigned shm_get_acpm_size(void)
@@ -272,56 +254,49 @@ int shm_get_cplog_flag(void)
 }
 #endif
 
-int shm_get_use_cp_memory_map_flag(void)
+unsigned long shm_get_security_param3(unsigned long mode, u32 main_size)
 {
-	return pdata.use_cp_memory_map;
-}
-
-int shm_get_security_param3(unsigned long mode, u32 main_size, unsigned long *param)
-{
-	int ret = 0;
+	unsigned long ret;
 
 	switch (mode) {
 	case 0: /* CP_BOOT_MODE_NORMAL */
-		*param = main_size;
+		ret = main_size;
 		break;
 	case 1: /* CP_BOOT_MODE_DUMP */
 #ifdef CP_NONSECURE_BOOT
-		*param = pdata.p_addr;
+		ret = pdata.p_addr;
 #else
-		*param = pdata.p_addr + pdata.ipc_off;
+		ret = pdata.p_addr + pdata.ipc_off;
 #endif
 		break;
 	case 2: /* CP_BOOT_RE_INIT */
-		*param = 0;
+		ret = 0;
 		break;
 	default:
 		pr_info("%s: Invalid sec_mode(%lu)\n", __func__, mode);
-		ret = -EINVAL;
+		ret = 0;
 		break;
 	}
-
 	return ret;
 }
 
-int shm_get_security_param2(unsigned long mode, u32 bl_size, unsigned long *param)
+unsigned long shm_get_security_param2(unsigned long mode, u32 bl_size)
 {
-	int ret = 0;
+	unsigned long ret;
 
 	switch (mode) {
 	case 0: /* CP_BOOT_MODE_NORMAL */
 	case 1: /* CP_BOOT_MODE_DUMP */
-		*param = bl_size;
+		ret = bl_size;
 		break;
 	case 2: /* CP_BOOT_RE_INIT */
-		*param = 0;
+		ret = 0;
 		break;
 	default:
 		pr_info("%s: Invalid sec_mode(%lu)\n", __func__, mode);
-		ret = -EINVAL;
+		ret = 0;
 		break;
 	}
-
 	return ret;
 }
 
@@ -393,6 +368,20 @@ void __iomem *shm_get_vss_region(void)
 	return pdata.v_vss;
 }
 
+void clean_vss_magic_code(void)
+{
+	u8* vss_base;
+	u32 __iomem * vss_magic;
+
+	pr_err("%s: set vss magic code as 0\n", __func__);
+
+	vss_base = (u8*)shm_get_vss_region();
+	vss_magic = (u32 __iomem *)(vss_base + VSS_MAGIC_OFFSET);
+
+	/* set VSS magic code as 0*/
+	iowrite32(0, vss_magic);
+}
+
 void __iomem *shm_get_acpm_region(void)
 {
 	if (!pdata.v_acpm)
@@ -448,7 +437,6 @@ static void shm_free_reserved_mem(unsigned long addr, unsigned size)
 	struct page *page;
 
 	pr_err("Release cplog reserved memory\n");
-	free_memsize_reserved(addr, size);
 	for (i = 0; i < (size >> PAGE_SHIFT); i++) {
 		page = phys_to_page(addr);
 		addr += PAGE_SIZE;
@@ -512,114 +500,15 @@ static int __init console_setup(char *str)
 __setup("androidboot.cp_reserved_mem=", console_setup);
 #endif
 
-#define EXTERN_BIN_MAX_COUNT		5
-
-struct extern_mem_bin_info_tag {
-	unsigned int	ext_bin_tag;			// Tag
-	unsigned int	ext_bin_addr;			// Offset address
-	unsigned int	ext_bin_size;			// binary size
-};
-
-struct cp_reserved_map_table {
-	unsigned int	table_id_ver;			// MEMn
-	unsigned int	dram_size;			// dram size
-	unsigned int	ext_mem_size;			// extern mem size
-	unsigned int	ext_bin_count;			// extern mem size
-	struct extern_mem_bin_info_tag sExtBin[EXTERN_BIN_MAX_COUNT];
-	unsigned int	end_flag_not_used;		// Memory guard for CP boot code
-};
-
-struct cp_reserved_map_table cp_mem_map;
-
-static int verify_cp_memory_map(struct cp_reserved_map_table *tab)
-{
-	unsigned int total_bin = tab->ext_bin_count;
-	int i;
-	int verify = 1;
-
-	if (tab->ext_bin_count <= 0 || (tab->ext_bin_count > EXTERN_BIN_MAX_COUNT)) {
-		verify = 0;
-		goto exit;
-	}
-
-	for (i = 1; i < total_bin; i++) {
-		if (cp_mem_map.sExtBin[i-1].ext_bin_addr + cp_mem_map.sExtBin[i-1].ext_bin_size
-				!=  cp_mem_map.sExtBin[i].ext_bin_addr) {
-			verify = 0;
-			goto exit;
-		}
-	}
-exit:
-	return verify;
-}
-
 static int shm_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	int ret;
-	int verify;
-	unsigned int tmp;
-	int i;
-	char *ptr;
 	struct device_node *np_acpm = of_find_node_by_name(NULL, "acpm_ipc");
-	void __iomem *cp_mem_base;
-	char table_id_ver[5];
 
 	dev_err(dev, "%s: shmem driver init\n", __func__);
 
-	cp_mem_base = shm_request_region(pdata.p_addr, PAGE_SIZE);
-	dev_info(dev, "cp_mem_base: 0x%lx, 0x%pK\n", pdata.p_addr, cp_mem_base);
-	/* 0x200: TOC, 0xa0: cp memory map offset */
-	memcpy(&cp_mem_map, cp_mem_base + 0x200 + 0xa0, sizeof(struct cp_reserved_map_table));
-
-	if (cp_mem_base) {
-		vunmap(cp_mem_base);
-		cp_mem_base = NULL;
-	}
-
-	tmp = ntohl(cp_mem_map.table_id_ver + 0x30);
-	if (strncmp((const char *)&tmp, "MEM", 3) == 0) {
-		verify = verify_cp_memory_map(&cp_mem_map);
-		dev_info(dev, "CP memory map verification: %s\n", verify == 1 ? "PASS!" : "FAIL!");
-		if (verify) {
-			pdata.use_cp_memory_map = 1;
-			strncpy(table_id_ver, (void *)&tmp, 4);
-			table_id_ver[4] = '\0';
-			pdata.cp_size = cp_mem_map.dram_size;
-			dev_info(dev, "table_id_ver: %s\n", table_id_ver);
-			dev_info(dev, "bin_count: %d\n", cp_mem_map.ext_bin_count);
-			dev_info(dev, "cp dram_size: 0x%08X\n", pdata.cp_size);
-			dev_info(dev, "ext_mem_size: 0x%08X\n", cp_mem_map.ext_mem_size);
-			for (i = 0; i < cp_mem_map.ext_bin_count; i++) {
-				tmp = ntohl(cp_mem_map.sExtBin[i].ext_bin_tag);
-				ptr = ((char *)&tmp) + 1;
-
-				if (strncmp((const char *)ptr, "IPC", 3) == 0) {
-					pdata.ipc_off = cp_mem_map.sExtBin[i].ext_bin_addr;
-					pdata.ipc_size = cp_mem_map.sExtBin[i].ext_bin_size;
-					dev_err(dev, "IPC: 0x%08x: 0x%08X\n", pdata.ipc_off, pdata.ipc_size);
-				} else if (strncmp((const char *)ptr, "VSS", 3) == 0) {
-					pdata.vss_size = cp_mem_map.sExtBin[i].ext_bin_size;
-					dev_err(dev, "VSS: 0x%08X: 0x%08X\n",
-							cp_mem_map.sExtBin[i].ext_bin_addr, pdata.vss_size);
-				} else if (strncmp((const char *)ptr, "VPA", 3) == 0) {
-					pdata.vparam_size = cp_mem_map.sExtBin[i].ext_bin_size;
-					dev_err(dev, "VSS PARAM: 0x%08X: 0x%08X\n",
-							cp_mem_map.sExtBin[i].ext_bin_addr, pdata.vparam_size);
-				} else if (strncmp((const char *)ptr, "ZMC", 3) == 0) {
-					pdata.zmb_off = cp_mem_map.sExtBin[i].ext_bin_addr;
-					pdata.zmb_size = cp_mem_map.sExtBin[i].ext_bin_size;
-					dev_err(dev, "ZMC: 0x%08X: 0x%08X\n", pdata.zmb_off, pdata.zmb_size);
-				} else if (strncmp((const char *)ptr, "LOG", 3) == 0) {
-					dev_err(dev, "LOG: 0x%08X: 0x%08X\n",
-							cp_mem_map.sExtBin[i].ext_bin_addr, cp_mem_map.sExtBin[i].ext_bin_size);
-				}
-			}
-		} else {
-			WARN_ONCE(!verify, "cp memory map verification fail\n");
-			return -EINVAL;
-		}
-	} else if (dev->of_node) {
+	if (dev->of_node) {
 		ret = of_property_read_u32(dev->of_node, "shmem,ipc_offset",
 				&pdata.ipc_off);
 		if (ret) {
@@ -634,7 +523,6 @@ static int shm_probe(struct platform_device *pdev)
 			return -EINVAL;
 		}
 
-#ifdef CONFIG_SEC_SIPC_MODEM_IF
 		ret = of_property_read_u32(dev->of_node, "shmem,zmb_offset",
 				&pdata.zmb_off);
 		if (ret) {
@@ -648,7 +536,6 @@ static int shm_probe(struct platform_device *pdev)
 			dev_err(dev, "failed to get property, zmb_size\n");
 			return -EINVAL;
 		}
-#endif
 
 		ret = of_property_read_u32(dev->of_node, "shmem,cp_size",
 				&pdata.cp_size);
@@ -659,11 +546,8 @@ static int shm_probe(struct platform_device *pdev)
 				&pdata.vss_size);
 		if (ret)
 			dev_err(dev, "failed to get property, vss_size\n");
-	} else {
-		/* To do: In case of non-DT */
-	}
 
-	if (np_acpm) {
+
 		ret = of_property_read_u32(np_acpm, "dump-base",
 				&pdata.p_acpm_addr);
 		if (ret)
@@ -673,16 +557,19 @@ static int shm_probe(struct platform_device *pdev)
 				&pdata.acpm_size);
 		if (ret)
 			dev_err(dev, "failed to get property, acpm_size\n");
+
+	} else {
+		/* To do: In case of non-DT */
 	}
 
-	dev_info(dev, "paddr=0x%lX, total_size=0x%08X, ipc_off=0x%08X, ipc_size=0x%08X, cp_size=0x%08X, vss_size=0x%08X\n",
+	dev_err(dev, "paddr=%lu, t_size=%u, ipc_off=%u, ipc_size=%u cp_size=%u vss_size=%u\n",
 		pdata.p_addr, pdata.t_size, pdata.ipc_off, pdata.ipc_size,
 		pdata.cp_size, pdata.vss_size);
 
-	dev_info(dev, "zmb_off=0x%08X, zmb_size=0x%08X\n", pdata.zmb_off,
+	dev_err(dev, "zmb_off=0x%08u, zmb_size=0x%08X\n", pdata.zmb_off,
 			pdata.zmb_size);
 
-	dev_info(dev, "acpm_base=0x%08X, acpm_size=0x%08X\n", pdata.p_acpm_addr,
+	dev_err(dev, "acpm_base=0x%08X, acpm_size=0x%08X\n", pdata.p_acpm_addr,
 			pdata.acpm_size);
 
 #ifdef CONFIG_CP_RAM_LOGGING

@@ -179,6 +179,10 @@ void sysmmu_add_log_to_debugfs(struct dentry *debugfs_root,
 void iommu_add_log_to_debugfs(struct dentry *debugfs_root,
 			struct exynos_iommu_event_log *log, const char *name);
 
+void exynos_iovmm_find_last_log(struct exynos_iommu_event_log *plog,
+		enum sysmmu_event_log_event event, dma_addr_t iova,
+		struct timeval *time, u32 *start, u32 *end);
+
 #if defined(CONFIG_EXYNOS_IOVMM)
 void iovmm_add_log_to_debugfs(struct dentry *debugfs_root,
 			struct exynos_iommu_event_log *log, const char *name);
@@ -192,8 +196,8 @@ DEFINE_SYSMMU_EVENT_LOG(TLB_INV_ALL)
 DEFINE_SYSMMU_EVENT_LOG(POWERON)
 DEFINE_SYSMMU_EVENT_LOG(POWEROFF)
 
-DEFINE_SYSMMU_EVENT_LOG_2ADDR(IOMMU_ALLOCSLPD)
-DEFINE_SYSMMU_EVENT_LOG_2ADDR(IOMMU_FREESLPD)
+DEFINE_SYSMMU_EVENT_LOG_1ADDR(IOMMU_ALLOCSLPD)
+DEFINE_SYSMMU_EVENT_LOG_1ADDR(IOMMU_FREESLPD)
 
 DEFINE_SYSMMU_EVENT_LOG_2ADDR(TLB_INV_RANGE)
 DEFINE_SYSMMU_EVENT_LOG_2ADDR(IOMMU_UNMAP)

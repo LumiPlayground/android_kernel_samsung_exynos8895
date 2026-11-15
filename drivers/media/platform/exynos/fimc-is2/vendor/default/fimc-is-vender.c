@@ -15,56 +15,17 @@
 #include "fimc-is-vender.h"
 #include "fimc-is-vender-specific.h"
 #include "fimc-is-core.h"
-#include "fimc-is-interface-library.h"
-
-static u32  rear_sensor_id;
-static u32  front_sensor_id;
-static u32	rear_second_sensor_id;
-#ifdef CONFIG_SECURE_CAMERA_USE
-static u32  secure_sensor_id;
-#endif
-static u32  ois_sensor_index;
-static u32  aperture_sensor_index;
-
-void fimc_is_vendor_csi_stream_on(struct fimc_is_device_csi *csi)
-{
-
-}
-
-void fimc_is_vender_csi_err_handler(struct fimc_is_device_csi *csi)
-{
-
-}
 
 int fimc_is_vender_probe(struct fimc_is_vender *vender)
 {
 	int ret = 0;
-	struct fimc_is_vender_specific *priv;
 
 	BUG_ON(!vender);
 
 	snprintf(vender->fw_path, sizeof(vender->fw_path), "%s%s", FIMC_IS_FW_DUMP_PATH, FIMC_IS_FW);
 	snprintf(vender->request_fw_path, sizeof(vender->request_fw_path), "%s", FIMC_IS_FW);
 
-	fimc_is_load_ctrl_init();
-
-	priv = (struct fimc_is_vender_specific *)kzalloc(
-					sizeof(struct fimc_is_vender_specific), GFP_KERNEL);
-	if (!priv) {
-		probe_err("failed to allocate vender specific");
-		return -ENOMEM;
-	}
-
-	priv->rear_sensor_id = rear_sensor_id;
-	priv->front_sensor_id = front_sensor_id;
-	priv->rear_second_sensor_id = rear_second_sensor_id;
-#ifdef CONFIG_SECURE_CAMERA_USE
-	priv->secure_sensor_id = secure_sensor_id;
-#endif
-	priv->ois_sensor_index = ois_sensor_index;
-	priv->aperture_sensor_index = aperture_sensor_index;
-
-	vender->private_data = priv;
+	vender->private_data = NULL;
 
 	return ret;
 }
@@ -72,32 +33,6 @@ int fimc_is_vender_probe(struct fimc_is_vender *vender)
 int fimc_is_vender_dt(struct device_node *np)
 {
 	int ret = 0;
-
-	ret = of_property_read_u32(np, "rear_sensor_id", &rear_sensor_id);
-	if (ret)
-		probe_err("rear_sensor_id read is fail(%d)", ret);
-
-	ret = of_property_read_u32(np, "front_sensor_id", &front_sensor_id);
-	if (ret)
-		probe_err("front_sensor_id read is fail(%d)", ret);
-
-	ret = of_property_read_u32(np, "rear_second_sensor_id", &rear_second_sensor_id);
-	if (ret)
-		probe_err("rear_second_sensor_id read is fail(%d)", ret);
-
-#ifdef CONFIG_SECURE_CAMERA_USE
-	ret = of_property_read_u32(np, "secure_sensor_id", &secure_sensor_id);
-	if (ret)
-		probe_err("secure_sensor_id read is fail(%d)", ret);
-#endif
-
-	ret = of_property_read_u32(np, "ois_sensor_index", &ois_sensor_index);
-	if (ret)
-		probe_err("ois_sensor_index read is fail(%d)", ret);
-
-	ret = of_property_read_u32(np, "aperture_sensor_index", &aperture_sensor_index);
-	if (ret)
-		probe_err("aperture_sensor_index read is fail(%d)", ret);
 
 	return ret;
 }
@@ -119,16 +54,6 @@ int fimc_is_vender_preproc_fw_load(struct fimc_is_vender *vender)
 	int ret = 0;
 
 	return ret;
-}
-
-void fimc_is_vender_resource_get(struct fimc_is_vender *vender)
-{
-
-}
-
-void fimc_is_vender_resource_put(struct fimc_is_vender *vender)
-{
-
 }
 
 #if !defined(CONFIG_SUPPORT_FROM)
@@ -279,8 +204,7 @@ int fimc_is_vender_preprocessor_gpio_off(struct fimc_is_vender *vender, u32 scen
 	return ret;
 }
 
-int fimc_is_vender_sensor_gpio_off_sel(struct fimc_is_vender *vender, u32 scenario, u32 *gpio_scenario,
-	void *module_data)
+int fimc_is_vender_sensor_gpio_off_sel(struct fimc_is_vender *vender, u32 scenario, u32 *gpio_scenario)
 {
 	int ret = 0;
 
@@ -335,28 +259,4 @@ bool fimc_is_vender_wdr_mode_on(void *cis_data)
 bool fimc_is_vender_enable_wdr(void *cis_data)
 {
 	return false;
-}
-
-/**
-  * fimc_is_vender_request_binary: send loading request to the loader
-  * @bin: pointer to fimc_is_binary structure
-  * @path: path of binary file
-  * @name: name of binary file
-  * @device: device for which binary is being loaded
-  **/
-int fimc_is_vender_request_binary(struct fimc_is_binary *bin, const char *path1, const char *path2,
-				const char *name, struct device *device)
-{
-
-	return 0;
-}
-
-int fimc_is_vender_s_ctrl(struct fimc_is_vender *vender)
-{
-	return 0;
-}
-
-int fimc_is_vender_remove_dump_fw_file(void)
-{
-	return 0;
 }

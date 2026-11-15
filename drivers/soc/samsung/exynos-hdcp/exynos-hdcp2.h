@@ -15,7 +15,7 @@
 #include <linux/miscdevice.h>
 #include <linux/mutex.h>
 
-#include "exynos-hdcp2-session.h"
+#include "exynos-hdcp2-tx-session.h"
 
 #define HDCP_CMD_SESSION_OPEN		0x0001
 #define HDCP_CMD_SESSION_CLOSE		0x0002
@@ -81,7 +81,6 @@ enum {
 	TX_AUTH_ERROR_CRYPTO,
 	TX_AUTH_ERROR_WRONG_MSG_ID,
 	TX_AUTH_ERROR_WRONG_MSG,
-	TX_AUTH_ERROR_WRONG_MSG_SIZE,
 	TX_AUTH_ERROR_STORE_SKEY,
 	TX_AUTH_ERRRO_RESTORE_SKEY,
 	TX_AUTH_ERROR_BUFFER_OVERFLLOW,
@@ -90,47 +89,28 @@ enum {
 };
 
 typedef enum hdcp_result {
-	HDCP_SUCCESS = 0,
-	HDCP_ERROR_INIT_FAILED,
-	HDCP_ERROR_TERMINATE_FAILED,
-	HDCP_ERROR_SESSION_OPEN_FAILED,
-	HDCP_ERROR_SESSION_CLOSE_FAILED,
-	HDCP_ERROR_LINK_OPEN_FAILED,
-	HDCP_ERROR_LINK_CLOSE_FAILED,
-	HDCP_ERROR_LINK_STREAM_FAILED,
-	HDCP_ERROR_AUTHENTICATE_FAILED,
-	HDCP_ERROR_COPY_TO_USER_FAILED,
-	HDCP_ERROR_COPY_FROM_USER_FAILED,
-	HDCP_ERROR_USER_FAILED,
-	HDCP_ERROR_RX_NOT_HDCP_CAPABLE,
-	HDCP_ERROR_EXCHANGE_KM,
-	HDCP_ERROR_LOCALITY_CHECK,
-	HDCP_ERROR_EXCHANGE_KS,
-	HDCP_ERROR_WAIT_RECEIVER_ID_LIST,
-	HDCP_ERROR_VERIFY_RECEIVER_ID_LIST,
-	HDCP_ERROR_WAIT_AKE_INIT,
-	HDCP_ERROR_MALLOC_FAILED = 0x1000,
-	HDCP_ERROR_INVALID_HANDLE,
-	HDCP_ERROR_INVALID_INPUT,
-	HDCP_ERROR_INVALID_STATE,
-	HDCP_ERROR_NET_UNREACHABLE,
-	HDCP_ERROR_NET_CLOSED,
-	HDCP_ERROR_ENCRYPTION,
-	HDCP_ERROR_DECRYPTION,
-	HDCP_ERROR_STREAM_MANAGE,
-	HDCP_ERROR_WRAP_FAIL,
-	HDCP_ERROR_UNWRAP_FAIL,
-	HDCP_ERROR_WRONG_SIZE,
-	HDCP_ERROR_DO_NOT_SUPPORT_YET,
-	HDCP_ERROR_IOCTL_OPEN,
-	HDCP_ERROR_END
+        HDCP_SUCCESS = 0,
+        HDCP_ERROR_INIT_FAILED,
+        HDCP_ERROR_TERMINATE_FAILED,
+        HDCP_ERROR_SESSION_OPEN_FAILED,
+        HDCP_ERROR_RX_NOT_HDCP_CAPABLE,
+        HDCP_ERROR_EXCHANGE_KM,
+        HDCP_ERROR_LOCALITY_CHECK,
+        HDCP_ERROR_EXCHANGE_KS,
+        HDCP_ERROR_WAIT_RECEIVER_ID_LIST,
+        HDCP_ERROR_VERIFY_RECEIVER_ID_LIST,
+        HDCP_ERROR_WAIT_AKE_INIT,
+        HDCP_ERROR_MALLOC_FAILED = 1000,
+        HDCP_ERROR_INVALID_INPUT,
+        HDCP_ERROR_INVALID_STATE,
+        HDCP_ERROR_NET_UNREACHABLE,
+        HDCP_ERROR_NET_CLOSED,
+        HDCP_ERROR_ENCRYPTION,
+        HDCP_ERROR_DECRYPTION,
+        HDCP_ERROR_STREAM_MANAGE,
+        HDCP_ERROR_DO_NOT_SUPPORT_YET,
+        HDCP_ERROR_END
 } hdcp_result;
-
-enum {
-	HDCP_ERROR_INVALID_SESSION_HANDLE = 0x2000,
-	HDCP_ERROR_INVALID_SESSION_STATE,
-	HDCP_ERROR_INVALID_STREAM_LEN,
-};
 
 struct hdcp_info {
 	struct device *dev;
@@ -139,7 +119,6 @@ struct hdcp_info {
 
 struct hdcp_sess_info {
 	uint32_t ss_id;
-	uint8_t wkey[HDCP_WRAP_MAX_SIZE];
 };
 
 struct hdcp_link_info {
@@ -159,7 +138,7 @@ struct hdcp_link_enc {
 
 struct hdcp_msg_info {
 	uint32_t ss_handle;
-	uint32_t lk_id;
+        uint32_t lk_id;
 	uint8_t msg[1024];
 	uint32_t msg_len;
 	uint32_t next_step;
@@ -178,24 +157,17 @@ struct hdcp_stream_info {
 };
 
 struct hdcp_enc_info {
-	uint32_t id;
-	uint8_t pes_private[16];
-	uint32_t priv_len;
-	uint8_t str_ctr[4];
-	uint8_t input_ctr[8];
-	uint64_t input;
-	unsigned long input_phys;
-	uint32_t input_len;
-	uint64_t output;
-	unsigned long output_phys;
-	uint32_t output_len;
-};
-
-struct hdcp_wrapped_key {
-	uint8_t key[16];
-	uint8_t enc_key[128];
-	uint32_t wrapped;
-	uint32_t key_len;
+        uint32_t id;
+        uint8_t pes_private[16];
+        uint32_t priv_len;
+        uint8_t str_ctr[4];
+        uint8_t input_ctr[8];
+        uint64_t input;
+        unsigned long input_phys;
+        uint32_t input_len;
+        uint64_t output;
+        unsigned long output_phys;
+        uint32_t output_len;
 };
 
 #define HDCP_IOC_SESSION_OPEN		_IOWR('S', 1, struct hdcp_sess_info)
@@ -210,7 +182,6 @@ struct hdcp_wrapped_key {
 #define HDCP_IOC_DPLINK_TX_AUTH		_IOWR('S', 100, int)
 #define HDCP_IOC_DPLINK_TX_EMUL 	_IOWR('S', 110, int)
 #define HDCP_IOC_DPLINK_TX_SELFTEST	_IOWR('S', 120, int)
-#define HDCP_IOC_WRAP_KEY		_IOWR('S', 200, struct hdcp_wrapped_key)
 
 typedef struct hdcp_tx_link_handle {
         uint32_t ss_handle;
@@ -221,8 +192,4 @@ enum hdcp_result hdcp_session_open(struct hdcp_sess_info *ss_info);
 enum hdcp_result hdcp_session_close(struct hdcp_sess_info *ss_info);
 enum hdcp_result hdcp_link_open(struct hdcp_link_info *link_info, uint32_t lk_type);
 enum hdcp_result hdcp_link_close(struct hdcp_link_info *link_info);
-enum hdcp_result hdcp_link_authenticate(struct hdcp_msg_info *msg_info);
-enum hdcp_result hdcp_link_stream_manage(struct hdcp_stream_info *stream_info);
-enum hdcp_result hdcp_wrap_key(struct hdcp_wrapped_key *key_info);
-enum hdcp_result hdcp_unwrap_key(char *wkey);
 #endif

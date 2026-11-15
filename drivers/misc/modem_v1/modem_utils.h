@@ -575,7 +575,5 @@ static inline unsigned int get_mif_buff_used_count(struct mif_buff_mng *bm)
 
 extern struct mif_buff_mng *g_mif_buff_mng;
 int security_request_cp_ram_logging(void);
-void set_dflags(unsigned long flag);
-
 
 #endif/*__MODEM_UTILS_H__*/

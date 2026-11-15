@@ -214,12 +214,12 @@ static int exynos8895_late_probe(struct snd_soc_card *card)
 	struct snd_soc_pcm_runtime *rtd;
 	struct snd_soc_dai *aif1_dai;
 	struct snd_soc_codec *codec;
-	struct snd_soc_component *cpu;
+	struct snd_soc_codec *cpu;
 	int ret;
 
 	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
 	aif1_dai = rtd->cpu_dai;
-	cpu = aif1_dai->component;
+	cpu = aif1_dai->codec;
 
 	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[MADERA_DAI_OFFSET].name);
 	aif1_dai = rtd->codec_dai;
@@ -250,18 +250,11 @@ static int exynos8895_late_probe(struct snd_soc_card *card)
 	}
 
 	snd_soc_dapm_ignore_suspend(&card->dapm, "VOUTPUT");
-	snd_soc_dapm_ignore_suspend(&card->dapm, "VINPUT1");
-	snd_soc_dapm_ignore_suspend(&card->dapm, "VINPUT2");
 	snd_soc_dapm_ignore_suspend(&card->dapm, "VOUTPUTCALL");
 	snd_soc_dapm_ignore_suspend(&card->dapm, "VINPUTCALL");
 	snd_soc_dapm_ignore_suspend(&card->dapm, "HEADSETMIC");
-	snd_soc_dapm_ignore_suspend(&card->dapm, "RECEIVER");
 	snd_soc_dapm_ignore_suspend(&card->dapm, "HEADPHONE");
-	snd_soc_dapm_ignore_suspend(&card->dapm, "SPEAKER");
-	snd_soc_dapm_ignore_suspend(&card->dapm, "BLUETOOTH MIC");
-	snd_soc_dapm_ignore_suspend(&card->dapm, "BLUETOOTH SPK");
-	snd_soc_dapm_ignore_suspend(&card->dapm, "DMIC1");
-	snd_soc_dapm_ignore_suspend(&card->dapm, "DMIC2");
+	snd_soc_dapm_ignore_suspend(&card->dapm, "DMIC");
 	snd_soc_dapm_ignore_suspend(&card->dapm, "VTS Virtual Output");
 	snd_soc_dapm_sync(&card->dapm);
 
@@ -270,20 +263,20 @@ static int exynos8895_late_probe(struct snd_soc_card *card)
 	snd_soc_dapm_ignore_suspend(snd_soc_codec_get_dapm(codec), "AUXPDM1");
 	snd_soc_dapm_sync(snd_soc_codec_get_dapm(codec));
 
-	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(cpu), "ABOX RDMA0 Playback");
-	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(cpu), "ABOX RDMA1 Playback");
-	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(cpu), "ABOX RDMA2 Playback");
-	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(cpu), "ABOX RDMA3 Playback");
-	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(cpu), "ABOX RDMA4 Playback");
-	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(cpu), "ABOX RDMA5 Playback");
-	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(cpu), "ABOX RDMA6 Playback");
-	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(cpu), "ABOX RDMA7 Playback");
-	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(cpu), "ABOX WDMA0 Capture");
-	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(cpu), "ABOX WDMA1 Capture");
-	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(cpu), "ABOX WDMA2 Capture");
-	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(cpu), "ABOX WDMA3 Capture");
-	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(cpu), "ABOX WDMA4 Capture");
-	snd_soc_dapm_sync(snd_soc_component_get_dapm(cpu));
+	snd_soc_dapm_ignore_suspend(snd_soc_codec_get_dapm(cpu), "ABOX RDMA0 Playback");
+	snd_soc_dapm_ignore_suspend(snd_soc_codec_get_dapm(cpu), "ABOX RDMA1 Playback");
+	snd_soc_dapm_ignore_suspend(snd_soc_codec_get_dapm(cpu), "ABOX RDMA2 Playback");
+	snd_soc_dapm_ignore_suspend(snd_soc_codec_get_dapm(cpu), "ABOX RDMA3 Playback");
+	snd_soc_dapm_ignore_suspend(snd_soc_codec_get_dapm(cpu), "ABOX RDMA4 Playback");
+	snd_soc_dapm_ignore_suspend(snd_soc_codec_get_dapm(cpu), "ABOX RDMA5 Playback");
+	snd_soc_dapm_ignore_suspend(snd_soc_codec_get_dapm(cpu), "ABOX RDMA6 Playback");
+	snd_soc_dapm_ignore_suspend(snd_soc_codec_get_dapm(cpu), "ABOX RDMA7 Playback");
+	snd_soc_dapm_ignore_suspend(snd_soc_codec_get_dapm(cpu), "ABOX WDMA0 Capture");
+	snd_soc_dapm_ignore_suspend(snd_soc_codec_get_dapm(cpu), "ABOX WDMA1 Capture");
+	snd_soc_dapm_ignore_suspend(snd_soc_codec_get_dapm(cpu), "ABOX WDMA2 Capture");
+	snd_soc_dapm_ignore_suspend(snd_soc_codec_get_dapm(cpu), "ABOX WDMA3 Capture");
+	snd_soc_dapm_ignore_suspend(snd_soc_codec_get_dapm(cpu), "ABOX WDMA4 Capture");
+	snd_soc_dapm_sync(snd_soc_codec_get_dapm(cpu));
 
 	exynos8895_init_debugfs(card);
 
@@ -302,7 +295,6 @@ static struct snd_soc_dai_link exynos8895_dai[] = {
 		.codec_name = "snd-soc-dummy",
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
-		.ignore_suspend = 1,
 		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
@@ -315,7 +307,6 @@ static struct snd_soc_dai_link exynos8895_dai[] = {
 		.codec_name = "snd-soc-dummy",
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
-		.ignore_suspend = 1,
 		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
@@ -328,7 +319,6 @@ static struct snd_soc_dai_link exynos8895_dai[] = {
 		.codec_name = "snd-soc-dummy",
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
-		.ignore_suspend = 1,
 		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
@@ -341,7 +331,6 @@ static struct snd_soc_dai_link exynos8895_dai[] = {
 		.codec_name = "snd-soc-dummy",
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
-		.ignore_suspend = 1,
 		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
@@ -406,7 +395,6 @@ static struct snd_soc_dai_link exynos8895_dai[] = {
 		.codec_name = "snd-soc-dummy",
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
-		.ignore_suspend = 1,
 		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &wdma_ops,
 		.dpcm_capture = 1,
@@ -419,7 +407,6 @@ static struct snd_soc_dai_link exynos8895_dai[] = {
 		.codec_name = "snd-soc-dummy",
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
-		.ignore_suspend = 1,
 		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &wdma_ops,
 		.dpcm_capture = 1,
@@ -516,7 +503,7 @@ static struct snd_soc_dai_link exynos8895_dai[] = {
 		.platform_name = "snd-soc-dummy",
 		.codec_name = "snd-soc-dummy",
 		.codec_dai_name = "snd-soc-dummy-dai",
-		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBS_CFS,
+		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBM_CFM,
 		.no_pcm = 1,
 		.ignore_suspend = 1,
 		.ignore_pmdown_time = 1,
@@ -529,7 +516,10 @@ static struct snd_soc_dai_link exynos8895_dai[] = {
 		.name = "UAIF4",
 		.stream_name = "UAIF4",
 		.cpu_dai_name = "UAIF4",
-		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBS_CFS,
+		.platform_name = "snd-soc-dummy",
+		.codec_name = "snd-soc-dummy",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBM_CFM,
 		.no_pcm = 1,
 		.ignore_suspend = 1,
 		.ignore_pmdown_time = 1,
@@ -571,7 +561,7 @@ static struct snd_soc_dai_link exynos8895_dai[] = {
 		.name = "VTS-Trigger",
 		.stream_name = "VTS-Trigger",
 		.cpu_dai_name = "vts-tri",
-		.platform_name = "vts_dma0",
+		.platform_name = "0.vts_dma",
 		.codec_name = "snd-soc-dummy",
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.ignore_suspend = 1,
@@ -582,7 +572,7 @@ static struct snd_soc_dai_link exynos8895_dai[] = {
 		.name = "VTS-Record",
 		.stream_name = "VTS-Record",
 		.cpu_dai_name = "vts-rec",
-		.platform_name = "vts_dma1",
+		.platform_name = "1.vts_dma",
 		.codec_name = "snd-soc-dummy",
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.ignore_suspend = 1,
@@ -601,7 +591,7 @@ static struct snd_soc_dai_link exynos8895_dai[] = {
 
 static const char * const vts_output_texts[] = {
         "None",
-        "DMIC1",
+        "DMIC",
 };
 
 static const struct soc_enum vts_output_enum =
@@ -613,38 +603,33 @@ static const struct snd_kcontrol_new vts_output_mux[] = {
 };
 
 static const struct snd_kcontrol_new exynos8895_controls[] = {
-	SOC_DAPM_PIN_SWITCH("DMIC1"),
-	SOC_DAPM_PIN_SWITCH("DMIC2"),
+	SOC_DAPM_PIN_SWITCH("DMIC"),
 };
 
 static struct snd_soc_dapm_widget exynos8895_widgets[] = {
 	SND_SOC_DAPM_OUTPUT("VOUTPUT"),
-	SND_SOC_DAPM_INPUT("VINPUT1"),
-	SND_SOC_DAPM_INPUT("VINPUT2"),
 	SND_SOC_DAPM_OUTPUT("VOUTPUTCALL"),
 	SND_SOC_DAPM_INPUT("VINPUTCALL"),
-	SND_SOC_DAPM_MIC("DMIC1", NULL),
-	SND_SOC_DAPM_MIC("DMIC2", NULL),
+	SND_SOC_DAPM_MIC("DMIC", NULL),
 	SND_SOC_DAPM_MIC("HEADSETMIC", NULL),
-	SND_SOC_DAPM_SPK("RECEIVER", NULL),
 	SND_SOC_DAPM_HP("HEADPHONE", NULL),
-	SND_SOC_DAPM_SPK("SPEAKER", NULL),
-	SND_SOC_DAPM_MIC("BLUETOOTH MIC", NULL),
-	SND_SOC_DAPM_SPK("BLUETOOTH SPK", NULL),
 	SND_SOC_DAPM_OUTPUT("VTS Virtual Output"),
 	SND_SOC_DAPM_MUX("VTS Virtual Output Mux", SND_SOC_NOPM, 0, 0,
                       &vts_output_mux[0]),
 };
 
+static struct snd_soc_dapm_route exynos8895_routes[] = {
+	{"VTS Virtual Output Mux", "DMIC", "DMIC"},
+};
+
+
 static struct snd_soc_codec_conf codec_conf[] = {
-	{.name_prefix = "ABOX", },
-	{.name_prefix = "ABOX", },
-	{.name_prefix = "ABOX", },
-	{.name_prefix = "ABOX", },
-	{.name_prefix = "ABOX", },
-	{.name_prefix = "ABOX", },
-	{.name_prefix = "ABOX", },
-	{.name_prefix = "VTS", },
+	{
+		.name_prefix = "ABOX",
+	},
+	{
+		.name_prefix = "VTS",
+	},
 };
 
 static struct snd_soc_aux_dev aux_dev[] = {
@@ -665,6 +650,8 @@ static struct snd_soc_card exynos8895 = {
 	.num_controls = ARRAY_SIZE(exynos8895_controls),
 	.dapm_widgets = exynos8895_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(exynos8895_widgets),
+	.dapm_routes = exynos8895_routes,
+	.num_dapm_routes = ARRAY_SIZE(exynos8895_routes),
 
 	.set_bias_level = exynos8895_set_bias_level,
 	.set_bias_level_post = exynos8895_set_bias_level_post,
@@ -765,7 +752,7 @@ static int exynos8895_audio_probe(struct platform_device *pdev)
 	}
 
 	ret = clk_prepare(xclkout);
-	if (ret < 0) {
+	if (IS_ERR_VALUE(ret)) {
 		dev_err(&pdev->dev, "xclkout prepare failed\n");
 		return ret;
 	}
@@ -795,13 +782,10 @@ static int exynos8895_audio_probe(struct platform_device *pdev)
 			dev_warn(card->dev,
 				"Failed to parse cpu DAI for %s: %d\n",
 				dai->name, ret);
-			return ret;
 		}
 
 		if (!exynos8895_dai[nlink].platform_name) {
-			ret = exynos8895_read_dai(dai, "platform",
-						 &exynos8895_dai[nlink].platform_of_node,
-						 &exynos8895_dai[nlink].platform_name);
+			exynos8895_dai[nlink].platform_of_node = exynos8895_dai[nlink].cpu_of_node;
 		}
 
 		if (!exynos8895_dai[nlink].codec_name) {
@@ -812,7 +796,6 @@ static int exynos8895_audio_probe(struct platform_device *pdev)
 				dev_warn(card->dev,
 					"Failed to parse codec DAI for %s: %d\n",
 					dai->name, ret);
-				return ret;
 			}
 		}
 

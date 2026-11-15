@@ -26,13 +26,16 @@
 #include "s5p_mfc_mem.h"
 
 static int s5p_mfc_dec_queue_setup(struct vb2_queue *vq,
+				const void *parg,
 				unsigned int *buf_count, unsigned int *plane_count,
-				unsigned int psize[], struct device *alloc_devs[])
+				unsigned int psize[], void *allocators[])
 {
 	struct s5p_mfc_ctx *ctx;
 	struct s5p_mfc_dev *dev;
 	struct s5p_mfc_dec *dec;
 	struct s5p_mfc_raw_info *raw;
+	void *alloc_ctx;
+	void *capture_ctx;
 	int i;
 
 	mfc_debug_enter();
@@ -59,6 +62,7 @@ static int s5p_mfc_dec_queue_setup(struct vb2_queue *vq,
 	}
 
 	raw = &ctx->raw_buf;
+	alloc_ctx = ctx->dev->alloc_ctx;
 
 	/* Video output for decoding (source)
 	 * this can be set after getting an instance */
@@ -71,9 +75,6 @@ static int s5p_mfc_dec_queue_setup(struct vb2_queue *vq,
 			*buf_count = 1;
 		if (*buf_count > MFC_MAX_BUFFERS)
 			*buf_count = MFC_MAX_BUFFERS;
-
-		psize[0] = dec->src_buf_size;
-		alloc_devs[0] = dev->device;
 	/* Video capture for decoding (destination)
 	 * this can be set after the header was parsed */
 	} else if (ctx->state == MFCINST_HEAD_PARSED &&
@@ -86,16 +87,6 @@ static int s5p_mfc_dec_queue_setup(struct vb2_queue *vq,
 			*buf_count = ctx->dpb_count;
 		if (*buf_count > MFC_MAX_BUFFERS)
 			*buf_count = MFC_MAX_BUFFERS;
-
-		if (ctx->dst_fmt->mem_planes == 1) {
-			psize[0] = raw->total_plane_size;
-			alloc_devs[0] = dev->device;
-		} else {
-			for (i = 0; i < ctx->dst_fmt->num_planes; i++) {
-				psize[i] = raw->plane_size[i];
-				alloc_devs[i] = dev->device;
-			}
-		}
 	} else {
 		mfc_err_ctx("State seems invalid. State = %d, vq->type = %d\n",
 							ctx->state, vq->type);
@@ -103,6 +94,37 @@ static int s5p_mfc_dec_queue_setup(struct vb2_queue *vq,
 	}
 	mfc_debug(2, "buffer count=%d, plane count=%d type=0x%x\n",
 					*buf_count, *plane_count, vq->type);
+
+	if (ctx->state == MFCINST_HEAD_PARSED &&
+	    vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+		if (ctx->is_drm)
+			capture_ctx = ctx->dev->alloc_ctx_drm;
+		else
+			capture_ctx = alloc_ctx;
+
+		if (ctx->dst_fmt->mem_planes == 1) {
+			psize[0] = raw->total_plane_size;
+			allocators[0] = capture_ctx;
+		} else {
+			for (i = 0; i < ctx->dst_fmt->num_planes; i++) {
+				psize[i] = raw->plane_size[i];
+				allocators[i] = capture_ctx;
+			}
+		}
+
+	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE &&
+		   ctx->state == MFCINST_GOT_INST) {
+		psize[0] = dec->src_buf_size;
+
+		if (ctx->is_drm)
+			allocators[0] = ctx->dev->alloc_ctx_drm;
+		else
+			allocators[0] = alloc_ctx;
+
+	} else {
+		mfc_err_ctx("Currently only decoding is supported. Decoding not initalised.\n");
+		return -EINVAL;
+	}
 
 	mfc_debug(2, "plane=0, size=%d\n", psize[0]);
 	mfc_debug(2, "plane=1, size=%d\n", psize[1]);
@@ -178,19 +200,6 @@ static int s5p_mfc_dec_buf_init(struct vb2_buffer *vb)
 		ret = s5p_mfc_check_vb_with_fmt(ctx->dst_fmt, vb);
 		if (ret < 0)
 			return ret;
-
-		if (dec->dynamic_used & (1 << buf->vb.vb2_buf.index)) {
-			for (i = 0; i < ctx->dst_fmt->mem_planes; i++) {
-				mfc_err_dev("ref buf[%d] plane[%d] %#08llx->%#08llx\n",
-						buf->vb.vb2_buf.index,
-						i, buf->planes.raw[i],
-						s5p_mfc_mem_get_daddr_vb(vb, i));
-				MFC_TRACE_DEV("ref buf[%d] plane[%d] %#08llx->%#08llx\n",
-						buf->vb.vb2_buf.index,
-						i, buf->planes.raw[i],
-						s5p_mfc_mem_get_daddr_vb(vb, i));
-			}
-		}
 
 		start_raw = s5p_mfc_mem_get_daddr_vb(vb, 0);
 		if (ctx->dst_fmt->fourcc == V4L2_PIX_FMT_NV12N) {
@@ -280,7 +289,7 @@ static int s5p_mfc_dec_buf_prepare(struct vb2_buffer *vb)
 			}
 		}
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		mfc_debug(2, "Plane size: %lu, dec->src_buf_size: %u\n",
+		mfc_debug(2, "Plane size: %lu, ctx->dec_src_buf_size: %u\n",
 				vb2_plane_size(vb, 0), dec->src_buf_size);
 
 		if (vb2_plane_size(vb, 0) < dec->src_buf_size) {
@@ -372,131 +381,12 @@ static int s5p_mfc_dec_start_streaming(struct vb2_queue *q, unsigned int count)
 	return 0;
 }
 
-static void mfc_dec_src_stop_streaming(struct s5p_mfc_ctx *ctx)
-{
-	struct s5p_mfc_dev *dev;
-	struct s5p_mfc_dec *dec;
-	struct s5p_mfc_buf *src_mb;
-	int index, csd, condition = 0;
-	int ret = 0;
-
-	dev = ctx->dev;
-	if (!dev) {
-		mfc_err_dev("no mfc device to run\n");
-		return;
-	}
-
-	dec = ctx->dec_priv;
-	if (!dec) {
-		mfc_err_dev("no mfc decoder to run\n");
-		return;
-	}
-
-	while (1) {
-		csd = s5p_mfc_peek_buf_csd(&ctx->buf_queue_lock, &ctx->src_buf_queue);
-
-		if (FW_HAS_SPECIAL_PARSING(dev) && (csd == 1)) {
-			s5p_mfc_clean_ctx_int_flags(ctx);
-			if (need_to_special_parsing(ctx)) {
-				s5p_mfc_change_state(ctx, MFCINST_SPECIAL_PARSING);
-				condition = S5P_FIMV_R2H_CMD_SEQ_DONE_RET;
-				mfc_info_ctx("try to special parsing! (before NAL_START)\n");
-			} else if (need_to_special_parsing_nal(ctx)) {
-				s5p_mfc_change_state(ctx, MFCINST_SPECIAL_PARSING_NAL);
-				condition = S5P_FIMV_R2H_CMD_FRAME_DONE_RET;
-				mfc_info_ctx("try to special parsing! (after NAL_START)\n");
-			} else {
-				mfc_info_ctx("can't parsing CSD!, state = %d\n", ctx->state);
-			}
-
-			if (condition) {
-				s5p_mfc_set_bit(ctx->num, &dev->work_bits);
-
-				ret = s5p_mfc_just_run(dev, ctx->num);
-				if (ret) {
-					mfc_err_ctx("Failed to run MFC.\n");
-				} else {
-					if (s5p_mfc_wait_for_done_ctx(ctx, condition))
-						mfc_err_ctx("special parsing time out\n");
-				}
-			}
-		}
-
-		src_mb = s5p_mfc_get_del_buf(&ctx->buf_queue_lock, &ctx->src_buf_queue, MFC_BUF_NO_TOUCH_USED);
-		if (!src_mb)
-			break;
-
-		index = src_mb->vb.vb2_buf.index;
-
-		if (ctx->is_drm)
-			s5p_mfc_stream_unprotect(ctx, src_mb, index);
-		vb2_set_plane_payload(&src_mb->vb.vb2_buf, 0, 0);
-		vb2_buffer_done(&src_mb->vb.vb2_buf, VB2_BUF_STATE_ERROR);
-	}
-
-	dec->consumed = 0;
-	dec->remained_size = 0;
-
-	s5p_mfc_init_queue(&ctx->src_buf_queue);
-
-	index = 0;
-	while (index < MFC_MAX_BUFFERS) {
-		index = find_next_bit(&ctx->src_ctrls_avail,
-				MFC_MAX_BUFFERS, index);
-		if (index < MFC_MAX_BUFFERS)
-			call_cop(ctx, reset_buf_ctrls, &ctx->src_ctrls[index]);
-		index++;
-	}
-}
-
-static void mfc_dec_dst_stop_streaming(struct s5p_mfc_ctx *ctx)
-{
-	struct s5p_mfc_dec *dec;
-	int index = 0;
-
-	dec = ctx->dec_priv;
-	if (!dec) {
-		mfc_err_dev("no mfc decoder to run\n");
-		return;
-	}
-
-	s5p_mfc_cleanup_assigned_iovmm(ctx);
-
-	s5p_mfc_cleanup_assigned_fd(ctx);
-	s5p_mfc_cleanup_queue(&ctx->buf_queue_lock, &ctx->ref_buf_queue);
-
-	dec->dynamic_used = 0;
-	dec->err_reuse_flag = 0;
-	dec->dec_only_release_flag = 0;	
-
-	s5p_mfc_cleanup_queue(&ctx->buf_queue_lock, &ctx->dst_buf_queue);
-
-	ctx->is_dpb_realloc = 0;
-	dec->available_dpb = 0;
-
-	dec->y_addr_for_pb = 0;
-
-	s5p_mfc_cleanup_assigned_dpb(ctx);
-
-	while (index < MFC_MAX_BUFFERS) {
-		index = find_next_bit(&ctx->dst_ctrls_avail,
-				MFC_MAX_BUFFERS, index);
-		if (index < MFC_MAX_BUFFERS)
-			call_cop(ctx, reset_buf_ctrls, &ctx->dst_ctrls[index]);
-		index++;
-	}
-
-	if (ctx->wait_state == WAIT_INITBUF_DONE ||
-			ctx->wait_state == WAIT_DECODING) {
-		ctx->wait_state = WAIT_NONE;
-		mfc_debug(2, "Decoding can be started now\n");
-	}
-}
-
 static void s5p_mfc_dec_stop_streaming(struct vb2_queue *q)
 {
 	struct s5p_mfc_ctx *ctx = q->drv_priv;
+	struct s5p_mfc_dec *dec;
 	struct s5p_mfc_dev *dev;
+	int index = 0;
 	int ret = 0;
 	int prev_state;
 
@@ -511,6 +401,12 @@ static void s5p_mfc_dec_stop_streaming(struct vb2_queue *q)
 		return;
 	}
 
+	dec = ctx->dec_priv;
+	if (!dec) {
+		mfc_err_dev("no mfc decoder to run\n");
+		return;
+	}
+
 	mfc_info_ctx("dec stop_streaming is called, hwlock : %d, type : %d\n",
 				test_bit(ctx->num, &dev->hwlock.bits), q->type);
 	MFC_TRACE_CTX("** DEC streamoff(type:%d)\n", q->type);
@@ -522,10 +418,103 @@ static void s5p_mfc_dec_stop_streaming(struct vb2_queue *q)
 		return;
 	}
 
-	if (q->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
-		mfc_dec_dst_stop_streaming(ctx);
-	else if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
-		mfc_dec_src_stop_streaming(ctx);
+	if (q->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+		s5p_mfc_cleanup_assigned_iovmm(ctx);
+		s5p_mfc_cleanup_assigned_fd(ctx);
+		s5p_mfc_cleanup_queue(&ctx->buf_queue_lock, &ctx->ref_buf_queue);
+
+		dec->dynamic_used = 0;
+		dec->err_reuse_flag = 0;
+		dec->dec_only_release_flag = 0;
+
+		s5p_mfc_cleanup_queue(&ctx->buf_queue_lock, &ctx->dst_buf_queue);
+
+		ctx->is_dpb_realloc = 0;
+		dec->dpb_flush = 1;
+		dec->available_dpb = 0;
+
+		dec->y_addr_for_pb = 0;
+
+		s5p_mfc_cleanup_assigned_dpb(ctx);
+
+		while (index < MFC_MAX_BUFFERS) {
+			index = find_next_bit(&ctx->dst_ctrls_avail,
+					MFC_MAX_BUFFERS, index);
+			if (index < MFC_MAX_BUFFERS)
+				call_cop(ctx, reset_buf_ctrls, &ctx->dst_ctrls[index]);
+			index++;
+		}
+
+		if (ctx->wait_state == WAIT_INITBUF_DONE ||
+					ctx->wait_state == WAIT_DECODING) {
+			ctx->wait_state = WAIT_NONE;
+			mfc_debug(2, "Decoding can be started now\n");
+		}
+	} else if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+		while (1) {
+			struct s5p_mfc_buf *src_mb;
+			int index, csd, condition = 0;
+
+			csd = s5p_mfc_peek_buf_csd(&ctx->buf_queue_lock, &ctx->src_buf_queue);
+
+			if (FW_HAS_SPECIAL_PARSING(dev) && (csd == 1)) {
+				s5p_mfc_clean_ctx_int_flags(ctx);
+				if (need_to_special_parsing(ctx)) {
+					s5p_mfc_change_state(ctx, MFCINST_SPECIAL_PARSING);
+					condition = S5P_FIMV_R2H_CMD_SEQ_DONE_RET;
+					mfc_info_ctx("try to special parsing! (before NAL_START)\n");
+				} else if (need_to_special_parsing_nal(ctx)) {
+					s5p_mfc_change_state(ctx, MFCINST_SPECIAL_PARSING_NAL);
+					condition = S5P_FIMV_R2H_CMD_FRAME_DONE_RET;
+					mfc_info_ctx("try to special parsing! (after NAL_START)\n");
+				} else {
+					mfc_info_ctx("can't parsing CSD!, state = %d\n", ctx->state);
+				}
+
+				if (condition) {
+					s5p_mfc_set_bit(ctx->num, &dev->work_bits);
+
+					ret = s5p_mfc_just_run(dev, ctx->num);
+					if (ret) {
+						mfc_err_ctx("Failed to run MFC.\n");
+					} else {
+						if (s5p_mfc_wait_for_done_ctx(ctx, condition))
+							mfc_err_ctx("special parsing time out\n");
+					}
+				}
+			}
+
+			src_mb = s5p_mfc_get_del_buf(&ctx->buf_queue_lock, &ctx->src_buf_queue, MFC_BUF_NO_TOUCH_USED);
+			if (!src_mb)
+				break;
+
+			index = src_mb->vb.vb2_buf.index;
+
+			if (ctx->is_drm && test_bit(index, &ctx->stream_protect_flag)) {
+				if (s5p_mfc_stream_buf_prot(ctx, src_mb, false))
+					mfc_err_ctx("failed to CFW_UNPROT\n");
+				else
+					clear_bit(index, &ctx->stream_protect_flag);
+				mfc_debug(2, "[%d] dec src buf un-prot flag: %#lx\n",
+						index, ctx->stream_protect_flag);
+			}
+			vb2_set_plane_payload(&src_mb->vb.vb2_buf, 0, 0);
+			vb2_buffer_done(&src_mb->vb.vb2_buf, VB2_BUF_STATE_ERROR);
+		}
+
+		dec->consumed = 0;
+		dec->remained_size = 0;
+
+		s5p_mfc_init_queue(&ctx->src_buf_queue);
+
+		while (index < MFC_MAX_BUFFERS) {
+			index = find_next_bit(&ctx->src_ctrls_avail,
+					MFC_MAX_BUFFERS, index);
+			if (index < MFC_MAX_BUFFERS)
+				call_cop(ctx, reset_buf_ctrls, &ctx->src_ctrls[index]);
+			index++;
+		}
+	}
 
 	if (ctx->state == MFCINST_FINISHING)
 		s5p_mfc_change_state(ctx, MFCINST_RUNNING);
@@ -597,8 +586,7 @@ static void s5p_mfc_dec_buf_queue(struct vb2_buffer *vb)
 		mfc_debug(2, "Adding to src: %p (0x%08llx, 0x%08llx)\n", vb,
 				s5p_mfc_mem_get_daddr_vb(vb, 0),
 				buf->planes.stream);
-		if (dec->dst_memtype == V4L2_MEMORY_DMABUF &&
-				ctx->state < MFCINST_HEAD_PARSED && !ctx->is_drm) {
+		if (ctx->state < MFCINST_HEAD_PARSED && !ctx->is_drm) {
 			stream_vir = vb2_plane_vaddr(vb, 0);
 			s5p_mfc_mem_inv_vb(vb, 1);
 		}

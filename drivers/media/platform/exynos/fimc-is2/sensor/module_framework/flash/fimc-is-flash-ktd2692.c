@@ -38,11 +38,11 @@ static int flash_ktd2692_init(struct v4l2_subdev *subdev, u32 val)
 	int ret = 0;
 	struct fimc_is_flash *flash;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	flash = (struct fimc_is_flash *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!flash);
+	BUG_ON(!flash);
 
 	/* TODO: init flash driver */
 	flash->flash_data.mode = CAM2_FLASH_MODE_OFF;
@@ -64,10 +64,10 @@ static int sensor_ktd2692_flash_control(struct v4l2_subdev *subdev, enum flash_m
 	int ret = 0;
 	struct fimc_is_flash *flash = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	flash = (struct fimc_is_flash *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!flash);
+	BUG_ON(!flash);
 
 	dbg_flash("%s : mode = %s, intensity = %d\n", __func__,
 		mode == CAM2_FLASH_MODE_OFF ? "OFF" :
@@ -113,10 +113,10 @@ int flash_ktd2692_s_ctrl(struct v4l2_subdev *subdev, struct v4l2_control *ctrl)
 	int ret = 0;
 	struct fimc_is_flash *flash = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	flash = (struct fimc_is_flash *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!flash);
+	BUG_ON(!flash);
 
 	switch(ctrl->id) {
 	case V4L2_CID_FLASH_SET_INTENSITY:
@@ -164,19 +164,18 @@ static const struct v4l2_subdev_ops subdev_ops = {
 	.core = &core_ops,
 };
 
-static int __init flash_ktd2692_probe(struct device *dev, struct i2c_client *client)
+int flash_ktd2692_probe(struct device *dev, struct i2c_client *client)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
 	struct v4l2_subdev *subdev_flash;
 	struct fimc_is_device_sensor *device;
-	struct fimc_is_device_sensor_peri *sensor_peri;
 	struct fimc_is_flash *flash;
 	u32 sensor_id = 0;
 	struct device_node *dnode;
 
-	FIMC_BUG(!fimc_is_dev);
-	FIMC_BUG(!dev);
+	BUG_ON(!fimc_is_dev);
+	BUG_ON(!dev);
 
 	dnode = dev->of_node;
 
@@ -199,14 +198,8 @@ static int __init flash_ktd2692_probe(struct device *dev, struct i2c_client *cli
 		ret = -ENOMEM;
 		goto p_err;
 	}
-
-	sensor_peri = find_peri_by_flash_id(device, FLADRV_NAME_KTD2692);
-	if (!sensor_peri) {
-		probe_info("sensor peri is net yet probed");
-		return -EPROBE_DEFER;
-	}
-
-	flash = &sensor_peri->flash;
+	
+	flash = kzalloc(sizeof(struct fimc_is_flash), GFP_KERNEL);
 	if (!flash) {
 		err("flash is NULL");
 		ret = -ENOMEM;
@@ -219,9 +212,7 @@ static int __init flash_ktd2692_probe(struct device *dev, struct i2c_client *cli
 		ret = -ENOMEM;
 		goto p_err;
 	}
-	sensor_peri->subdev_flash = subdev_flash;
 
-	flash = &sensor_peri->flash;
 	flash->id = FLADRV_NAME_KTD2692;
 	flash->subdev = subdev_flash;
 	flash->client = client;
@@ -249,12 +240,12 @@ p_err:
 	return ret;
 }
 
-static int __init flash_ktd2692_platform_probe(struct platform_device *pdev)
+int flash_ktd2692_platform_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct device *dev;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 
@@ -270,6 +261,15 @@ p_err:
 	return ret;
 }
 
+static int flash_ktd2692_platform_remove(struct platform_device *pdev)
+{
+        int ret = 0;
+
+        info("%s\n", __func__);
+
+        return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_flash_ktd2692_match[] = {
 	{
 		.compatible = "samsung,sensor-flash-ktd2692",
@@ -280,23 +280,12 @@ MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_flash_ktd2692_match);
 
 /* register platform driver */
 static struct platform_driver sensor_flash_ktd2692_platform_driver = {
+	.probe  = flash_ktd2692_platform_probe,
+	.remove = flash_ktd2692_platform_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-FLASH-KTD2692-PLATFORM",
 		.owner  = THIS_MODULE,
 		.of_match_table = exynos_fimc_is_sensor_flash_ktd2692_match,
 	}
 };
-
-static int __init fimc_is_sensor_flash_ktd2692_init(void)
-{
-	int ret;
-
-	ret = platform_driver_probe(&sensor_flash_ktd2692_platform_driver,
-				flash_ktd2692_platform_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_flash_ktd2692_platform_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall_sync(fimc_is_sensor_flash_ktd2692_init);
+module_platform_driver(sensor_flash_ktd2692_platform_driver);

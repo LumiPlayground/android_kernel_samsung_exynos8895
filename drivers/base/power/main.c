@@ -37,6 +37,7 @@
 
 #include "../base.h"
 #include "power.h"
+
 #ifdef CONFIG_SEC_DEBUG
 #include <linux/sec_debug.h>
 #endif
@@ -457,7 +458,7 @@ static void dpm_watchdog_handler(unsigned long data)
 	sec_debug_set_extra_info_dpm_timeout(dev_name(wd->dev));
 #endif
 	show_stack(wd->tsk, NULL);
-	panic("%s %s: unrecoverable failure\n",
+	panic("DPM timeout(%s %s)\n",
 		dev_driver_string(wd->dev), dev_name(wd->dev));
 }
 

@@ -13,8 +13,6 @@
 #ifndef __S5P_MFC_COMMON_H
 #define __S5P_MFC_COMMON_H __FILE__
 
-#include <linux/exynos_iovmm.h>
-
 #include "s5p_mfc_regs_v10.h"
 #include "s5p_mfc_macros.h"
 #include "s5p_mfc_debug.h"
@@ -60,6 +58,15 @@
 #define FLAG_EMPTY_DATA		0x40000000
 #define FLAG_CSD		0x20000000
 
+/* Scratch buffer size for MFC v9.0 */
+#define DEC_STATIC_BUFFER_SIZE	20480
+
+#define STREAM_BUF_ALIGN		512
+
+#define MFC_LINEAR_BUF_SIZE		256
+
+#define set_strm_size_max(cpb_max)	((cpb_max) - STREAM_BUF_ALIGN)
+
 /* MFC conceal color is black */
 #define MFC_CONCEAL_COLOR	0x8020000
 
@@ -84,14 +91,6 @@
 #define MFC_FMT_ENC	1
 #define MFC_FMT_RAW	2
 
-/* node check */
-#define IS_DEC_NODE(n)		((n == EXYNOS_VIDEONODE_MFC_DEC) ||	\
-				(n == EXYNOS_VIDEONODE_MFC_DEC_DRM))
-#define IS_ENC_NODE(n)		((n == EXYNOS_VIDEONODE_MFC_ENC) ||	\
-				(n == EXYNOS_VIDEONODE_MFC_ENC_DRM) ||	\
-				(n == EXYNOS_VIDEONODE_MFC_ENC_OTF) ||	\
-				(n == EXYNOS_VIDEONODE_MFC_ENC_OTF_DRM))
-
 /* Decoder codec mode check */
 #define IS_H264_DEC(ctx)	((ctx)->codec_mode == S5P_FIMV_CODEC_H264_DEC)
 #define IS_H264_MVC_DEC(ctx)	((ctx)->codec_mode == S5P_FIMV_CODEC_H264_MVC_DEC)
@@ -105,7 +104,6 @@
 #define IS_MPEG2_DEC(ctx)	((ctx)->codec_mode == S5P_FIMV_CODEC_MPEG2_DEC)
 #define IS_HEVC_DEC(ctx)	((ctx)->codec_mode == S5P_FIMV_CODEC_HEVC_DEC)
 #define IS_VP9_DEC(ctx)		((ctx)->codec_mode == S5P_FIMV_CODEC_VP9_DEC)
-#define IS_BPG_DEC(ctx)		((ctx)->codec_mode == S5P_FIMV_CODEC_BPG_DEC)
 
 /* Encoder codec mode check */
 #define IS_H264_ENC(ctx)	((ctx)->codec_mode == S5P_FIMV_CODEC_H264_ENC)
@@ -114,38 +112,32 @@
 #define IS_VP8_ENC(ctx)		((ctx)->codec_mode == S5P_FIMV_CODEC_VP8_ENC)
 #define IS_HEVC_ENC(ctx)	((ctx)->codec_mode == S5P_FIMV_CODEC_HEVC_ENC)
 #define IS_VP9_ENC(ctx)		((ctx)->codec_mode == S5P_FIMV_CODEC_VP9_ENC)
-#define IS_BPG_ENC(ctx)		((ctx)->codec_mode == S5P_FIMV_CODEC_BPG_ENC)
 
 #define CODEC_NOT_CODED(ctx)	(IS_MPEG4_DEC(ctx) || IS_VC1_DEC(ctx) ||	\
 				IS_VC1_RCV_DEC(ctx) || IS_VP9_DEC(ctx))
 #define CODEC_INTERLACED(ctx)	(IS_H264_DEC(ctx) || IS_H264_MVC_DEC(ctx) ||	\
 				IS_MPEG2_DEC(ctx) || IS_MPEG4_DEC(ctx) ||	\
 				IS_VC1_DEC(ctx) || IS_VC1_RCV_DEC(ctx))
-#define CODEC_MBAFF(ctx)	(IS_H264_DEC(ctx) || IS_H264_MVC_DEC(ctx))
 #define CODEC_MULTIFRAME(ctx)	(IS_MPEG4_DEC(ctx) || IS_VP9_DEC(ctx) ||	\
 				IS_FIMV2_DEC(ctx) || IS_FIMV3_DEC(ctx) || IS_FIMV4_DEC(ctx))
-#define CODEC_10BIT(ctx)	(IS_HEVC_DEC(ctx) || IS_HEVC_ENC(ctx) ||	\
-				IS_VP9_DEC(ctx) || IS_VP9_ENC(ctx) ||		\
-				IS_BPG_DEC(ctx) || IS_BPG_ENC(ctx))
-#define CODEC_422FORMAT(ctx)	(IS_HEVC_DEC(ctx) || IS_HEVC_ENC(ctx) ||	\
-				IS_BPG_DEC(ctx) || IS_BPG_ENC(ctx))
 #define ON_RES_CHANGE(ctx)	(((ctx)->state >= MFCINST_RES_CHANGE_INIT) &&	\
 				 ((ctx)->state <= MFCINST_RES_CHANGE_END))
+
+/* Decoder profile check */
+#define IS_MAIN_10_PROFILE(dec)		((dec)->profile == S5P_FIMV_D_PROFILE_HEVC_MAIN_10)
+#define IS_RANGE_EXT_PROFILE(dec)	((dec)->profile == S5P_FIMV_D_PROFILE_HEVC_RANGE_EXT)
 
 /* UHD resoluition */
 #define MFC_UHD_RES		(3840 * 2160)
 #define IS_UHD_RES(ctx)		(((ctx)->img_width * (ctx)->img_height) == MFC_UHD_RES)
-#define OVER_UHD_ENC60(ctx)	((((ctx)->img_width * (ctx)->img_height) == MFC_UHD_RES) && \
-				((ctx)->type == MFCINST_ENCODER) &&	\
-				((ctx)->framerate / 1000) >= 60)
-
-#define IS_SUPER64_BFRAME(ctx, size, type)	((ctx->is_10bit) && (size >= 2) && (type == 3))
 
 /* Extra information for Decoder */
 #define	DEC_SET_DUAL_DPB		(1 << 0)
 #define	DEC_SET_DYNAMIC_DPB		(1 << 1)
 #define	DEC_SET_LAST_FRAME_INFO		(1 << 2)
 #define	DEC_SET_SKYPE_FLAG		(1 << 3)
+
+#define IS_SUPER64_BFRAME(ctx, size, type)	((ctx->is_10bit) && (size >= 2) && (type == 3))
 
 /* Extra information for Encoder */
 #define	ENC_SET_RGB_INPUT		(1 << 0)
@@ -157,9 +149,6 @@
 #define	ENC_SET_FIXED_SLICE		(1 << 6)
 #define	ENC_SET_PVC_MODE		(1 << 7)
 #define	ENC_SET_RATIO_OF_INTRA		(1 << 8)
-#define	ENC_SET_COLOR_ASPECT		(1 << 9)
-#define	ENC_SET_HP_BITRATE_CONTROL	(1 << 10)
-#define	ENC_SET_STATIC_INFO		(1 << 11)
 
 #define MFC_VER_MAJOR(dev)	((s5p_mfc_version(dev) >> 8) & 0xFF)
 #define MFC_VER_MINOR(dev)	(s5p_mfc_version(dev) & 0xFF)
@@ -170,10 +159,7 @@
 #define IS_MFCV10X(dev)		((s5p_mfc_version(dev) == 0xA0) || \
 				(s5p_mfc_version(dev) == 0xA01))
 #define IS_MFCV11X(dev)		(s5p_mfc_version(dev) == 0x1100)
-#define IS_MFCV12X(dev)		(s5p_mfc_version(dev) == 0x1200)
-#define FROM_MFCV11X(dev)	(IS_MFCV11X(dev) || IS_MFCV12X(dev))
-#define FROM_MFCV10X(dev)	(IS_MFCV10X(dev) || IS_MFCV11X(dev) || \
-				IS_MFCV12X(dev))
+#define FROM_MFCV10X(dev)	(IS_MFCV10X(dev) || IS_MFCV11X(dev))
 
 /* supported feature macros by F/W version */
 #define FW_HAS_CONCEAL_CONTROL(dev)	(FROM_MFCV10X(dev))
@@ -186,16 +172,10 @@
 					(dev->fw.date >= 0x151223))
 #define FW_HAS_SEI_INFO_FOR_HDR(dev)	(FROM_MFCV10X(dev) &&		\
 					(dev->fw.date >= 0x160415))
-#define FW_HAS_BLACK_BAR_DETECT(dev)	(FROM_MFCV11X(dev) &&		\
+#define FW_HAS_BLACK_BAR_DETECT(dev)	(IS_MFCV11X(dev) &&		\
 					(dev->fw.date >= 0x161017))
-#define FW_HAS_VP9_HDR(dev)		(IS_MFCV12X(dev) &&		\
-					(dev->fw.date >= 0x171023))
-#define FW_HAS_RATIO_INTRA_CTRL(dev)	(FROM_MFCV11X(dev) &&		\
+#define FW_HAS_RATIO_INTRA_CTRL(dev)	(IS_MFCV11X(dev) &&		\
 					(dev->fw.date >= 0x171113))
-#define FW_HAS_ENC_COLOR_ASPECT(dev)	(FROM_MFCV11X(dev) &&		\
-					(dev->fw.date >= 0x171023))
-#define FW_HAS_ENC_STATIC_INFO(dev)	(IS_MFCV12X(dev) &&		\
-					(dev->fw.date >= 0x180314))
 
 static inline unsigned int s5p_mfc_version(struct s5p_mfc_dev *dev)
 {
@@ -239,12 +219,6 @@ static inline unsigned int s5p_mfc_version(struct s5p_mfc_dev *dev)
 		break;
 	case IP_VER_MFC_8K_0:
 		version = 0x1100;
-		break;
-	case IP_VER_MFC_7K_0:
-		version = 0x1120;
-		break;
-	case IP_VER_MFC_9L_0:
-		version = 0x1200;
 		break;
 	}
 

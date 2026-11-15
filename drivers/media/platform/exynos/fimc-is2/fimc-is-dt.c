@@ -11,6 +11,7 @@
  */
 
 #include <linux/sched.h>
+#include <media/exynos_mc.h>
 #ifdef CONFIG_OF
 #include <linux/of.h>
 #include <linux/of_gpio.h>
@@ -143,7 +144,7 @@ static int parse_dvfs_data(struct exynos_platform_fimc_is *pdata, struct device_
 	char buf[64];
 
 	for (i = 0; i < FIMC_IS_SN_END; i++) {
-#if defined(QOS_INTCAM)
+#if defined(CONFIG_SOC_EXYNOS8895)
 		sprintf(buf, "%s%s", fimc_is_dvfs_dt_arr[i].parse_scenario_nm, "int_cam");
 		DT_READ_U32(np, buf, pdata->dvfs_data[index][fimc_is_dvfs_dt_arr[i].scenario_id][FIMC_IS_DVFS_INT_CAM]);
 #endif
@@ -166,7 +167,7 @@ static int parse_dvfs_data(struct exynos_platform_fimc_is *pdata, struct device_
 #ifdef DBG_DUMP_DVFS_DT
 	for (i = 0; i < FIMC_IS_SN_END; i++) {
 		probe_info("---- %s ----\n", fimc_is_dvfs_dt_arr[i].parse_scenario_nm);
-#if defined(QOS_INTCAM)
+#if defined(CONFIG_SOC_EXYNOS8895)
 		probe_info("[%d][%d][INT_CAM] = %d\n", index, i, pdata->dvfs_data[index][i][FIMC_IS_DVFS_INT_CAM]);
 #endif
 		probe_info("[%d][%d][INT] = %d\n", index, i, pdata->dvfs_data[index][i][FIMC_IS_DVFS_INT]);
@@ -223,7 +224,7 @@ int fimc_is_parse_dt(struct platform_device *pdev)
 	struct device_node *vender_np = NULL;
 	struct device_node *np;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	np = dev->of_node;
@@ -285,14 +286,12 @@ p_err:
 int fimc_is_sensor_parse_dt(struct platform_device *pdev)
 {
 	int ret = 0;
-	int i;
-	int elements;
 	struct exynos_platform_fimc_is_sensor *pdata;
 	struct device_node *dnode;
 	struct device *dev;
 
-	FIMC_BUG(!pdev);
-	FIMC_BUG(!pdev->dev.of_node);
+	BUG_ON(!pdev);
+	BUG_ON(!pdev->dev.of_node);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -325,33 +324,6 @@ int fimc_is_sensor_parse_dt(struct platform_device *pdev)
 	if (ret) {
 		err("csi_ch read is fail(%d)", ret);
 		goto p_err;
-	}
-
-	/* A invalid value is set as default for debugging */
-	for (i = 0; i < CSI_VIRTUAL_CH_MAX * 2; i++) {
-		pdata->dma_ch[i] = -1;
-		pdata->vc_ch[i] = -1;
-	}
-
-	elements = of_property_count_u32_elems(dnode, "dma_ch");
-	if (elements >= 0) {
-		ret = of_property_read_u32_array(dnode, "dma_ch", &pdata->dma_ch[0], elements);
-		if (ret) {
-			warn("dma_ch read is fail(%d)", ret);
-			pdata->dma_abstract = false;
-			ret = 0;
-		} else {
-			pdata->dma_abstract = true;
-		}
-	}
-
-	elements = of_property_count_u32_elems(dnode, "vc_ch");
-	if (elements >= 0) {
-		ret = of_property_read_u32_array(dnode, "vc_ch", &pdata->vc_ch[0], elements);
-		if (ret) {
-			warn("vc_ch read is fail(%d)", ret);
-			ret = 0;
-		}
 	}
 
 	ret = of_property_read_u32(dnode, "flite_ch", &pdata->flite_ch);
@@ -395,8 +367,8 @@ int fimc_is_preprocessor_parse_dt(struct platform_device *pdev)
 	struct device_node *dnode;
 	struct device *dev;
 
-	FIMC_BUG(!pdev);
-	FIMC_BUG(!pdev->dev.of_node);
+	BUG_ON(!pdev);
+	BUG_ON(!pdev->dev.of_node);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -488,18 +460,6 @@ static int parse_ois_data(struct exynos_platform_fimc_is_module *pdata, struct d
 	DT_READ_U32(dnode, "product_name", pdata->ois_product_name);
 	DT_READ_U32(dnode, "i2c_addr", pdata->ois_i2c_addr);
 	DT_READ_U32(dnode, "i2c_ch", pdata->ois_i2c_ch);
-
-	return 0;
-}
-
-static int parse_aperture_data(struct exynos_platform_fimc_is_module *pdata, struct device_node *dnode)
-{
-	u32 temp;
-	char *pprop;
-
-	DT_READ_U32(dnode, "product_name", pdata->aperture_product_name);
-	DT_READ_U32(dnode, "i2c_addr", pdata->aperture_i2c_addr);
-	DT_READ_U32(dnode, "i2c_ch", pdata->aperture_i2c_ch);
 
 	return 0;
 }
@@ -608,14 +568,13 @@ int fimc_is_sensor_module_parse_dt(struct platform_device *pdev,
 	struct device_node *flash_np;
 	struct device_node *preprocessor_np;
 	struct device_node *ois_np;
-	struct device_node *aperture_np;
 	struct device_node *power_np;
 	struct device_node *internal_vc_np;
 	struct device *dev;
 
-	FIMC_BUG(!pdev);
-	FIMC_BUG(!pdev->dev.of_node);
-	FIMC_BUG(!module_callback);
+	BUG_ON(!pdev);
+	BUG_ON(!pdev->dev.of_node);
+	BUG_ON(!module_callback);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -687,13 +646,6 @@ int fimc_is_sensor_module_parse_dt(struct platform_device *pdev,
 		parse_ois_data(pdata, ois_np);
 	}
 
-	aperture_np = of_find_node_by_name(dnode, "aperture");
-	if (!aperture_np) {
-		pdata->aperture_product_name = APERTURE_NAME_NOTHING;
-	} else {
-		parse_aperture_data(pdata, aperture_np);
-	}
-
 	pdata->power_seq_dt = of_property_read_bool(dnode, "use_power_seq");
 	if(pdata->power_seq_dt == true) {
 		power_np = of_find_node_by_name(dnode, "power_seq");
@@ -747,13 +699,12 @@ int fimc_is_module_parse_dt(struct device *dev,
 	struct device_node *flash_np;
 	struct device_node *preprocessor_np;
 	struct device_node *ois_np;
-	struct device_node *aperture_np;
 	struct device_node *power_np;
 	struct device_node *internal_vc_np;
 
-	FIMC_BUG(!dev);
-	FIMC_BUG(!dev->of_node);
-	FIMC_BUG(!module_callback);
+	BUG_ON(!dev);
+	BUG_ON(!dev->of_node);
+	BUG_ON(!module_callback);
 
 	dnode = dev->of_node;
 	pdata = kzalloc(sizeof(struct exynos_platform_fimc_is_module), GFP_KERNEL);
@@ -821,13 +772,6 @@ int fimc_is_module_parse_dt(struct device *dev,
 		parse_ois_data(pdata, ois_np);
 	}
 
-	aperture_np = of_find_node_by_name(dnode, "aperture");
-	if (!aperture_np) {
-		pdata->aperture_product_name = APERTURE_NAME_NOTHING;
-	} else {
-		parse_aperture_data(pdata, aperture_np);
-	}
-
 	pdata->power_seq_dt = of_property_read_bool(dnode, "use_power_seq");
 	if(pdata->power_seq_dt == true) {
 		power_np = of_find_node_by_name(dnode, "power_seq");
@@ -844,6 +788,7 @@ int fimc_is_module_parse_dt(struct device *dev,
 			goto p_err;
 		}
 	}
+
 
 	pdata->pinctrl = devm_pinctrl_get(dev);
 	if (IS_ERR(pdata->pinctrl)) {
@@ -870,7 +815,6 @@ p_err:
 	return ret;
 }
 
-#ifdef CONFIG_SPI
 int fimc_is_spi_parse_dt(struct fimc_is_spi *spi)
 {
 	int ret = 0;
@@ -878,7 +822,7 @@ int fimc_is_spi_parse_dt(struct fimc_is_spi *spi)
 	struct device *dev;
 	struct pinctrl_state *s;
 
-	FIMC_BUG(!spi);
+	BUG_ON(!spi);
 
 	dev = &spi->device->dev;
 
@@ -956,7 +900,6 @@ int fimc_is_spi_parse_dt(struct fimc_is_spi *spi)
 p_err:
 	return ret;
 }
-#endif
 #else
 struct exynos_platform_fimc_is *fimc_is_parse_dt(struct device *dev)
 {

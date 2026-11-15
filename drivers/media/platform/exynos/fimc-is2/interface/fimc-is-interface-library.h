@@ -17,17 +17,12 @@
 #include "fimc-is-debug.h"
 #include "fimc-is-regs.h"
 #include "fimc-is-binary.h"
-#include "fimc-is-param.h"
 
 
 #define SET_CPU_AFFINITY	/* enable @ Exynos3475 */
 
 #if !defined(DISABLE_LIB)
 /* #define LIB_MEM_TRACK */
-#endif
-
-#if defined(CONFIG_STACKTRACE) && defined(LIB_MEM_TRACK)
-#define LIB_MEM_TRACK_CALLSTACK
 #endif
 
 #define LIB_ISP_OFFSET		(0x00000080)
@@ -37,7 +32,8 @@
 #define LIB_VRA_CODE_SIZE	(0x00040000)
 
 #define LIB_RTA_OFFSET		(0x00000000)
-#define LIB_RTA_CODE_SIZE	(0x00100000)
+
+#define LIB_RTA_CODE_SIZE	RTA_CODE_AREA_SIZE
 
 #define LIB_MAX_TASK		(FIMC_IS_MAX_TASK)
 
@@ -67,6 +63,15 @@ enum task_index {
 };
 #define TASK_VRA		(TASK_INDEX_MAX)
 
+/* Task priority */
+#define TASK_OTF_PRIORITY		(FIMC_IS_MAX_PRIO - 2)
+#define TASK_AF_PRIORITY		(FIMC_IS_MAX_PRIO - 3)
+#define TASK_ISP_DMA_PRIORITY		(FIMC_IS_MAX_PRIO - 4)
+#define TASK_3AA_DMA_PRIORITY		(FIMC_IS_MAX_PRIO - 5)
+#define TASK_AA_PRIORITY		(FIMC_IS_MAX_PRIO - 6)
+#define TASK_RTA_PRIORITY		(FIMC_IS_MAX_PRIO - 7)
+#define TASK_VRA_PRIORITY		(FIMC_IS_MAX_PRIO - 4)
+
 /* Task affinity */
 #define TASK_OTF_AFFINITY		(3)
 #define TASK_AF_AFFINITY		(1)
@@ -76,7 +81,7 @@ enum task_index {
 /* #define TASK_RTA_AFFINITY		(1) */ /* There is no need to set of cpu affinity for RTA task */
 #define TASK_VRA_AFFINITY		(2)
 
-#define CAMERA_BINARY_RTA_DATA_OFFSET   LIB_RTA_CODE_SIZE
+#define CAMERA_BINARY_RTA_DATA_OFFSET   RTA_CODE_AREA_SIZE
 #define CAMERA_BINARY_DDK_DATA_OFFSET   0x380000
 #define CAMERA_BINARY_DDK_CODE_OFFSET   0x080000
 #define CAMERA_BINARY_VRA_DATA_OFFSET   0x040000
@@ -97,9 +102,6 @@ typedef u32 (*start_up_func_t)(void **func);
 typedef u32 (*rta_start_up_func_t)(void *bootargs, void **func);
 typedef void(*os_system_func_t)(void);
 
-#define DDK_SHUT_DOWN_FUNC_ADDR	(DDK_LIB_ADDR + 0x100)
-typedef int (*ddk_shut_down_func_t)(void *data);
-
 #define RTA_SHUT_DOWN_FUNC_ADDR	(RTA_LIB_ADDR + 0x100)
 typedef int (*rta_shut_down_func_t)(void *data);
 
@@ -117,33 +119,26 @@ struct fimc_is_lib_task {
 	struct fimc_is_task_work	work[LIB_MAX_TASK];
 };
 
-enum memory_track_type {
-	/* each O/S facility */
-	MT_TYPE_SEMA	= 0x01,
-	MT_TYPE_MUTEX,
-	MT_TYPE_TIMER,
-	MT_TYPE_SPINLOCK,
-
-	/* memory block */
-	MT_TYPE_MB_HEAP	= 0x10,
-	MT_TYPE_MB_DMA,
-
-	MT_TYPE_MB_VRA	= 0x20,
-
-	/* etc */
-	MT_TYPE_DMA	= 0x30,
-};
-
 #ifdef LIB_MEM_TRACK
+#define MT_TYPE_HEAP		1
+#define MT_TYPE_SEMA		2
+#define MT_TYPE_MUTEX		3
+#define MT_TYPE_TIMER		4
+#define MT_TYPE_SPINLOCK	5
+#define MT_TYPE_RESERVED	6
+#define MT_TYPE_TAAISP_DMA	7
+#define MT_TYPE_VRA_DMA		8
+
+
 #define MT_STATUS_ALLOC	0x1
 #define MT_STATUS_FREE	0x2
 
-#define MEM_TRACK_COUNT	5000
+#define MEM_TRACK_COUNT	64
 #define MEM_TRACK_ADDRS_COUNT 16
 
 struct _lib_mem_track {
 	ulong			lr;
-#ifdef LIB_MEM_TRACK_CALLSTACK
+#ifdef CONFIG_STACKTRACE
 	ulong			addrs[MEM_TRACK_ADDRS_COUNT];
 #endif
 	int			cpu;
@@ -167,41 +162,22 @@ struct lib_mem_tracks {
 };
 #endif
 
-#define MEM_BLOCK_NAME_LEN	16
-struct lib_mem_block {
-	spinlock_t		lock;
-	struct list_head	list;
-	u32			used;	/* size was allocated totally */
-	u32			end;	/* last allocation position */
-
-	size_t			align;
-	ulong			kva_base;
-	dma_addr_t		dva_base;
-
-	struct fimc_is_priv_buf *pb;
-
-	char			name[MEM_BLOCK_NAME_LEN];
-	u32			type;
-};
-
-struct lib_buf {
+struct fimc_is_lib_dma_buffer {
 	u32			size;
-	ulong			kva;
-	dma_addr_t		dva;
+	ulong			kvaddr;
+	dma_addr_t		dvaddr;
+
 	struct list_head	list;
-	void			*priv;
 };
 
 struct general_intr_handler {
 	int irq;
 	int id;
-	int (*intr_func)(void);
+	int (* intr_func)(void);
 };
 
 enum general_intr_id {
 	ID_GENERAL_INTR_PREPROC_PDAF = 0,
-	ID_GENERAL_INTR_PDP0_STAT,
-	ID_GENERAL_INTR_PDP1_STAT,
 	ID_GENERAL_INTR_MAX
 };
 
@@ -215,17 +191,20 @@ struct fimc_is_lib_support {
 	struct hwip_intr_handler		*intr_handler_taaisp[ID_3AAISP_MAX][INTR_HWIP_MAX];
 	struct fimc_is_lib_task			task_taaisp[TASK_INDEX_MAX];
 
+	/* memory management */
+	spinlock_t				slock_lib_mem;
+	struct list_head			lib_mem_list;
+	spinlock_t				slock_taaisp_mem;
+	struct list_head			taaisp_mem_list;
+	spinlock_t				slock_vra_mem;
+	struct list_head			vra_mem_list;
 	bool					binary_load_flg;
 	int					binary_load_fatal;
 	int					binary_code_load_flg;
 
-	/* memory blocks */
-	struct lib_mem_block			mb_heap_rta;
-	struct lib_mem_block			mb_dma;
-	struct lib_mem_block			mb_vra;
-	/* non-memory block */
-	spinlock_t				slock_nmb;
-	struct list_head			list_of_nmb;
+	u32					reserved_lib_size;
+	u32					reserved_taaisp_size;
+	u32					reserved_vra_size;
 
 	/* for log */
 	spinlock_t				slock_debug;
@@ -235,22 +214,14 @@ struct fimc_is_lib_support {
 	char					log_buf[MAX_LIB_LOG_BUF];
 	char					string[MAX_LIB_LOG_BUF];
 
-	/* for event */
-	ulong					event_ptr;
-	char					event_buf[256];
-	char					event_string[256];
-
-#ifdef ENABLE_DBG_EVENT
-	char					debugmsg[SIZE_LIB_LOG_BUG];
-#endif
 	/* for library load */
 	struct platform_device			*pdev;
 #ifdef LIB_MEM_TRACK
-	spinlock_t				slock_mem_track;
 	struct list_head			list_of_tracks;
 	struct lib_mem_tracks			*cur_tracks;
 #endif
-	struct general_intr_handler		intr_handler[ID_GENERAL_INTR_MAX];
+	struct general_intr_handler	intr_handler_preproc;
+	struct work_struct			work_stop;
 	char		fw_name[50];		/* DDK */
 	char		rta_fw_name[50];	/* RTA */
 };
@@ -264,35 +235,6 @@ struct fimc_is_memory_attribute {
 struct fimc_is_memory_change_data {
 	pgprot_t set_mask;
 	pgprot_t clear_mask;
-};
-
-/* Fast FDAE & FDAF */
- struct fd_point32 {
-	int x;
-	int y;
-};
-
-struct fd_rectangle {
-	u32 width;
-	u32 height;
-};
-
-struct fd_areabyrect {
-	struct fd_point32 top_left;
-	struct fd_rectangle span;
-};
-
-struct fd_faceinfo {
-	struct fd_areabyrect face_area;
-	int faceId;
-	int score;
-	u32 rotation;
-};
-
-struct fd_info {
-	struct fd_faceinfo face[MAX_FACE_COUNT];
-	int face_num;
-	u32 frame_count;
 };
 
 int fimc_is_load_bin(void);
@@ -314,11 +256,24 @@ int fimc_is_spin_unlock_irq(void *slock_lib);
 ulong fimc_is_spin_lock_irqsave(void *slock_lib);
 int fimc_is_spin_unlock_irqrestore(void *slock_lib, ulong flag);
 
-void *fimc_is_alloc_vra(u32 size);
-void fimc_is_free_vra(void *buf);
-int fimc_is_dva_vra(ulong kva, u32 *dva);
-void fimc_is_inv_vra(ulong kva, u32 size);
-void fimc_is_clean_vra(ulong kva, u32 size);
+void *fimc_is_alloc_reserved_buffer(u32 size);
+void fimc_is_free_reserved_buffer(void *buf);
+void *fimc_is_alloc_reserved_taaisp_dma_buffer(u32 size);
+void fimc_is_free_reserved_taaisp_dma_buffer(void *buf);
+void *fimc_is_alloc_reserved_vra_dma_buffer(u32 size);
+void fimc_is_free_reserved_vra_dma_buffer(void *buf);
+int fimc_is_translate_taaisp_kva_to_dva(ulong src_addr, u32 *target_addr);
+int fimc_is_translate_vra_kva_to_dva(ulong src_addr, u32 *target_addr);
+
+void fimc_is_taaisp_cache_invalid(ulong kvaddr, u32 size);
+void fimc_is_taaisp_cache_flush(ulong kvaddr, u32 size);
+void fimc_is_tpu_cache_invalid(ulong kvaddr, u32 size);
+void fimc_is_tpu_cache_flush(ulong kvaddr, u32 size);
+void fimc_is_vra_cache_invalid(ulong kvaddr, u32 size);
+void fimc_is_vra_cache_flush(ulong kvaddr, u32 size);
+
+int fimc_is_memory_attribute_nxrw(struct fimc_is_memory_attribute *attribute);
+int fimc_is_memory_attribute_rox(struct fimc_is_memory_attribute *attribute);
 
 bool fimc_is_lib_in_interrupt(void);
 
@@ -327,6 +282,5 @@ void fimc_is_load_ctrl_unlock(void);
 void fimc_is_load_ctrl_lock(void);
 void fimc_is_load_ctrl_init(void);
 int fimc_is_set_fw_names(char *fw_name, char *rta_fw_name);
-int fimc_is_register_general_interrupt(struct general_intr_handler info);
 
 #endif

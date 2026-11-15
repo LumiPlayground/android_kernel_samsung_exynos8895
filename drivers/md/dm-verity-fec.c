@@ -445,7 +445,7 @@ int verity_fec_decode(struct dm_verity *v, struct dm_verity_io *io,
 	int r;
 	struct dm_verity_fec_io *fio = fec_io(io);
 	u64 offset, res, rsb;
-	
+
 	if (block == 0)
 		return -1;
 	if (!verity_fec_is_enabled(v))

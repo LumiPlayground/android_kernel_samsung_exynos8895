@@ -57,10 +57,27 @@ struct fimc_is_hw_scp {
 };
 
 int fimc_is_hw_scp_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface *itf,
-	struct fimc_is_interface_ischain *itfc, int id, const char *name);
+	struct fimc_is_interface_ischain *itfc, int id);
+int fimc_is_hw_scp_open(struct fimc_is_hw_ip *hw_ip, u32 instance, u32 *size);
+int fimc_is_hw_scp_init(struct fimc_is_hw_ip *hw_ip, struct fimc_is_group *group,
+	bool flag, u32 module_id);
+int fimc_is_hw_scp_close(struct fimc_is_hw_ip *hw_ip, u32 instance);
+int fimc_is_hw_scp_enable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map);
+int fimc_is_hw_scp_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map);
+int fimc_is_hw_scp_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
+	ulong hw_map);
+int fimc_is_hw_scp_set_param(struct fimc_is_hw_ip *hw_ip, struct is_region *region,
+	u32 lindex, u32 hindex, u32 instance, ulong hw_map);
 int fimc_is_hw_scp_update_register(u32 instance, struct fimc_is_hw_ip *hw_ip,
 	struct scp_param *param);
+int fimc_is_hw_scp_frame_ndone(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
+	u32 instance, enum ShotErrorType done_type);
 int fimc_is_hw_scp_reset(struct fimc_is_hw_ip *hw_ip);
+int fimc_is_hw_scp_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map);
+int fimc_is_hw_scp_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenario,
+	u32 instance, ulong hw_map);
+int fimc_is_hw_scp_delete_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance,
+	ulong hw_map);
 int fimc_is_hw_scp_otf_input(u32 instance, struct fimc_is_hw_ip *hw_ip);
 int fimc_is_hw_scp_effect(u32 instance, struct fimc_is_hw_ip *hw_ip);
 int fimc_is_hw_scp_input_crop(u32 instance, struct fimc_is_hw_ip *hw_ip);
@@ -78,4 +95,5 @@ void fimc_is_hw_scp_adjust_pre_ratio(u32 pre_width, u32 pre_height,
 	u32 dst_width, u32 dst_height, u32 *pre_hratio, u32 *pre_vratio, u32 *sh_factor);
 void fimc_is_hw_scp_calc_canv_size(u32 width, u32 height, u32 plane, bool conv420_flag,
 	u32 *y_h_size, u32 *y_v_size, u32 *c_h_size, u32 *c_v_size);
+void fimc_is_hw_scp_size_dump(struct fimc_is_hw_ip *hw_ip);
 #endif

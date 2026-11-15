@@ -336,10 +336,11 @@
 
 #define KEY_MICMUTE		248	/* Mute / unmute the microphone */
 
-#define KEY_HOT			252    /* Intelligence Key */
 #define KEY_WAKEUP_UNLOCK	253	/* Wake-up to recent view, ex: AOP */
-#define KEY_RECENT   		254
+#define KEY_RECENT   254
 
+#define KEY_INT_CANCEL		0x2be	/* for touch event skip */
+#define KEY_WINK            0x2bf    /* Intelligence Key */
 
 /* Code 255 is reserved for special needs of AT keyboard driver */
 
@@ -603,6 +604,7 @@
 #define BTN_DPAD_RIGHT		0x223
 
 #define KEY_ALS_TOGGLE		0x230	/* Ambient light sensor */
+#define BTN_TOOL_SPEN_SCAN	0x230	/* Wacom full scan mode */
 
 #define KEY_BUTTONCONFIG		0x240	/* AL Button Configuration */
 #define KEY_TASKMANAGER		0x241	/* AL Task/Project Manager */
@@ -652,9 +654,6 @@
  * e.g. teletext or data broadcast application (MHEG, MHP, HbbTV, etc.)
  */
 #define KEY_DATA			0x277
-#define KEY_EMERGENCY			0x2a0
-#define KEY_INT_CANCEL		0x2be	/* for touch event skip */
-#define KEY_WINK			0x2bf	/* Intelligence Key */
 
 #define BTN_TRIGGER_HAPPY		0x2c0
 #define BTN_TRIGGER_HAPPY1		0x2c0
@@ -770,7 +769,6 @@
 #define ABS_MT_TOOL_Y		0x3d	/* Center Y tool position */
 
 #define ABS_MT_CUSTOM		0x3e	/* custom event */
-#define ABS_MT_PALM		0x3e	/* palm touch */
 #define ABS_MT_GRIP		0x3f	/* grip touch */
 
 #define ABS_MAX			0x3f
@@ -802,7 +800,6 @@
 #define SW_FLIP                 0x15    /* set = flip cover */
 #define SW_CERTIFYHALL          0x1b    /* set = certify_hall... */
 #define SW_MAX			0x20
-
 #define SW_CNT			(SW_MAX+1)
 
 /*

@@ -1584,7 +1584,7 @@ static int max77854_hv_muic_handle_attach
 #endif /* CONFIG_MUIC_NOTIFIER */
 
 #if defined(CONFIG_MUIC_SUPPORT_CCIC)
-	if (phv->pmuic->pdata->opmode & OPMODE_CCIC)
+	if (phv->pmuic->opmode & OPMODE_CCIC)
 		muic_set_legacy_dev(phv->pmuic, new_dev);		
 #endif
 	phv->attached_dev = new_dev;
@@ -1896,7 +1896,7 @@ static bool muic_check_dev_ta(struct hv_data *phv)
 #endif
 		phv->attached_dev = ATTACHED_DEV_NONE_MUIC;
 #if defined(CONFIG_MUIC_SUPPORT_CCIC)
-		if (phv->pmuic->pdata->opmode & OPMODE_CCIC)
+		if (phv->pmuic->opmode & OPMODE_CCIC)
 			muic_set_legacy_dev(phv->pmuic, phv->attached_dev);		
 #endif
 		//Fixme.

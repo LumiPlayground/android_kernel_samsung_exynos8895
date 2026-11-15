@@ -12,6 +12,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
  */
 #ifndef __IVA_IPC_PARAM_H__
 #define __IVA_IPC_PARAM_H__
@@ -19,6 +23,7 @@
 #include <stddef.h>
 #define IVA_IPC_PARAM_ARCH64_SUPPORT
 #undef CONFIG_TEST_PARAM
+#undef CONFIG_IVA_RT_PARAM
 
 /* command parameter control switch */
 #ifdef CONFIG_TEST_PARAM
@@ -34,12 +39,6 @@
 #define ORB_IN_PARAM_TO_CMD_PARAM
 #define DSP_IPC_PARAM_TO_CMD_PARAM
 #define GEN_IPC_PARAM_TO_CMD_PARAM
-#define WIG_MFB_ENF_IPC_PARAM_TO_CMD_PARAM
-
-#undef BAX_ICODE_IPC_PARAM_TO_CMD_PARAM
-#undef BAX_JACOBIAN_IPC_PARAM_TO_CMD_PARAM
-
-#define PEAKPOWER_IPC_PARAM_TO_CMD_PARAM
 
 /* response parameter control switch */
 #define MCH_OUT_PARAM_TO_RES_PARAM
@@ -50,16 +49,26 @@
 #endif
 
 /* ipc parameter definitions */
-struct ipc_msg_node {
-	uint32_t	table_id;
-	uint32_t	guid;
+struct ipc_msg_node
+{
+	uint32_t     table_id;
+	uint32_t     guid;
 };
 
-struct ipc_msg_schedule {
-	uint32_t	rt_table;
+struct ipc_msg_schedule
+{
+	/* tables */
+	uint32_t	p_rt_table;
+#ifdef CONFIG_IVA_RT_PARAM
+	uint32_t	p_g_sched_t;
+	uint32_t	p_rt_param_t;
+#endif
+	/* sizes  */
 	uint32_t	rt_table_size;
-	uint32_t	rt_n_entries;
-	uint32_t	dummy[1];	/* 64 byte aligned */
+#ifdef CONFIG_IVA_RT_PARAM
+	uint32_t	g_sched_t_size;
+	uint32_t	rt_param_size;
+#endif
 };
 
 #define SCL_IF_MAKE_RECT(w, h)		((w << 16) | h)
@@ -96,11 +105,11 @@ struct pyr_level {
 struct pyramid_param {
 	/* input file information */
 	uint32_t	in_frame_pa;	/* physical address for input frame*/
-	int32_t		in_width;
-	int32_t		in_height;
-	int32_t		in_stride;
+	int32_t 	in_width;
+	int32_t 	in_height;
+	int32_t 	in_stride;
 
-	uint32_t	max_level;
+	uint32_t 	max_level;
 	uint32_t	inter_mode;
 	uint32_t	scale_n;
 	uint32_t	scale_d;
@@ -128,7 +137,7 @@ struct warp_mesh_param {
 	uint32_t	mesh_log_space;	/* Space parameter for mesh warp */
 };
 
-struct warp_affine_param {
+struct warp_affine_param{
 	/* TODO: parameter for tiling */
 	int32_t		width;
 	int32_t		height;
@@ -257,7 +266,7 @@ struct orb_in_param {
 
 	uint32_t	tile_width;
 	uint32_t	tile_height;
-	uint32_t	p_buf_ptr;/* Pointer to the input buffer */
+	uint32_t    	p_buf_ptr;	/* Pointer to the input buffer */
 	uint32_t	p_chroma_buf_ptr;/* Pointer to the input chroma buffer */
 	uint32_t	metadata;
 	uint32_t	diameter;
@@ -266,166 +275,70 @@ struct orb_in_param {
 	uint32_t	har_on;
 	uint32_t	x_scale;
 	uint32_t	y_scale;
-	uint32_t	nms_size;
-	uint32_t	int_fast_th;
 	uint32_t	iterations;
 
 	uint32_t	p_keypoint_ptr;
 	uint32_t	p_description_ptr;
 	uint32_t	p_keypoint_sorted_ptr;
-};
-
-struct wig_mfb_enf_if_param {
-#define NUM_FRAMES_WME	(5)
-	uint32_t	p_buf_ptr[NUM_FRAMES_WME];
-	uint32_t	p_buf_matrix_ptr;
-	uint32_t	p_buf_out_ptr;
-	uint32_t	p_tile_info_ptr;
-
-	uint16_t        wig_i_stride;
-	uint16_t        wig_i_width;
-	uint16_t        wig_i_height;
-	uint16_t        wig_o_width;
-	uint16_t        wig_o_height;
-	uint16_t        wig_o_tile_w;
-	uint16_t        wig_o_tile_h;
-	uint16_t        wig_o_tile_x;
-	uint16_t        bld_o_width;
-	uint16_t        bld_o_height;
-	uint16_t        enf_o_stride;
-	uint16_t        enf_o_width;
-	uint16_t        enf_o_height;
-	uint32_t        wig_i_seq_size;
-	uint32_t        enf_o_img_size;
-	uint32_t        num_tiles;
-	uint32_t        frame;
-};
-
-struct peakpower_iva20_if_param {
-#define NUM_FRAMES_PEAK	(5)
-	/* in buffer*/
-	uint32_t	p_buf_ptr[NUM_FRAMES_PEAK];
-	uint32_t	p_scl_in_ptr;
-	uint32_t	p_remap_in_ptr;
-	uint32_t	p_buf_matrix_ptr;
-	uint32_t	p_tile_info_ptr;
-	uint32_t	p_mesh_y_ptr;
-	uint32_t	p_mesh_c_ptr;
-	uint32_t	p_delta_ptr;
-	/* out buffer*/
-	uint32_t	p_enf_out_ptr;
-	uint32_t	p_scl_out_ptr;
-	uint32_t	p_remap_out_ptr;
-};
+} ;
 
 /* Generalized command parameters */
 struct gen_cmd_param {
-	uint32_t	param0;
-	uint32_t	param1;
-	uint32_t	param2;
-	uint32_t	param3;
-	uint32_t	param4;
-	uint32_t	param5;
-	uint32_t	param6;
-	uint32_t	param7;
-};
-
-struct bax_icode_cmd_param {
-	uint32_t	icode_bin_addr;
-	uint32_t	in_addr_1;
-	uint32_t	in_addr_2;
-	uint32_t	out_addr_1;
-	uint32_t	out_addr_2;
-};
-
-struct bax_jacobian_cmd_param {
-	uint32_t	icode_bin_addr;
-
-	uint32_t	c_data_input_addr;
-	uint32_t	scalefactor_input_addr;
-	uint32_t	p_data_input_addr;
-	uint32_t	cfg_input1_addr;
-
-	uint32_t	param_input1_addr;
-	uint32_t	param_input2_addr;
-	uint32_t	const_input1_addr;
-	uint32_t	const_input2_addr;
-
-	uint32_t	a_data_output_addr;
-	uint32_t	b_data_output_addr;
-	uint32_t	dbg_data_addr;
-};
-
-struct bax_hessian_cmd_param {
-	uint32_t	icode_bin_addr;
-
-	uint32_t	udata_input1_addr;
-	uint32_t	vdata_input1_addr;
-
-	uint32_t	a_sh_dram_addr;
-	uint32_t	b_sh_dram_addr;
-
-	uint32_t	const_input1_addr;
-	uint32_t	const_input2_addr;
-
-	uint32_t	damping1_addr;
-	uint32_t	damping2_addr;
-
-	uint32_t	cfg_input1_addr;
-	uint32_t	cfg_input2_addr;
-
-	uint32_t	param_input1_addr;
-	uint32_t	param_input2_addr;
-
-	uint32_t	dbg_data_addr;
-
-	uint32_t	u_output_addr;
-	uint32_t	v_output_addr;
-	uint32_t	vinv_output_addr;
+	uint32_t 	param0;
+	uint32_t 	param1;
+	uint32_t 	param2;
+	uint32_t 	param3;
 };
 
 /* DSP_IPC input/out structure */
-/* SCQ max request size (in word) */
-#ifdef CONFIG_TEST_PARAM
-#define MAX_REQUEST_SIZE_IN_WORD                   (26)
-#else
-#define MAX_REQUEST_SIZE_IN_WORD                   (512)
-#endif
+/// @brief  Number of parameters in each group
+#define NUM_OF_GRP_PARAM        (26)
 
-/*  SCQ max request size (in byte) */
-#define MAX_REQUEST_SIZE                           (MAX_REQUEST_SIZE_IN_WORD<<2)
-#define MAX_PAYLOAD_SIZE (MAX_REQUEST_SIZE_IN_WORD - (sizeof(struct _sc_packet_header_t) >> 2)) ///<(in words)
+/// @brief  Packet group parameter struct about raw parameters
+typedef struct _ScorePacketGroupData {
+	unsigned int params[NUM_OF_GRP_PARAM];  /* Raw packet parameters */
+} ScorePacketGroupData;
 
-/* IPC packet header contains meta information for sending payload */
-struct _sc_packet_header_t {
-	unsigned int	next_type:	8;	///< Packet type of following payload
-	unsigned int	src:		5;	///< Source device id
-	unsigned int	dst:		5;	///< Destination device id
-	unsigned int	version:	5;	///< Version of SCore
-	unsigned int	reserved:	9;	///< RESERVED
-};
+/// @brief  Packet group information struct. each group has this
+typedef struct _ScorePacketGroupHeader {
+  unsigned int valid_size:  6;    ///< Number of valid words in a packet group
+  unsigned int fd_bitmap:   26;   ///< Represent the start word of sc_buffer in
+                                  ///  the params array
+} ScorePacketGroupHeader;
 
-struct _sc_kernel_packet_header_t {
-	unsigned int	next_type:	4;	///< Packet type of following payload
-	unsigned int	size:		11;	///< Size of sc_kernel_packet
-	unsigned int	kernel_id:	9;	///< Packet type of current payload
-	unsigned int	task_id:	8;	///< ID of the task requested
-};
+/// @brief  Packet group struct. Group means a bunch of params and its meta info
+typedef struct _ScorePacketGroup {
+	/*
+	* Not used ScorePacketGroupHeader when send to score firmware.
+	*/
+	// ScorePacketGroupHeader  header; 	/* Meta information of packet group */
+	/* Actual parameters to be delivered */
+	ScorePacketGroupData    data;   	/* Raw payload of packet group */
+} ScorePacketGroup;
 
-struct _sc_result_packet_header_t {
-	unsigned int next_type:	4;	///< Packet type of following payload
-	unsigned int size:	11;	///< Size of sc_result_packet
-	unsigned int kernel_id:	9;	///< ID of ther kernel returned
-	unsigned int task_id:	8;	///< ID of the task returned
-	unsigned int ret_code;
-};
 
-/* IPC packet struct. it defines whole a packet structure */
-struct dsp_ipc_params {
-	struct _sc_packet_header_t		packet_header;
-	struct _sc_kernel_packet_header_t	kernel_header;
-	unsigned int				payload[MAX_PAYLOAD_SIZE];
-};
+/// @brief  IPC packet header contains meta information for calling SCore kernel
+typedef struct _score_packet_header_t {
+	unsigned int queue_id:    2;    /* Uniqueue ID of message queue */
+	unsigned int kernel_name: 12;   /* Name of kernel */
+	unsigned int task_id:     7;    /* Uniqueue Id internally assigned to every task */
+	unsigned int reserved:    8;    /* RESERVED */
+	unsigned int worker_name: 3;    /* DMA option */
+} ScorePacketHeader, score_packet_header_t;
+
+/// @brief  IPC packet header contains about packet size
+typedef struct _score_packet_size_t {
+	unsigned int packet_size: 14;   /* Packet size of whole packets to send */
+	unsigned int reserved:    10;   /* RESERVED */
+	unsigned int group_count: 8;    /* Number of group in a packet */
+} ScorePacketSize, score_packet_size_t;
+
+typedef struct dsp_ipc_params {
+	ScorePacketSize   size;         /* Packet header for representing size */
+	ScorePacketHeader header;       /* Packet header for representing general info */
+	// ScorePacketGroup  group[0];     /* Real payload of packet and its meta info */
+	unsigned int params[NUM_OF_GRP_PARAM];  ///< Raw packet parameters
+} score_ipc_packet;
 
 #ifdef IVA_IPC_PARAM_ARCH64_SUPPORT
 struct cmd_align_param {
@@ -509,20 +422,7 @@ union ipc_cmd_data {
 	struct dsp_ipc_params		score_param;
 #endif
 #ifdef GEN_IPC_PARAM_TO_CMD_PARAM
-	struct gen_cmd_param		cmd_param;
-#endif
-#ifdef WIG_MFB_ENF_IPC_PARAM_TO_CMD_PARAM
-	struct wig_mfb_enf_if_param	wig_mfb_enf_param;
-#endif
-#ifdef BAX_ICODE_IPC_PARAM_TO_CMD_PARAM
-	struct bax_icode_cmd_param	bax_icode_param;
-#endif
-#ifdef BAX_JACOBIAN_IPC_PARAM_TO_CMD_PARAM
-	struct bax_jacobian_cmd_param	bax_jacobian_param;
-	struct bax_hessian_cmd_param	bax_hessian_param;
-#endif
-#ifdef PEAKPOWER_IPC_PARAM_TO_CMD_PARAM
-	struct peakpower_iva20_if_param	peakpower_param;
+	struct gen_cmd_param 		cmd_param;
 #endif
 };
 
@@ -550,14 +450,13 @@ union ipc_res_data {
 	struct orb_out_param	orb_param;
 #endif
 #ifdef TIME_TO_RES_PARAM
-	uint32_t		time;
+	uint32_t 		time;
 #endif
 };
 
 struct ipc_cmd_param {
 	uint32_t		header;
-	uint16_t		ipc_cmd_type;
-	uint16_t		extra;
+	uint32_t		ipc_cmd_type;
 	union {
 		uint32_t	cmd_src;
 		uint32_t	param_0;
@@ -571,8 +470,7 @@ struct ipc_cmd_param {
 
 struct ipc_res_param {
 	uint32_t		header;
-	uint16_t		ipc_cmd_type;
-	uint16_t		extra;
+	uint32_t		ipc_cmd_type;
 	union {
 		uint32_t	rep_id;		/* match with cmd id */
 		uint32_t	param_0;

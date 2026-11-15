@@ -12,7 +12,6 @@
 
 #include <linux/err.h>
 #include <linux/errno.h>
-#include <linux/fips.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
@@ -42,18 +41,12 @@ static inline int crypto_set_driver_name(struct crypto_alg *alg)
 	return 0;
 }
 
-static inline void crypto_check_module_sig(struct module *mod)
-{
-	if (fips_enabled && mod && !module_sig_ok(mod))
-		panic("Module %s signature verification failed in FIPS mode\n",
-		      module_name(mod));
-}
-
 static int crypto_check_alg(struct crypto_alg *alg)
 {
 #ifdef CONFIG_CRYPTO_FIPS
 	if (unlikely(in_fips_err())) {
-		pr_err("crypto_check_alg failed due to FIPS error: %s",
+		printk(KERN_ERR
+			"crypto_check_alg failed due to FIPS error: %s",
 			alg->cra_name);
 		return -EACCES;
 	}
@@ -284,8 +277,43 @@ void crypto_alg_tested(const char *name, int err)
 found:
 	q->cra_flags |= CRYPTO_ALG_DEAD;
 	alg = test->adult;
+
+#ifndef CONFIG_CRYPTO_FIPS
 	if (err || list_empty(&alg->cra_list))
 		goto complete;
+#else
+	/* change@dtl.ksingh - starts
+	 * Self-test failure is not reported when it fails for HMAC
+	 * as it runs in a tertiary thread. Hence appropirate failure
+	 * notification must be sent to prevent 60sec thread sleep
+	 */
+	if (err || list_empty(&alg->cra_list)) {
+		list_for_each_entry(q, &crypto_alg_list, cra_list) {
+			if (q == alg) {
+				continue;
+			}
+
+			if (crypto_is_moribund(q)) {
+				continue;
+			}
+
+			if (crypto_is_larval(q)) {
+				struct crypto_larval *larval = (void *)q;
+				if (strcmp(alg->cra_name, q->cra_name) &&
+						strcmp(alg->cra_driver_name, q->cra_name)) {
+					continue;
+				}
+
+				larval->adult = alg;
+				complete_all(&larval->completion);
+				continue;
+			}
+		}
+
+		goto complete;
+	}
+#endif
+	// change@dtl.ksingh - ends
 
 	alg->cra_flags |= CRYPTO_ALG_TESTED;
 
@@ -376,7 +404,8 @@ int crypto_register_alg(struct crypto_alg *alg)
 
 #ifdef CONFIG_CRYPTO_FIPS
 	if (unlikely(in_fips_err())) {
-		pr_err("Unable to registrer alg: %s because of FIPS ERROR\n"
+		printk(KERN_ERR
+			"Unable to registrer alg: %s because of FIPS ERROR\n"
 			, alg->cra_name);
 		return -EACCES;
 	}
@@ -481,8 +510,6 @@ int crypto_register_template(struct crypto_template *tmpl)
 
 	down_write(&crypto_alg_sem);
 
-	crypto_check_module_sig(tmpl->module);
-
 	list_for_each_entry(q, &crypto_template_list, list) {
 		if (q == tmpl)
 			goto out;
@@ -550,7 +577,8 @@ struct crypto_template *crypto_lookup_template(const char *name)
 {
 #ifdef CONFIG_CRYPTO_FIPS
 	if (unlikely(in_fips_err())) {
-		pr_err("crypto_lookup failed due to FIPS error: %s", name);
+		printk(KERN_ERR
+			"crypto_lookup failed due to FIPS error: %s", name);
 		return ERR_PTR(-EACCES);
 	}
 #endif

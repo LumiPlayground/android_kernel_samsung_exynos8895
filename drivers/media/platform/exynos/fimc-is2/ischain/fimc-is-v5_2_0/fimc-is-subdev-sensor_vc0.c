@@ -41,8 +41,8 @@ static int fimc_is_sensor_vc0_tag(struct fimc_is_subdev *subdev,
 	struct v4l2_subdev *subdev_csi;
 	struct fimc_is_device_sensor *device;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!ldr_frame);
+	BUG_ON(!subdev);
+	BUG_ON(!ldr_frame);
 
 	device = (struct fimc_is_device_sensor *)device_data;
 	subdev_csi = device->subdev_csi;
@@ -53,8 +53,9 @@ static int fimc_is_sensor_vc0_tag(struct fimc_is_subdev *subdev,
 		goto p_err;
 	}
 
-	mdbgs_ischain(4, "VC0 TAG(request %d)\n", device, node->request);
-
+#ifdef DBG_STREAMING
+	mdbgd_sensor("VC0 TAG(request %d)\n", device, node->request);
+#endif
 	if (node->request) {
 		ret = fimc_is_sensor_buf_tag(device,
 			subdev,

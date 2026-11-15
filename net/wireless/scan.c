@@ -542,6 +542,7 @@ static int cmp_bss(struct cfg80211_bss *a,
 	r = memcmp(a->bssid, b->bssid, sizeof(a->bssid));
 	if (r)
 		return r;
+
 	#if (defined(CONFIG_BCM4335) || defined(CONFIG_BCM4335_MODULE) \
 	|| defined(CONFIG_BCM4339) || defined(CONFIG_BCM4339_MODULE) \
 	|| defined(CONFIG_BCM43438) || defined(CONFIG_BCM43438_MODULE) \

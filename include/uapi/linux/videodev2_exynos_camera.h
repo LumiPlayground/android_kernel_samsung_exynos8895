@@ -150,7 +150,6 @@ enum v4l2_firmware_mode {
 #define V4L2_CID_FIMC_IS_BASE			(V4L2_CTRL_CLASS_CAMERA | 0x1000)
 #define V4L2_CID_FIMC_IS_TUNE_BASE		(V4L2_CTRL_CLASS_CAMERA | 0x2000)
 #define V4L2_CID_SENSOR_BASE			(V4L2_CTRL_CLASS_CAMERA | 0x3000)
-#define V4L2_CID_CAMERAPP_BASE			(V4L2_CTRL_CLASS_CAMERA | 0x4000)
 
 #define V4L2_CID_IS_S_STREAM			(V4L2_CID_FIMC_IS_BASE + 14)
 enum is_set_stream {
@@ -187,44 +186,19 @@ enum is_set_stream {
 #define V4L2_CID_IS_G_VC1_FRAMEPTR		(V4L2_CID_FIMC_IS_BASE + 70)
 #define V4L2_CID_IS_G_VC2_FRAMEPTR		(V4L2_CID_FIMC_IS_BASE + 71)
 #define V4L2_CID_IS_G_VC3_FRAMEPTR		(V4L2_CID_FIMC_IS_BASE + 72)
-#define V4L2_CID_IS_FDAE			(V4L2_CID_FIMC_IS_BASE + 73)
-#define V4L2_CID_IS_FACTORY_APERTURE_CONTROL		(V4L2_CID_FIMC_IS_BASE + 74)
+#define V4L2_CID_IS_S_VRA_CONNECTION		(V4L2_CID_FIMC_IS_BASE + 73)
 
 enum is_fw_boot_mode {
 	IS_COLD_BOOT = 0,  /* FrontCamera, 3rd-Party Camera */
 	IS_WARM_BOOT,      /* SamsungCamera & RearCamera */
 	IS_COLD_RESET,     /* Reset for camera using warm boot mode */
-	IS_REUSE_3A,       /* Reuse 3A value for next camera operation */
+	IS_REUSE_3A,      /* Reuse 3A value for next camera operation */
 };
 
 #define V4L2_CID_IS_SCENE_MODE			(V4L2_CID_FIMC_IS_BASE + 667)
-
-#define V4L2_CID_IS_OPENING_HINT		(V4L2_CID_FIMC_IS_BASE + 670)
-enum is_opening_hint {
-	IS_OPENING_HINT_NONE,
-	IS_OPENING_HINT_FASTEN_AE,
-	IS_OPENING_HINT_PREVIOUS_AE,
-	IS_OPENING_HINT_MAX,
-};
-
-#define V4L2_CID_IS_CLOSING_HINT		(V4L2_CID_FIMC_IS_BASE + 671)
-enum is_closing_hint {
-	IS_CLOSING_HINT_NONE,
-	IS_CLOSING_HINT_SWITCHING,
-	IS_CLOSING_HINT_FINISHING,
-	IS_CLOSING_HINT_MAX,
-};
-
 #define V4L2_CID_IS_DEBUG_DUMP			(V4L2_CID_FIMC_IS_BASE + 900)
 #define V4L2_CID_IS_DEBUG_SYNC_LOG		(V4L2_CID_FIMC_IS_BASE + 901)
 #define V4L2_CID_IS_HAL_VERSION			(V4L2_CID_FIMC_IS_BASE + 902)
-enum is_transient_action {
-	ACTION_NONE = 0,
-	ACTION_ZOOMING,
-	ACTION_MANUAL_FOCUSING,
-	ACTION_MAX,
-};
-#define V4L2_CID_IS_TRANSIENT_ACTION             (V4L2_CID_FIMC_IS_BASE + 903)
 
 #define V4L2_CID_ISASB0_G_CHKOUT			(V4L2_CID_FIMC_IS_BASE + 0xC00)
 #define V4L2_CID_ISASB1_G_CHKOUT			(V4L2_CID_FIMC_IS_BASE + 0xC01)
@@ -277,24 +251,6 @@ enum v4l2_is_hal_version {
 #define V4L2_CID_SENSOR_GET_ANALOG_GAIN                 (V4L2_CID_SENSOR_BASE + 108)
 #define V4L2_CID_SENSOR_GET_DIGITAL_GAIN                (V4L2_CID_SENSOR_BASE + 109)
 #define V4L2_CID_SENSOR_SET_RAT_FREQ                    (V4L2_CID_SENSOR_BASE + 110)
-
-/* for FRS */
-#define V4L2_CID_SENSOR_SET_FRS_CONTROL		(V4L2_CID_SENSOR_BASE + 120)
-enum v4l2_cis_frs_command {
-	FRS_SSM_START = 0,
-	FRS_SSM_MANUAL_CUE_ENABLE,
-	FRS_SSM_STOP,
-	FRS_SSM_MODE_AUTO_MANUAL_CUE,
-	FRS_SSM_MODE_ONLY_MANUAL_CUE,
-	FRS_SSM_MODE_FACTORY_TEST,
-	FRS_DRAM_TEST_SECTION2,
-	FRS_CMD_MAX,
-};
-#define V4L2_CID_SENSOR_SET_SSM_ROI			(V4L2_CID_SENSOR_BASE + 121)
-#define V4L2_CID_IS_GET_DUAL_CAL			(V4L2_CID_SENSOR_BASE + 122)
-
-#define V4L2_CID_SENSOR_SET_SSM_THRESHOLD		(V4L2_CID_SENSOR_BASE + 123)
-#define V4L2_CID_SENSOR_GET_SSM_THRESHOLD		(V4L2_CID_SENSOR_BASE + 124)
 
 #define V4L2_CID_ACTUATOR_GET_STATUS                    (V4L2_CID_SENSOR_BASE + 200)
 #define V4L2_CID_ACTUATOR_SET_POSITION                  (V4L2_CID_SENSOR_BASE + 201)
@@ -717,6 +673,8 @@ enum v4l2_pix_format_mode {
 	V4L2_PIX_FMT_MODE_VT_NONMIRROR,
 };
 
+#define V4L2_CID_CAMERA_FADE_IN	(V4L2_CID_PRIVATE_BASE+153)
+
 #define V4L2_CID_IRLED_SET_WIDTH	(V4L2_CID_PRIVATE_BASE+154)
 #define V4L2_CID_IRLED_SET_DELAY	(V4L2_CID_PRIVATE_BASE+155)
 #define V4L2_CID_IRLED_SET_CURRENT	(V4L2_CID_PRIVATE_BASE+156)
@@ -727,12 +685,6 @@ enum v4l2_pix_format_mode {
 #define V4L2_PIX_FMT_NV21T    v4l2_fourcc('T', 'V', '2', '1')
 #define V4L2_PIX_FMT_INTERLEAVED    v4l2_fourcc('I', 'T', 'L', 'V')
 
-/* Camera-PostProcessing ioctl */
-#define V4L2_CID_CAMERAPP_SENSOR_NUM		(V4L2_CID_CAMERAPP_BASE + 1)
-#define V4L2_CID_CAMERAPP_GDC_GRID_CROP_START		(V4L2_CID_CAMERAPP_BASE + 2)
-#define V4L2_CID_CAMERAPP_GDC_GRID_CROP_SIZE		(V4L2_CID_CAMERAPP_BASE + 3)
-#define V4L2_CID_CAMERAPP_GDC_GRID_SENSOR_SIZE		(V4L2_CID_CAMERAPP_BASE + 4)
-#define V4L2_CID_CAMERAPP_GDC_GRID_CONTROL		(V4L2_CID_CAMERAPP_BASE + 5)
 
 /*
  *  * V4L2 extention for digital camera
@@ -828,6 +780,37 @@ enum v4l2_recog_pattern {
 	V4L2_RECOG_PATTERN_FACE		= 0, /* Face */
 	V4L2_RECOG_PATTERN_HUMAN	= 1, /* Human */
 	V4L2_RECOG_PATTERN_CHAR		= 2, /* Character */
+};
+
+struct v4l2_recog_rect {
+	enum	v4l2_recog_pattern  p;	/* detected pattern */
+	struct	v4l2_rect  o;	/* detected area */
+	__u32	reserved[4];
+};
+
+struct v4l2_recog_data {
+	__u8	detect_cnt;		/* detected object counter */
+	struct	v4l2_rect	o;	/* detected area */
+	__u32	reserved[4];
+};
+
+struct v4l2_recognition {
+	enum v4l2_recog_mode	mode;
+
+	/* Which pattern to detect */
+	enum v4l2_recog_pattern  pattern;
+
+	/* How many object to detect */
+	__u8	obj_num;
+
+	/* select detected object */
+	__u32	detect_idx;
+
+	/* read only :Get object coordination */
+	struct v4l2_recog_data	data;
+
+	enum v4l2_recog_action	action;
+	__u32	reserved[4];
 };
 
 #define VIDIOC_S_RECOGNITION	_IOWR('V', 85, struct v4l2_recognition)

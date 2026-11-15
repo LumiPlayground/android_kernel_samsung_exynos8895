@@ -17,7 +17,6 @@
 #define ID_MASK			0xffff
 #define TPUT_THRESHOLD		150
 #define MAX_RC_NUM		2
-#define MAX_L1_EXIT_TIMEOUT    300
 
 #if defined(CONFIG_SOC_EXYNOS8890)
 #define PCI_DEVICE_ID_EXYNOS	0xa544
@@ -31,10 +30,6 @@
 
 #define PCIE_BUS_PRIV_DATA(pdev) \
 	((struct pcie_port *)pdev->bus->sysdata)
-
-#define MAX_PCIE_PIN_STATE	2
-#define PCIE_PIN_DEFAULT	0
-#define PCIE_PIN_IDLE		1
 
 struct regmap;
 
@@ -51,28 +46,21 @@ enum exynos_pcie_state {
 };
 
 struct pcie_phyops {
-	void (*phy_check_rx_elecidle)(void *phy_pcs_base_regs, int val,
-				int ch_num);
-	void (*phy_all_pwrdn)(void *phy_base_regs, void *phy_pcs_base_regs,
-				void *sysreg_base_regs, int ch_num);
-	void (*phy_all_pwrdn_clear)(void *phy_base_regs,
-				void *phy_pcs_base_regs,
-				void *sysreg_base_regs, int ch_num);
+	void (*phy_check_rx_elecidle)(void *phy_pcs_base_regs, int val);
+	void (*phy_all_pwrdn)(void *phy_base_regs, void *sysreg_base_regs, int ch_num);
+	void (*phy_all_pwrdn_clear)(void *phy_base_regs, void *sysreg_base_regs, int ch_num);
 	void (*phy_config)(void *phy_base_regs, void *phy_pcs_base_regs,
-				void *sysreg_base_regs, void *elbi_base_regs,
-				int ch_num);
+			void *sysreg_base_regs, void *elbi_base_regs, int ch_num);
 	void (*phy_config_regmap)(void *phy_base_regs, void *phy_pcs_base_regs,
-				struct regmap *sysreg_phandle,
-				void *elbi_base_regs, int ch_num);
+			struct regmap *sysreg_phandle, void *elbi_base_regs, int ch_num);
 };
 
 struct exynos_pcie {
 	void __iomem		*elbi_base;
 	void __iomem		*phy_base;
-	void __iomem		*sysreg_base;
+	void __iomem		*block_base;
 	void __iomem		*rc_dbi_base;
 	void __iomem		*phy_pcs_base;
-	void __iomem		*ia_base;
 	struct regmap		*pmureg;
 	struct regmap		*sysreg;
 	int			perst_gpio;
@@ -88,35 +76,35 @@ struct exynos_pcie {
 	bool			use_cache_coherency;
 	bool			use_sicd;
 	bool			atu_ok;
-	bool			use_sysmmu;
-	bool			use_ia;
 	spinlock_t		conf_lock;
-	spinlock_t		reg_lock;
-	spinlock_t              pcie_l1_exit_lock;
 	struct workqueue_struct	*pcie_wq;
 	struct exynos_pcie_clks	clks;
 	struct pcie_port	pp;
 	struct pci_dev		*pci_dev;
 	struct pci_saved_state	*pci_saved_configs;
-	struct notifier_block	power_mode_nb;
+	struct notifier_block	lpa_nb;
 	struct notifier_block   ss_dma_mon_nb;
-	struct delayed_work	dislink_work;
+	struct delayed_work	work;
 	struct exynos_pcie_register_event *event_reg;
+#ifdef CONFIG_PCI_EXYNOS_TEST
+	int			wlan_gpio;
+	int			bt_gpio;
+#endif
 #ifdef CONFIG_PM_DEVFREQ
 	unsigned int            int_min_lock;
 #endif
 	u32			ip_ver;
 	struct pcie_phyops	phy_ops;
+	int			pcie_irq_toe_enable;
+	int			pcie_irq_toe_num;
+	int			pcie_irq_msi_cp_enable;
+	int			pcie_irq_msi_cp_base_bit;
+	int			pcie_irq_msi_cp_num;
 	int			l1ss_ctrl_id_state;
 	struct workqueue_struct *pcie_wq_l1ss;
-	struct delayed_work     l1ss_boot_delay_work;
+	struct delayed_work     work_l1ss;
 	int			boot_cnt;
 	int			work_l1ss_cnt;
-	int			ep_device_type;
-	int			max_link_speed;
-
-	struct pinctrl		*pcie_pinctrl;
-	struct pinctrl_state	*pin_state[MAX_PCIE_PIN_STATE];
 };
 
 /* PCIe ELBI registers */
@@ -171,9 +159,7 @@ struct exynos_pcie {
 #define CORE_CLK_GATING			(0x1 << 0)
 #define PCIE_SOFT_CORE_RESET		0x1D0
 #define PCIE_STATE_HISTORY_CHECK	0x274
-#define PCIE_STATE_POWER_S		0x2BC
-#define PCIE_STATE_POWER_M		0x2C0
-#define HISTORY_BUFFER_ENABLE		0x3
+#define HISTORY_BUFFER_ENABLE		(0x1 << 0)
 #define HISTORY_BUFFER_CLEAR		(0x1 << 1)
 #define PCIE_QCH_SEL			0x2C8
 #define CLOCK_GATING_IN_L12		0x1
@@ -207,13 +193,6 @@ struct exynos_pcie {
 #define PCIE_IRQ_CP_LEVEL		0x2E4
 #define PCIE_MSI_STATUS_IRQ_AP_ENABLE	0x2E8
 #define PCIE_MSI_STATUS_IRQ_CP_ENABLE	0x2EC
-#define VENDOR_MSG_REQ			0xA8
-#define VENDOR_MSG_FORMAT		0xAC
-#define VENDOR_MSG_TYPE			0xB0
-#define VENDOR_MSG_CODE			0xD0
-#define PME_TURNOFF_CODE		0x19
-#define TLP_TYPE_MSG			0x13
-#define XMIT_PME_TURNOFF		0x4C
 
 /* PCIe PMU registers */
 #define IDLE_IP3_STATE			0x3EC
@@ -226,15 +205,12 @@ struct exynos_pcie {
 #define PCIE_PHY_CONTROL_MASK		0x1
 
 /* PCIe DBI registers */
-#define PM_CAP_OFFSET			0x40
-#define PCIE_CAP_OFFSET			0x70
-#define PCIE_LINK_CTRL_STAT		0x80
+#define PM_CAP_ID_OFFSET		0x40
+#define EXP_CAP_ID_OFFSET		0x70
 #define PCI_EXP_LNKCAP_MLW_X1		(0x1 << 4)
 #define PCI_EXP_LNKCAP_L1EL_64USEC	(0x7 << 15)
 #define PCI_EXP_LNKCTL2_TLS		0xf
 #define PCI_EXP_LNKCTL2_TLS_2_5GB	0x1
-#define PCI_EXP_LNKCTL2_TLS_5_0GB	0x2
-#define PCI_EXP_LNKCTL2_TLS_8_0GB	0x3
 #define PCIE_LINK_L1SS_CONTROL		0x158
 #define PORT_LINK_TCOMMON_32US		(0x20 << 8)
 #define PCIE_LINK_L1SS_CONTROL2		0x15C
@@ -294,88 +270,12 @@ struct exynos_pcie {
 #define LINK1_ENABLE			(0x1 << 15)
 #define LINK0_ENABLE			(0x1 << 14)
 #define PCS_LANE1_ENABLE		(0x1 << 13)
-#define PCS_LANE0_ENABLE		(0x1 << 12)
+#define PCS_LANE0_EANBLE		(0x1 << 12)
 
 #define PCIE_SYSREG_SHARABILITY_CTRL	0x700
 #define PCIE_SYSREG_SHARABLE_OFFSET	8
 #define PCIE_SYSREG_SHARABLE_ENABLE	0x3
 #define PCIE_SYSREG_SHARABLE_DISABLE	0x0
 
-/* Definitions for WIFI L1.2 */
-#define WIFI_L1SS_CAPID			0x240
-#define WIFI_L1SS_CAP			0x244
-#define WIFI_L1SS_CONTROL		0x248
-#define WIFI_L1SS_CONTROL2		0x24C
-#define WIFI_L1SS_LINKCTRL		0xBC
-#define WIFI_LINK_STATUS		0xBE
-#define WIFI_PM_MNG_STATUS_CON		0x4C
-
-/* LINK Control Register */
-#define WIFI_ASPM_CONTROL_MASK		(0x3 << 0)
-#define WIFI_ASPM_L1_ENTRY_EN		(0x2 << 0)
-#define WIFI_USE_SAME_REF_CLK		(0x1 << 6)
-#define WIFI_CLK_REQ_EN			(0x1 << 8)
-
-/* L1SSS Control Register */
-#define WIFI_ALL_PM_ENABEL		(0xf << 0)
-#define WIFI_PCIPM_L12_EN		(0x1 << 0)
-#define WIFI_PCIPM_L11_EN		(0x1 << 1)
-#define WIFI_ASPM_L12_EN		(0x1 << 2)
-#define WIFI_ASPM_L11_EN		(0x1 << 3)
-#define WIFI_COMMON_RESTORE_TIME	(0xa << 8) /* Default Value */
-
-/* ETC definitions */
-#define IGNORE_ELECIDLE			1
-#define ENABLE_ELECIDLE			0
-#define	PCIE_DISABLE_CLOCK		0
-#define	PCIE_ENABLE_CLOCK		1
-#define PCIE_IS_IDLE			1
-#define PCIE_IS_ACTIVE			0
-
-/* PCIe PHY definitions */
-#define PHY_PLL_STATE			0xBC
-#define CHK_PHY_PLL_LOCK		0x3
-
-
-/* For Set NCLK OFF to avoid system hang */
-#define EXYNOS_PCIE_MAX_NAME_LEN	10
-#define PCIE_L12ERR_CTRL		0x2F0
-#define NCLK_OFF_OFFSET			0x2
-
 void exynos_pcie_phy_init(struct pcie_port *pp);
-extern int sec_argos_register_notifier(struct notifier_block *n, char *label);
-extern int sec_argos_unregister_notifier(struct notifier_block *n, char *label);
-
-#ifdef CONFIG_EXYNOS_PCIE_IOMMU
-extern void pcie_sysmmu_enable(void);
-extern void pcie_sysmmu_disable(void);
-extern int pcie_iommu_map(unsigned long iova, phys_addr_t paddr,
-		size_t size, int prot);
-extern size_t pcie_iommu_unmap(unsigned long iova, size_t size);
-
-extern struct dma_map_ops exynos_pcie_dma_ops;
-#else
-static void __maybe_unused pcie_sysmmu_enable(void)
-{
-	pr_err("PCIe SysMMU is NOT Enabled!!!\n");
-}
-static void __maybe_unused pcie_sysmmu_disable(void)
-{
-	pr_err("PCIe SysMMU is NOT Enabled!!!\n");
-}
-static int __maybe_unused pcie_iommu_map(unsigned long iova, phys_addr_t paddr,
-				size_t size, int prot)
-{
-	pr_err("PCIe SysMMU is NOT Enabled!!!\n");
-
-	return -ENODEV;
-}
-static size_t __maybe_unused pcie_iommu_unmap(unsigned long iova, size_t size)
-{
-	pr_err("PCIe SysMMU is NOT Enabled!!!\n");
-
-	return -ENODEV;
-}
-#endif
-
 #endif

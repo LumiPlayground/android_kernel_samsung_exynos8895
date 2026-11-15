@@ -15,7 +15,6 @@
 
 menuconfig USB_GADGET
 	tristate "USB Gadget Support"
-	select USB_COMMON
 	select NLS
 	help
 	   USB is a master/slave protocol, organized with one master
@@ -114,7 +113,7 @@ config USB_GADGET_VBUS_DRAW
 
 config USB_GADGET_STORAGE_NUM_BUFFERS
 	int "Number of storage pipeline buffers"
-	range 2 256
+	range 2 32
 	default 2
 	help
 	   Usually 2 buffers are enough to establish a good buffering
@@ -127,12 +126,6 @@ config USB_GADGET_STORAGE_NUM_BUFFERS
 	   If selecting USB_GADGET_DEBUG_FILES this value may be set by
 	   a module parameter as well.
 	   If unsure, say 2.
-
-config U_SERIAL_CONSOLE
-	bool "Serial gadget console support"
-	depends on USB_G_SERIAL
-	help
-	   It supports the serial gadget can be used as a console.
 
 config USB_G_ANDROID
 	bool "Android Composite Gadget"
@@ -180,7 +173,7 @@ config USB_ANDROID_RNDIS_DWORD_ALIGNED
 	depends on USB_G_ANDROID
 	help
 		Provides dword aligned for DMA controller.
-
+		
 source "drivers/usb/gadget/udc/Kconfig"
 
 #
@@ -253,9 +246,6 @@ config USB_F_HID
 config USB_F_PRINTER
 	tristate
 
-config USB_F_TCM
-	tristate
-
 config USB_F_MTP
 	tristate
 
@@ -270,8 +260,6 @@ config USB_F_ACC
 
 config USB_F_CONN_GADGET
 	tristate
-
-# this first set of drivers all depend on bulk-capable hardware.
 
 choice
 	tristate "USB Gadget Drivers"
@@ -291,6 +279,8 @@ choice
 	  enough of the right types of endpoints, the gadget driver might
 	  not be able work with that controller, or might need to implement
 	  a less common variant of a device class protocol.
+
+# this first set of drivers all depend on bulk-capable hardware.
 
 config USB_CONFIGFS
 	tristate "USB functions configurable through configfs"
@@ -476,14 +466,7 @@ config USB_CONFIGFS_F_CONN_GADGET
         depends on USB_CONFIGFS
         select USB_F_CONN_GADGET
         help
-          SideSync
-
-config USB_F_CONN_GADGET_NDOP
-    bool "Conn gadget that do not support DexLive"
-    depends on USB_CONFIGFS_F_CONN_GADGET
-	depends on ANDROID_MAJOR_VERSION >= "q"
-    help
-		Next SideSync
+          SydeSync
 
 config USB_CONFIGFS_F_ACC
 	boolean "Accessory gadget"
@@ -513,8 +496,7 @@ config USB_RNDIS_MULTIPACKET
 	boolean "Samsung Rndis Multi Packet support"
 	depends on USB_CONFIGFS_UEVENT
 	help
-		Rndis Multipacket Support
-
+		Rndis Multipacket Support.
 
 config USB_CONFIGFS_F_UAC1
 	bool "Audio Class 1.0"
@@ -574,7 +556,6 @@ config USB_CONFIGFS_F_HID
 config USB_CONFIGFS_F_UVC
 	bool "USB Webcam function"
 	depends on USB_CONFIGFS
-	depends on VIDEO_V4L2
 	depends on VIDEO_DEV
 	select VIDEOBUF2_VMALLOC
 	select USB_F_UVC
@@ -597,19 +578,9 @@ config USB_CONFIGFS_F_PRINTER
 	  For more information, see Documentation/usb/gadget_printer.txt
 	  which includes sample code for accessing the device file.
 
-config USB_CONFIGFS_F_TCM
-	bool "USB Gadget Target Fabric"
-	depends on TARGET_CORE
-	depends on USB_CONFIGFS
-	select USB_LIBCOMPOSITE
-	select USB_F_TCM
-	help
-	  This fabric is a USB gadget component. Two USB protocols are
-	  supported that is BBB or BOT (Bulk Only Transport) and UAS
-	  (USB Attached SCSI). BOT is advertised on alternative
-	  interface 0 (primary) and UAS is on alternative interface 1.
-	  Both protocols can work on USB2.0 and USB3.0.
-	  UAS utilizes the USB 3.0 feature called streams support.
+
+
+
 
 source "drivers/usb/gadget/legacy/Kconfig"
 

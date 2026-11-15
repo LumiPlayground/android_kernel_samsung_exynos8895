@@ -3,7 +3,6 @@ config VIDEO_EXYNOS_FIMC_IS2
 	depends on VIDEO_EXYNOS
 	select MEDIA_EXYNOS
 	select EXYNOS_FIMC_IS
-	select VIDEOBUF2_ION
 	default n
 	help
 	  This is a v4l2 driver for exynos FIMC-IS device.

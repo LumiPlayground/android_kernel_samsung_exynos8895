@@ -42,7 +42,7 @@ static ssize_t irled_send_store(struct device *dev,
 	msg->cmd = MSG2SSP_AP_IRDATA_SEND;
 	msg->length = buf_len;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(buf_len, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(buf_len, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	memcpy(msg->buffer, buf, buf_len);

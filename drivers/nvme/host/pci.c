@@ -1148,6 +1148,82 @@ static int nvme_create_queue(struct nvme_queue *nvmeq, int qid)
 	return result;
 }
 
+static int nvme_wait_ready(struct nvme_dev *dev, u64 cap, bool enabled)
+{
+	unsigned long timeout;
+	u32 bit = enabled ? NVME_CSTS_RDY : 0;
+
+	timeout = ((NVME_CAP_TIMEOUT(cap) + 1) * HZ / 2) + jiffies;
+
+	while ((readl(&dev->bar->csts) & NVME_CSTS_RDY) != bit) {
+		msleep(100);
+		if (fatal_signal_pending(current))
+			return -EINTR;
+		if (time_after(jiffies, timeout)) {
+			dev_err(dev->dev,
+				"Device not ready; aborting %s\n", enabled ?
+						"initialisation" : "reset");
+			return -ENODEV;
+		}
+	}
+
+	return 0;
+}
+
+/*
+ * If the device has been passed off to us in an enabled state, just clear
+ * the enabled bit.  The spec says we should set the 'shutdown notification
+ * bits', but doing so may cause the device to complete commands to the
+ * admin queue ... and we don't know what memory that might be pointing at!
+ */
+static int nvme_disable_ctrl(struct nvme_dev *dev, u64 cap)
+{
+	struct pci_dev *pdev = to_pci_dev(dev->dev);
+
+	dev->ctrl_config &= ~NVME_CC_SHN_MASK;
+	dev->ctrl_config &= ~NVME_CC_ENABLE;
+	writel(dev->ctrl_config, &dev->bar->cc);
+
+	if (pdev->vendor == 0x1c58 && pdev->device == 0x0003)
+		msleep(NVME_QUIRK_DELAY_AMOUNT);
+
+	return nvme_wait_ready(dev, cap, false);
+}
+
+static int nvme_enable_ctrl(struct nvme_dev *dev, u64 cap)
+{
+	dev->ctrl_config &= ~NVME_CC_SHN_MASK;
+	dev->ctrl_config |= NVME_CC_ENABLE;
+	writel(dev->ctrl_config, &dev->bar->cc);
+
+	return nvme_wait_ready(dev, cap, true);
+}
+
+static int nvme_shutdown_ctrl(struct nvme_dev *dev)
+{
+	unsigned long timeout;
+
+	dev->ctrl_config &= ~NVME_CC_SHN_MASK;
+	dev->ctrl_config |= NVME_CC_SHN_NORMAL;
+
+	writel(dev->ctrl_config, &dev->bar->cc);
+
+	timeout = SHUTDOWN_TIMEOUT + jiffies;
+	while ((readl(&dev->bar->csts) & NVME_CSTS_SHST_MASK) !=
+							NVME_CSTS_SHST_CMPLT) {
+		msleep(100);
+		if (fatal_signal_pending(current))
+			return -EINTR;
+		if (time_after(jiffies, timeout)) {
+			dev_err(dev->dev,
+				"Device shutdown incomplete; abort shutdown\n");
+			return -ENODEV;
+		}
+	}
+
+	return 0;
+}
+
 static struct blk_mq_ops nvme_mq_admin_ops = {
 	.queue_rq	= nvme_queue_rq,
 	.complete	= nvme_complete_rq,
@@ -1599,7 +1675,7 @@ static int nvme_pci_enable(struct nvme_dev *dev)
 	    dma_set_mask_and_coherent(dev->dev, DMA_BIT_MASK(32)))
 		goto disable;
 
-	if (readl(dev->bar + NVME_REG_CSTS) == -1) {
+	if (readl(&dev->bar->csts) == -1) {
 		result = -ENODEV;
 		goto disable;
 	}
@@ -1655,6 +1731,7 @@ static int nvme_pci_enable(struct nvme_dev *dev)
 
  disable:
 	pci_disable_device(pdev);
+
 	return result;
 }
 
@@ -1672,8 +1749,7 @@ static void nvme_pci_disable(struct nvme_dev *dev)
 	nvme_release_cmb(dev);
 	pci_free_irq_vectors(pdev);
 
-	if (pci_is_enabled(pdev)) {
-		pci_disable_pcie_error_reporting(pdev);
+	if (pci_is_enabled(pdev))
 		pci_disable_device(pdev);
 	}
 }
@@ -1687,8 +1763,8 @@ static void nvme_dev_disable(struct nvme_dev *dev, bool shutdown)
 
 	mutex_lock(&dev->shutdown_lock);
 	if (pci_is_enabled(to_pci_dev(dev->dev))) {
-		nvme_stop_queues(&dev->ctrl);
-		csts = readl(dev->bar + NVME_REG_CSTS);
+		nvme_freeze_queues(dev);
+		csts = readl(&dev->bar->csts);
 	}
 
 	queues = dev->online_queues - 1;
@@ -1711,6 +1787,23 @@ static void nvme_dev_disable(struct nvme_dev *dev, bool shutdown)
 	blk_mq_tagset_busy_iter(&dev->tagset, nvme_cancel_request, &dev->ctrl);
 	blk_mq_tagset_busy_iter(&dev->admin_tagset, nvme_cancel_request, &dev->ctrl);
 	mutex_unlock(&dev->shutdown_lock);
+}
+
+static void nvme_dev_remove(struct nvme_dev *dev)
+{
+	struct nvme_ns *ns, *next;
+
+	if (nvme_io_incapable(dev)) {
+		/*
+		 * If the device is not capable of IO (surprise hot-removal,
+		 * for example), we need to quiesce prior to deleting the
+		 * namespaces. This will end outstanding requests and prevent
+		 * attempts to sync dirty data.
+		 */
+		nvme_dev_shutdown(dev);
+	}
+	list_for_each_entry_safe(ns, next, &dev->namespaces, list)
+		nvme_ns_remove(ns);
 }
 
 static int nvme_setup_prp_pools(struct nvme_dev *dev)
@@ -1909,6 +2002,27 @@ static int nvme_dev_map(struct nvme_dev *dev)
        return -ENODEV;
 }
 
+static int nvme_dev_map(struct nvme_dev *dev)
+{
+	int bars;
+	struct pci_dev *pdev = to_pci_dev(dev->dev);
+
+	bars = pci_select_bars(pdev, IORESOURCE_MEM);
+	if (!bars)
+		return -ENODEV;
+	if (pci_request_selected_regions(pdev, bars, "nvme"))
+		return -ENODEV;
+
+	dev->bar = ioremap(pci_resource_start(pdev, 0), 8192);
+	if (!dev->bar)
+		goto release;
+
+	return 0;
+release:
+	pci_release_regions(pdev);
+	return -ENODEV;
+}
+
 static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	int node, result = -ENOMEM;
@@ -1926,6 +2040,9 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (!dev->queues)
 		goto free;
 
+	INIT_LIST_HEAD(&dev->namespaces);
+	INIT_WORK(&dev->reset_work, nvme_reset_work);
+	mutex_init(&dev->shutdown_lock);
 	dev->dev = get_device(&pdev->dev);
 	pci_set_drvdata(pdev, dev);
 
@@ -2008,7 +2125,7 @@ static void nvme_remove(struct pci_dev *pdev)
 	nvme_free_queues(dev, 0);
 	nvme_release_prp_pools(dev);
 	nvme_dev_unmap(dev);
-	nvme_put_ctrl(&dev->ctrl);
+	kref_put(&dev->kref, nvme_free_dev);
 }
 
 static int nvme_pci_sriov_configure(struct pci_dev *pdev, int numvfs)

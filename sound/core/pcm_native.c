@@ -2637,10 +2637,8 @@ static int snd_pcm_hwsync(struct snd_pcm_substream *substream)
 			break;
 		/* Fall through */
 	case SNDRV_PCM_STATE_PREPARED:
-		err = 0;
-		break;
 	case SNDRV_PCM_STATE_SUSPENDED:
-		err = -ESTRPIPE;
+		err = 0;
 		break;
 	case SNDRV_PCM_STATE_XRUN:
 		err = -EPIPE;

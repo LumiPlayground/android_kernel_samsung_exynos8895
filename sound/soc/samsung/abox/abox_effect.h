@@ -1,6 +1,6 @@
 /* sound/soc/samsung/abox/abox_effect.h
  *
- * ALSA SoC Audio Layer - Samsung Abox Effect driver
+ * ALSA SoC - Samsung Abox driver
  *
  * Copyright (c) 2016 Samsung Electronics Co. Ltd.
  *
@@ -22,7 +22,6 @@ enum {
 	NXPBUNDLE, /* includes BB,EQ, virtualizer, volume */
 	NXPREVERB_CTX, /* Reverb context inforamtion */
 	NXPREVERB_PARAM, /* Reverb effect parameters */
-	SOUNDBOOSTER,
 };
 
 /* Effect offset */
@@ -142,21 +141,7 @@ enum {
 #define NXPRVB_CTX_VALUE_MIN	(0)
 #define NXPRVB_CTX_VALUE_MAX	(192000)
 
-#define SB_BASE			(0x900)
-#define SB_CHANGE_BIT		(0x900)
-#define SB_ROTATION		(0x910)
-#define SB_MAX_COUNT		(1)
-#define SB_VALUE_MIN		(0)
-#define SB_VALUE_MAX		(3)
-
-#define UPSCALER_BASE		(0xA00)
-#define UPSCALER_CHANGE_BIT	(0xA00)
-#define UPSCALER_ROTATION	(0xA10)
-#define UPSCALER_MAX_COUNT	(1)
-#define UPSCALER_VALUE_MIN	(0)
-#define UPSCALER_VALUE_MAX	(2)
-
-#define ABOX_EFFECT_MAX_REGISTERS	(0xB00)
+#define ABOX_EFFECT_MAX_REGISTERS	(0x900)
 
 #define PARAM_OFFSET		(0x10)
 #define CHANGE_BIT		(1)
@@ -167,10 +152,5 @@ struct abox_effect_data {
 	void __iomem *base;
 	struct regmap *regmap;
 };
-
-/**
- * Restore abox effect register map
- */
-extern void abox_effect_restore(void);
 
 #endif /* __SND_SOC_ABOX_EFFECT_H */

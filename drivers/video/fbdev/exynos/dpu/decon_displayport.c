@@ -19,7 +19,6 @@
 
 static void decon_displayport_underrun_info(void)
 {
-#if defined(CONFIG_EXYNOS8895_BTS)
 	struct decon_device *decon = get_decon_drvdata(2);
 
 	decon_info("decon%d: underrun MIF(%lu), INT(%lu), DISP(%lu), total bw(%u, %u)\n",
@@ -29,7 +28,6 @@ static void decon_displayport_underrun_info(void)
 			cal_dfs_cached_get_rate(ACPM_DVFS_DISP),
 			decon->bts.prev_total_bw,
 			decon->bts.total_bw);
-#endif
 }
 
 static irqreturn_t decon_displayport_irq_handler(int irq, void *dev_data)
@@ -47,8 +45,7 @@ static irqreturn_t decon_displayport_irq_handler(int irq, void *dev_data)
 
 	if (irq_sts_reg & DPU_UNDER_FLOW_INT_PEND) {
 		decon_dbg("decon%d underrun %s timeline:%d, max:%d\n",
-			decon->id, decon->timeline->name, decon->timeline->value,
-			decon->timeline_max);
+			decon->id, decon->timeline->obj.name, decon->timeline->value, decon->timeline_max);
 		decon_displayport_underrun_info();
 		DPU_EVENT_LOG(DPU_EVT_UNDERRUN, &decon->sd, ktime_set(0, 0));
 	}
@@ -62,16 +59,22 @@ static irqreturn_t decon_displayport_irq_handler(int irq, void *dev_data)
 			decon->vsync.timestamp = timestamp;
 			wake_up_interruptible_all(&decon->vsync.wait);
 		}
-		decon_dbg("decon%d vsync %s timeline:%d, max:%d\n", decon->id,
-				decon->timeline->name, decon->timeline->value,
-				decon->timeline_max);
+		decon_dbg("decon%d vsync %s timeline:%d, max:%d\n",
+			decon->id, decon->timeline->obj.name, decon->timeline->value, decon->timeline_max);
 	}
 
-	if (irq_sts_reg & DPU_FRAME_DONE_INT_PEND)
+	if (irq_sts_reg & DPU_FRAME_DONE_INT_PEND) {
+		decon->d.conti_recovery_cnt = 0;
 		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMEDONE, &decon->sd, ktime_set(0, 0));
+	}
 
-	if (ext_irq & DPU_TIME_OUT_INT_PEND)
+	if (ext_irq & DPU_TIME_OUT_INT_PEND) {
+		decon->frm_status |= DPU_FRM_DECON_TIMEOUT;
+		SAVE_DISP_ERR(decon, DISP_ERR_DECON_TIMEOUT);
+		decon->timeout_irq = true;
+		decon->frame_cnt++;
 		decon_err("%s: DECON%d timeout irq occurs\n", __func__, decon->id);
+	}
 
 	if (ext_irq & DPU_ERROR_INT_PEND)
 		decon_err("%s: DECON%d error irq occurs\n", __func__, decon->id);
@@ -177,7 +180,7 @@ int decon_displayport_get_clocks(struct decon_device *decon)
 		decon_err("failed to get aclk\n");
 		return PTR_ERR(decon->res.aclk);
 	}
-
+	
 	decon->res.busd = devm_clk_get(decon->dev, "busd");
 	if (IS_ERR_OR_NULL(decon->res.busd)) {
 		decon_err("failed to get decon_busd\n");
@@ -265,7 +268,6 @@ err:
 	return ret;
 }
 
-#if defined(CONFIG_EXYNOS_MIPI_DISPLAYPORT)
 static int decon_displayport_set_lcd_info(struct decon_device *decon)
 {
 	struct decon_lcd *lcd_info;
@@ -300,7 +302,6 @@ static int decon_displayport_set_lcd_info(struct decon_device *decon)
 
 	return 0;
 }
-#endif
 
 int decon_displayport_get_out_sd(struct decon_device *decon)
 {
@@ -311,9 +312,7 @@ int decon_displayport_get_out_sd(struct decon_device *decon)
 	}
 	decon->out_sd[1] = NULL;
 
-#if defined(CONFIG_EXYNOS_MIPI_DISPLAYPORT)
 	decon_displayport_set_lcd_info(decon);
-#endif
 
 	return 0;
 }

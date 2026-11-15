@@ -33,9 +33,6 @@ static bool is_acpm_stop_log = false;
 static bool acpm_stop_log_req = false;
 struct acpm_framework *acpm_initdata;
 void __iomem *acpm_srambase;
-struct regulator_ss_info regulator_ss[REGULATOR_SS_MAX];
-char reg_map[0x100] = {0};
-bool is_set_regmap = false;
 
 void acpm_ipc_set_waiting_mode(bool mode)
 {
@@ -69,59 +66,9 @@ void timestamp_write(void)
 		acpm_debug->timestamps[tmp_index] = sched_clock();
 
 		__raw_writel(tmp_index, acpm_debug->time_index);
-		exynos_acpm_timer_clear();
 
 		spin_unlock(&acpm_debug->lock);
 	}
-}
-
-struct regulator_ss_info *get_regulator_ss(int n)
-{
-	if (n < REGULATOR_SS_MAX)
-		return &regulator_ss[n];
-	else
-		return NULL;
-}
-
-void set_reg_map(void)
-{
-	u32 idx;
-	int i;
-
-	for (i = 0; i < REGULATOR_SS_MAX; i++) {
-		idx = regulator_ss[i].vsel_reg & 0xFF;
-		if (idx == 0)
-			continue;
-
-		is_set_regmap = true;
-
-		if (reg_map[idx] != 0)
-			pr_err("duplicated set_reg_map [%d] reg_map %x\n", i, reg_map[idx]);
-
-		reg_map[idx] = i;
-	}
-}
-
-unsigned int get_reg_id(unsigned int addr)
-{
-	int id;
-
-	if (addr >> 8 != 0x1)
-		return NO_SS_RANGE;
-
-	id = reg_map[addr & 0xff];
-	if (id != 0)
-		return id;
-
-	return NO_SS_RANGE;
-}
-
-unsigned int get_reg_voltage(struct regulator_ss_info reg_info, unsigned int selector)
-{
-	if (reg_info.name[0] == 'L')
-		selector = selector & 0x3F;
-
-	return reg_info.min_uV + (reg_info.uV_step * (selector - reg_info.linear_min_sel));
 }
 
 void acpm_log_print(void)
@@ -136,7 +83,6 @@ void acpm_log_print(void)
 	unsigned int log_header;
 	unsigned long long time;
 	unsigned int log_level;
-	unsigned int reg_id;
 
 	if (is_acpm_stop_log)
 		return ;
@@ -148,15 +94,14 @@ void acpm_log_print(void)
 		log_header = __raw_readl(acpm_debug->log_buff_base + acpm_debug->log_buff_size * rear);
 
 		/* log header information
-		 * id: [31:28]
-		 * log level : [27]
-		 * index: [26:22]
-		 * apm systick count: [15:0]
+		 * id: [31:29]
+		 * index: [28:23]
+		 * apm systick count: [22:0]
 		 */
-		id = (log_header & (0xF << LOG_ID_SHIFT)) >> LOG_ID_SHIFT;
+		id = (log_header & (0x7 << LOG_ID_SHIFT)) >> LOG_ID_SHIFT;
 		log_level = (log_header & (0x1 << LOG_LEVEL)) >> LOG_LEVEL;
 		index = (log_header & (0x1f << LOG_TIME_INDEX)) >> LOG_TIME_INDEX;
-		count = log_header & 0xffff;
+		count = log_header & 0x7fffff;
 
 		/* string length: log_buff_size - header(4) - integer_data(4) */
 		memcpy_align_4(str, acpm_debug->log_buff_base + (acpm_debug->log_buff_size * rear) + 4,
@@ -167,29 +112,9 @@ void acpm_log_print(void)
 
 		time = acpm_debug->timestamps[index];
 
-		/* peritimer period: (1 * 256) / 24.576MHz*/
-		time += count * APM_PERITIMER_NS_PERIOD;
+		/* systick period: 1 / 26MHz */
+		time += count * APM_SYSTICK_NS_PERIOD;
 
-		/* addr : [19:8], val : [7:0]*/
-		if (id == REGULATOR_INFO_ID) {
-			if (is_set_regmap == false)
-				set_reg_map();
-
-			if (is_set_regmap == false)
-				reg_id = NO_SET_REGMAP;
-			else
-				reg_id = get_reg_id(val >> 12);
-
-			if (reg_id == NO_SS_RANGE)
-				exynos_ss_regulator(time, "outSc", val >> 12, (val >> 4) & 0xFF, (val >> 4) & 0xFF, val & 0xF);
-			else if (reg_id == NO_SET_REGMAP)
-				exynos_ss_regulator(time, "noMap", val >> 12, (val >> 4) & 0xFF, (val >> 4) & 0xFF, val & 0xF);
-			else
-				exynos_ss_regulator(time, regulator_ss[reg_id].name, val >> 12,
-						get_reg_voltage(regulator_ss[reg_id], (val >> 4) & 0xFF),
-						(val >> 4) & 0xFF,
-						val & 0xF);
-		}
 		exynos_ss_acpm(time, str, val);
 
 		if (acpm_debug->debug_log_level == 1 || !log_level)
@@ -602,6 +527,8 @@ int acpm_ipc_send_data(unsigned int channel_id, struct ipc_config *cfg)
 	}
 
 	writel(tmp_index, channel->tx_ch.front);
+
+	timestamp_write();
 
 	apm_interrupt_gen(channel->id);
 	spin_unlock(&channel->tx_lock);

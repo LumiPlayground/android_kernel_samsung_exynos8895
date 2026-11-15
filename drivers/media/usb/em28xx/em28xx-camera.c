@@ -64,8 +64,6 @@ static int em28xx_initialize_mt9m111(struct em28xx *dev)
 		i2c_master_send(&dev->i2c_client[dev->def_i2c_bus],
 				&regs[i][0], 3);
 
-	/* FIXME: This won't be creating a sensor at the media graph */
-
 	return 0;
 }
 
@@ -92,8 +90,6 @@ static int em28xx_initialize_mt9m001(struct em28xx *dev)
 	for (i = 0; i < ARRAY_SIZE(regs); i++)
 		i2c_master_send(&dev->i2c_client[dev->def_i2c_bus],
 				&regs[i][0], 3);
-
-	/* FIXME: This won't be creating a sensor at the media graph */
 
 	return 0;
 }

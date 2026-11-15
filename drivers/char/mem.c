@@ -29,10 +29,6 @@
 #include <linux/io.h>
 #include <linux/uio.h>
 
-#ifdef CONFIG_KNOX_KAP
-#include <linux/knox_kap.h>
-#endif
-
 #ifdef CONFIG_MST_LDO
 #include <linux/mst_ctrl.h>
 #endif
@@ -702,17 +698,6 @@ static unsigned long get_unmapped_area_zero(struct file *file,
 				unsigned long pgoff, unsigned long flags)
 {
 #ifdef CONFIG_MMU
-	if (flags & MAP_SHARED) {
-		/*
-		 * mmap_zero() will call shmem_zero_setup() to create a file,
-		 * so use shmem's get_unmapped_area in case it can be huge;
-		 * and pass NULL for file as in mmap.c's get_unmapped_area(),
-		 * so as not to confuse shmem with our handle on "/dev/zero".
-		 */
-		return shmem_get_unmapped_area(NULL, addr, len, pgoff, flags);
-	}
-
-	/* Otherwise flags & MAP_PRIVATE: with no shmem object beneath it */
 	return current->mm->get_unmapped_area(file, addr, len, pgoff, flags);
 #else
 	return -ENOSYS;
@@ -861,11 +846,8 @@ static const struct memdev {
 #ifdef CONFIG_PRINTK
 	[11] = { "kmsg", 0644, &kmsg_fops, 0 },
 #endif
-#ifdef CONFIG_KNOX_KAP
-	[13] = { "knox_kap", 0664, &knox_kap_fops, 0 },
-#endif
 #ifdef CONFIG_MST_LDO
-     [14] = { "mst_ctrl", 0666, &mst_ctrl_fops, 0 },
+	[14] = { "mst_ctrl", 0666, &mst_ctrl_fops, 0 },
 #endif
 };
 

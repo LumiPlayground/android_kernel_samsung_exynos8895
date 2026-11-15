@@ -21,11 +21,10 @@
 #ifdef CONFIG_PM_SLEEP
 #include <linux/wakelock.h>
 #endif
-#include <linux/time.h>
 
 /* in case that threaded irq is not supported */
-#undef ENABLE_IPCQ_WORK_QUEUE
-
+//#define ENABLE_IPCQ_WORK_QUEUE
+/* TO DO: move to private */
 struct mcu_print_info {
 	struct device		*dev;
 	unsigned long		delay_jiffies;
@@ -43,7 +42,6 @@ struct mcu_binary {
 	uint32_t	flag;
 #define IVA_CTRL_BOOT_FILE_LEN	(256)
 	char		file[IVA_CTRL_BOOT_FILE_LEN];
-	struct timespec last_mtime;
 	uint32_t	file_size;
 	uint32_t	bin_size;
 	void		*bin;
@@ -75,7 +73,7 @@ struct iva_ipcq {
 	struct ipc_cmd_queue	*cmd_q;
 	struct ipc_res_queue	*res_q;
 	struct mutex		ipcq_mutex;
-	uint32_t		ipcq_next_slot;
+	uint32_t 		ipcq_next_slot;
 	uint32_t		req_id;
 	bool			ipcq_ctrl_req;
 	spinlock_t		ipcq_slock;
@@ -93,9 +91,11 @@ struct iva_ipcq {
 	struct iva_ipcq_stat	ipcq_stat;
 };
 
-#define IVA_ST_INIT_DONE		(0)
-#define IVA_ST_MCU_BOOT_DONE		(1)
-#define IVA_ST_PM_QOS_IVA		(4)
+
+#define IVA_ST_OPENED		(0x1)
+#define IVA_ST_INIT_DONE	(0x2)
+#define IVA_ST_MCU_BOOT_DONE	(0x3)
+#define IVA_ST_PM_QOS_CAM	(0x4)
 
 /* per process information */
 struct iva_proc {
@@ -104,25 +104,22 @@ struct iva_proc {
 	pid_t			pid;
 	pid_t			tid;
 	struct iva_dev_data	*iva_data;
-	struct kref		init_ref;
-	struct kref		boot_ref;
-	uint32_t		mem_map_nr;
-	struct mutex		mem_map_lock;
+	unsigned long		state;
+	struct mutex		proc_mem_lock;  /* memory lock per process */
 	DECLARE_HASHTABLE(h_mem_map, 9);	/* 512 */
 };
 
 struct iva_dev_data {
 #define IVA_CTL_ALLOC_LOCALLY_F	(0x1)
 	uint32_t		flags;
-	struct kref		glob_init_ref;
-	struct kref		glob_boot_ref;
 	unsigned long		state;
 	struct miscdevice	misc;
 	struct device		*dev;
-	struct clk		*iva_clk;
-	struct pm_qos_request	iva_qos_iva;
-	s32			iva_qos_rate;
-	struct platform_device	*iva_dvfs_dev;
+	struct clk *		iva_clk;
+#ifdef CONFIG_SOC_EXYNOS8895
+	struct pm_qos_request	iva_qos_cam;
+	struct pm_qos_request	iva_qos_mif;
+#endif
 	struct resource		*iva_res;
 	void __iomem		*iva_va;
 
@@ -139,10 +136,13 @@ struct iva_dev_data {
 	bool			en_hwa_req;
 
 	/* memory related */
-	struct ion_client	*ion_client;
+	struct mutex 		mem_map_lock;
+	uint32_t		map_nr;
+	struct list_head	mem_map_list;	/* global mem list*/
+	struct ion_client 	*ion_client;
 	struct kmem_cache	*map_node_cache;
 #ifndef CONFIG_ION_EXYNOS
-	struct ion_device	*ion_dev;
+	struct ion_device 	*ion_dev;
 #endif
 	/* mcu */
 	struct mcu_binary	*mcu_bin;
@@ -150,9 +150,7 @@ struct iva_dev_data {
 	uint32_t		mcu_shmem_size;	/* start from top */
 	uint32_t		mcu_print_delay;
 	struct mcu_print_info	*mcu_print;
-
-	/* error handling */
-	atomic_t		mcu_err_cnt;	/* error count during a session */
+	struct work_struct	mcu_rd_work;
 #define IVA_MBOX_IRQ_NOT_DEFINED	(-ENXIO)/* means polling mode */
 	int		mbox_irq_nr;
 
@@ -165,8 +163,5 @@ struct iva_dev_data {
 
 	struct iva_ipcq	mcu_ipcq;
 };
-
-extern bool iva_ctrl_is_iva_on(struct iva_dev_data *iva);
-extern bool iva_ctrl_is_boot(struct iva_dev_data *iva);
 
 #endif /* _IVA_CTRL_H_ */

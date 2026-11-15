@@ -187,8 +187,7 @@ static int tcf_mirred(struct sk_buff *skb, const struct tc_action *a,
 		 * that's the whole point of doing the ingress
 		 * redirect/mirror in the first place?  (Note: This
 		 * can lead to bad things if two devices ingress
-		 * redirect at each other. Don't do that.)
-		 */
+		 * redirect at each other. Don't do that.)*/
 		skb2->dev = dev;
 		skb2->skb_iif = skb2->dev->ifindex;
 		skb2->pkt_type = PACKET_HOST;
@@ -197,7 +196,7 @@ static int tcf_mirred(struct sk_buff *skb, const struct tc_action *a,
 		at = G_TC_AT(skb->tc_verd);
 		if (!(at & AT_EGRESS)) {
 			if (m->tcfm_ok_push)
-				skb_push_rcsum(skb2, skb->mac_len);
+				skb_push(skb2, skb->mac_len);
 		}
 
 		/* mirror is always swallowed */
@@ -206,8 +205,10 @@ static int tcf_mirred(struct sk_buff *skb, const struct tc_action *a,
 
 		skb2->skb_iif = skb->dev->ifindex;
 		skb2->dev = dev;
+		skb_sender_cpu_clear(skb2);
 		err = dev_queue_xmit(skb2);
 	}
+
 	if (err) {
 out:
 		qstats_overlimit_inc(this_cpu_ptr(m->common.cpu_qstats));

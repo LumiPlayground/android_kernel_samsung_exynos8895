@@ -67,6 +67,14 @@ void lcd_init(int id, struct decon_lcd *lcd)
 				ARRAY_SIZE(SEQ_TE_START_SETTING)) < 0)
 		dsim_err("fail to write TE_START_SETTING command.\n");
 
+	if (dsim_wr_data(id, MIPI_DSI_DCS_LONG_WRITE, (unsigned long)SEQ_GLOBAL_B0,
+				ARRAY_SIZE(SEQ_GLOBAL_B0)) < 0)
+		dsim_err("fail to write GLOBAL B0 init command.\n");
+
+	if (dsim_wr_data(id, MIPI_DSI_DCS_LONG_WRITE, (unsigned long)SEQ_PPS_GLO,
+				ARRAY_SIZE(SEQ_PPS_GLO)) < 0)
+		dsim_err("fail to write PPS SLICE4 GLO init command.\n");
+
 	if (dsim_wr_data(id, MIPI_DSI_DCS_LONG_WRITE, (unsigned long)SEQ_TEST_KEY_OFF_F0,
 				ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0)) < 0)
 		dsim_err("fail to write KEY_OFF init command.\n");

@@ -182,11 +182,6 @@ static void of_mst_hw_onoff(bool on)
 				value.intval);
 #endif
 		gpio_set_value(mst_pwr_en, 1);
-		usleep_range(3600, 4000);
-		gpio_set_value(mst_pwr_en, 0);
-		mdelay(50);
-
-		gpio_set_value(mst_pwr_en, 1);
 		printk("%s : mst_pwr_en gets the HIGH\n", __func__);
 
 #if defined(CONFIG_MST_LPM_CONTROL)

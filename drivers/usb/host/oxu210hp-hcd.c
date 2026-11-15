@@ -981,7 +981,7 @@ static int qh_schedule(struct oxu_hcd *oxu, struct ehci_qh *qh);
 static unsigned qh_completions(struct oxu_hcd *oxu, struct ehci_qh *qh)
 {
 	struct ehci_qtd *last = NULL, *end = qh->dummy;
-	struct ehci_qtd	*qtd, *tmp;
+	struct list_head *entry, *tmp;
 	int stopped;
 	unsigned count = 0;
 	int do_status = 0;
@@ -1006,10 +1006,12 @@ static unsigned qh_completions(struct oxu_hcd *oxu, struct ehci_qh *qh)
 	 * then let the queue advance.
 	 * if queue is stopped, handles unlinks.
 	 */
-	list_for_each_entry_safe(qtd, tmp, &qh->qtd_list, qtd_list) {
+	list_for_each_safe(entry, tmp, &qh->qtd_list) {
+		struct ehci_qtd	*qtd;
 		struct urb *urb;
 		u32 token = 0;
 
+		qtd = list_entry(entry, struct ehci_qtd, qtd_list);
 		urb = qtd->urb;
 
 		/* Clean up any state from previous QTD ...*/
@@ -1172,11 +1174,14 @@ halt:
  * used for cleanup after errors, before HC sees an URB's TDs.
  */
 static void qtd_list_free(struct oxu_hcd *oxu,
-				struct urb *urb, struct list_head *head)
+				struct urb *urb, struct list_head *qtd_list)
 {
-	struct ehci_qtd	*qtd, *temp;
+	struct list_head *entry, *temp;
 
-	list_for_each_entry_safe(qtd, temp, head, qtd_list) {
+	list_for_each_safe(entry, temp, qtd_list) {
+		struct ehci_qtd	*qtd;
+
+		qtd = list_entry(entry, struct ehci_qtd, qtd_list);
 		list_del(&qtd->qtd_list);
 		oxu_qtd_free(oxu, qtd);
 	}

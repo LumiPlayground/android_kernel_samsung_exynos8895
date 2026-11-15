@@ -19,6 +19,7 @@
 /*
  * from ufs-exynos.h
  */
+#define UFS_VER_0003	3
 #define UFS_VER_0004	4
 #define UFS_VER_0005	5
 

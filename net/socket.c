@@ -2071,7 +2071,6 @@ int __sys_sendmmsg(int fd, struct mmsghdr __user *mmsg, unsigned int vlen,
 		++datagrams;
 		if (msg_data_left(&msg_sys))
 			break;
-		cond_resched();
 	}
 
 	fput_light(sock->file, fput_needed);

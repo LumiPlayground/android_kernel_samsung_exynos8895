@@ -18,10 +18,9 @@ obj-$(CONFIG_OIS_USE_RUMBA_SA) += fimc-is-device-ois_sa.o
 
 obj-$(CONFIG_USE_DIRECT_IS_CONTROL) += preprocessor/
 
-ccflags-y := -Idrivers/media/platform/exynos/fimc-is2
-ccflags-y += -Idrivers/media/platform/exynos/fimc-is2/include
-ccflags-y += -Idrivers/media/platform/exynos/fimc-is2/sensor/module_framework
-ccflags-y += -Idrivers/media/platform/exynos/fimc-is2/sensor/module_framework/iris
+EXTRA_CFLAGS += -Idrivers/media/platform/exynos/fimc-is2
+EXTRA_CFLAGS += -Idrivers/media/platform/exynos/fimc-is2/include
+EXTRA_CFLAGS += -Idrivers/media/platform/exynos/fimc-is2/sensor/module_framework
 
 ifeq ($(CONFIG_COMPANION_DIRECT_USE),y)
 EXTRA_CFLAGS += -Idrivers/media/platform/exynos/fimc-is2/vendor/mcd/preprocessor

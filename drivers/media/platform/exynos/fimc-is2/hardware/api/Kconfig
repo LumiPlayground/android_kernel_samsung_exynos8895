@@ -32,17 +32,3 @@ config MC_SCALER_V3_0
         default n
         help
           use mc-scaler v3.0
-
-config MC_SCALER_V3_20
-        bool "Use MC-SCALER H/W v3.20"
-	depends on CAMERA_MC_SCALER_VER2_USE
-        default n
-        help
-          use mc-scaler v3.20
-
-config MC_SCALER_V4_0
-        bool "Use MC-SCALER H/W v4.0"
-	depends on CAMERA_MC_SCALER_VER2_USE
-        default n
-        help
-          use mc-scaler v4.0

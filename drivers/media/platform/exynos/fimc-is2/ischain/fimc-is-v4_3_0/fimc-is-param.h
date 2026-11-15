@@ -24,9 +24,6 @@
 #define LOWBIT_OF_NUM(num)		(num >= 32 ? 0 : 1<<num)
 #define HIGHBIT_OF_NUM(num)		(num >= 32 ? 1<<(num-32) : 0)
 
-#define PA_FIMC_IS_GIC_C		(0x143D2000)
-#define PA_FIMC_IS_GIC_D		(0x143D1000)
-
 enum is_param {
 	PARAM_GLOBAL_SHOTMODE = 0,
 	PARAM_SENSOR_CONTROL,

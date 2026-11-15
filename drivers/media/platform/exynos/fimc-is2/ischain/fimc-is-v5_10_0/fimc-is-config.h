@@ -20,8 +20,6 @@
  * CONFIG -PLATFORM CONFIG
  * =================================================================================================
  */
-/* This count is defined by count of fimc_is_sensor in the dtsi file */
-#define FIMC_IS_HW_SENSOR_COUNT 2
 
 #define SOC_30S
 #define SOC_30C
@@ -83,9 +81,5 @@
 #else
 #define FIMC_IS_HW_IRQ_FLAG     0
 #endif
-
-#define ENABLE_HOTPLUG_REQUEST
-
-#define CHAIN_USE_VC_TASKLET	1
 
 #endif

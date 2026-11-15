@@ -59,19 +59,3 @@ config CAMERA_ACT_AK7372_OBJ
         default n
         help
           Use to build AK7372 driver.
-
-config CAMERA_ACT_AK737X_OBJ
-        bool "Use actuator AK737X"
-	depends on USE_DIRECT_IS_CONTROL
-	depends on CAMERA_ACT_SELECT
-        default n
-        help
-          Use to build AK737X driver.
-
-config CAMERA_ACT_ZC533_OBJ
-        bool "Use actuator ZC533"
-	depends on USE_DIRECT_IS_CONTROL
-	depends on CAMERA_ACT_SELECT
-        default n
-        help
-          Use to build ZC533 driver.

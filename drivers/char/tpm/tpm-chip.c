@@ -57,6 +57,9 @@ int tpm_try_get_ops(struct tpm_chip *chip)
 	if (!chip->ops)
 		goto out_lock;
 
+	if (!try_module_get(chip->dev.parent->driver->owner))
+		goto out_lock;
+
 	return 0;
 out_lock:
 	up_read(&chip->ops_sem);
@@ -74,6 +77,7 @@ EXPORT_SYMBOL_GPL(tpm_try_get_ops);
  */
 void tpm_put_ops(struct tpm_chip *chip)
 {
+	module_put(chip->dev.parent->driver->owner);
 	up_read(&chip->ops_sem);
 	put_device(&chip->dev);
 }
@@ -201,7 +205,9 @@ struct tpm_chip *tpm_chip_alloc(struct device *pdev,
 	}
 	chip->dev_num = rc;
 
-	device_initialize(&chip->dev);
+	scnprintf(chip->devname, sizeof(chip->devname), "tpm%d", chip->dev_num);
+
+	dev_set_drvdata(dev, chip);
 
 	chip->dev.class = tpm_class;
 	chip->dev.class->shutdown = tpm_class_shutdown;
@@ -222,7 +228,7 @@ struct tpm_chip *tpm_chip_alloc(struct device *pdev,
 		chip->flags |= TPM_CHIP_FLAG_VIRTUAL;
 
 	cdev_init(&chip->cdev, &tpm_fops);
-	chip->cdev.owner = THIS_MODULE;
+	chip->cdev.owner = dev->driver->owner;
 	chip->cdev.kobj.parent = &chip->dev.kobj;
 
 	return chip;
@@ -419,17 +425,18 @@ int tpm_chip_register(struct tpm_chip *chip)
 	tpm_add_ppi(chip);
 
 	rc = tpm_add_char_device(chip);
-	if (rc) {
-		tpm1_chip_unregister(chip);
-		return rc;
-	}
+	if (rc)
+		goto out_err;
 
 	chip->flags |= TPM_CHIP_FLAG_REGISTERED;
 
-	rc = tpm_add_legacy_sysfs(chip);
-	if (rc) {
-		tpm_chip_unregister(chip);
-		return rc;
+	if (!(chip->flags & TPM_CHIP_FLAG_TPM2)) {
+		rc = __compat_only_sysfs_link_entry_to_kobj(
+		    &chip->dev.parent->kobj, &chip->dev.kobj, "ppi");
+		if (rc && rc != -ENOENT) {
+			tpm_chip_unregister(chip);
+			return rc;
+		}
 	}
 
 	return 0;
@@ -454,7 +461,8 @@ void tpm_chip_unregister(struct tpm_chip *chip)
 	if (!(chip->flags & TPM_CHIP_FLAG_REGISTERED))
 		return;
 
-	tpm_del_legacy_sysfs(chip);
+	if (!(chip->flags & TPM_CHIP_FLAG_TPM2))
+		sysfs_remove_link(&chip->dev.parent->kobj, "ppi");
 
 	tpm1_chip_unregister(chip);
 	tpm_del_char_device(chip);

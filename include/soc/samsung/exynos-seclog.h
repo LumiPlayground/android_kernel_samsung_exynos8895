@@ -35,7 +35,7 @@
 #define LDFW_MAX_NUM				(7)
 
 /* Message buffer information */
-#define MIN_LOG_BUF_LEN				(0x10000)	/* 64KB */
+#define MIN_LOG_BUF_LEN				(0x2000)	/* 8KB */
 
 /* Alignment with 4 bytes */
 #define FOUR_BYTES_SHIFT			(2)
@@ -51,7 +51,7 @@
 			addr &= ~FOUR_BYTES_MASK;		\
 			addr += (1 << FOUR_BYTES_SHIFT);	\
 		}						\
-	} while (0)
+	} while (0);
 
 #ifndef __ASSEMBLY__
 /* Reserved memory data */

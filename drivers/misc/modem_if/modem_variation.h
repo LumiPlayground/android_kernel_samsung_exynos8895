@@ -80,4 +80,5 @@ static struct link_device *call_link_init_func(struct platform_device *pdev,
 }
 
 int init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata);
+
 #endif

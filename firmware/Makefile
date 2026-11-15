@@ -104,16 +104,14 @@ fw-shipped-$(CONFIG_USB_EMI62) += emi62/loader.fw emi62/bitstream.fw \
 fw-shipped-$(CONFIG_USB_KAWETH) += kaweth/new_code.bin kaweth/trigger_code.bin \
 				   kaweth/new_code_fix.bin \
 				   kaweth/trigger_code_fix.bin
-
-ifdef CONFIG_WIRELESS_FIRMWARE_65
-fw-shipped-$(CONFIG_WIRELESS_FIRMWARE_UPDATE) += mfc/mfc_fw65_flash.bin
-else
 fw-shipped-$(CONFIG_WIRELESS_FIRMWARE_UPDATE) += mfc/mfc_fw_flash.bin
-endif
 
-fw-shipped-$(CONFIG_EXYNOS8895_ACPM) += exynos8895_acpm_dvfs.fw
-fw-shipped-$(CONFIG_EXYNOS9810_ACPM) += exynos9810_acpm_tmu.fw
 ifdef CONFIG_FIRMWARE_IN_KERNEL
+ifdef CONFIG_SOC_EMULATOR8895
+fw-shipped-$(CONFIG_EXYNOS8895_ACPM) += emulator8895_acpm_dvfs.fw
+else
+fw-shipped-$(CONFIG_EXYNOS8895_ACPM) += exynos8895_acpm_dvfs.fw
+endif
 fw-shipped-$(CONFIG_USB_SERIAL_KEYSPAN_MPR) += keyspan/mpr.fw
 fw-shipped-$(CONFIG_USB_SERIAL_KEYSPAN_USA18X) += keyspan/usa18x.fw
 fw-shipped-$(CONFIG_USB_SERIAL_KEYSPAN_USA19) += keyspan/usa19.fw
@@ -145,18 +143,22 @@ fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 
-fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS) += tsp_sec/y761_star1.fw tsp_sec/y761_star2.fw
+# Touchkey Firmware
+fw-shipped-$(CONFIG_KEYBOARD_TC300K) += coreriver/tc350k_gts28.fw
 
-fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS_Y771) += tsp_sec/y771_crown.fw tsp_sec/y771_crown_v2.fw tsp_sec/y771_crown_v1.fw
-fw-shipped-$(CONFIG_TOUCHSCREEN_FTS7_HAECHI) += tsp_stm/fts7bd50_haechi.fw
-fw-shipped-$(CONFIG_EPEN_WACOM_W9018) += epen/w9018_crown.fw
+# Touchscreen Firmware
+fw-shipped-$(CONFIG_TOUCHSCREEN_FTS) += tsp_stm/fts8cd56_dream2.fw tsp_stm/fts8cd56_dream2_old.fw tsp_stm/fts9cd56_dream1.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_FTS7_VALLEY) += tsp_stm/fts7bd50_vlte.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS) += tsp_sec/y761_dream1_nosync.fw tsp_sec/y761_dream1.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS_Y661) += tsp_sec/y661_great.fw
 
+fw-shipped-$(CONFIG_EPEN_WACOM_W9018) += epen/w9018_great.fw \
+					 epen/w9018_great_1coil.fw
 ifdef CONFIG_SEC_FACTORY
-fw-shipped-$(CONFIG_EPEN_WACOM_W9018) += epen/w9018_crown_garage.fw epen/w9018_crown_unit.fw
+fw-shipped-$(CONFIG_EPEN_WACOM_W9018) += epen/w9018_great_fac.fw
 endif
 
-
-fw-shipped-$(CONFIG_FIVE_TEE_DRIVER) += five/ffffffff000000000000000000000072.tlbin
+fw-shipped-$(CONFIG_KEYBOARD_ABOV_TOUCH_A96TA316) += abov/a96ta316aun_vlte.fw
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 

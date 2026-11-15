@@ -18,9 +18,9 @@
 #define FRAME_DELTA_DEFAULT		1
 #define CBR_FIX_MAX			10
 #define CBR_I_LIMIT_MAX			5
-#define BPG_EXTENSION_TAG_SIZE		5
 
-void s5p_mfc_set_slice_mode(struct s5p_mfc_ctx *ctx)
+extern int nal_q_parallel_enable;
+int s5p_mfc_set_slice_mode(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
@@ -46,6 +46,8 @@ void s5p_mfc_set_slice_mode(struct s5p_mfc_ctx *ctx)
 		MFC_WRITEL(0x0, S5P_FIMV_E_MSLICE_SIZE_MB);
 		MFC_WRITEL(0x0, S5P_FIMV_E_MSLICE_SIZE_BITS);
 	}
+
+	return 0;
 }
 
 static void mfc_set_gop_size(struct s5p_mfc_ctx *ctx, int ctrl_mode)
@@ -79,7 +81,6 @@ static void mfc_set_gop_size(struct s5p_mfc_ctx *ctx, int ctrl_mode)
 	reg &= ~(0x1 << 19);
 	reg |= p->i_frm_ctrl_mode << 19;
 	reg &= ~(0x3 << 16);
-	/* if B frame is used, the performance falls by half */
 	reg |= (p->num_b_frame << 16);
 	MFC_WRITEL(reg, S5P_FIMV_E_GOP_CONFIG);
 
@@ -97,8 +98,8 @@ static void mfc_set_default_params(struct s5p_mfc_ctx *ctx)
 	/* Common Registers */
 	MFC_WRITEL(0x0, S5P_FIMV_E_ENC_OPTIONS);
 	MFC_WRITEL(0x0, S5P_FIMV_E_FIXED_PICTURE_QP);
-	MFC_WRITEL(0x100, S5P_FIMV_E_MV_HOR_RANGE);
-	MFC_WRITEL(0x100, S5P_FIMV_E_MV_VER_RANGE);
+	MFC_WRITEL(0x80, S5P_FIMV_E_MV_HOR_RANGE);
+	MFC_WRITEL(0x80, S5P_FIMV_E_MV_VER_RANGE);
 	MFC_WRITEL(0x0, S5P_FIMV_E_IR_SIZE);
 	MFC_WRITEL(0x0, S5P_FIMV_E_AIR_THRESHOLD);
 	MFC_WRITEL(0x1E, S5P_FIMV_E_GOP_CONFIG); /* I frame period: 30 */
@@ -112,7 +113,7 @@ static void mfc_set_default_params(struct s5p_mfc_ctx *ctx)
 	MFC_WRITEL(0x4000, S5P_FIMV_E_RC_CONFIG);
 	MFC_WRITEL(0x0, S5P_FIMV_E_RC_QP_BOUND);
 	MFC_WRITEL(0x0, S5P_FIMV_E_RC_QP_BOUND_PB);
-	MFC_WRITEL(0x12, S5P_FIMV_E_RC_MODE);
+	MFC_WRITEL(0x2, S5P_FIMV_E_RC_MODE);
 	MFC_WRITEL(0x1E0001, S5P_FIMV_E_RC_FRAME_RATE); /* framerate: 30 fps */
 	MFC_WRITEL(0xF4240, S5P_FIMV_E_RC_BIT_RATE); /* bitrate: 1000000 */
 	MFC_WRITEL(0x3FD00, S5P_FIMV_E_RC_ROI_CTRL);
@@ -121,21 +122,13 @@ static void mfc_set_default_params(struct s5p_mfc_ctx *ctx)
 	MFC_WRITEL(0x0, S5P_FIMV_E_BIT_COUNT_ENABLE);
 	MFC_WRITEL(0x2710, S5P_FIMV_E_MAX_BIT_COUNT); /* max bit count: 10000 */
 	MFC_WRITEL(0x3E8, S5P_FIMV_E_MIN_BIT_COUNT); /* min bit count: 1000 */
-	/*
-	 * If the high quality mode is used, the performance falls by half
-	 * If the high quality mode is used, NAL-Q is not supported
-	 */
-	MFC_WRITEL(0x0, S5P_FIMV_E_HIGH_QUALITY_MODE);
-	MFC_WRITEL(0x0, S5P_FIMV_E_WEIGHT_FOR_WEIGHTED_PREDICTION);
 
 	/* HEVC */
-	MFC_WRITEL(0x8050F215, S5P_FIMV_E_HEVC_OPTIONS);
+	MFC_WRITEL(0x50F215, S5P_FIMV_E_HEVC_OPTIONS);
 	MFC_WRITEL(0x0, S5P_FIMV_E_HEVC_REFRESH_PERIOD);
 	MFC_WRITEL(0x0, S5P_FIMV_E_HEVC_CHROMA_QP_OFFSET);
 	MFC_WRITEL(0x0, S5P_FIMV_E_HEVC_LF_BETA_OFFSET_DIV2);
 	MFC_WRITEL(0x0, S5P_FIMV_E_HEVC_LF_TC_OFFSET_DIV2);
-	MFC_WRITEL(0x0, S5P_FIMV_E_SAO_WEIGHT0);
-	MFC_WRITEL(0x0, S5P_FIMV_E_SAO_WEIGHT1);
 
 	/* H.264 */
 	MFC_WRITEL(0x3011, S5P_FIMV_E_H264_OPTIONS);
@@ -151,13 +144,7 @@ static void mfc_set_default_params(struct s5p_mfc_ctx *ctx)
 
 	/* VP9 */
 	MFC_WRITEL(0x2D, S5P_FIMV_E_VP9_OPTION);
-	MFC_WRITEL(0xA00, S5P_FIMV_E_VP9_FILTER_OPTION);
 	MFC_WRITEL(0x3C, S5P_FIMV_E_VP9_GOLDEN_FRAME_OPTION);
-
-	/* BPG */
-	MFC_WRITEL(0x961, S5P_FIMV_E_BPG_OPTIONS);
-	MFC_WRITEL(0x6FA00, S5P_FIMV_E_BPG_EXT_CTB_QP_CTRL);
-	MFC_WRITEL(0x0, S5P_FIMV_E_BPG_CHROMA_QP_OFFSET);
 
 	/* MVC */
 	MFC_WRITEL(0x1D, S5P_FIMV_E_MVC_FRAME_QP_VIEW1); /* QP: 29 */
@@ -173,14 +160,16 @@ static void mfc_set_default_params(struct s5p_mfc_ctx *ctx)
 	MFC_WRITEL(0x0, S5P_FIMV_E_PICTURE_TAG);
 	MFC_WRITEL(0x0, S5P_FIMV_E_METADATA_BUFFER_ADDR);
 	MFC_WRITEL(0x0, S5P_FIMV_E_METADATA_BUFFER_SIZE);
+
+	return;
 }
 
-static void mfc_set_enc_params(struct s5p_mfc_ctx *ctx)
+static int mfc_set_enc_params(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
 	struct s5p_mfc_enc_params *p = &enc->params;
-	unsigned int reg = 0;
+	unsigned int reg = 0, pix_val;
 
 	mfc_debug_enter();
 
@@ -190,6 +179,7 @@ static void mfc_set_enc_params(struct s5p_mfc_ctx *ctx)
 	MFC_WRITEL(ctx->img_width, S5P_FIMV_E_FRAME_WIDTH); /* 16 align */
 	/* height */
 	MFC_WRITEL(ctx->img_height, S5P_FIMV_E_FRAME_HEIGHT); /* 16 align */
+
 	/** cropped width */
 	MFC_WRITEL(ctx->img_width, S5P_FIMV_E_CROPPED_FRAME_WIDTH);
 	/** cropped height */
@@ -224,24 +214,55 @@ static void mfc_set_enc_params(struct s5p_mfc_ctx *ctx)
 	/* seq header ctrl */
 	reg |= ((p->seq_hdr_mode & S5P_FIMV_E_ENC_OPT_SEQ_HEADER_CONTROL_MASK)
 			<< S5P_FIMV_E_ENC_OPT_SEQ_HEADER_CONTROL_SHIFT);
-	/* enable seq header generation */
-	reg &= ~(0x1 << S5P_FIMV_E_ENC_OPT_DISABLE_SEQ_HEADER_SHIFT);
-	/* disable seq header generation */
-	if (ctx->otf_handle) {
-		reg |= (0x1 << S5P_FIMV_E_ENC_OPT_DISABLE_SEQ_HEADER_SHIFT);
-		mfc_debug(2, "OTF: SEQ_HEADER_GENERATION is disabled\n");
-	}
 	/* cyclic intra refresh */
 	if (p->intra_refresh_mb)
 		reg |= (0x1 << S5P_FIMV_E_ENC_OPT_IR_MODE_SHIFT);
 	/* 'NON_REFERENCE_STORE_ENABLE' for debugging */
 	reg &= ~(0x1 << S5P_FIMV_E_ENC_OPT_NON_REFERENCE_EN_SHIFT);
-	/* Disable parallel processing if nal_q_parallel_disable was set */
-	if (nal_q_parallel_disable)
-		reg |= 0x1 << S5P_FIMV_E_ENC_OPT_PARALLEL_DISABLE_SHIFT;
+	/* Disable parallel processing in FW when using NAL-Q
+	   It has to be enabled 11.x */
+	if (!nal_q_parallel_enable)
+		reg |= 0x1 << S5P_FIMV_E_ENC_OPT_PARALLEL_DIS_SHIFT;
 	MFC_WRITEL(reg, S5P_FIMV_E_ENC_OPTIONS);
 
-	s5p_mfc_set_pixel_format(dev, ctx->src_fmt->fourcc);
+	switch (ctx->src_fmt->fourcc) {
+	case V4L2_PIX_FMT_NV12M:
+	case V4L2_PIX_FMT_NV12N:
+	case V4L2_PIX_FMT_NV12MT_16X16:
+	case V4L2_PIX_FMT_NV16M:
+		pix_val = 0;
+		break;
+	case V4L2_PIX_FMT_NV21M:
+	case V4L2_PIX_FMT_NV61M:
+		pix_val = 1;
+		break;
+	case V4L2_PIX_FMT_YVU420M:
+		pix_val = 2;
+		break;
+	case V4L2_PIX_FMT_YUV420M:
+	case V4L2_PIX_FMT_YUV420N:
+		pix_val = 3;
+		break;
+	case V4L2_PIX_FMT_ARGB32:
+		pix_val = 8;
+		break;
+	case V4L2_PIX_FMT_RGB24:
+		pix_val = 9;
+		break;
+	case V4L2_PIX_FMT_RGB565:
+		pix_val = 10;
+		break;
+	case V4L2_PIX_FMT_RGB32X:
+		pix_val = 12;
+		break;
+	case V4L2_PIX_FMT_BGR32:
+		pix_val = 13;
+		break;
+	default:
+		pix_val = 0;
+		break;
+	}
+	MFC_WRITEL(pix_val, S5P_FIMV_PIXEL_FORMAT);
 
 	/* padding control & value */
 	MFC_WRITEL(0x0, S5P_FIMV_E_PADDING_CTRL);
@@ -316,122 +337,18 @@ static void mfc_set_enc_params(struct s5p_mfc_ctx *ctx)
 	}
 
 	mfc_debug_leave();
+
+	return 0;
 }
 
-static void mfc_set_temporal_svc_h264(struct s5p_mfc_ctx *ctx, struct s5p_mfc_h264_enc_params *p_264)
-{
-	struct s5p_mfc_dev *dev = ctx->dev;
-	struct s5p_mfc_enc *enc = ctx->enc_priv;
-	struct s5p_mfc_enc_params *p = &enc->params;
-	unsigned int reg = 0, reg2 = 0;
-	int i;
-
-	reg = MFC_READL(S5P_FIMV_E_H264_OPTIONS_2);
-	/* pic_order_cnt_type = 0 for backward compatibilities */
-	reg &= ~(0x3);
-	/* Enable LTR */
-	reg &= ~(0x1 << 2);
-	if ((p_264->enable_ltr & 0x1) || (p_264->num_of_ltr > 0))
-		reg |= (0x1 << 2);
-	/* Number of LTR */
-	reg &= ~(0x3 << 7);
-	if (p_264->num_of_ltr > 2)
-		reg |= (((p_264->num_of_ltr - 2) & 0x3) << 7);
-	MFC_WRITEL(reg, S5P_FIMV_E_H264_OPTIONS_2);
-
-	/* Temporal SVC - qp type, layer number */
-	reg = MFC_READL(S5P_FIMV_E_NUM_T_LAYER);
-	reg &= ~(0x1 << 3);
-	reg |= (p_264->hier_qp_type & 0x1) << 3;
-	reg &= ~(0x7);
-	reg |= p_264->num_hier_layer & 0x7;
-	reg &= ~(0x7 << 4);
-	if (p_264->hier_ref_type) {
-		reg |= 0x1 << 7;
-		reg |= (p->num_hier_max_layer & 0x7) << 4;
-	} else {
-		reg |= 0x7 << 4;
-	}
-	MFC_WRITEL(reg, S5P_FIMV_E_NUM_T_LAYER);
-	mfc_debug(3, "Temporal SVC: hier_qp_enable %d, enable_ltr %d, "
-		"num_hier_layer %d, max_layer %d, hier_ref_type %d, NUM_T_LAYER 0x%x\n",
-		p_264->hier_qp_enable, p_264->enable_ltr, p_264->num_hier_layer,
-		p->num_hier_max_layer, p_264->hier_ref_type, reg);
-	/* QP & Bitrate for each layer */
-	for (i = 0; i < 7; i++) {
-		MFC_WRITEL(p_264->hier_qp_layer[i],
-				S5P_FIMV_E_HIERARCHICAL_QP_LAYER0 + i * 4);
-		MFC_WRITEL(p_264->hier_bit_layer[i],
-				S5P_FIMV_E_HIERARCHICAL_BIT_RATE_LAYER0 + i * 4);
-		mfc_debug(3, "Temporal SVC: layer[%d] QP: %#x, bitrate: %d\n",
-					i, p_264->hier_qp_layer[i],
-					p_264->hier_bit_layer[i]);
-	}
-	if (p_264->set_priority) {
-		reg = 0;
-		reg2 = 0;
-		for (i = 0; i < (p_264->num_hier_layer & 0x7); i++) {
-			if (i <= 4)
-				reg |= ((p_264->base_priority & 0x3F) + i) << (6 * i);
-			else
-				reg2 |= ((p_264->base_priority & 0x3F) + i) << (6 * (i - 5));
-		}
-		MFC_WRITEL(reg, S5P_FIMV_E_H264_HD_SVC_EXTENSION_0);
-		MFC_WRITEL(reg2, S5P_FIMV_E_H264_HD_SVC_EXTENSION_1);
-		mfc_debug(3, "Temporal SVC: priority EXTENSION0: %#x, EXTENSION1: %#x\n",
-							reg, reg2);
-	}
-}
-
-static void mfc_set_fmo_slice_map_h264(struct s5p_mfc_ctx *ctx, struct s5p_mfc_h264_enc_params *p_264)
-{
-	struct s5p_mfc_dev *dev = ctx->dev;
-	int i;
-
-	if (p_264->fmo_enable) {
-		switch (p_264->fmo_slice_map_type) {
-		case V4L2_MPEG_VIDEO_H264_FMO_MAP_TYPE_INTERLEAVED_SLICES:
-			if (p_264->fmo_slice_num_grp > 4)
-				p_264->fmo_slice_num_grp = 4;
-			for (i = 0; i < (p_264->fmo_slice_num_grp & 0xF); i++)
-				MFC_WRITEL(p_264->fmo_run_length[i] - 1,
-				S5P_FIMV_E_H264_FMO_RUN_LENGTH_MINUS1_0 + i*4);
-			break;
-		case V4L2_MPEG_VIDEO_H264_FMO_MAP_TYPE_SCATTERED_SLICES:
-			if (p_264->fmo_slice_num_grp > 4)
-				p_264->fmo_slice_num_grp = 4;
-			break;
-		case V4L2_MPEG_VIDEO_H264_FMO_MAP_TYPE_RASTER_SCAN:
-		case V4L2_MPEG_VIDEO_H264_FMO_MAP_TYPE_WIPE_SCAN:
-			if (p_264->fmo_slice_num_grp > 2)
-				p_264->fmo_slice_num_grp = 2;
-			MFC_WRITEL(p_264->fmo_sg_dir & 0x1,
-				S5P_FIMV_E_H264_FMO_SLICE_GRP_CHANGE_DIR);
-			/* the valid range is 0 ~ number of macroblocks -1 */
-			MFC_WRITEL(p_264->fmo_sg_rate, S5P_FIMV_E_H264_FMO_SLICE_GRP_CHANGE_RATE_MINUS1);
-			break;
-		default:
-			mfc_err_ctx("Unsupported map type for FMO: %d\n",
-					p_264->fmo_slice_map_type);
-			p_264->fmo_slice_map_type = 0;
-			p_264->fmo_slice_num_grp = 1;
-			break;
-		}
-
-		MFC_WRITEL(p_264->fmo_slice_map_type, S5P_FIMV_E_H264_FMO_SLICE_GRP_MAP_TYPE);
-		MFC_WRITEL(p_264->fmo_slice_num_grp - 1, S5P_FIMV_E_H264_FMO_NUM_SLICE_GRP_MINUS1);
-	} else {
-		MFC_WRITEL(0, S5P_FIMV_E_H264_FMO_NUM_SLICE_GRP_MINUS1);
-	}
-}
-
-void s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx)
+int s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
 	struct s5p_mfc_enc_params *p = &enc->params;
 	struct s5p_mfc_h264_enc_params *p_264 = &p->codec.h264;
-	unsigned int reg = 0;
+	unsigned int reg = 0, reg2 = 0;
+	int i;
 
 	mfc_debug_enter();
 
@@ -486,15 +403,12 @@ void s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx)
 	/* ASO enable */
 	reg &= ~(0x1 << 6);
 	reg |= ((p_264->aso_enable & 0x1) << 6);
-	/* if num_refs_for_p is 2, the performance falls by half */
+	/* number of ref. picture */
 	reg &= ~(0x1 << 7);
-	reg |= (((p->num_refs_for_p - 1) & 0x1) << 7);
+	reg |= (((p_264->num_ref_pic_4p - 1) & 0x1) << 7);
 	/* Temporal SVC - hier qp enable */
 	reg &= ~(0x1 << 8);
 	reg |= ((p_264->hier_qp_enable & 0x1) << 8);
-	/* Weighted Prediction enable */
-	reg &= ~(0x3 << 9);
-	reg |= ((p->weighted_enable & 0x1) << 9);
 	/* 8x8 transform enable */
 	reg &= ~(0x1 << 12);
 	reg &= ~(0x1 << 13);
@@ -510,11 +424,6 @@ void s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx)
 	/* sps pps control */
 	reg &= ~(0x1 << 29);
 	reg |= ((p_264->prepend_sps_pps_to_idr & 0x1) << 29);
-	/* enable sps pps control in OTF scenario */
-	if (ctx->otf_handle) {
-		reg |= (0x1 << 29);
-		mfc_debug(2, "OTF: SPS_PPS_CONTROL enabled\n");
-	}
 	/* VUI parameter disable */
 	reg &= ~(0x1 << 30);
 	reg |= ((p_264->vui_enable & 0x1) << 30);
@@ -622,8 +531,61 @@ void s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx)
 		MFC_WRITEL(reg, S5P_FIMV_E_H264_REFRESH_PERIOD);
 	}
 
-	/* Temporal SVC */
-	mfc_set_temporal_svc_h264(ctx, p_264);
+	reg = MFC_READL(S5P_FIMV_E_H264_OPTIONS_2);
+	/* pic_order_cnt_type = 0 for backward compatibilities */
+	reg &= ~(0x3);
+	/* Enable LTR */
+	reg &= ~(0x1 << 2);
+	if ((p_264->enable_ltr & 0x1) || (p_264->num_of_ltr > 0))
+		reg |= (0x1 << 2);
+	/* Number of LTR */
+	reg &= ~(0x3 << 7);
+	if (p_264->num_of_ltr > 2)
+		reg |= (((p_264->num_of_ltr - 2) & 0x3) << 7);
+	MFC_WRITEL(reg, S5P_FIMV_E_H264_OPTIONS_2);
+
+	/* Temporal SVC - qp type, layer number */
+	reg = MFC_READL(S5P_FIMV_E_NUM_T_LAYER);
+	reg &= ~(0x1 << 3);
+	reg |= (p_264->hier_qp_type & 0x1) << 3;
+	reg &= ~(0x7);
+	reg |= p_264->num_hier_layer & 0x7;
+	reg &= ~(0x7 << 4);
+	if (p_264->hier_ref_type) {
+		reg |= 0x1 << 7;
+		reg |= (p->num_hier_max_layer & 0x7) << 4;
+	} else {
+		reg |= 0x7 << 4;
+	}
+	MFC_WRITEL(reg, S5P_FIMV_E_NUM_T_LAYER);
+	mfc_debug(3, "Temporal SVC: hier_qp_enable %d, enable_ltr %d, "
+		"num_hier_layer %d, max_layer %d, hier_ref_type %d, NUM_T_LAYER 0x%x\n",
+		p_264->hier_qp_enable, p_264->enable_ltr, p_264->num_hier_layer,
+		p->num_hier_max_layer, p_264->hier_ref_type, reg);
+	/* QP & Bitrate for each layer */
+	for (i = 0; i < 7; i++) {
+		MFC_WRITEL(p_264->hier_qp_layer[i],
+				S5P_FIMV_E_HIERARCHICAL_QP_LAYER0 + i * 4);
+		MFC_WRITEL(p_264->hier_bit_layer[i],
+				S5P_FIMV_E_HIERARCHICAL_BIT_RATE_LAYER0 + i * 4);
+		mfc_debug(3, "Temporal SVC: layer[%d] QP: %#x, bitrate: %d\n",
+					i, p_264->hier_qp_layer[i],
+					p_264->hier_bit_layer[i]);
+	}
+	if (p_264->set_priority) {
+		reg = 0;
+		reg2 = 0;
+		for (i = 0; i < (p_264->num_hier_layer & 0x7); i++) {
+			if (i <= 4)
+				reg |= ((p_264->base_priority & 0x3F) + i) << (6 * i);
+			else
+				reg2 |= ((p_264->base_priority & 0x3F) + i) << (6 * (i - 5));
+		}
+		MFC_WRITEL(reg, S5P_FIMV_E_H264_HD_SVC_EXTENSION_0);
+		MFC_WRITEL(reg2, S5P_FIMV_E_H264_HD_SVC_EXTENSION_1);
+		mfc_debug(3, "Temporal SVC: priority EXTENSION0: %#x, EXTENSION1: %#x\n",
+							reg, reg2);
+	}
 
 	/* set frame pack sei generation */
 	if (p_264->sei_gen_enable) {
@@ -641,43 +603,48 @@ void s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx)
 		MFC_WRITEL(reg, S5P_FIMV_E_H264_FRAME_PACKING_SEI_INFO);
 	}
 
-	if (FW_HAS_ENC_COLOR_ASPECT(dev) && p->check_color_range) {
-		reg = MFC_READL(S5P_FIMV_E_VIDEO_SIGNAL_TYPE);
-		/* VIDEO_SIGNAL_TYPE_FLAG */
-		reg |= 0x1 << 31;
-		/* COLOR_RANGE */
-		reg &= ~(0x1 << 25);
-		reg |= p->color_range << 25;
-		if ((p->colour_primaries != 0) && (p->transfer_characteristics != 0) &&
-				(p->matrix_coefficients != 3)) {
-			/* COLOUR_DESCRIPTION_PRESENT_FLAG */
-			reg |= 0x1 << 24;
-			/* COLOUR_PRIMARIES */
-			reg &= ~(0xFF << 16);
-			reg |= p->colour_primaries << 16;
-			/* TRANSFER_CHARACTERISTICS */
-			reg &= ~(0xFF << 8);
-			reg |= p->transfer_characteristics << 8;
-			/* MATRIX_COEFFICIENTS */
-			reg &= ~(0xFF);
-			reg |= p->matrix_coefficients;
-		} else {
-			reg &= ~(0x1 << 24);
+	if (p_264->fmo_enable) {
+		switch (p_264->fmo_slice_map_type) {
+		case V4L2_MPEG_VIDEO_H264_FMO_MAP_TYPE_INTERLEAVED_SLICES:
+			if (p_264->fmo_slice_num_grp > 4)
+				p_264->fmo_slice_num_grp = 4;
+			for (i = 0; i < (p_264->fmo_slice_num_grp & 0xF); i++)
+				MFC_WRITEL(p_264->fmo_run_length[i] - 1,
+				S5P_FIMV_E_H264_FMO_RUN_LENGTH_MINUS1_0 + i*4);
+			break;
+		case V4L2_MPEG_VIDEO_H264_FMO_MAP_TYPE_SCATTERED_SLICES:
+			if (p_264->fmo_slice_num_grp > 4)
+				p_264->fmo_slice_num_grp = 4;
+			break;
+		case V4L2_MPEG_VIDEO_H264_FMO_MAP_TYPE_RASTER_SCAN:
+		case V4L2_MPEG_VIDEO_H264_FMO_MAP_TYPE_WIPE_SCAN:
+			if (p_264->fmo_slice_num_grp > 2)
+				p_264->fmo_slice_num_grp = 2;
+			MFC_WRITEL(p_264->fmo_sg_dir & 0x1,
+				S5P_FIMV_E_H264_FMO_SLICE_GRP_CHANGE_DIR);
+			/* the valid range is 0 ~ number of macroblocks -1 */
+			MFC_WRITEL(p_264->fmo_sg_rate, S5P_FIMV_E_H264_FMO_SLICE_GRP_CHANGE_RATE_MINUS1);
+			break;
+		default:
+			mfc_err_ctx("Unsupported map type for FMO: %d\n",
+					p_264->fmo_slice_map_type);
+			p_264->fmo_slice_map_type = 0;
+			p_264->fmo_slice_num_grp = 1;
+			break;
 		}
-		MFC_WRITEL(reg, S5P_FIMV_E_VIDEO_SIGNAL_TYPE);
-		mfc_debug(2, "[HDR] H264 ENC Color aspect: range(%s), pri(%d), trans(%d), mat(%d)\n",
-				p->color_range ? "Full" : "Limited", p->colour_primaries,
-				p->transfer_characteristics, p->matrix_coefficients);
+
+		MFC_WRITEL(p_264->fmo_slice_map_type, S5P_FIMV_E_H264_FMO_SLICE_GRP_MAP_TYPE);
+		MFC_WRITEL(p_264->fmo_slice_num_grp - 1, S5P_FIMV_E_H264_FMO_NUM_SLICE_GRP_MINUS1);
 	} else {
-		MFC_WRITEL(0, S5P_FIMV_E_VIDEO_SIGNAL_TYPE);
+		MFC_WRITEL(0, S5P_FIMV_E_H264_FMO_NUM_SLICE_GRP_MINUS1);
 	}
 
-	mfc_set_fmo_slice_map_h264(ctx, p_264);
-
 	mfc_debug_leave();
+
+	return 0;
 }
 
-void s5p_mfc_set_enc_params_mpeg4(struct s5p_mfc_ctx *ctx)
+int s5p_mfc_set_enc_params_mpeg4(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
@@ -768,9 +735,11 @@ void s5p_mfc_set_enc_params_mpeg4(struct s5p_mfc_ctx *ctx)
 	MFC_WRITEL(0x0, S5P_FIMV_E_MPEG4_HEC_PERIOD); /* SEQ_start only */
 
 	mfc_debug_leave();
+
+	return 0;
 }
 
-void s5p_mfc_set_enc_params_h263(struct s5p_mfc_ctx *ctx)
+int s5p_mfc_set_enc_params_h263(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
@@ -785,7 +754,11 @@ void s5p_mfc_set_enc_params_h263(struct s5p_mfc_ctx *ctx)
 	/* set gop_size with I_FRM_CTRL mode */
 	mfc_set_gop_size(ctx, 1);
 
-	/* profile & level: supports only baseline profile Level 70 */
+	/* profile & level */
+	reg = 0;
+	/** profile */
+	reg |= (0x1 << 4);
+	MFC_WRITEL(reg, S5P_FIMV_E_PICTURE_PROFILE);
 
 	/* qp */
 	reg = MFC_READL(S5P_FIMV_E_FIXED_PICTURE_QP);
@@ -837,9 +810,11 @@ void s5p_mfc_set_enc_params_h263(struct s5p_mfc_ctx *ctx)
 	MFC_WRITEL(reg, S5P_FIMV_E_RC_QP_BOUND_PB);
 
 	mfc_debug_leave();
+
+	return 0;
 }
 
-void s5p_mfc_set_enc_params_vp8(struct s5p_mfc_ctx *ctx)
+int s5p_mfc_set_enc_params_vp8(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
@@ -866,16 +841,8 @@ void s5p_mfc_set_enc_params_vp8(struct s5p_mfc_ctx *ctx)
 	MFC_WRITEL(reg, S5P_FIMV_E_PICTURE_PROFILE);
 
 	reg = MFC_READL(S5P_FIMV_E_VP8_OPTION);
-	/* if num_refs_for_p is 2, the performance falls by half */
 	reg &= ~(0x1);
-	reg |= (p->num_refs_for_p - 1) & 0x1;
-	/* vp8 partition is possible as below value: 1/2/4/8 */
-	if (p_vp8->vp8_numberofpartitions & 0x1) {
-		if (p_vp8->vp8_numberofpartitions > 1)
-			mfc_err_ctx("partition should be even num (%d)\n",
-					p_vp8->vp8_numberofpartitions);
-		p_vp8->vp8_numberofpartitions = (p_vp8->vp8_numberofpartitions & ~0x1);
-	}
+	reg |= (p_vp8->num_refs_for_p - 1) & 0x1;
 	reg &= ~(0xF << 3);
 	reg |= (p_vp8->vp8_numberofpartitions & 0xF) << 3;
 	reg &= ~(0x1 << 10);
@@ -919,7 +886,7 @@ void s5p_mfc_set_enc_params_vp8(struct s5p_mfc_ctx *ctx)
 	reg = 0;
 	reg |= (p_vp8->vp8_filtersharpness & 0x7);
 	reg |= (p_vp8->vp8_filterlevel & 0x3f) << 8;
-	MFC_WRITEL(reg, S5P_FIMV_E_VP8_FILTER_OPTION);
+	MFC_WRITEL(reg , S5P_FIMV_E_VP8_FILTER_OPTIONS);
 
 	/* qp */
 	reg = MFC_READL(S5P_FIMV_E_FIXED_PICTURE_QP);
@@ -970,9 +937,11 @@ void s5p_mfc_set_enc_params_vp8(struct s5p_mfc_ctx *ctx)
 	MFC_WRITEL(reg, S5P_FIMV_E_RC_QP_BOUND_PB);
 
 	mfc_debug_leave();
+
+	return 0;
 }
 
-void s5p_mfc_set_enc_params_vp9(struct s5p_mfc_ctx *ctx)
+int s5p_mfc_set_enc_params_vp9(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
@@ -996,20 +965,11 @@ void s5p_mfc_set_enc_params_vp9(struct s5p_mfc_ctx *ctx)
 	/* profile*/
 	reg = 0;
 	reg |= (p_vp9->vp9_version) ;
-	/* bit depth minus8 */
-	if (ctx->is_10bit) {
-		reg &= ~(0x3F << 17);
-		reg |= (0x2 << 17);
-		reg |= (0x2 << 20);
-		/* fixed profile */
-		reg |= 0x2;
-	}
 	MFC_WRITEL(reg, S5P_FIMV_E_PICTURE_PROFILE);
 
 	reg = MFC_READL(S5P_FIMV_E_VP9_OPTION);
-	/* if num_refs_for_p is 2, the performance falls by half */
 	reg &= ~(0x1);
-	reg |= (p->num_refs_for_p - 1) & 0x1;
+	reg |= (p_vp9->num_refs_for_p - 1) & 0x1;
 	reg &= ~(0x1 << 1);
 	reg |= (p_vp9->intra_pu_split_disable & 0x1) << 1;
 	reg &= ~(0x1 << 3);
@@ -1098,27 +1058,12 @@ void s5p_mfc_set_enc_params_vp9(struct s5p_mfc_ctx *ctx)
 	reg |= p_vp9->rc_min_qp_p & 0xFF;
 	MFC_WRITEL(reg, S5P_FIMV_E_RC_QP_BOUND_PB);
 
-	if (FW_HAS_ENC_COLOR_ASPECT(dev) && p->check_color_range) {
-		reg = MFC_READL(S5P_FIMV_E_VIDEO_SIGNAL_TYPE);
-		/* VIDEO_SIGNAL_TYPE_FLAG */
-		reg |= 0x1 << 31;
-		/* COLOR_SPACE: VP9 uses colour_primaries interface for color space */
-		reg &= ~(0x1F << 26);
-		reg |= p->colour_primaries << 26;
-		/* COLOR_RANGE */
-		reg &= ~(0x1 << 25);
-		reg |= p->color_range << 25;
-		MFC_WRITEL(reg, S5P_FIMV_E_VIDEO_SIGNAL_TYPE);
-		mfc_debug(2, "[HDR] VP9 ENC Color aspect: range(%s), space(%d)\n",
-				p->color_range ? "Full" : "Limited", p->colour_primaries);
-	} else {
-		MFC_WRITEL(0, S5P_FIMV_E_VIDEO_SIGNAL_TYPE);
-	}
-
 	mfc_debug_leave();
+
+	return 0;
 }
 
-void s5p_mfc_set_enc_params_hevc(struct s5p_mfc_ctx *ctx)
+int s5p_mfc_set_enc_params_hevc(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
@@ -1150,31 +1095,21 @@ void s5p_mfc_set_enc_params_hevc(struct s5p_mfc_ctx *ctx)
 	reg = 0;
 	/* profile */
 	reg |= p_hevc->profile & 0x3;
+	if ((p_hevc->profile & 0x3) == S5P_FIMV_E_PROFILE_HEVC_422_10_INTRA)
+		ctx->is_422_10_intra = 1;
 	/* level */
 	reg &= ~(0xFF << 8);
 	reg |= (p_hevc->level << 8);
 	/* tier_flag - 0 ~ 1 */
 	reg |= (p_hevc->tier_flag << 16);
-	/* bit depth minus8 */
-	if (ctx->is_10bit) {
-		reg &= ~(0x3F << 17);
-		reg |= (0x2 << 17);
-		reg |= (0x2 << 20);
-		/* fixed profile */
-		if (ctx->is_422format)
-			reg |= 0x2;
-		else
-			reg |= 0x3;
-	}
 	MFC_WRITEL(reg, S5P_FIMV_E_PICTURE_PROFILE);
 
 	/* max partition depth */
 	reg = MFC_READL(S5P_FIMV_E_HEVC_OPTIONS);
 	reg &= ~(0x3);
 	reg |= (p_hevc->max_partition_depth & 0x1);
-	/* if num_refs_for_p is 2, the performance falls by half */
 	reg &= ~(0x1 << 2);
-	reg |= (p->num_refs_for_p - 1) << 2;
+	reg |= (p_hevc->num_refs_for_p - 1) << 2;
 	reg &= ~(0x3 << 3);
 	reg |= (p_hevc->refreshtype & 0x3) << 3;
 	reg &= ~(0x1 << 5);
@@ -1203,20 +1138,10 @@ void s5p_mfc_set_enc_params_hevc(struct s5p_mfc_ctx *ctx)
 	reg |= (p_hevc->tmv_prediction_disable & 0x1) << 17;
 	reg &= ~(0x7 << 18);
 	reg |= (p_hevc->max_num_merge_mv & 0x7) << 18;
-	reg &= ~(0x1 << 23);
-	reg |= (p_hevc->encoding_nostartcode_enable & 0x1) << 23;
+	reg &= ~(0x1 << 22);
+	reg |= (p_hevc->encoding_nostartcode_enable & 0x1) << 22;
 	reg &= ~(0x1 << 26);
 	reg |= (p_hevc->prepend_sps_pps_to_idr & 0x1) << 26;
-	/* enable sps pps control in OTF scenario */
-	if (ctx->otf_handle) {
-		reg |= (0x1 << 26);
-		mfc_debug(2, "OTF: SPS_PPS_CONTROL enabled\n");
-	}
-	/* Weighted Prediction enable */
-	reg &= ~(0x1 << 28);
-	reg |= ((p->weighted_enable & 0x1) << 28);
-	/* 30bit is 32x32 transform. If it is enabled, the performance falls by half */
-	reg &= ~(0x1 << 30);
 	MFC_WRITEL(reg, S5P_FIMV_E_HEVC_OPTIONS);
 	/* refresh period */
 	reg = MFC_READL(S5P_FIMV_E_HEVC_REFRESH_PERIOD);
@@ -1329,103 +1254,7 @@ void s5p_mfc_set_enc_params_hevc(struct s5p_mfc_ctx *ctx)
 	MFC_WRITEL(reg, S5P_FIMV_E_RC_ROI_CTRL);
 	mfc_debug(3, "ROI: HEVC ROI enable\n");
 
-	if (FW_HAS_ENC_COLOR_ASPECT(dev) && p->check_color_range) {
-		reg = MFC_READL(S5P_FIMV_E_VIDEO_SIGNAL_TYPE);
-		/* VIDEO_SIGNAL_TYPE_FLAG */
-		reg |= 0x1 << 31;
-		/* COLOR_RANGE */
-		reg &= ~(0x1 << 25);
-		reg |= p->color_range << 25;
-		if ((p->colour_primaries != 0) && (p->transfer_characteristics != 0) &&
-				(p->matrix_coefficients != 3)) {
-			/* COLOUR_DESCRIPTION_PRESENT_FLAG */
-			reg |= 0x1 << 24;
-			/* COLOUR_PRIMARIES */
-			reg &= ~(0xFF << 16);
-			reg |= p->colour_primaries << 16;
-			/* TRANSFER_CHARACTERISTICS */
-			reg &= ~(0xFF << 8);
-			reg |= p->transfer_characteristics << 8;
-			/* MATRIX_COEFFICIENTS */
-			reg &= ~(0xFF);
-			reg |= p->matrix_coefficients;
-		} else {
-			reg &= ~(0x1 << 24);
-		}
-		MFC_WRITEL(reg, S5P_FIMV_E_VIDEO_SIGNAL_TYPE);
-		mfc_debug(2, "[HDR] HEVC ENC Color aspect: range(%s), pri(%d), trans(%d), mat(%d)\n",
-				p->color_range ? "Full" : "Limited", p->colour_primaries,
-				p->transfer_characteristics, p->matrix_coefficients);
-	} else {
-		MFC_WRITEL(0, S5P_FIMV_E_VIDEO_SIGNAL_TYPE);
-	}
-
-	if (FW_HAS_ENC_STATIC_INFO(dev) && p->static_info_enable && ctx->is_10bit) {
-		reg = MFC_READL(S5P_FIMV_E_HEVC_OPTIONS_2);
-		/* HDR_STATIC_INFO_ENABLE */
-		reg |= p->static_info_enable;
-		MFC_WRITEL(reg, S5P_FIMV_E_HEVC_OPTIONS_2);
-		/* MAX_PIC_AVERAGE_LIGHT & MAX_CONTENT_LIGHT */
-		reg = p->max_pic_average_light;
-		reg |= (p->max_content_light << 16);
-		MFC_WRITEL(reg, S5P_FIMV_E_CONTENT_LIGHT_LEVEL_INFO_SEI);
-		/* MAX_DISPLAY_LUMINANCE */
-		MFC_WRITEL(p->max_display_luminance, S5P_FIMV_E_MASTERING_DISPLAY_COLOUR_VOLUME_SEI_0);
-		/* MIN DISPLAY LUMINANCE */
-		MFC_WRITEL(p->min_display_luminance, S5P_FIMV_E_MASTERING_DISPLAY_COLOUR_VOLUME_SEI_1);
-		/* WHITE_POINT */
-		MFC_WRITEL(p->white_point, S5P_FIMV_E_MASTERING_DISPLAY_COLOUR_VOLUME_SEI_2);
-		/* DISPLAY PRIMARIES_0 */
-		MFC_WRITEL(p->display_primaries_0, S5P_FIMV_E_MASTERING_DISPLAY_COLOUR_VOLUME_SEI_3);
-		/* DISPLAY PRIMARIES_1 */
-		MFC_WRITEL(p->display_primaries_1, S5P_FIMV_E_MASTERING_DISPLAY_COLOUR_VOLUME_SEI_4);
-		/* DISPLAY PRIMARIES_2 */
-		MFC_WRITEL(p->display_primaries_2, S5P_FIMV_E_MASTERING_DISPLAY_COLOUR_VOLUME_SEI_5);
-
-		mfc_debug(2, "[HDR] HEVC ENC static info: enable(%d), max_pic(0x%x), max_content(0x%x)\n",
-				p->static_info_enable, p->max_pic_average_light, p->max_content_light);
-		mfc_debug(2, "[HDR] max_disp(0x%x), min_disp(0x%x), white_point(0x%x)\n",
-				p->max_display_luminance, p->min_display_luminance, p->white_point);
-		mfc_debug(2, "[HDR] disp_pri_0(0x%x), disp_pri_1(0x%x), disp_pri_2(0x%x)\n",
-				p->display_primaries_0, p->display_primaries_1, p->display_primaries_2);
-	} else {
-		reg = MFC_READL(S5P_FIMV_E_HEVC_OPTIONS_2);
-		/* HDR_STATIC_INFO_ENABLE */
-		reg &=  ~(0x1);
-		MFC_WRITEL(reg, S5P_FIMV_E_HEVC_OPTIONS_2);
-	}
-
 	mfc_debug_leave();
-}
 
-void s5p_mfc_set_enc_params_bpg(struct s5p_mfc_ctx *ctx)
-{
-	struct s5p_mfc_dev *dev = ctx->dev;
-	struct s5p_mfc_enc *enc = ctx->enc_priv;
-	struct s5p_mfc_enc_params *p = &enc->params;
-	struct s5p_mfc_bpg_enc_params *p_bpg = &p->codec.bpg;
-	unsigned int reg = 0;
-
-	mfc_set_enc_params(ctx);
-
-	/* extension tag */
-	reg = p_bpg->thumb_size + p_bpg->exif_size;
-	MFC_WRITEL(reg, S5P_FIMV_E_BPG_EXTENSION_DATA_SIZE);
-	mfc_debug(3, "main image extension size %d (thumbnail: %d, exif: %d)\n",
-			reg, p_bpg->thumb_size, p_bpg->exif_size);
-
-	/* profile & level */
-	reg = 0;
-	/** profile */
-	reg &= ~(0xF);
-	/* bit depth minus8 */
-	if (ctx->is_10bit) {
-		reg &= ~(0x3F << 17);
-		reg |= (0x2 << 17);
-		reg |= (0x2 << 20);
-		/* fixed profile */
-		if (ctx->is_422format)
-			reg |= 0x1;
-	}
-	MFC_WRITEL(reg, S5P_FIMV_E_PICTURE_PROFILE);
+	return 0;
 }

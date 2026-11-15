@@ -2786,6 +2786,8 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 
 	nojitter	[IA-64] Disables jitter checking for ITC timers.
 
+	nopti		[X86-64] Disable KAISER isolation of kernel from user.
+
 	no-kvmclock	[X86,KVM] Disable paravirtualized KVM clock driver
 
 	no-kvmapf	[X86,KVM] Disable paravirtualized asynchronous page
@@ -3791,12 +3793,6 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 	rodata=		[KNL]
 		on	Mark read-only kernel memory as read-only (default).
 		off	Leave read-only kernel memory writable for debugging.
-
-	rockchip.usb_uart
-			Enable the uart passthrough on the designated usb port
-			on Rockchip SoCs. When active, the signals of the
-			debug-uart get routed to the D+ and D- pins of the usb
-			port and the regular usb controller gets disabled.
 
 	root=		[KNL] Root filesystem
 			See name_to_dev_t comment in init/do_mounts.c.

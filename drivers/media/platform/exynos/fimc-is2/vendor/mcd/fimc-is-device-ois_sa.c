@@ -60,17 +60,19 @@ int fimc_is_ois_self_test_impl(struct fimc_is_core *core)
 	u8 val = 0;
 	int retries = 20;
 	struct fimc_is_vender_specific *specific = core->vender.private_data;
-	struct i2c_client *client = fimc_is_ois_i2c_get_client(core);
 
 	info("%s : E\n", __FUNCTION__);
+	if (specific->use_ois_hsi2c) {
+	    fimc_is_ois_i2c_config(core->client1, true);
+	}
 
-	ret = fimc_is_ois_i2c_write(client, 0x0014, 0x08);
+	ret = fimc_is_ois_i2c_write(core->client1, 0x0014, 0x08);
 	if (ret) {
 		err("i2c write fail\n");
 	}
 
 	do {
-		ret = fimc_is_ois_i2c_read(client, 0x0014, &val);
+		ret = fimc_is_ois_i2c_read(core->client1, 0x0014, &val);
 		if (ret != 0) {
 			val = -EIO;
 			break;
@@ -82,9 +84,13 @@ int fimc_is_ois_self_test_impl(struct fimc_is_core *core)
 		}
 	} while (val);
 
-	ret = fimc_is_ois_i2c_read(client, 0x0004, &val);
+	ret = fimc_is_ois_i2c_read(core->client1, 0x0004, &val);
 	if (ret != 0) {
 		val = -EIO;
+	}
+
+	if (specific->use_ois_hsi2c) {
+	    fimc_is_ois_i2c_config(core->client1, false);
 	}
 
 	info("%s(%d) : X\n", __FUNCTION__, val);
@@ -99,7 +105,6 @@ bool fimc_is_ois_diff_test_impl(struct fimc_is_core *core, int *x_diff, int *y_d
 	int retries = 20, default_diff = 1100;
 	u8 read_x[2], read_y[2];
 	struct fimc_is_vender_specific *specific = core->vender.private_data;
-	struct i2c_client *client = fimc_is_ois_i2c_get_client(core);
 
 #ifdef CONFIG_AF_HOST_CONTROL
 	fimc_is_af_move_lens(core);
@@ -107,30 +112,33 @@ bool fimc_is_ois_diff_test_impl(struct fimc_is_core *core, int *x_diff, int *y_d
 #endif
 
 	info("(%s) : E\n", __FUNCTION__);
+	if (specific->use_ois_hsi2c) {
+		fimc_is_ois_i2c_config(core->client1, true);
+	}
 
-	ret = fimc_is_ois_i2c_read_multi(client, 0x021A, read_x, 2);
-	ret |= fimc_is_ois_i2c_read_multi(client, 0x021C, read_y, 2);
+	ret = fimc_is_ois_i2c_read_multi(core->client1, 0x021A, read_x, 2);
+	ret |= fimc_is_ois_i2c_read_multi(core->client1, 0x021C, read_y, 2);
 	if (ret) {
 		err("i2c read fail\n");
 	}
 
-	ret = fimc_is_ois_i2c_write_multi(client, 0x0022, read_x, 4);
-	ret |= fimc_is_ois_i2c_write_multi(client, 0x0024, read_y, 4);
-	ret |= fimc_is_ois_i2c_write(client, 0x0002, 0x02);
-	ret |= fimc_is_ois_i2c_write(client, 0x0000, 0x01);
+	ret = fimc_is_ois_i2c_write_multi(core->client1, 0x0022, read_x, 4);
+	ret |= fimc_is_ois_i2c_write_multi(core->client1, 0x0024, read_y, 4);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0002, 0x02);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0000, 0x01);
 	if (ret) {
 		err("i2c write fail\n");
 	}
 	msleep(400);
 	info("(%s) : OIS Position = Center\n", __FUNCTION__);
 
-	ret = fimc_is_ois_i2c_write(client, 0x0000, 0x00);
+	ret = fimc_is_ois_i2c_write(core->client1, 0x0000, 0x00);
 	if (ret) {
 		err("i2c write fail\n");
 	}
 
 	do {
-		ret = fimc_is_ois_i2c_read(client, 0x0001, &val);
+		ret = fimc_is_ois_i2c_read(core->client1, 0x0001, &val);
 		if (ret != 0) {
 			break;
 		}
@@ -141,51 +149,51 @@ bool fimc_is_ois_diff_test_impl(struct fimc_is_core *core, int *x_diff, int *y_d
 		}
 	} while (val != 1);
 
-	ret = fimc_is_ois_i2c_write(client, 0x0034, 0x64);
-	ret |= fimc_is_ois_i2c_write(client, 0x0230, 0x64);
-	ret |= fimc_is_ois_i2c_write(client, 0x0231, 0x00);
-	ret |= fimc_is_ois_i2c_write(client, 0x0232, 0x64);
-	ret |= fimc_is_ois_i2c_write(client, 0x0233, 0x00);
+	ret = fimc_is_ois_i2c_write(core->client1, 0x0034, 0x64);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0230, 0x64);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0231, 0x00);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0232, 0x64);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0233, 0x00);
 	if (ret) {
 		err("i2c write fail\n");
 	}
 
-	ret = fimc_is_ois_i2c_read(client, 0x0034, &val);
+	ret = fimc_is_ois_i2c_read(core->client1, 0x0034, &val);
 	info("OIS[read_val_0x0034::0x%04x]\n", val);
-	ret |= fimc_is_ois_i2c_read(client, 0x0230, &val);
+	ret |= fimc_is_ois_i2c_read(core->client1, 0x0230, &val);
 	info("OIS[read_val_0x0230::0x%04x]\n", val);
-	ret |= fimc_is_ois_i2c_read(client, 0x0231, &val);
+	ret |= fimc_is_ois_i2c_read(core->client1, 0x0231, &val);
 	info("OIS[read_val_0x0231::0x%04x]\n", val);
-	ret |= fimc_is_ois_i2c_read(client, 0x0232, &val);
+	ret |= fimc_is_ois_i2c_read(core->client1, 0x0232, &val);
 	info("OIS[read_val_0x0232::0x%04x]\n", val);
-	ret |= fimc_is_ois_i2c_read(client, 0x0233, &val);
+	ret |= fimc_is_ois_i2c_read(core->client1, 0x0233, &val);
 	info("OIS[read_val_0x0233::0x%04x]\n", val);
 	if (ret) {
 		err("i2c read fail\n");
 	}
 
-	ret = fimc_is_ois_i2c_write(client, 0x020E, 0x00);
-	ret |= fimc_is_ois_i2c_write(client, 0x020F, 0x00);
-	ret |= fimc_is_ois_i2c_write(client, 0x0210, 0x50);
-	ret |= fimc_is_ois_i2c_write(client, 0x0211, 0x50);
+	ret = fimc_is_ois_i2c_write(core->client1, 0x020E, 0x00);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x020F, 0x00);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0210, 0x50);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0211, 0x50);
 	if (ret) {
 		err("i2c write fail\n");
 	}
 
-	ret = fimc_is_ois_i2c_write(client, 0x0013, 0x01);
+	ret = fimc_is_ois_i2c_write(core->client1, 0x0013, 0x01);
 	if (ret) {
 		err("i2c write fail\n");
 	}
 
 #if 0
-	ret = fimc_is_ois_i2c_write(client, 0x0012, 0x01);
+	ret = fimc_is_ois_i2c_write(core->client1, 0x0012, 0x01);
 	if (ret) {
 		err("i2c write fail\n");
 	}
 
 	retries = 30;
 	do { //polarity check
-		ret = fimc_is_ois_i2c_read(client, 0x0012, &val);
+		ret = fimc_is_ois_i2c_read(core->client1, 0x0012, &val);
 		if (ret != 0) {
 			break;
 		}
@@ -195,13 +203,13 @@ bool fimc_is_ois_diff_test_impl(struct fimc_is_core *core, int *x_diff, int *y_d
 			break;
 		}
 	} while (val);
-	fimc_is_ois_i2c_read(client, 0x0200, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0200, &val);
 	err("OIS[read_val_0x0200::0x%04x]\n", val);
 #endif
 
 	retries = 120;
 	do {
-		ret = fimc_is_ois_i2c_read(client, 0x0013, &val);
+		ret = fimc_is_ois_i2c_read(core->client1, 0x0013, &val);
 		if (ret != 0) {
 			break;
 		}
@@ -212,64 +220,64 @@ bool fimc_is_ois_diff_test_impl(struct fimc_is_core *core, int *x_diff, int *y_d
 		}
 	} while (val);
 
-	fimc_is_ois_i2c_read(client, 0x0004, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0004, &val);
 	info("OIS[read_val_0x0004::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0005, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0005, &val);
 	info("OIS[read_val_0x0005::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0006, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0006, &val);
 	info("OIS[read_val_0x0006::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0022, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0022, &val);
 	info("OIS[read_val_0x0022::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0023, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0023, &val);
 	info("OIS[read_val_0x0023::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0024, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0024, &val);
 	info("OIS[read_val_0x0024::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0025, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0025, &val);
 	info("OIS[read_val_0x0025::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0200, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0200, &val);
 	info("OIS[read_val_0x0200::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x020E, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x020E, &val);
 	info("OIS[read_val_0x020E::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x020F, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x020F, &val);
 	info("OIS[read_val_0x020F::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0210, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0210, &val);
 	info("OIS[read_val_0x0210::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0211, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0211, &val);
 	info("OIS[read_val_0x0211::0x%04x]\n", val);
 
-	fimc_is_ois_i2c_read(client, 0x0212, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0212, &val);
 	x = val;
 	info("OIS[read_val_0x0212::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0213, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0213, &val);
 	x_max = (val << 8) | x;
 	info("OIS[read_val_0x0213::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0214, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0214, &val);
 	x = val;
 	info("OIS[read_val_0x0214::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0215, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0215, &val);
 	x_min = (val << 8) | x;
 	info("OIS[read_val_0x0215::0x%04x]\n", val);
 
-	fimc_is_ois_i2c_read(client, 0x0216, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0216, &val);
 	y = val;
 	info("OIS[read_val_0x0216::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0217, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0217, &val);
 	y_max = (val << 8) | y;
 	info("OIS[read_val_0x0217::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0218, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0218, &val);
 	y = val;
 	info("OIS[read_val_0x0218::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x0219, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x0219, &val);
 	y_min = (val << 8) | y;
 	info("OIS[read_val_0x0219::0x%04x]\n", val);
 
-	fimc_is_ois_i2c_read(client, 0x021A, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x021A, &val);
 	info("OIS[read_val_0x021A::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x021B, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x021B, &val);
 	info("OIS[read_val_0x021B::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x021C, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x021C, &val);
 	info("OIS[read_val_0x021C::0x%04x]\n", val);
-	fimc_is_ois_i2c_read(client, 0x021D, &val);
+	fimc_is_ois_i2c_read(core->client1, 0x021D, &val);
 	info("OIS[read_val_0x021D::0x%04x]\n", val);
 
 	*x_diff = abs(x_max - x_min);
@@ -278,20 +286,24 @@ bool fimc_is_ois_diff_test_impl(struct fimc_is_core *core, int *x_diff, int *y_d
 	info("(%s) : X (default_diff:%d)(%d,%d)\n", __FUNCTION__,
 			default_diff, *x_diff, *y_diff);
 
-	ret = fimc_is_ois_i2c_read_multi(client, 0x021A, read_x, 2);
-	ret |= fimc_is_ois_i2c_read_multi(client, 0x021C, read_y, 2);
+	ret = fimc_is_ois_i2c_read_multi(core->client1, 0x021A, read_x, 2);
+	ret |= fimc_is_ois_i2c_read_multi(core->client1, 0x021C, read_y, 2);
 	if (ret) {
 		err("i2c read fail\n");
 	}
 
-	ret = fimc_is_ois_i2c_write_multi(client, 0x0022, read_x, 4);
-	ret |= fimc_is_ois_i2c_write_multi(client, 0x0024, read_y, 4);
-	ret |= fimc_is_ois_i2c_write(client, 0x0002, 0x02);
-	ret |= fimc_is_ois_i2c_write(client, 0x0000, 0x01);
+	ret = fimc_is_ois_i2c_write_multi(core->client1, 0x0022, read_x, 4);
+	ret |= fimc_is_ois_i2c_write_multi(core->client1, 0x0024, read_y, 4);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0002, 0x02);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0000, 0x01);
 	msleep(400);
-	ret |= fimc_is_ois_i2c_write(client, 0x0000, 0x00);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0000, 0x00);
 	if (ret) {
 		err("i2c write fail\n");
+	}
+
+	if (specific->use_ois_hsi2c) {
+		fimc_is_ois_i2c_config(core->client1, false);
 	}
 
 	if (*x_diff > default_diff  && *y_diff > default_diff) {
@@ -315,42 +327,49 @@ bool fimc_is_ois_fw_version(struct fimc_is_core *core)
 	int ret = 0;
 	char version[7] = {0, };
 	struct fimc_is_vender_specific *specific = core->vender.private_data;
-	struct i2c_client *client = fimc_is_ois_i2c_get_client(core);
 
-	ret = fimc_is_ois_i2c_read(client, 0x00F9, &version[0]);
+	if (specific->use_ois_hsi2c) {
+	    fimc_is_ois_i2c_config(core->client1, true);
+	}
+
+	ret = fimc_is_ois_i2c_read(core->client1, 0x00F9, &version[0]);
 	if (ret) {
 		err("i2c read fail\n");
 		goto exit;
 	}
 
-	ret = fimc_is_ois_i2c_read(client, 0x00F8, &version[1]);
+	ret = fimc_is_ois_i2c_read(core->client1, 0x00F8, &version[1]);
 	if (ret) {
 		err("i2c read fail\n");
 		goto exit;
 	}
 
-	ret = fimc_is_ois_i2c_read(client, 0x007C, &version[2]);
+	ret = fimc_is_ois_i2c_read(core->client1, 0x007C, &version[2]);
 	if (ret) {
 		err("i2c read fail\n");
 		goto exit;
 	}
 
-	ret = fimc_is_ois_i2c_read(client, 0x007D, &version[3]);
+	ret = fimc_is_ois_i2c_read(core->client1, 0x007D, &version[3]);
 	if (ret) {
 		err("i2c read fail\n");
 		goto exit;
 	}
 
-	ret = fimc_is_ois_i2c_read(client, 0x007E, &version[4]);
+	ret = fimc_is_ois_i2c_read(core->client1, 0x007E, &version[4]);
 	if (ret) {
 		err("i2c read fail\n");
 		goto exit;
 	}
 
-	ret = fimc_is_ois_i2c_read(client, 0x007F, &version[5]);
+	ret = fimc_is_ois_i2c_read(core->client1, 0x007F, &version[5]);
 	if (ret) {
 		err("i2c read fail\n");
 		goto exit;
+	}
+
+	if (specific->use_ois_hsi2c) {
+	    fimc_is_ois_i2c_config(core->client1, false);
 	}
 
 	memcpy(ois_minfo.header_ver, version, 6);
@@ -361,6 +380,10 @@ bool fimc_is_ois_fw_version(struct fimc_is_core *core)
 	return true;
 
 exit:
+	if (specific->use_ois_hsi2c) {
+	    fimc_is_ois_i2c_config(core->client1, false);
+	}
+
 	return false;
 }
 
@@ -379,8 +402,12 @@ bool fimc_is_ois_read_userdata(struct fimc_is_core *core)
 	u8 SendData[2], RcvData[256];
 	u8 ois_shift_info = 0;
 
-	struct i2c_client *client = fimc_is_ois_i2c_get_client(core);
+	struct i2c_client *client = core->client1;
 	struct fimc_is_vender_specific *specific = core->vender.private_data;
+
+	if (specific->use_ois_hsi2c) {
+	    fimc_is_ois_i2c_config(core->client1, true);
+	}
 
 	/* Read OIS Shift CAL */
 	fimc_is_ois_i2c_write(client ,0x000F, 0x0E);
@@ -447,9 +474,15 @@ bool fimc_is_ois_read_userdata(struct fimc_is_core *core)
 	fimc_is_ois_i2c_read(client, 0x000E, &RcvData[0]);
 	if (RcvData[0] == 0x14) {
 		fimc_is_ois_i2c_read_multi(client, 0x0100, RcvData, FW_TRANS_SIZE);
+		if (specific->use_ois_hsi2c) {
+			fimc_is_ois_i2c_config(core->client1, false);
+		}
 		memcpy(ois_uinfo.header_ver, RcvData, 6);
 		return true;
 	} else {
+		if (specific->use_ois_hsi2c) {
+			fimc_is_ois_i2c_config(core->client1, false);
+		}
 		return false;
 	}
 }
@@ -466,9 +499,8 @@ int fimc_is_ois_open_fw(struct fimc_is_core *core, char *name, u8 **buf)
 	int fw_requested = 1;
 	int retry_count = 0;
 	struct fimc_is_device_ois *ois_device = NULL;
-	struct i2c_client *client = fimc_is_ois_i2c_get_client(core);
 
-	ois_device = i2c_get_clientdata(client);
+	ois_device = i2c_get_clientdata(core->client1);
 
 	fw_sdcard = false;
 	old_fs = get_fs();
@@ -633,7 +665,7 @@ void fimc_is_ois_fw_update_impl(struct fimc_is_core *core)
 	bool forced_update = false, crc_result = false;
 	bool need_reset = false;
 	u8 ois_status = 0;
-	struct i2c_client *client = fimc_is_ois_i2c_get_client(core);
+	struct i2c_client *client = core->client1;
 	struct fimc_is_vender_specific *specific = core->vender.private_data;
 
 	/* OIS Status Check */
@@ -727,6 +759,10 @@ void fimc_is_ois_fw_update_impl(struct fimc_is_core *core)
 	}
 	info("OIS fw update started. module ver = %s, binary ver = %s, userdata ver = %s\n",
 		ois_minfo.header_ver, ois_pinfo.header_ver, ois_uinfo.header_ver);
+
+	if (specific->use_ois_hsi2c) {
+		fimc_is_ois_i2c_config(core->client1, true);
+	}
 
 retry:
 	if (need_reset) {
@@ -847,11 +883,19 @@ retry:
 	fimc_is_ois_i2c_write(client ,0x000D, 0x01);
 	fimc_is_ois_i2c_write(client ,0x000E, 0x06);
 
+	if (specific->use_ois_hsi2c) {
+		fimc_is_ois_i2c_config(core->client1, false);
+	}
+
 	msleep(30);
 	ret = fimc_is_ois_fw_version(core);
 	if (!ret) {
 		err("Failed to read ois fw version.");
 		goto p_err;
+	}
+
+	if (specific->use_ois_hsi2c) {
+		fimc_is_ois_i2c_config(core->client1, true);
 	}
 
 	if (!fimc_is_ois_version_compare_default(ois_minfo.header_ver, ois_pinfo.header_ver)) {
@@ -867,6 +911,10 @@ retry:
 p_err:
 	info("OIS module ver = %s, binary ver = %s, userdata ver = %s\n",
 		ois_minfo.header_ver, ois_pinfo.header_ver, ois_uinfo.header_ver);
+
+	if (specific->use_ois_hsi2c) {
+		fimc_is_ois_i2c_config(core->client1, false);
+	}
 
 	if (buf) {
 		vfree(buf);

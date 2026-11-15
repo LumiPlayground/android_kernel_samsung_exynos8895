@@ -125,8 +125,8 @@
  */
 #ifdef CONFIG_SENSORS_FINGERPRINT_32BITS_PLATFORM_ONLY
 /*
- * Platform supports only 32 bits.
- */
+* Platform supports only 32 bits.
+*/
 struct vfsspi_ioctl_transfer {
 	u32 rx_buffer;
 	u32 tx_buffer;
@@ -148,7 +148,7 @@ struct vfsspi_ioctl_transfer {
  * @user_pid:Process ID to which SPI driver sends signal indicating that DRDY
  *			is asserted
  * @signal_id:signal_id
- */
+*/
 struct vfsspi_ioctl_register_signal {
 	int user_pid;
 	int signal_id;

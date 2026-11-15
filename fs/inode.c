@@ -194,10 +194,18 @@ int inode_init_always(struct super_block *sb, struct inode *inode)
 #if defined(CONFIG_SDP) && !defined(CONFIG_FSCRYPT_SDP)
 	mapping->userid = 0;
 #endif
-	mapping->fmp_ci.iv = NULL;
-	memset(mapping->fmp_ci.key, 0, MAX_KEY_SIZE);
-	mapping->fmp_ci.key_length = 0;
-	mapping->fmp_ci.private_algo_mode = 0;
+	mapping->iv = NULL;
+	memset(mapping->key, 0, MAX_KEY_SIZE);
+	mapping->key_length = 0;
+	mapping->alg = NULL;
+	mapping->sensitive_data_index = 0;
+	mapping->hash_tfm = NULL;
+#ifdef CONFIG_CRYPTO_FIPS
+	mapping->cc_enable = false;
+#endif
+	mapping->private_algo_mode = 0;
+	mapping->private_enc_mode = 0;
+	mapping->plain_text = false;
 
 	inode->i_private = NULL;
 	inode->i_mapping = mapping;

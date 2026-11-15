@@ -275,7 +275,7 @@ int verity_handle_err_hex_debug(struct dm_verity *v, enum verity_block_type type
 		DMERR("%s: block 0 is superblock. Skipping %s", v->data_dev->name, __func__);
 		return 0;
 	}
-	
+
 	if (v->corrupted_errs >= DM_VERITY_MAX_CORRUPTED_ERRS)
 		goto out;
 
@@ -302,9 +302,9 @@ int verity_handle_err_hex_debug(struct dm_verity *v, enum verity_block_type type
     }
 
 	DMERR("%s: %s block %llu is corrupted", v->data_dev->name, type_str, block);
-	
+
 	for(i=0 ; i < v->salt_size; i++){
-		sprintf(hex_str + (i * 2), "%02x", *(v->salt + i)); 	
+		sprintf(hex_str + (i * 2), "%02x", *(v->salt + i));
 	}
 	DMERR("dm-verity salt: %s", hex_str);
 

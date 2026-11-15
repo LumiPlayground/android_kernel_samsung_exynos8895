@@ -1322,6 +1322,14 @@ retry:
 }
 EXPORT_SYMBOL(netlink_unicast);
 
+struct sk_buff *__netlink_alloc_skb(struct sock *ssk, unsigned int size,
+				    unsigned int ldiff, u32 dst_portid,
+				    gfp_t gfp_mask)
+{
+	return alloc_skb(size, gfp_mask);
+}
+EXPORT_SYMBOL_GPL(__netlink_alloc_skb);
+
 int netlink_has_listeners(struct sock *sk, unsigned int group)
 {
 	int res = 0;
@@ -1402,7 +1410,7 @@ static void do_one_broadcast(struct sock *sk,
 	sock_hold(sk);
 	if (p->skb2 == NULL) {
 		if (skb_shared(p->skb)) {
-			p->skb2 = skb_clone(p->skb, p->allocation);
+			p->skb2 = skb_copy(p->skb, p->allocation);
 		} else {
 			p->skb2 = skb_get(p->skb);
 			/*
@@ -2152,8 +2160,8 @@ static int netlink_dump(struct sock *sk)
 	if (alloc_min_size < nlk->max_recvmsg_len) {
 		alloc_size = nlk->max_recvmsg_len;
 		skb = alloc_skb(alloc_size,
-				(GFP_KERNEL & ~__GFP_DIRECT_RECLAIM) |
-				__GFP_NOWARN | __GFP_NORETRY);
+					(GFP_KERNEL & ~__GFP_DIRECT_RECLAIM) |
+					__GFP_NOWARN | __GFP_NORETRY);
 	}
 	if (!skb) {
 		alloc_size = alloc_min_size;
@@ -2586,7 +2594,7 @@ static const struct proto_ops netlink_ops = {
 	.accept =	sock_no_accept,
 	.getname =	netlink_getname,
 	.poll =		datagram_poll,
-	.ioctl =	netlink_ioctl,
+	.ioctl =	sock_no_ioctl,
 	.listen =	sock_no_listen,
 	.shutdown =	sock_no_shutdown,
 	.setsockopt =	netlink_setsockopt,
@@ -2697,7 +2705,6 @@ out:
 	return err;
 panic:
 	panic("netlink_init: Cannot allocate nl_table\n");
-	return 0;
 }
 
 core_initcall(netlink_proto_init);

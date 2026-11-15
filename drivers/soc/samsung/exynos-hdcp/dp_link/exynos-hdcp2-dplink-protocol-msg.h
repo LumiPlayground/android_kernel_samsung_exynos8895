@@ -11,6 +11,7 @@
 #define __EXYNOS_HDCP2_DPLINK_PROTOCOL_MSG_H__
 
 #include <linux/types.h>
+#include "../exynos-hdcp2-teeif.h"
 
 enum dp_msg_id {
 	DP_AKE_INIT = 2,

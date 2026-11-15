@@ -18,7 +18,6 @@
 #include <linux/ion.h>
 #include <linux/exynos_ion.h>
 #include <linux/err.h>
-#include <linux/dma-buf.h>
 
 /* flags to vb2_ion_create_context
  * These flags are dependet upon heap flags in ION.
@@ -28,10 +27,26 @@
  * bit 21 ~ BITS_PER_INT - 1: ion specific flags
  */
 
+/* Allocate virtually contiguous memory */
+#define VB2ION_CTX_VMCONTIG	ION_HEAP_SYSTEM_MASK
+/* Provide device a virtual address space */
+#define VB2ION_CTX_IOMMU	(1 << (ION_NUM_HEAPS + 1))
+/* Non-cached mapping to user when mmap */
+#define VB2ION_CTX_UNCACHED	(1 << (ION_NUM_HEAPS + 2))
 /* DMA of the client device is coherent with CPU */
 #define VB2ION_CTX_COHERENT_DMA	(1 << (ION_NUM_HEAPS + 3))
 /* DMA should read from memory instead of CPU cache even if DMA is coherent */
 #define VB2ION_CTX_UNCACHED_READ_DMA (1 << (ION_NUM_HEAPS + 4))
+
+/* flags for contents protection */
+#define VB2ION_CTX_DRM_MFCSH	(EXYNOS_ION_HEAP_EXYNOS_CONTIG_MASK | \
+				ION_EXYNOS_MFC_SH_MASK)
+#define VB2ION_CTX_DRM_VIDEO	(EXYNOS_ION_HEAP_EXYNOS_CONTIG_MASK | \
+				ION_EXYNOS_MFC_OUTPUT_MASK)
+#define VB2ION_CTX_DRM_MFCFW	(EXYNOS_ION_HEAP_EXYNOS_CONTIG_MASK | \
+				ION_EXYNOS_MFC_FW_MASK)
+#define VB2ION_CTX_DRM_MFCNFW	(EXYNOS_ION_HEAP_EXYNOS_CONTIG_MASK | \
+				ION_EXYNOS_MFC_NFW_MASK)
 
 #define VB2ION_CONTIG_ID_NUM	16
 #define VB2ION_NUM_HEAPS	8
@@ -40,13 +55,64 @@
 #error "Bits are too small to express all flags"
 #endif
 
+#define VB2ION_CTX_MASK_ION_HEAP	((1 << VB2ION_NUM_HEAPS) - 1)
+#define VB2ION_CTX_MASK_ION_FLAG	~((1 << (BITS_PER_INT - \
+					VB2ION_CONTIG_ID_NUM)) - 1)
+/* mask out all non-ion flags */
+#define ion_heapflag(flag)	(flag & VB2ION_CTX_MASK_ION_HEAP)
+#define ion_flag(flag)		(flag & VB2ION_CTX_MASK_ION_FLAG)
+
 struct device;
 struct vb2_buffer;
 
-/* - vb2_ion_set_noncoherent_dma_read(): Forces the DMA to read from system
+/* vb2_ion_create_context - create a new vb2 context for buffer manipulation
+ * dev - device that needs to use vb2
+ * alignment - minimum alignment requirement for the start address of the
+ *             allocated buffer from vb2.
+ * flags - detailed control to the vb2 context. See above flags that stats
+ *         with VB2ION_*
+ *
+ * This function creates a new videobuf2 context which is internal data of
+ * videobuf2 for allocating and manipulating buffers. Drivers that obtain vb2
+ * contexts must regard the contexts as keys for videobuf2 to access the
+ * requirments of the drivers for the buffers allocated from videobuf2.
+ *
+ * Once a driver obtains vb2 contexts from vb2_ion_create_context(), it must
+ * assign those contexts to alloc_ctxs[] argument of vb2_ops.queue_setup().
+ *
+ * Some specifications of a vb2 context can be changed after it has been created
+ * and assigned to vb2 core with vb2_ops.queue_setup():
+ * - vb2_ion_set_cached(): Changes cached attribute of the buffer which will be
+ *   allocated after calling this function. Cached attribute of a buffer is
+ *   effected when it is mapped to user with mmap() function call.
+ * - vb2_ion_set_noncoherent_dma_read(): Forces the DMA to read from system
  *   memory even though it is capable of snooping CPU caches.
+ * - vb2_ion_set_alignment(): Changes alignment requirement of the buffer which
+ *   will be allocated after calling this function.
+ *
+ * For the devices that needs internal buffers for firmwares or devices'
+ * context buffers, their drivers can generate a vb2 context which is not
+ * handled by vb2 core but only by vb2-ion.
+ * That kinds of vb2 contexts can be passed to the first parameter of
+ * vb2_ion_private_alloc(void *alloc_ctx, size_t size).
+ *
+ * Drivers can generate vb2 contexts as many as they require with different
+ * requirements specified in flags argument. The only _restriction_ on
+ * generating a vb2 context is that the drivers must call
+ * vb2_ion_create_context() in a kernel thread due to the behavior of
+ * ion_client_create().
  */
-void vb2_ion_set_noncoherent_dma_read(struct device *dev, bool noncoherent);
+void *vb2_ion_create_context(struct device *dev, size_t alignment, long flags);
+
+/* vb2_ion_destroy_context - destroys a vb2 context
+ * This function removes the given vb2 context which is created by
+ * vb2_ion_create_context()
+ */
+void vb2_ion_destroy_context(void *ctx);
+
+void vb2_ion_set_cached(void *ctx, bool cached);
+void vb2_ion_set_noncoherent_dma_read(void *ctx, bool noncoherent);
+int vb2_ion_set_alignment(void *ctx, size_t alignment);
 
 /* Data type of the cookie returned by vb2_plane_cookie() function call.
  * The drivers do not need the definition of this structure. The only reason
@@ -145,14 +211,31 @@ static inline struct scatterlist *vb2_ion_get_sg(void *cookie, int *nents)
 	return vb2cookie->sgt->sgl;
 }
 
-/* vb2_ion_get_dmabuf - returns dmabuf of the given cookie
- * - cookie: pointer returned by vb2_plane_cookie()
+/***** Device's internal/context buffer support *****/
+
+/* vb2_ion_private_vaddr - the kernelspace address for the given cookie
+ * cookie - pointer returned by vb2_ion_private_alloc()
  *
- * Returns dma-buf descriptor with a reference held.
- * NULL if the cookie is invalid or the buffer is not dmabuf.
- * The caller must put the dmabuf when it is no longer need the dmabuf
+ * This function returns minus error value on error.
  */
-struct dma_buf *vb2_ion_get_dmabuf(void *cookie);
+void *vb2_ion_private_vaddr(void *cookie);
+
+/* vb2_ion_private_alloc - allocate a buffer for device drivers's private use
+ * alloc_ctx - pointer returned by vb2_ion_create_context
+ * size - size of the buffer allocated
+ *
+ * This function returns the pointer to a cookie that represents the allocated
+ * buffer or minus error value. With the cookie you can:
+ * - retrieve scatterlist of the buffer.
+ * - retrieve dma address. (IO virutal address if IOMMU is enabled when
+ *   creating alloc_ctx or physical address)
+ * - retrieve virtual address in the kernel space.
+ * - free the allocated buffer
+ */
+void *vb2_ion_private_alloc(void *alloc_ctx, size_t size);
+
+/* vb2_ion_private_free - free the buffer allocated by vb2_ion_private_alloc */
+void vb2_ion_private_free(void *cookie);
 
 /***** Cache mainatenance operations *****/
 void vb2_ion_sync_for_device(void *cookie, off_t offset, size_t size,
@@ -164,7 +247,14 @@ void vb2_ion_buf_finish(struct vb2_buffer *vb);
 int vb2_ion_buf_prepare_exact(struct vb2_buffer *vb);
 int vb2_ion_buf_finish_exact(struct vb2_buffer *vb);
 
+/* IOMMU support */
+
+/* vb2_ion_attach_iommu - enables IOMMU of the device specified in alloc_ctx */
+int vb2_ion_attach_iommu(void *alloc_ctx);
+
+/* vb2_ion_attach_iommu - disables IOMMU of the device specified in alloc_ctx */
+void vb2_ion_detach_iommu(void *alloc_ctx);
+
 extern const struct vb2_mem_ops vb2_ion_memops;
-extern struct ion_device *ion_exynos; /* drivers/gpu/ion/exynos/exynos-ion.c */
 
 #endif /* _MEDIA_VIDEOBUF2_ION_H */

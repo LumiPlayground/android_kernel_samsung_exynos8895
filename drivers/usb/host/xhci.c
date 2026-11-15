@@ -29,11 +29,8 @@
 #include <linux/dmi.h>
 #include <linux/dma-mapping.h>
 
-#include <linux/usb/exynos_usb_audio.h>
-
 #include "xhci.h"
 #include "xhci-trace.h"
-#include "xhci-mtk.h"
 
 #define DRIVER_AUTHOR "Sarah Sharp"
 #define DRIVER_DESC "'eXtensible' Host Controller (xHC) Driver"
@@ -113,7 +110,6 @@ int xhci_halt(struct xhci_hcd *xhci)
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init, "// Halt the HC");
 	xhci_quiesce(xhci);
 
-	pr_info("%s ++ \n", __func__);
 	ret = xhci_handshake(&xhci->op_regs->status,
 			STS_HALT, STS_HALT, XHCI_MAX_HALT_USEC);
 	if (!ret) {
@@ -194,9 +190,6 @@ int xhci_reset(struct xhci_hcd *xhci)
 			CMD_RESET, 0, 10 * 1000 * 1000);
 	if (ret)
 		return ret;
-
-	if (xhci->quirks & XHCI_ASMEDIA_MODIFY_FLOWCONTROL)
-		usb_asmedia_modifyflowcontrol(to_pci_dev(xhci_to_hcd(xhci)->self.controller));
 
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init,
 			 "Wait for controller to be ready for doorbell rings");
@@ -301,8 +294,10 @@ static int xhci_setup_msix(struct xhci_hcd *xhci)
 	xhci->msix_entries =
 		kmalloc((sizeof(struct msix_entry))*xhci->msix_count,
 				GFP_KERNEL);
-	if (!xhci->msix_entries)
+	if (!xhci->msix_entries) {
+		xhci_err(xhci, "Failed to allocate MSI-X entries\n");
 		return -ENOMEM;
+	}
 
 	for (i = 0; i < xhci->msix_count; i++) {
 		xhci->msix_entries[i].entry = i;
@@ -634,33 +629,13 @@ int xhci_run(struct usb_hcd *hcd)
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init,
 			"ERST deq = 64'h%0lx", (long unsigned int) temp_64);
 
-#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
-	temp_64 = xhci_read_64(xhci, &xhci->ir_set_audio->erst_dequeue);
-	temp_64 &= ~ERST_PTR_MASK;
-	xhci_info(xhci,	"ERST2 deq = 64'h%0lx", (long unsigned int) temp_64);
-#endif
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init,
 			"// Set the interrupt modulation register");
 	temp = readl(&xhci->ir_set->irq_control);
 	temp &= ~ER_IRQ_INTERVAL_MASK;
-	/*
-	 * the increment interval is 8 times as much as that defined
-	 * in xHCI spec on MTK's controller
-	 */
-	temp |= (u32) ((xhci->quirks & XHCI_MTK_HOST) ? 20 : 160);
+	temp |= (u32) 160;
 	writel(temp, &xhci->ir_set->irq_control);
 
-#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
-	xhci_info(xhci, "// [USB Audio] Set the interrupt modulation register");
-	temp = readl(&xhci->ir_set_audio->irq_control);
-	temp &= ~ER_IRQ_INTERVAL_MASK;
-	/*
-	 * the increment interval is 8 times as much as that defined
-	 * in xHCI spec on MTK's controller
-	 */
-	temp |= (u32) ((xhci->quirks & XHCI_MTK_HOST) ? 20 : 160);
-	writel(temp, &xhci->ir_set_audio->irq_control);
-#endif
 	/* Set the HCD state before we enable the irqs */
 	temp = readl(&xhci->op_regs->command);
 	temp |= (CMD_EIE);
@@ -675,13 +650,6 @@ int xhci_run(struct usb_hcd *hcd)
 	writel(ER_IRQ_ENABLE(temp), &xhci->ir_set->irq_pending);
 	xhci_print_ir_set(xhci, 0);
 
-#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
-	temp = readl(&xhci->ir_set_audio->irq_pending);
-	xhci_info(xhci, "// [USB Audio] Enabling event ring interrupter %p by writing 0x%x to irq_pending",
-			xhci->ir_set_audio, (unsigned int) ER_IRQ_ENABLE(temp));
-	writel(ER_IRQ_ENABLE(temp), &xhci->ir_set_audio->irq_pending);
-	xhci_print_ir_set(xhci, 1);
-#endif
 	if (xhci->quirks & XHCI_NEC_HOST) {
 		struct xhci_command *command;
 		command = xhci_alloc_command(xhci, false, false, GFP_KERNEL);
@@ -710,11 +678,11 @@ void xhci_stop(struct usb_hcd *hcd)
 	u32 temp;
 	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
 
+#if defined(CONFIG_USB_HOST_SAMSUNG_FEATURE)
 	if (!usb_hcd_is_primary_hcd(hcd))
 		return;
-
+#endif
 	mutex_lock(&xhci->mutex);
-
 	if (!(xhci->xhc_state & XHCI_STATE_HALTED)) {
 		spin_lock_irq(&xhci->lock);
 
@@ -725,6 +693,13 @@ void xhci_stop(struct usb_hcd *hcd)
 
 		spin_unlock_irq(&xhci->lock);
 	}
+
+#ifndef CONFIG_USB_HOST_SAMSUNG_FEATURE
+	if (!usb_hcd_is_primary_hcd(hcd)) {
+		mutex_unlock(&xhci->mutex);
+		return;
+	}
+#endif
 
 	xhci_cleanup_msix(xhci);
 
@@ -915,41 +890,6 @@ static void xhci_disable_port_wake_on_bits(struct xhci_hcd *xhci)
 	spin_unlock_irqrestore(&xhci->lock, flags);
 }
 
-static bool xhci_pending_portevent(struct xhci_hcd *xhci)
-{
-	__le32 __iomem		**port_array;
-	int			port_index;
-	u32			status;
-	u32			portsc;
-
-	status = readl(&xhci->op_regs->status);
-	if (status & STS_EINT)
-		return true;
-	/*
-	 * Checking STS_EINT is not enough as there is a lag between a change
-	 * bit being set and the Port Status Change Event that it generated
-	 * being written to the Event Ring. See note in xhci 1.1 section 4.19.2.
-	 */
-
-	port_index = xhci->num_usb2_ports;
-	port_array = xhci->usb2_ports;
-	while (port_index--) {
-		portsc = readl(port_array[port_index]);
-		if (portsc & PORT_CHANGE_MASK ||
-		    (portsc & PORT_PLS_MASK) == XDEV_RESUME)
-			return true;
-	}
-	port_index = xhci->num_usb3_ports;
-	port_array = xhci->usb3_ports;
-	while (port_index--) {
-		portsc = readl(port_array[port_index]);
-		if (portsc & PORT_CHANGE_MASK ||
-		    (portsc & PORT_PLS_MASK) == XDEV_RESUME)
-			return true;
-	}
-	return false;
-}
-
 /*
  * Stop HC (not bus-specific)
  *
@@ -975,7 +915,7 @@ int xhci_suspend(struct xhci_hcd *xhci, bool do_wakeup)
 		xhci_disable_port_wake_on_bits(xhci);
 
 	/* Don't poll the roothubs on bus suspend. */
-	xhci_dbg(xhci, "%s: stopping port polling.\n", __func__);
+	xhci_info(xhci, "%s: stopping port polling.\n", __func__);
 	clear_bit(HCD_FLAG_POLL_RH, &hcd->flags);
 	del_timer_sync(&hcd->rh_timer);
 	clear_bit(HCD_FLAG_POLL_RH, &xhci->shared_hcd->flags);
@@ -1046,7 +986,7 @@ EXPORT_SYMBOL_GPL(xhci_suspend);
  */
 int xhci_resume(struct xhci_hcd *xhci, bool hibernated)
 {
-	u32			command, temp = 0;
+	u32			command, temp = 0, status;
 	struct usb_hcd		*hcd = xhci_to_hcd(xhci);
 	struct usb_hcd		*secondary_hcd;
 	int			retval = 0;
@@ -1168,7 +1108,8 @@ int xhci_resume(struct xhci_hcd *xhci, bool hibernated)
  done:
 	if (retval == 0) {
 		/* Resume root hubs only when have pending events. */
-		if (xhci_pending_portevent(xhci)) {
+		status = readl(&xhci->op_regs->status);
+		if (status & STS_EINT) {
 			usb_hcd_resume_root_hub(xhci->shared_hcd);
 			usb_hcd_resume_root_hub(hcd);
 		}
@@ -1182,9 +1123,6 @@ int xhci_resume(struct xhci_hcd *xhci, bool hibernated)
 	 */
 	if ((xhci->quirks & XHCI_COMP_MODE_QUIRK) && !comp_timer_running)
 		compliance_mode_recovery_timer_init(xhci);
-
-	if (xhci->quirks & XHCI_ASMEDIA_MODIFY_FLOWCONTROL)
-		usb_asmedia_modifyflowcontrol(to_pci_dev(hcd->self.controller));
 
 	/* Re-enable port polling. */
 	xhci_dbg(xhci, "%s: starting port polling.\n", __func__);
@@ -1522,6 +1460,47 @@ free_priv:
 	return ret;
 }
 
+/* Get the right ring for the given URB.
+ * If the endpoint supports streams, boundary check the URB's stream ID.
+ * If the endpoint doesn't support streams, return the singular endpoint ring.
+ */
+static struct xhci_ring *xhci_urb_to_transfer_ring(struct xhci_hcd *xhci,
+		struct urb *urb)
+{
+	unsigned int slot_id;
+	unsigned int ep_index;
+	unsigned int stream_id;
+	struct xhci_virt_ep *ep;
+
+	slot_id = urb->dev->slot_id;
+	ep_index = xhci_get_endpoint_index(&urb->ep->desc);
+	stream_id = urb->stream_id;
+	ep = &xhci->devs[slot_id]->eps[ep_index];
+	/* Common case: no streams */
+	if (!(ep->ep_state & EP_HAS_STREAMS))
+		return ep->ring;
+
+	if (stream_id == 0) {
+		xhci_warn(xhci,
+				"WARN: Slot ID %u, ep index %u has streams, "
+				"but URB has no stream ID.\n",
+				slot_id, ep_index);
+		return NULL;
+	}
+
+	if (stream_id < ep->stream_info->num_streams)
+		return ep->stream_info->stream_rings[stream_id];
+
+	xhci_warn(xhci,
+			"WARN: Slot ID %u, ep index %u has "
+			"stream IDs 1 to %u allocated, "
+			"but stream ID %u is requested.\n",
+			slot_id, ep_index,
+			ep->stream_info->num_streams - 1,
+			stream_id);
+	return NULL;
+}
+
 /*
  * Remove the URB's TD from the endpoint ring.  This may cause the HC to stop
  * USB transfers, potentially stopping in the middle of a TRB buffer.  The HC
@@ -1630,20 +1609,8 @@ int xhci_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 		}
 		ep->ep_state |= EP_HALT_PENDING;
 		ep->stop_cmds_pending++;
-#if !defined(CONFIG_USB_HOST_SAMSUNG_FEATURE)
 		ep->stop_cmd_timer.expires = jiffies +
 			XHCI_STOP_EP_CMD_TIMEOUT * HZ;
-#else
-		if (xhci->xhc_state & XHCI_STATE_REMOVING) {
-			ep->stop_cmd_timer.expires = jiffies + 1 * HZ;
-			xhci_info(xhci, "stop_cmd_timer: 1 sec\n");
-
-		} else {
-			ep->stop_cmd_timer.expires = jiffies +
-				XHCI_STOP_EP_CMD_TIMEOUT * HZ;
-			xhci_info(xhci, "stop_cmd_timer: 5 sec\n");
-		}
-#endif
 		add_timer(&ep->stop_cmd_timer);
 		xhci_queue_stop_endpoint(xhci, command, urb->dev->slot_id,
 					 ep_index, 0);
@@ -1726,9 +1693,6 @@ int xhci_drop_endpoint(struct usb_hcd *hcd, struct usb_device *udev,
 	new_add_flags = le32_to_cpu(ctrl_ctx->add_flags);
 
 	xhci_endpoint_zero(xhci, xhci->devs[udev->slot_id], ep);
-
-	if (xhci->quirks & XHCI_MTK_HOST)
-		xhci_mtk_drop_ep_quirk(hcd, udev, ep);
 
 	xhci_dbg(xhci, "drop ep 0x%x, slot id %d, new drop flags = %#x, new add flags = %#x\n",
 			(unsigned int) ep->desc.bEndpointAddress,
@@ -1823,15 +1787,6 @@ int xhci_add_endpoint(struct usb_hcd *hcd, struct usb_device *udev,
 		dev_dbg(&udev->dev, "%s - could not initialize ep %#x\n",
 				__func__, ep->desc.bEndpointAddress);
 		return -ENOMEM;
-	}
-
-	if (xhci->quirks & XHCI_MTK_HOST) {
-		ret = xhci_mtk_add_ep_quirk(hcd, udev, ep);
-		if (ret < 0) {
-			xhci_free_or_cache_endpoint_ring(xhci,
-				virt_dev, ep_index);
-			return ret;
-		}
 	}
 
 	ctrl_ctx->add_flags |= cpu_to_le32(added_ctxs);
@@ -2852,8 +2807,6 @@ int xhci_check_bandwidth(struct usb_hcd *hcd, struct usb_device *udev)
 	xhci_dbg_ctx(xhci, virt_dev->out_ctx,
 		     LAST_CTX_TO_EP_NUM(le32_to_cpu(slot_ctx->dev_info)));
 
-	xhci_set_deq(xhci, virt_dev->out_ctx, LAST_CTX_TO_EP_NUM(le32_to_cpu(slot_ctx->dev_info)), udev);
-
 	/* Free any rings that were dropped, but not changed. */
 	for (i = 1; i < 31; ++i) {
 		if ((le32_to_cpu(ctrl_ctx->drop_flags) & (1 << (i + 1))) &&
@@ -3200,7 +3153,6 @@ int xhci_alloc_streams(struct usb_hcd *hcd, struct usb_device *udev,
 	struct xhci_input_control_ctx *ctrl_ctx;
 	unsigned int ep_index;
 	unsigned int num_stream_ctxs;
-	unsigned int max_packet;
 	unsigned long flags;
 	u32 changed_ep_bitmask = 0;
 
@@ -3274,11 +3226,9 @@ int xhci_alloc_streams(struct usb_hcd *hcd, struct usb_device *udev,
 
 	for (i = 0; i < num_eps; i++) {
 		ep_index = xhci_get_endpoint_index(&eps[i]->desc);
-		max_packet = GET_MAX_PACKET(usb_endpoint_maxp(&eps[i]->desc));
 		vdev->eps[ep_index].stream_info = xhci_alloc_stream_info(xhci,
 				num_stream_ctxs,
-				num_streams,
-				max_packet, mem_flags);
+				num_streams, mem_flags);
 		if (!vdev->eps[ep_index].stream_info)
 			goto cleanup;
 		/* Set maxPstreams in endpoint context and update deq ptr to
@@ -3659,7 +3609,7 @@ void xhci_free_dev(struct usb_hcd *hcd, struct usb_device *udev)
 
 	command = xhci_alloc_command(xhci, false, false, GFP_KERNEL);
 	if (!command)
-		goto out;
+		return;
 
 #ifndef CONFIG_USB_DEFAULT_PERSIST
 	/*
@@ -3677,7 +3627,7 @@ void xhci_free_dev(struct usb_hcd *hcd, struct usb_device *udev)
 	 */
 	if (ret <= 0 && ret != -ENODEV) {
 		kfree(command);
-		goto out;
+		return;
 	}
 
 	virt_dev = xhci->devs[udev->slot_id];
@@ -3689,9 +3639,6 @@ void xhci_free_dev(struct usb_hcd *hcd, struct usb_device *udev)
 	}
 
 	spin_lock_irqsave(&xhci->lock, flags);
-
-	virt_dev->udev = NULL;
-
 	/* Don't disable the slot if the host controller is dead. */
 	state = readl(&xhci->op_regs->status);
 	if (state == 0xffffffff || (xhci->xhc_state & XHCI_STATE_DYING) ||
@@ -3699,14 +3646,14 @@ void xhci_free_dev(struct usb_hcd *hcd, struct usb_device *udev)
 		xhci_free_virt_device(xhci, udev->slot_id);
 		spin_unlock_irqrestore(&xhci->lock, flags);
 		kfree(command);
-		goto out;
+		return;
 	}
 
 	if (xhci_queue_slot_control(xhci, command, TRB_DISABLE_SLOT,
 				    udev->slot_id)) {
 		spin_unlock_irqrestore(&xhci->lock, flags);
 		xhci_dbg(xhci, "FIXME: allocate a command ring segment\n");
-		goto out;
+		return;
 	}
 	xhci_ring_cmd_db(xhci);
 	spin_unlock_irqrestore(&xhci->lock, flags);
@@ -3715,11 +3662,6 @@ void xhci_free_dev(struct usb_hcd *hcd, struct usb_device *udev)
 	 * Event command completion handler will free any data structures
 	 * associated with the slot.  XXX Can free sleep?
 	 */
-out:
-#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
-	exynos_usb_audio_conn(0);
-#endif
-	return;
 }
 
 /*
@@ -3744,57 +3686,6 @@ static int xhci_reserve_host_control_ep_resources(struct xhci_hcd *xhci)
 	return 0;
 }
 
-#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
-int xhci_store_hw_info(struct usb_hcd *hcd, struct usb_device *udev)
-{
-	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
-	struct hcd_hw_info *hwinfo = &udev->hwinfo;
-	struct xhci_virt_device *virt_dev;
-	struct xhci_erst_entry *entry = &xhci->erst_audio.entries[0];
-
-	virt_dev = xhci->devs[udev->slot_id];
-
-	hwinfo->dcbaa_dma = xhci->dcbaa->dma;
-	hwinfo->save_dma = xhci->save_dma;
-	hwinfo->cmd_ring = xhci->op_regs->cmd_ring;
-	hwinfo->slot_id = xhci->slot_id;
-	hwinfo->in_dma = xhci->in_dma;
-	hwinfo->in_buf = xhci->in_addr;
-	hwinfo->in_ctx = virt_dev->in_ctx->dma;
-	hwinfo->out_ctx = virt_dev->out_ctx->dma;
-	hwinfo->erst_addr = entry->seg_addr;
-	hwinfo->speed = udev->speed;
-
-	return 0;
-}
-#endif
-
-int xhci_set_deq(struct xhci_hcd *xhci, struct xhci_container_ctx *ctx,
-		unsigned int last_ep, struct usb_device *udev)
-{
-	int i;
-	int last_ep_ctx = 31;
-
-	if (last_ep < 31)
-		last_ep_ctx = last_ep + 1;
-	for (i = 0; i < last_ep_ctx; ++i) {
-		unsigned int epaddr = xhci_get_endpoint_address(i);
-		struct xhci_ep_ctx *ep_ctx = xhci_get_ep_ctx(xhci, ctx, i);
-		if (epaddr == udev->hwinfo.in_ep ) {
-			pr_debug("[%s] set in deq : %#08llx \n",__func__, ep_ctx->deq);
-			if (udev->hwinfo.in_deq)
-				udev->hwinfo.old_in_deq = udev->hwinfo.in_deq;
-			udev->hwinfo.in_deq = ep_ctx->deq;
-		} else if (epaddr == udev->hwinfo.out_ep) {
-			pr_debug("[%s] set out deq : %#08llx \n",__func__, ep_ctx->deq);
-			if (udev->hwinfo.out_deq)
-				udev->hwinfo.old_out_deq = udev->hwinfo.out_deq;
-			udev->hwinfo.out_deq = ep_ctx->deq;
-		}
-	}
-
-	return 0;
-}
 
 /*
  * Returns 0 if the xHC ran out of device slots, the Enable Slot command
@@ -3807,9 +3698,6 @@ int xhci_alloc_dev(struct usb_hcd *hcd, struct usb_device *udev)
 	int ret, slot_id;
 	struct xhci_command *command;
 
-#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
-	exynos_usb_audio_conn(1);
-#endif
 	command = xhci_alloc_command(xhci, false, false, GFP_KERNEL);
 	if (!command)
 		return 0;
@@ -4068,9 +3956,6 @@ static int xhci_setup_device(struct usb_hcd *hcd, struct usb_device *udev,
 	xhci_dbg_trace(xhci, trace_xhci_dbg_address,
 		       "Internal device address = %d",
 		       le32_to_cpu(slot_ctx->dev_state) & DEV_ADDR_MASK);
-#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
-	xhci_store_hw_info(hcd, udev);
-#endif
 out:
 	mutex_unlock(&xhci->mutex);
 	kfree(command);
@@ -4260,11 +4145,6 @@ int xhci_set_usb2_hardware_lpm(struct usb_hcd *hcd,
 		return -EPERM;
 
 	if (udev->usb2_hw_lpm_capable != 1)
-		return -EPERM;
-
-	/* some USB3.0 memory stick doesn't support L1 mode,
-	  * so we add XHCI_LPM_L1_DISABLE quirks for disabling L1 mode */
-	if (!(xhci->quirks & XHCI_LPM_L1_SUPPORT))
 		return -EPERM;
 
 	spin_lock_irqsave(&xhci->lock, flags);
@@ -4997,11 +4877,9 @@ int xhci_gen_setup(struct usb_hcd *hcd, xhci_get_quirks_t get_quirks)
 		 */
 		hcd->has_tt = 1;
 	} else {
-		/* Some 3.1 hosts return sbrn 0x30, can't rely on sbrn alone */
-		if (xhci->sbrn == 0x31 || xhci->usb3_rhub.min_rev >= 1) {
+		if (xhci->sbrn == 0x31) {
 			xhci_info(xhci, "Host supports USB 3.1 Enhanced SuperSpeed\n");
 			hcd->speed = HCD_USB31;
-			hcd->self.root_hub->speed = USB_SPEED_SUPER_PLUS;
 		}
 		/* xHCI private pointer was set in xhci_pci_probe for the second
 		 * registered roothub.
@@ -5026,7 +4904,7 @@ int xhci_gen_setup(struct usb_hcd *hcd, xhci_get_quirks_t get_quirks)
 		xhci->hcc_params2 = readl(&xhci->cap_regs->hcc_params2);
 	xhci_print_registers(xhci);
 
-	xhci->quirks |= quirks;
+	xhci->quirks = quirks;
 
 	get_quirks(dev, xhci);
 
@@ -5048,16 +4926,6 @@ int xhci_gen_setup(struct usb_hcd *hcd, xhci_get_quirks_t get_quirks)
 	if (retval)
 		return retval;
 	xhci_dbg(xhci, "Reset complete\n");
-
-	/*
-	 * On some xHCI controllers (e.g. R-Car SoCs), the AC64 bit (bit 0)
-	 * of HCCPARAMS1 is set to 1. However, the xHCs don't support 64-bit
-	 * address memory pointers actually. So, this driver clears the AC64
-	 * bit of xhci->hcc_params to call dma_set_coherent_mask(dev,
-	 * DMA_BIT_MASK(32)) in this xhci_gen_setup().
-	 */
-	if (xhci->quirks & XHCI_NO_64BIT_SUPPORT)
-		xhci->hcc_params &= ~BIT(0);
 
 	/* Set dma_mask and coherent_dma_mask to 64-bits,
 	 * if xHC supports 64-bit addressing */
@@ -5091,25 +4959,10 @@ int xhci_gen_setup(struct usb_hcd *hcd, xhci_get_quirks_t get_quirks)
 }
 EXPORT_SYMBOL_GPL(xhci_gen_setup);
 
-int xhci_wake_lock(struct usb_hcd *hcd, int is_lock) {
-	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
-
-	xhci_info(xhci, "%s: WAKE %s\n", __func__, is_lock ? "LOCK" : "UNLOCK");
-	if (is_lock) {
-		xhci->l2_state = 0;
-		wake_lock(xhci->wakelock);
-	} else {
-		xhci->l2_state = 1;
-		wake_unlock(xhci->wakelock);
-	}
-
-	return 0;
-}
-
 static const struct hc_driver xhci_hc_driver = {
 	.description =		"xhci-hcd",
 	.product_desc =		"xHCI Host Controller",
-	.hcd_priv_size =	sizeof(struct xhci_hcd),
+	.hcd_priv_size =	sizeof(struct xhci_hcd *),
 
 	/*
 	 * generic hardware linkage
@@ -5117,7 +4970,6 @@ static const struct hc_driver xhci_hc_driver = {
 	.irq =			xhci_irq,
 	.flags =		HCD_MEMORY | HCD_USB3 | HCD_SHARED,
 
-	.wake_lock =		xhci_wake_lock,
 	/*
 	 * basic lifecycle operations
 	 */
@@ -5155,8 +5007,6 @@ static const struct hc_driver xhci_hc_driver = {
 	 */
 	.hub_control =		xhci_hub_control,
 	.hub_status_data =	xhci_hub_status_data,
-	.hub_check_speed = xhci_hub_check_speed,
-	.usb_l2_check = xhci_check_usbl2_support,
 	.bus_suspend =		xhci_bus_suspend,
 	.bus_resume =		xhci_bus_resume,
 

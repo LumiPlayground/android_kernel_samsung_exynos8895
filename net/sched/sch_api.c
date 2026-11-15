@@ -1203,8 +1203,8 @@ tc_qdisc_flow_control(struct net_device *dev, u32 tcm_handle, int enable_flow)
 
 	/* call registered change function */
 	if (q) {
-		if (q->ops->change(q, &req.attr) != 0)
-			pr_err("qdisc_flow_control: qdisc change failed");
+		if (q->ops->change(q, &(req.attr)) != 0)
+			pr_err("tc_qdisc_flow_control: qdisc change failed");
 	}
 }
 EXPORT_SYMBOL(tc_qdisc_flow_control);

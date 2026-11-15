@@ -65,6 +65,11 @@ static void mcip_ipi_clear(int irq)
 		return;
 	}
 
+	if (unlikely(irq == SOFTIRQ_IRQ)) {
+		arc_softirq_clear(irq);
+		return;
+	}
+
 	raw_spin_lock_irqsave(&mcip_lock, flags);
 
 	/* Who sent the IPI */

@@ -49,7 +49,7 @@ static int sensor_3h5_init(struct v4l2_subdev *subdev, u32 val)
 	int ret = 0;
 	struct fimc_is_module_enum *module;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 
@@ -76,7 +76,7 @@ int sensor_3h5_probe(struct i2c_client *client,
 	struct fimc_is_device_sensor *device;
 	struct sensor_open_extended *ext;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -93,8 +93,8 @@ int sensor_3h5_probe(struct i2c_client *client,
 		goto p_err;
 	}
 
-	module = &device->module_enum[atomic_read(&device->module_count)];
-	atomic_inc(&device->module_count);
+	module = &device->module_enum[atomic_read(&core->resourcemgr.rsccount_module)];
+	atomic_inc(&core->resourcemgr.rsccount_module);
 	clear_bit(FIMC_IS_MODULE_GPIO_ON, &module->state);
 	module->sensor_id = SENSOR_NAME_S5K3H5;
 	module->subdev = subdev_module;

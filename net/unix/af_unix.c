@@ -2354,7 +2354,7 @@ again:
 			}
 
 			mutex_lock(&u->iolock);
-			goto redo;
+			continue;
 unlock:
 			unix_state_unlock(sk);
 			break;
@@ -2488,6 +2488,20 @@ static int unix_stream_recvmsg(struct socket *sock, struct msghdr *msg,
 	};
 
 	return unix_stream_read_generic(&state, true);
+}
+
+static ssize_t skb_unix_socket_splice(struct sock *sk,
+				      struct pipe_inode_info *pipe,
+				      struct splice_pipe_desc *spd)
+{
+	int ret;
+	struct unix_sock *u = unix_sk(sk);
+
+	mutex_unlock(&u->iolock);
+	ret = splice_to_pipe(pipe, spd);
+	mutex_lock(&u->iolock);
+
+	return ret;
 }
 
 static int unix_stream_splice_actor(struct sk_buff *skb,

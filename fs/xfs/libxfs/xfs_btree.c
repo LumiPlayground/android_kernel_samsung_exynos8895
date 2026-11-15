@@ -4481,8 +4481,36 @@ xfs_btree_change_owner(
 	bbcoi.new_owner = new_owner;
 	bbcoi.buffer_list = buffer_list;
 
-	return xfs_btree_visit_blocks(cur, xfs_btree_block_change_owner,
-			&bbcoi);
+	/* for each level */
+	for (level = cur->bc_nlevels - 1; level >= 0; level--) {
+		/* grab the left hand block */
+		error = xfs_btree_lookup_get_block(cur, level, &lptr, &block);
+		if (error)
+			return error;
+
+		/* readahead the left most block for the next level down */
+		if (level > 0) {
+			union xfs_btree_ptr     *ptr;
+
+			ptr = xfs_btree_ptr_addr(cur, 1, block);
+			xfs_btree_readahead_ptr(cur, ptr, 1);
+
+			/* save for the next iteration of the loop */
+			xfs_btree_copy_ptrs(cur, &lptr, ptr, 1);
+		}
+
+		/* for each buffer in the level */
+		do {
+			error = xfs_btree_block_change_owner(cur, level,
+							     new_owner,
+							     buffer_list);
+		} while (!error);
+
+		if (error != -ENOENT)
+			return error;
+	}
+
+	return 0;
 }
 
 /**

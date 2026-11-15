@@ -21,6 +21,34 @@
 *  while mmaping */
 #define DST_QUEUE_OFF_BASE      (TASK_SIZE / 2)
 
+static inline void *s5p_mfc_mem_alloc(void *alloc_ctx, size_t size)
+{
+	return vb2_ion_private_alloc(alloc_ctx, size);
+}
+
+static inline void s5p_mfc_mem_free(void *cookie)
+{
+	vb2_ion_private_free(cookie);
+}
+
+static inline phys_addr_t s5p_mfc_mem_get_paddr(void *cookie)
+{
+	phys_addr_t addr = 0;
+
+	BUG_ON(vb2_ion_phys_address(cookie, &addr) != 0);
+
+	return addr;
+}
+
+static inline dma_addr_t s5p_mfc_mem_get_daddr(void *cookie)
+{
+	dma_addr_t addr = 0;
+
+	BUG_ON(vb2_ion_dma_address(cookie, &addr) != 0);
+
+	return addr;
+}
+
 static inline dma_addr_t s5p_mfc_mem_get_daddr_vb(
 	struct vb2_buffer *v, unsigned int n)
 {
@@ -30,6 +58,11 @@ static inline dma_addr_t s5p_mfc_mem_get_daddr_vb(
 	WARN_ON(vb2_ion_dma_address(cookie, &addr) != 0);
 
 	return addr;
+}
+
+static inline void *s5p_mfc_mem_get_vaddr(void *cookie)
+{
+	return vb2_ion_private_vaddr(cookie);
 }
 
 static inline int s5p_mfc_mem_buf_prepare(struct vb2_buffer *vb)
@@ -44,13 +77,11 @@ static inline void s5p_mfc_mem_buf_finish(struct vb2_buffer *vb)
 
 struct vb2_mem_ops *s5p_mfc_mem_ops(void);
 
-void s5p_mfc_mem_set_cacheable(bool cacheable);
-void s5p_mfc_mem_clean(struct s5p_mfc_dev *dev,
-			struct s5p_mfc_special_buf *specail_buf,
-			off_t offset, size_t size);
-void s5p_mfc_mem_invalidate(struct s5p_mfc_dev *dev,
-			struct s5p_mfc_special_buf *specail_buf,
-			off_t offset, size_t size);
+void s5p_mfc_mem_set_cacheable(void *alloc_ctx, bool cacheable);
+void s5p_mfc_mem_clean(void *vb_priv, void *start, off_t offset,
+							size_t size);
+void s5p_mfc_mem_invalidate(void *vb_priv, void *start, off_t offset,
+							size_t size);
 int s5p_mfc_mem_clean_vb(struct vb2_buffer *vb, u32 num_planes);
 int s5p_mfc_mem_inv_vb(struct vb2_buffer *vb, u32 num_planes);
 
@@ -58,17 +89,8 @@ int s5p_mfc_mem_get_user_shared_handle(struct s5p_mfc_ctx *ctx,
 		struct mfc_user_shared_handle *handle);
 int s5p_mfc_mem_cleanup_user_shared_handle(struct s5p_mfc_ctx *ctx,
 		struct mfc_user_shared_handle *handle);
-
-void s5p_mfc_put_iovmm(struct s5p_mfc_ctx *ctx, int num_planes, int index, int spare);
+void s5p_mfc_put_iovmm(struct s5p_mfc_ctx *ctx, int num_planes, int index);
 void s5p_mfc_get_iovmm(struct s5p_mfc_ctx *ctx, struct vb2_buffer *vb);
-void s5p_mfc_move_iovmm_to_spare(struct s5p_mfc_ctx *ctx, int num_planes, int index);
 void s5p_mfc_cleanup_assigned_iovmm(struct s5p_mfc_ctx *ctx);
-
-void *s5p_mfc_mem_get_vaddr(struct s5p_mfc_dev *dev,
-		struct s5p_mfc_special_buf *special_buf);
-void s5p_mfc_mem_ion_free(struct s5p_mfc_dev *dev,
-		struct s5p_mfc_special_buf *special_buf);
-int s5p_mfc_mem_ion_alloc(struct s5p_mfc_dev *dev,
-		struct s5p_mfc_special_buf *special_buf);
 
 #endif /* __S5P_MFC_MEM_H */

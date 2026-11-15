@@ -15,6 +15,7 @@
 
 #include "s5p_mfc_common.h"
 
+void s5p_mfc_cmd_host2risc(struct s5p_mfc_dev *dev, int cmd);
 int s5p_mfc_cmd_sys_init(struct s5p_mfc_dev *dev,
 				enum mfc_buf_usage_type buf_type);
 void s5p_mfc_cmd_sleep(struct s5p_mfc_dev *dev);

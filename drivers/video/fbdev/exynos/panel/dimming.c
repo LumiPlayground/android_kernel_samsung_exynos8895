@@ -17,7 +17,8 @@
 static int NR_LUMINANCE;
 static int NR_TP;
 static int TP_VT = 0;
-static int TP_V0 = -1;
+static int TP_2ND = -1;
+static int TP_3RD = -1;
 static int TP_V255 = -1;
 static int TARGET_LUMINANCE;
 static enum gamma_degree TARGET_G_CURVE_DEGREE;
@@ -123,7 +124,7 @@ struct gamma_curve gamma_curve_lut[] = {
 #endif	/* GENERATE_GAMMA_CURVE */
 };
 
-s64 disp_pow(s64 num, u32 digits)
+static s64 disp_pow(s64 num, u32 digits)
 {
 	s64 res = num;
 	u32 i;
@@ -136,7 +137,7 @@ s64 disp_pow(s64 num, u32 digits)
 	return res;
 }
 
-s64 disp_round(s64 num, u32 digits)
+static s64 disp_round(s64 num, u32 digits)
 {
 	int sign = (num < 0 ? -1 : 1);
 	u64 tnum;
@@ -197,7 +198,7 @@ static int msb64(s64 num)
 }
 #endif
 
-s64 disp_div64(s64 num, s64 den)
+static s64 disp_div64(s64 num, s64 den)
 {
 #if BIT_SHIFT > 26
 	if (num > ((1LL << (63 - BIT_SHIFT)) - 1)) {
@@ -231,7 +232,7 @@ s64 disp_div64(s64 num, s64 den)
 }
 
 #ifdef DIMMING_CALC_PRECISE
-s64 disp_div64_round(s64 num, s64 den, u32 digits)
+static s64 disp_div64_round(s64 num, s64 den, u32 digits)
 {
 	int sign_num = (num < 0 ? -1 : 1);
 	int sign_den = (den < 0 ? -1 : 1);
@@ -342,7 +343,7 @@ static void generate_gamma_curve(int gamma, int *gamma_curve)
 
 void remove_gamma_curve(void)
 {
-	size_t index;
+	int index;
 
 	for (index = 0; index < ARRAY_SIZE(gamma_curve_lut); index++)
 		if (gamma_curve_lut[index].gamma_curve_table) {
@@ -354,7 +355,7 @@ void remove_gamma_curve(void)
 
 int find_gamma_curve(int gamma)
 {
-	size_t index;
+	int index;
 #ifdef GENERATE_GAMMA_CURVE
 	int *gamma_curve_table;
 #endif
@@ -377,7 +378,7 @@ int find_gamma_curve(int gamma)
 	}
 #endif
 
-	return (int)index;
+	return index;
 }
 
 enum gamma_degree gamma_value_to_degree(int gamma)
@@ -596,7 +597,6 @@ static u64 mtp_offset_to_vregout(struct dimming_info *dim_info,
 	s64 num, den, vreg, vsrc, res = 0;
 	struct tp *tp = dim_info->tp;
 	u32 *vt_voltage = dim_info->vt_voltage;
-	u32 *v0_voltage = dim_info->v0_voltage;
 	s64 VREGOUT = dim_info->vregout;
 
 	if (!tp || v < 0 || v >= NR_TP) {
@@ -618,23 +618,12 @@ static u64 mtp_offset_to_vregout(struct dimming_info *dim_info,
 
 	if (v == TP_VT) {
 		s32 offset = tp[v].center[c] + tp[v].offset[c];
-		if ((offset > 0xF) || (offset < 0x0)) {
-			pr_warn("%s, warning : ivt (%d) out of range(0x0 ~ 0xF) replace to %s\n",
-				__func__, offset, offset > 0xF ? "0xF" : "0x0" );
-			offset = offset > 0xF ? 0xF : 0x0;
+		if (offset > 0xF) {
+			pr_err("%s, error : ivt (%d) out of range(0x0 ~ 0xF)\n", __func__, offset);
+			return -EINVAL;
 		}
 		vreg = vsrc;
 		num = vreg * (s64)vt_voltage[offset];
-		res = vsrc - disp_div64(num, den);
-	} else if (v == TP_V0) {
-		s32 offset = tp[v].center[c] + tp[v].offset[c];
-		if ((offset > 0xF) || (offset < 0x0)) {
-			pr_warn("%s, warning : ivt (%d) out of range(0x0 ~ 0xF) replace to %s\n",
-				__func__, offset, offset > 0xF ? "0xF" : "0x0" );
-			offset = offset > 0xF ? 0xF : 0x0;
-		}
-		vreg = vsrc;
-		num = vreg * (s64)v0_voltage[offset];
 		res = vsrc - disp_div64(num, den);
 	} else if (v == TP_V255) {
 		vreg = vsrc;
@@ -764,7 +753,7 @@ static int find_gray_scale_gamma_value(struct gray_scale *gray_scale_lut, u64 ga
 	return delta_l <= delta_r ? r : l;
 }
 
-s64 interpolation(s64 from, s64 to, int cur_step, int total_step)
+static s64 interpolation(s64 from, s64 to, int cur_step, int total_step)
 {
 	s64 num, den;
 
@@ -817,8 +806,7 @@ static int generate_gray_scale(struct dimming_info *dim_info)
 	struct tp *tp = dim_info->tp;
 	int nr_tp = dim_info->nr_tp;
 
-	for (i = 0, iv = (TP_V0 > 0 ? TP_V0 : TP_VT);
-			iv < nr_tp && i < GRAY_SCALE_MAX; i++) {
+	for (i = 0, iv = 0; iv < nr_tp && i < GRAY_SCALE_MAX; i++) {
 		if (i == tp[iv].level) {
 			iv_upper = tp[((iv == nr_tp - 1) ? iv : iv + 1)].level;
 			iv_lower = tp[iv].level;
@@ -919,13 +907,12 @@ int get_luminance(struct dimming_info *dim_info, u32 index)
 	return dim_lut[index].luminance;
 }
 
-static void copy_tpout_center(struct dimming_info *dim_info, u32 luminance, u8 *output,
-		void (*copy)(u8 *output, u32 value, u32 index, u32 color))
+static void copy_tpout_center(struct dimming_info *dim_info, u32 luminance, u8 *output, bool compact)
 {
 	struct dimming_lut *dim_lut = dim_info->dim_lut;
 	struct tp *tp = dim_info->tp;
 	int ilum = find_luminance(dim_info, luminance);
-	int i, c, value;
+	int i, c, value, idst = 0;
 
 	if (unlikely(!tp || !dim_lut)) {
 		pr_err("%s, invalid tp or dim_lut\n", __func__);
@@ -940,17 +927,46 @@ static void copy_tpout_center(struct dimming_info *dim_info, u32 luminance, u8 *
 	for (i = TP_V255; i >= TP_VT; i--) {
 		for_each_color(c) {
 			value = dim_lut[ilum].tpout[i].center[c];
-			copy(output, value, i, c);
+			if (i == TP_V255) {
+				output[idst++] = ((value & 0x0100) ? 1 : 0);
+				output[idst++] = value & 0x00FF;
+				if (value > 511) {
+					pr_err("%s, error : exceed output range %s[%s] %d !!\n", __func__,
+							tp[i].name, color_name[c], value);
+				}
+			} else if (i == TP_VT) {
+				if (compact) {
+					if (c == RED) {
+						output[idst] &= ~(0xF << 4);
+						output[idst] |= (value & 0xF) << 4;
+					} else {
+						output[idst] &= ~0xF;
+						output[idst] |= value & 0xF;
+						idst++;
+					}
+				} else {
+					output[idst++] = value & 0xF;
+				}
+				if (value > 15) {
+					pr_err("%s, error : exceed output range %s[%s] %d !!\n", __func__,
+							tp[i].name, color_name[c], value);
+				}
+			} else {
+				output[idst++] = value & 0x00FF;
+				if (value > 255) {
+					pr_err("%s, error : exceed output range %s[%s] %d !!\n", __func__,
+							tp[i].name, color_name[c], value);
+				}
+			}
 		}
 	}
 }
 
-static void copy_tpout_hbm_center(struct dimming_info *dim_info, u32 luminance, u8 *output,
-		void (*copy)(u8 *output, u32 value, u32 index, u32 color))
+static void copy_tpout_hbm_center(struct dimming_info *dim_info, u32 luminance, u8 *output, bool compact)
 {
 	struct dimming_lut *dim_lut = dim_info->dim_lut;
 	struct tp *tp = dim_info->tp;
-	int i, c, value, ilum;
+	int i, c, value, ilum, idst = 0;
 	int nr_tp = dim_info->nr_tp;
 	s32 (*target_gamma_tbl)[MAX_COLOR];
 	s32 (*output_gamma_tbl)[MAX_COLOR];
@@ -993,7 +1009,37 @@ static void copy_tpout_hbm_center(struct dimming_info *dim_info, u32 luminance, 
 	for (i = TP_V255; i >= TP_VT; i--) {
 		for_each_color(c) {
 			value = output_gamma_tbl[i][c];
-			copy(output, value, i, c);
+			if (i == TP_V255) {
+				output[idst++] = ((value & 0x0100) ? 1 : 0);
+				output[idst++] = value & 0x00FF;
+				if (value > 511) {
+					pr_err("%s, error : exceed output range %s[%s] %d !!\n", __func__,
+							tp[i].name, color_name[c], value);
+				}
+			} else if (i == TP_VT) {
+				if (compact) {
+					if (c == RED) {
+						output[idst] &= ~(0xF << 4);
+						output[idst] |= (value & 0xF) << 4;
+					} else {
+						output[idst] &= ~0xF;
+						output[idst] |= value & 0xF;
+						idst++;
+					}
+				} else {
+					output[idst++] = value & 0xF;
+				}
+				if (value > 15) {
+					pr_err("%s, error : exceed output range %s[%s] %d !!\n", __func__,
+							tp[i].name, color_name[c], value);
+				}
+			} else {
+				output[idst++] = value & 0x00FF;
+				if (value > 255) {
+					pr_err("%s, error : exceed output range %s[%s] %d !!\n", __func__,
+							tp[i].name, color_name[c], value);
+				}
+			}
 		}
 	}
 
@@ -1006,8 +1052,7 @@ err:
 	return;
 }
 
-void get_dimming_gamma(struct dimming_info *dim_info, u32 luminance, u8 *output,
-		void (*copy)(u8 *output, u32 value, u32 index, u32 color))
+void get_dimming_gamma_compact(struct dimming_info *dim_info, u32 luminance, u8 *output)
 {
 	if (unlikely(!dim_info || !output)) {
 		pr_err("%s, invalid dim_info or output\n", __func__);
@@ -1015,9 +1060,26 @@ void get_dimming_gamma(struct dimming_info *dim_info, u32 luminance, u8 *output,
 	}
 
 	if (luminance <= dim_info->target_luminance)
-		copy_tpout_center(dim_info, luminance, output, copy);
+		copy_tpout_center(dim_info, luminance, output, true);
 	else if (dim_info->hbm_luminance && luminance <= dim_info->hbm_luminance)
-		copy_tpout_hbm_center(dim_info, luminance, output, copy);
+		copy_tpout_hbm_center(dim_info, luminance, output, true);
+	else
+		pr_warn("%s, out of range (hbm_luminance %d, luminance %d)\n",
+				__func__, dim_info->hbm_luminance, luminance);
+	return;
+}
+
+void get_dimming_gamma(struct dimming_info *dim_info, u32 luminance, u8 *output)
+{
+	if (unlikely(!dim_info || !output)) {
+		pr_err("%s, invalid dim_info or output\n", __func__);
+		return;
+	}
+
+	if (luminance <= dim_info->target_luminance)
+		copy_tpout_center(dim_info, luminance, output, false);
+	else if (dim_info->hbm_luminance && luminance <= dim_info->hbm_luminance)
+		copy_tpout_hbm_center(dim_info, luminance, output, false);
 	else
 		pr_warn("%s, out of range (hbm_luminance %d, luminance %d)\n",
 				__func__, dim_info->hbm_luminance, luminance);
@@ -1104,8 +1166,7 @@ static int generate_gamma_table(struct dimming_info *dim_info)
 
 			for_each_color(c) {
 				dim_lut[ilum].tpout[v].vout[c] =
-					(v == TP_VT) ? tp[v].vout[c] :
-					gray_scale_lut[tpout[v].M_GRAY].vout[c];
+					(v == TP_VT) ? tp[v].vout[c] : gray_scale_lut[tpout[v].M_GRAY].vout[c];
 			}
 		}
 
@@ -1113,7 +1174,7 @@ static int generate_gamma_table(struct dimming_info *dim_info)
 			v = calc_vout_order[i];
 			for_each_color(c) {
 				dim_lut[ilum].tpout[v].center[c] =
-					(v == TP_VT || v == TP_V0) ? tp[v].center[c] :
+					(v == TP_VT) ? tp[v].center[c] :
 					mtp_vregout_to_offset(dim_info, v, (enum color)c, ilum);
 			}
 		}
@@ -1167,34 +1228,23 @@ int free_dimming_info(struct dimming_info *dim_info)
 	return 0;
 }
 
-int find_tp_index(struct tp *tp, int nr_tp, char *name)
-{
-	int i;
-
-	for (i = 0; i < nr_tp; i++)
-		if (!strcmp(tp[i].name, name))
-			return i;
-
-	return -1;
-}
-
 void prepare_dim_info(struct dimming_info *dim_info)
 {
 #ifdef DEBUG_DIMMING
 	int i, len;
 	char buf[MAX_PRINT_BUF_SIZE];
-#endif
 	struct tp *tp = dim_info->tp;
+#endif
 
 	NR_TP = dim_info->nr_tp;
 	NR_LUMINANCE = dim_info->nr_luminance;
 	TARGET_LUMINANCE = dim_info->target_luminance;
 	TARGET_G_CURVE_DEGREE = dim_info->target_g_curve_degree;
 
-	TP_VT = find_tp_index(tp, dim_info->nr_tp, "VT");
-	TP_V0 = find_tp_index(tp, dim_info->nr_tp, "V0");
+	TP_VT = 0;
+	TP_2ND = 1;
+	TP_3RD = 2;
 	TP_V255 = dim_info->nr_tp - 1;
-
 
 #ifdef DEBUG_DIMMING
 	pr_info("NR_TP %d\n", NR_TP);
@@ -1338,8 +1388,7 @@ void print_dim_lut(struct dimming_info *dim_info)
 void print_dimming_info(struct dimming_info *dim_info, int tag)
 {
 	static char buf[MAX_PRINT_BUF_SIZE];
-	size_t i;
-	int len, col, ncol, *fields;
+	int i, len, col, ncol, *fields;
 	struct dimming_lut_info *dim_lut_info = &dim_info->dim_lut_info;
 
 	pr_info("%s\n", tag_name[tag]);
@@ -1443,7 +1492,6 @@ int init_dimming_info(struct dimming_info *dim_info, struct dimming_init_info *s
 	int ilum;
 
 	memcpy(dim_info->vt_voltage, src->vt_voltage, sizeof(src->vt_voltage));
-	memcpy(dim_info->v0_voltage, src->v0_voltage, sizeof(src->v0_voltage));
 	dim_info->vregout = src->vregout;
 	dim_info->nr_tp = src->nr_tp;
 	dim_info->tp = src->tp;

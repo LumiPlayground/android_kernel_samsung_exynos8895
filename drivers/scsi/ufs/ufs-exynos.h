@@ -13,10 +13,8 @@
 #define _UFS_EXYNOS_H_
 
 #include <linux/pm_qos.h>
-#include <crypto/smu.h>
-#include <crypto/fmp.h>
-#include "ufs-cal-9810.h"
 
+#define UFS_VER_0003	3
 #define UFS_VER_0004	4
 #define UFS_VER_0005	5
 
@@ -70,10 +68,16 @@
  #define REFCLK_STOP			BIT(2)
  #define UNIPRO_MCLK_STOP		BIT(1)
  #define UNIPRO_PCLK_STOP		BIT(0)
+#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
  #define CLK_STOP_ALL		(REFCLKOUT_STOP |\
 					REFCLK_STOP |\
 					UNIPRO_MCLK_STOP |\
 					UNIPRO_PCLK_STOP)
+#else
+ #define CLK_STOP_ALL		(REFCLK_STOP |\
+					UNIPRO_MCLK_STOP |\
+					UNIPRO_PCLK_STOP)
+#endif
 
 #define HCI_FORCE_HCS			0xB4
  #define REFCLKOUT_STOP_EN	BIT(11)
@@ -83,12 +87,18 @@
  #define UNIPRO_PCLK_STOP_EN	BIT(6)
  #define UNIPRO_MCLK_STOP_EN	BIT(5)
  #define HCI_CORECLK_STOP_EN	BIT(4)
+#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
  #define CLK_STOP_CTRL_EN_ALL	(UFSP_DRCG_EN |\
 					MPHY_APBCLK_STOP_EN |\
 					REFCLKOUT_STOP_EN |\
 					REFCLK_STOP_EN |\
 					UNIPRO_PCLK_STOP_EN |\
 					UNIPRO_MCLK_STOP_EN)
+#else
+ #define CLK_STOP_CTRL_EN_ALL	(REFCLK_STOP_EN |\
+					UNIPRO_PCLK_STOP_EN |\
+					UNIPRO_MCLK_STOP_EN)
+#endif
 
 #define HCI_FSM_MONITOR			0xC0
 #define HCI_PRDT_HIT_RATIO		0xC4
@@ -97,6 +107,7 @@
 #define HCI_DMA1_MONITOR_STATE		0xD0
 #define HCI_DMA1_MONITOR_CNT		0xD4
 
+#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
 #define HCI_UFS_AXI_DMA_IF_CTRL		0xF8
 #define HCI_UFS_ACG_DISABLE		0xFC
  #define HCI_UFS_ACG_DISABLE_EN		BIT(0)
@@ -116,6 +127,7 @@
 #define HCI_UTRL_DBR_11_8_TIMER_EXPIRED_VALUE		0x158
 #define HCI_UTRL_DBR_15_12_TIMER_EXPIRED_VALUE		0x15C
 #define HCI_UTMRL_DBR_3_0_TIMER_EXPIRED_VALUE		0x160
+#endif
 
 /* Device fatal error */
 #define DFES_ERR_EN	BIT(31)
@@ -148,6 +160,7 @@ enum {
 #define UNIP_COMP_INFO				0x004
 #define UNIP_COMP_RESET				0x010
 
+#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
 #define UNIP_DME_POWERON_REQ			0x7800
 #define UNIP_DME_POWERON_CNF_RESULT		0x7804
 #define UNIP_DME_POWEROFF_REQ			0x7810
@@ -178,6 +191,38 @@ enum {
 #define UNIP_DME_PWR_IND_RESULT			0x78EC
 #define UNIP_DME_TEST_MODE_REQ 			0x7900
 #define UNIP_DME_TEST_MODE_CNF_RESULT		0x7904
+#else
+#define UNIP_DME_POWERON_REQ			0x040
+#define UNIP_DME_POWERON_CNF_RESULT		0x044
+#define UNIP_DME_POWEROFF_REQ			0x048
+#define UNIP_DME_POWEROFF_CNF_RESULT		0x04C
+#define UNIP_DME_RESET_REQ			0x050
+#define UNIP_DME_RESET_REQ_LEVEL		0x054
+#define UNIP_DME_ENABLE_REQ			0x058
+#define UNIP_DME_ENABLE_CNF_RESULT		0x05C
+#define UNIP_DME_ENDPOINTRESET_REQ		0x060
+#define UNIP_DME_ENDPOINTRESET_CNF_RESULT	0x064
+#define UNIP_DME_LINKSTARTUP_REQ		0x068
+#define UNIP_DME_LINKSTARTUP_CNF_RESULT		0x06C
+#define UNIP_DME_HIBERN8_ENTER_REQ		0x070
+#define UNIP_DME_HIBERN8_ENTER_CNF_RESULT	0x074
+#define UNIP_DME_HIBERN8_ENTER_IND_RESULT	0x078
+#define UNIP_DME_HIBERN8_EXIT_REQ		0x080
+#define UNIP_DME_HIBERN8_EXIT_CNF_RESULT	0x084
+#define UNIP_DME_HIBERN8_EXIT_IND_RESULT	0x088
+#define UNIP_DME_PWR_REQ			0x090
+#define UNIP_DME_PWR_REQ_POWERMODE		0x094
+#define UNIP_DME_PWR_REQ_LOCALL2TIMER0		0x098
+#define UNIP_DME_PWR_REQ_LOCALL2TIMER1		0x09C
+#define UNIP_DME_PWR_REQ_LOCALL2TIMER2		0x0A0
+#define UNIP_DME_PWR_REQ_REMOTEL2TIMER0		0x0A4
+#define UNIP_DME_PWR_REQ_REMOTEL2TIMER1		0x0A8
+#define UNIP_DME_PWR_REQ_REMOTEL2TIMER2		0x0AC
+#define UNIP_DME_PWR_CNF_RESULT			0x0B0
+#define UNIP_DME_PWR_IND_RESULT			0x0B4
+#define UNIP_DME_TEST_MODE_REQ			0x0B8
+#define UNIP_DME_TEST_MODE_CNF_RESULT		0x0BC
+#endif
 
 #define UNIP_DME_ERROR_IND_LAYER		0x0C0
 #define UNIP_DME_ERROR_IND_ERRCODE		0x0C4
@@ -186,6 +231,7 @@ enum {
 #define UNIP_DME_INTR_STATUS			0x0E0
 #define UNIP_DME_INTR_ENABLE			0x0E4
 
+#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
 #define UNIP_DME_GETSET_CONTROL                0x7A00
 #define UNIP_DME_GETSET_ADDR                   0x7A04
 #define UNIP_DME_GETSET_WDATA                  0x7A08
@@ -205,10 +251,32 @@ enum {
 #define UNIP_DME_DBG_CTRL_FSM		           0x7D00
 #define UNIP_DME_DBG_FLAG_STATUS			   0x7D14
 #define UNIP_DME_DBG_LINKCFG_FSM	           0x7D18
+#else
+#define UNIP_DME_GETSET_ADDR			0x100
+#define UNIP_DME_GETSET_WDATA			0x104
+#define UNIP_DME_GETSET_RDATA			0x108
+#define UNIP_DME_GETSET_CONTROL			0x10C
+#define UNIP_DME_GETSET_RESULT			0x110
+#define UNIP_DME_PEER_GETSET_ADDR		0x120
+#define UNIP_DME_PEER_GETSET_WDATA		0x124
+#define UNIP_DME_PEER_GETSET_RDATA		0x128
+#define UNIP_DME_PEER_GETSET_CONTROL		0x12C
+#define UNIP_DME_PEER_GETSET_RESULT		0x130
+#endif
 
+#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
 #define UNIP_DME_INTR_ERROR_CODE		0x7B20
 #define UNIP_DME_DEEPSTALL_ENTER_REQ		0x7910
 #define UNIP_DME_DISCARD_CPORT_ID		0x7B24
+#else
+#define UNIP_DME_DIRECT_GETSET_BASE		0x134
+#define UNIP_DME_DIRECT_GETSET_ERR_ADDR		0x138
+#define UNIP_DME_DIRECT_GETSET_ERR_CODE		0x13c
+#define UNIP_DME_INTR_ERROR_CODE		0x140
+#define UNIP_DME_DEEPSTALL_ENTER_REQ		0x144
+#define UNIP_DME_DISCARD_CPORT_ID		0x148
+#define UNIP_DBG_DME_CTRL_STATE			0x14C
+#endif
 
 #define UNIP_DBG_FORCE_DME_CTRL_STATE		0x150
 #define UNIP_DBG_AUTO_DME_LINKSTARTUP		0x158
@@ -306,6 +374,7 @@ enum {
 /*
  * MIBs for PA debug registers
  */
+#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
 #define PA_DBG_CLK_PERIOD		0x9514
 #define PA_DBG_RXPHY_CFGUPDT		0x9519
 #define PA_DBG_MODE			0x9529
@@ -313,6 +382,21 @@ enum {
 #define PA_DBG_OV_TM			0x200
 #define PA_DBG_RESUME_HIBERN8		0x9550
 #define PA_DBG_OPTION_SUITE		0x9564
+#else
+#define PA_DBG_CLK_PERIOD		0x9514
+#define PA_DBG_TXPHY_CFGUPDT		0x9518
+#define PA_DBG_RXPHY_CFGUPDT		0x9519
+#define PA_DBG_MODE			0x9529
+#define PA_DBG_TX_PHY_LATENCY		0x952C
+#define PA_DBG_AUTOMODE_THLD		0x9536
+#define PA_DBG_OV_TM			0x9540
+#define PA_DBG_MIB_CAP_SEL		0x9546
+#define PA_DBG_RESUME_HIBERN8		0x9550
+#define PA_DBG_TX_PHY_LATENCY_EN	0x9552
+#define PA_DBG_IGNORE_INCOMING		0x9559
+#define PA_DBG_LINE_RESET_THLD		0x9561
+#define PA_DBG_OPTION_SUITE		0x9564
+#endif
 
 /*
  * MIBs for Transport Layer debug registers
@@ -373,8 +457,16 @@ enum {
 #define CMN_REFCLK_OUT			0x044E
 #define CMN_REFCLK_SEL_PLL		0x044F
 
+#if defined(CONFIG_SOC_EMULATOR8895)
+#define PHY_PMA_COMN_ADDR(reg)  ((reg) << 2)
+#define PHY_PMA_TRSV_ADDR(reg, lane)    (((reg) + (0x40 * (lane))) << 2)
+#elif !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
 #define PHY_PMA_COMN_ADDR(reg)		(reg)
 #define PHY_PMA_TRSV_ADDR(reg, lane)	((reg) + (0x140 * (lane)))
+#else
+#define PHY_PMA_COMN_ADDR(reg)		((reg) << 2)
+#define PHY_PMA_TRSV_ADDR(reg, lane)	(((reg) + (0x30 * (lane))) << 2)
+#endif
 
 /*
  * Driver specific definitions
@@ -481,18 +573,28 @@ struct exynos_ufs_phy {
 	struct exynos_ufs_soc *soc;
 };
 
-#define NUM_OF_SYSREG 1
+#define NUM_OF_SYSREG 2
 struct exynos_ufs_sys {
 	void __iomem *reg_sys[NUM_OF_SYSREG];
 	u32 mask[NUM_OF_SYSREG];
 	u32 bits[NUM_OF_SYSREG];
 };
 
+struct uic_pwr_mode {
+	u8 lane;
+	u8 gear;
+	u8 mode;
+	u8 hs_series;
+	bool termn;
+	u32 local_l2_timer[3];
+	u32 remote_l2_timer[3];
+};
+
 struct exynos_ufs_clk_info {
 	struct list_head list;
 	struct clk *clk;
 	const char *name;
-	unsigned long freq;
+	u32 freq;
 };
 
 struct exynos_ufs_misc_log {
@@ -524,16 +626,6 @@ struct exynos_ufs_debug {
 	struct exynos_ufs_misc_log misc;
 };
 
-struct exynos_smu_data {
-	struct exynos_smu_variant_ops *vops;
-	struct platform_device *pdev;
-};
-
-struct exynos_fmp_data {
-	struct exynos_fmp_variant_ops *vops;
-	struct platform_device *pdev;
-};
-
 struct exynos_ufs {
 	struct device *dev;
 	struct ufs_hba *hba;
@@ -542,12 +634,17 @@ struct exynos_ufs {
 	void __iomem *reg_unipro;
 	void __iomem *reg_ufsp;
 
+	struct regmap *pmureg;
+	struct regmap *otpreg;
 	struct clk *clk_hci;
 	struct clk *pclk;
 	struct clk *clk_unipro;
 	struct clk *clk_refclk_1;
 	struct clk *clk_refclk_2;
 	struct clk *clk_phy_symb[4];
+	u32 pclk_rate;
+	u32 pclk_avail_min;
+	u32 pclk_avail_max;
 	u32 mclk_rate;
 	u32 pwm_freq;
 
@@ -556,21 +653,30 @@ struct exynos_ufs {
 
 	struct exynos_ufs_phy phy;
 	struct exynos_ufs_sys sys;
+	struct notifier_block lpa_nb;
 	struct uic_pwr_mode req_pmd_parm;
 	struct uic_pwr_mode act_pmd_parm;
 
-	struct exynos_smu_data smu;
-	struct exynos_fmp_data fmp;
-
+	u32 rx_adv_fine_gran_sup_en;
+	u32 rx_adv_fine_gran_step;
 	u32 rx_min_actv_time_cap;
 	u32 rx_hibern8_time_cap;
 	u32 tx_hibern8_time_cap;
+	u32 rx_adv_min_actv_time_cap;
+	u32 rx_adv_hibern8_time_cap;
+
+	u32 pa_granularity;
+	u32 pa_tactivate;
+	u32 pa_hibern8time;
+	u32 wait_cdr_lock;
+
 
 	u32 opts;
+#define EXYNOS_UFS_OPTS_SKIP_CONNECTION_ESTAB	BIT(0)
 #define EXYNOS_UFS_OPTS_SET_LINE_INIT_PREP_LEN	BIT(1)
 
 	/* for miscellaneous control */
-	unsigned long misc_flags;
+	u32 misc_flags;
 #define EXYNOS_UFS_MISC_TOGGLE_LOG	BIT(0)
 
 	struct exynos_ufs_debug debug;
@@ -582,10 +688,23 @@ struct exynos_ufs {
 
 	struct pm_qos_request	pm_qos_int;
 	s32			pm_qos_int_value;
-	struct pm_qos_request	pm_qos_fsys0;
-	s32			pm_qos_fsys0_value;
 	bool lane1_poweroff;
-	struct ufs_cal_param	*cal_param;
+};
+
+struct phy_tm_parm {
+	u32 tx_linereset_p;
+	u32 tx_linereset_n;
+	u32 tx_high_z_cnt;
+	u32 tx_base_n_val;
+	u32 tx_gran_n_val;
+	u32 tx_sleep_cnt;
+
+	u32 rx_linereset;
+	u32 rx_hibern8_wait;
+	u32 rx_base_n_val;
+	u32 rx_gran_n_val;
+	u32 rx_sleep_cnt;
+	u32 rx_stall_cnt;
 };
 
 static inline struct exynos_ufs *to_exynos_ufs(struct ufs_hba *hba)
@@ -610,6 +729,7 @@ EXYNOS_UFS_MMIO_FUNC(hci);
 EXYNOS_UFS_MMIO_FUNC(unipro);
 EXYNOS_UFS_MMIO_FUNC(ufsp);
 
+#if !defined(CONFIG_SOC_EXYNOS7420) && !defined(CONFIG_SOC_EXYNOS8890)
 static inline void phy_pma_writel(struct exynos_ufs *ufs, u32 val, u32 reg)
 {
 	u32 reg1 = hci_readl(ufs, HCI_CLKSTOP_CTRL);
@@ -629,6 +749,17 @@ static inline u32 phy_pma_readl(struct exynos_ufs *ufs, u32 reg)
 
 	return reg;
 }
+#else
+static inline void phy_pma_writel(struct exynos_ufs *ufs, u32 val, u32 reg)
+{
+	writel(val, ufs->phy.reg_pma + reg);
+}
+
+static inline u32 phy_pma_readl(struct exynos_ufs *ufs, u32 reg)
+{
+	return readl(ufs->phy.reg_pma + reg);
+}
+#endif
 #endif
 
 /* Structure for ufs cmd logging */
@@ -649,9 +780,8 @@ struct ufs_cmd_logging_category {
 struct ufs_cmd_info {
 	int 	first;
 	int 	last;
-	struct ufs_cmd_logging_category *addr_per_tag[16];
-	struct ufs_cmd_logging_category  data[MAX_CMD_LOGS];
-
+	struct ufs_cmd_logging_category	*addr_per_tag[16];
+	struct ufs_cmd_logging_category	 data[MAX_CMD_LOGS];
 };
 
 extern void exynos_ufs_get_uic_info(struct ufs_hba *hba);
@@ -660,7 +790,6 @@ extern int exynos_ufs_init_dbg(struct ufs_hba *hba);
 extern void exynos_ufs_show_uic_info(struct ufs_hba *hba);
 extern void exynos_ufs_cmd_log_start(struct ufs_hba *hba, struct scsi_cmnd *cmd);
 extern void exynos_ufs_cmd_log_end(struct ufs_hba *hba, int tag);
-
 #ifndef __EXYNOS_UFS_VS_DEBUG__
 #define __EXYNOS_UFS_VS_DEBUG__
 #endif

@@ -56,10 +56,6 @@
 #include <net/netfilter/nf_nat_helper.h>
 #include <net/netns/hash.h>
 
-// KNOX NPA - START
-#include <net/ncm.h>
-// KNOX NPA - END
-
 #define NF_CONNTRACK_VERSION	"0.5.0"
 
 int (*nfnetlink_parse_nat_setup_hook)(struct nf_conn *ct,
@@ -320,14 +316,6 @@ clean_from_lists(struct nf_conn *ct)
 static void nf_ct_add_to_dying_list(struct nf_conn *ct)
 {
 	struct ct_pcpu *pcpu;
-
-	// KNOX NPA - START
-	/* Add 'del_timer(&ct->npa_timeout)' if struct nf_conn->timeout is of type struct timer_list; */
-	/* send dying conntrack entry to collect data */
-	if ( (check_ncm_flag()) && (ct != NULL) && (atomic_read(&ct->startFlow)) ) {
-		knox_collect_conntrack_data(ct, NCM_FLOW_TYPE_CLOSE, 10);
-	}
-	// KNOX NPA - END
 
 	/* add this conntrack to the (per cpu) dying list */
 	ct->cpu = smp_processor_id();
@@ -989,15 +977,7 @@ static void gc_worker(struct work_struct *work)
 				nf_ct_gc_expired(tmp);
 				expired_count++;
 				continue;
-			// KNOX NPA - START	
-			} else if ( (tmp != NULL) && (check_ncm_flag()) && (check_intermediate_flag()) && (atomic_read(&tmp->startFlow)) && (atomic_read(&tmp->intermediateFlow)) ) {
-				s32 npa_timeout = tmp->npa_timeout - ((u32)(jiffies));
-				if (npa_timeout <= 0) {
-					tmp->npa_timeout = ((u32)(jiffies)) + (get_intermediate_timeout() * HZ);
-					knox_collect_conntrack_data(tmp, NCM_FLOW_TYPE_INTERMEDIATE, 20);
-				}
 			}
-			// KNOX NPA - END
 		}
 
 		/* could check get_nulls_value() here and restart if ct
@@ -1031,11 +1011,6 @@ static void gc_worker(struct work_struct *work)
 	ratio = scanned ? expired_count * 100 / scanned : 0;
 	if (ratio > GC_EVICT_RATIO) {
 		gc_work->next_gc_run = min_interval;
-		// KNOX NPA - START
-		if ( (check_ncm_flag()) && (check_intermediate_flag()) ) {
-			gc_work->next_gc_run = 0;
-		}
-		// KNOX NPA - END
 	} else {
 		unsigned int max = GC_MAX_SCAN_JIFFIES / GC_MAX_BUCKETS_DIV;
 
@@ -1044,11 +1019,6 @@ static void gc_worker(struct work_struct *work)
 		gc_work->next_gc_run += min_interval;
 		if (gc_work->next_gc_run > max)
 			gc_work->next_gc_run = max;
-		// KNOX NPA - START
-		if ( (check_ncm_flag()) && (check_intermediate_flag()) ) {
-			gc_work->next_gc_run = 0;
-		}
-		// KNOX NPA - END
 	}
 
 	next_run = gc_work->next_gc_run;
@@ -1071,9 +1041,6 @@ __nf_conntrack_alloc(struct net *net,
 		     gfp_t gfp, u32 hash)
 {
 	struct nf_conn *ct;
-	// KNOX NPA - START
-	struct timespec open_timespec;
-	// KNOX NPA - END
 
 	/* We don't want any race condition at early drop stage */
 	atomic_inc(&net->ct.count);
@@ -1096,30 +1063,6 @@ __nf_conntrack_alloc(struct net *net,
 		goto out;
 
 	spin_lock_init(&ct->lock);
-
-	// KNOX NPA - START
-	/* initialize the conntrack structure members when memory is allocated */
-	if (ct != NULL) {
-		open_timespec = current_kernel_time();
-		ct->open_time = open_timespec.tv_sec;
-		ct->knox_uid = 0;
-		ct->knox_pid = 0;
-		memset(ct->process_name,'\0',sizeof(ct->process_name));
-		memset(ct->domain_name,'\0',sizeof(ct->domain_name));
-		ct->knox_puid = 0;
-		ct->knox_ppid = 0;
-		memset(ct->parent_process_name,'\0',sizeof(ct->parent_process_name));
-		ct->knox_sent = 0;
-		ct->knox_recv = 0;
-		memset(ct->interface_name,'\0',sizeof(ct->interface_name));
-		atomic_set(&ct->startFlow, 0);
-		/* Use 'ct->npa_timeout = 0' if struct nf_conn->timeout is of type u32;
-		   Use 'setup_timer(&ct->npa_timeout, death_by_timeout_npa, (unsigned long)ct)' if struct nf_conn->timeout is of type struct timer_list; */
-		ct->npa_timeout = 0;
-		atomic_set(&ct->intermediateFlow, 0);
-	}
-	// KNOX NPA - END
-
 	ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple = *orig;
 	ct->tuplehash[IP_CT_DIR_ORIGINAL].hnnode.pprev = NULL;
 	ct->tuplehash[IP_CT_DIR_REPLY].tuple = *repl;
@@ -1240,7 +1183,7 @@ init_conntrack(struct net *net, struct nf_conn *tmpl,
 		spin_lock(&nf_conntrack_expect_lock);
 		exp = nf_ct_find_expectation(net, zone, tuple);
 		if (exp) {
-			pr_debug("expectation arrives ct=%pK exp=%pK\n",
+			pr_debug("conntrack: expectation arrives ct=%pK exp=%pK\n",
 				 ct, exp);
 			/* Welcome, Mr. Bond.  We've been expecting you... */
 			__set_bit(IPS_EXPECTED_BIT, &ct->status);
@@ -1329,13 +1272,14 @@ resolve_normal_ct(struct net *net, struct nf_conn *tmpl,
 	} else {
 		/* Once we've had two way comms, always ESTABLISHED. */
 		if (test_bit(IPS_SEEN_REPLY_BIT, &ct->status)) {
-			pr_debug("normal packet for %pK\n", ct);
+			pr_debug("nf_conntrack_in: normal packet for %pK\n", ct);
 			*ctinfo = IP_CT_ESTABLISHED;
 		} else if (test_bit(IPS_EXPECTED_BIT, &ct->status)) {
-			pr_debug("related packet for %pK\n", ct);
+			pr_debug("nf_conntrack_in: related packet for %pK\n",
+				 ct);
 			*ctinfo = IP_CT_RELATED;
 		} else {
-			pr_debug("new packet for %pK\n", ct);
+			pr_debug("nf_conntrack_in: new packet for %pK\n", ct);
 			*ctinfo = IP_CT_NEW;
 		}
 		*set_reply = 0;

@@ -13,7 +13,6 @@
 #include "s5p_mfc_hwlock.h"
 
 #include "s5p_mfc_nal_q.h"
-#include "s5p_mfc_otf.h"
 #include "s5p_mfc_watchdog.h"
 #include "s5p_mfc_opr.h"
 #include "s5p_mfc_sync.h"
@@ -21,7 +20,6 @@
 #include "s5p_mfc_inst.h"
 #include "s5p_mfc_pm.h"
 #include "s5p_mfc_cmd.h"
-#include "s5p_mfc_cal.h"
 #include "s5p_mfc_reg.h"
 
 #include "s5p_mfc_queue.h"
@@ -567,9 +565,11 @@ void s5p_mfc_cache_flush(struct s5p_mfc_dev *dev, int is_drm)
 		s5p_mfc_dump_info_and_stop_hw(dev);
 	}
 
+	s5p_mfc_set_risc_base_addr(dev, (is_drm ? MFCBUF_DRM : MFCBUF_NORMAL));
 	s5p_mfc_pm_clock_off(dev);
+
 	dev->curr_ctx_is_drm = is_drm;
-	s5p_mfc_pm_clock_on_with_base(dev, (is_drm ? MFCBUF_DRM : MFCBUF_NORMAL));
+	s5p_mfc_pm_clock_on(dev);
 }
 
 #ifdef NAL_Q_ENABLE
@@ -673,103 +673,6 @@ static int mfc_nal_q_just_run(struct s5p_mfc_ctx *ctx, int need_cache_flush)
 }
 #endif
 
-static int mfc_just_run_dec(struct s5p_mfc_ctx *ctx)
-{
-	int ret = 0;
-
-	switch (ctx->state) {
-	case MFCINST_FINISHING:
-		ret = s5p_mfc_run_dec_last_frames(ctx);
-		break;
-	case MFCINST_RUNNING:
-	case MFCINST_SPECIAL_PARSING_NAL:
-		ret = s5p_mfc_run_dec_frame(ctx);
-		break;
-	case MFCINST_INIT:
-		s5p_mfc_open_inst(ctx);
-		break;
-	case MFCINST_RETURN_INST:
-		ret = s5p_mfc_close_inst(ctx);
-		break;
-	case MFCINST_GOT_INST:
-	case MFCINST_SPECIAL_PARSING:
-		ret = s5p_mfc_run_dec_init(ctx);
-		break;
-	case MFCINST_HEAD_PARSED:
-		if (ctx->codec_buffer_allocated == 0) {
-			ctx->clear_work_bit = 1;
-			mfc_err_ctx("codec buffer is not allocated\n");
-			ret = -EAGAIN;
-			break;
-		}
-		ret = s5p_mfc_cmd_dec_init_buffers(ctx);
-		break;
-	case MFCINST_RES_CHANGE_INIT:
-		ret = s5p_mfc_run_dec_last_frames(ctx);
-		break;
-	case MFCINST_RES_CHANGE_FLUSH:
-		ret = s5p_mfc_run_dec_last_frames(ctx);
-		break;
-	case MFCINST_RES_CHANGE_END:
-		mfc_debug(2, "Finished remaining frames after resolution change.\n");
-		ctx->capture_state = QUEUE_FREE;
-		mfc_debug(2, "Will re-init the codec.\n");
-		ret = s5p_mfc_run_dec_init(ctx);
-		break;
-	case MFCINST_DPB_FLUSHING:
-		ret = s5p_mfc_cmd_dpb_flush(ctx);
-		break;
-	default:
-		mfc_info_ctx("can't try command(decoder just_run), state : %d\n", ctx->state);
-		ret = -EAGAIN;
-	}
-
-	return ret;
-}
-
-static int mfc_just_run_enc(struct s5p_mfc_ctx *ctx)
-{
-	int ret = 0;
-
-	switch (ctx->state) {
-		case MFCINST_FINISHING:
-			ret = s5p_mfc_run_enc_last_frames(ctx);
-			break;
-		case MFCINST_RUNNING:
-		case MFCINST_RUNNING_NO_OUTPUT:
-			if (ctx->otf_handle) {
-				ret = s5p_mfc_otf_run_enc_frame(ctx);
-				break;
-			}
-			ret = s5p_mfc_run_enc_frame(ctx);
-			break;
-		case MFCINST_INIT:
-			s5p_mfc_open_inst(ctx);
-			break;
-		case MFCINST_RETURN_INST:
-			ret = s5p_mfc_close_inst(ctx);
-			break;
-		case MFCINST_GOT_INST:
-			if (ctx->otf_handle) {
-				ret = s5p_mfc_otf_run_enc_init(ctx);
-				break;
-			}
-			ret = s5p_mfc_run_enc_init(ctx);
-			break;
-		case MFCINST_HEAD_PARSED:
-			ret = s5p_mfc_cmd_enc_init_buffers(ctx);
-			break;
-		case MFCINST_ABORT_INST:
-			ret = s5p_mfc_abort_inst(ctx);
-			break;
-		default:
-			mfc_info_ctx("can't try command(encoder just_run), state : %d\n", ctx->state);
-			ret = -EAGAIN;
-	}
-
-	return ret;
-}
-
 /* Run an operation on hardware */
 int s5p_mfc_just_run(struct s5p_mfc_dev *dev, int new_ctx_index)
 {
@@ -825,10 +728,82 @@ int s5p_mfc_just_run(struct s5p_mfc_dev *dev, int new_ctx_index)
 	if (need_cache_flush)
 		s5p_mfc_cache_flush(dev, ctx->is_drm);
 
+	ret = 0;
 	if (ctx->type == MFCINST_DECODER) {
-		ret = mfc_just_run_dec(ctx);
+		switch (ctx->state) {
+		case MFCINST_FINISHING:
+			ret = s5p_mfc_run_dec_last_frames(ctx);
+			break;
+		case MFCINST_RUNNING:
+		case MFCINST_SPECIAL_PARSING_NAL:
+			ret = s5p_mfc_run_dec_frame(ctx);
+			break;
+		case MFCINST_INIT:
+			s5p_mfc_open_inst(ctx);
+			break;
+		case MFCINST_RETURN_INST:
+			ret = s5p_mfc_close_inst(ctx);
+			break;
+		case MFCINST_GOT_INST:
+		case MFCINST_SPECIAL_PARSING:
+			ret = s5p_mfc_run_dec_init(ctx);
+			break;
+		case MFCINST_HEAD_PARSED:
+			if (ctx->codec_buffer_allocated == 0) {
+				ctx->clear_work_bit = 1;
+				mfc_err_ctx("codec buffer is not allocated\n");
+				ret = -EAGAIN;
+				break;
+			}
+			ret = s5p_mfc_cmd_dec_init_buffers(ctx);
+			break;
+		case MFCINST_RES_CHANGE_INIT:
+			ret = s5p_mfc_run_dec_last_frames(ctx);
+			break;
+		case MFCINST_RES_CHANGE_FLUSH:
+			ret = s5p_mfc_run_dec_last_frames(ctx);
+			break;
+		case MFCINST_RES_CHANGE_END:
+			mfc_debug(2, "Finished remaining frames after resolution change.\n");
+			ctx->capture_state = QUEUE_FREE;
+			mfc_debug(2, "Will re-init the codec.\n");
+			ret = s5p_mfc_run_dec_init(ctx);
+			break;
+		case MFCINST_DPB_FLUSHING:
+			ret = s5p_mfc_cmd_dpb_flush(ctx);
+			break;
+		default:
+			mfc_info_ctx("can't try command(decoder just_run), state : %d\n", ctx->state);
+			ret = -EAGAIN;
+		}
 	} else if (ctx->type == MFCINST_ENCODER) {
-		ret = mfc_just_run_enc(ctx);
+		switch (ctx->state) {
+		case MFCINST_FINISHING:
+			ret = s5p_mfc_run_enc_last_frames(ctx);
+			break;
+		case MFCINST_RUNNING:
+		case MFCINST_RUNNING_NO_OUTPUT:
+			ret = s5p_mfc_run_enc_frame(ctx);
+			break;
+		case MFCINST_INIT:
+			s5p_mfc_open_inst(ctx);
+			break;
+		case MFCINST_RETURN_INST:
+			ret = s5p_mfc_close_inst(ctx);
+			break;
+		case MFCINST_GOT_INST:
+			ret = s5p_mfc_run_enc_init(ctx);
+			break;
+		case MFCINST_HEAD_PARSED:
+			ret = s5p_mfc_cmd_enc_init_buffers(ctx);
+			break;
+		case MFCINST_ABORT_INST:
+			ret = s5p_mfc_abort_inst(ctx);
+			break;
+		default:
+			mfc_info_ctx("can't try command(encoder just_run), state : %d\n", ctx->state);
+			ret = -EAGAIN;
+		}
 	} else {
 		mfc_err_ctx("invalid context type: %d\n", ctx->type);
 		ret = -EAGAIN;
@@ -912,11 +887,10 @@ void s5p_mfc_hwlock_handler_irq(struct s5p_mfc_dev *dev, struct s5p_mfc_ctx *cur
 				dev->continue_clock_on = true;
 				s5p_mfc_wake_up_ctx(curr_ctx, reason, err);
 
-				/* If cache flush command is needed or there is OTF handle, handler should stop */
-				if ((dev->curr_ctx_is_drm != dev->ctx[new_ctx_index]->is_drm) ||
-						dev->ctx[new_ctx_index]->otf_handle) {
-					mfc_debug(2, "Secure and nomal switching or OTF mode\n");
-					mfc_debug(2, "DRM attribute %d->%d\n",
+				/* If cache flush command is needed, hander should stop */
+				if (dev->curr_ctx_is_drm != dev->ctx[new_ctx_index]->is_drm) {
+					mfc_debug(2, "Secure and nomal switching\n");
+					mfc_debug(2, "DRM attribute is changed %d->%d\n",
 							dev->curr_ctx_is_drm, dev->ctx[new_ctx_index]->is_drm);
 
 					spin_unlock_irqrestore(&dev->hwlock.lock, flags);

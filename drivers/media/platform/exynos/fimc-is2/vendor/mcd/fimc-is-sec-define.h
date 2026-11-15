@@ -92,36 +92,148 @@
 #define FW_MODULE_COMPANY_POWER_LOGIX	'A'
 #define FW_MODULE_COMPANY_DI		'D'
 
-#define FW_2L3_H		"H12LL"		/* STAR1 rear*/
-#define FW_2L3_I		"I12LL"		/* STAR2 wide */
-#define FW_IMX345_H		"H12LS"		/* STAR1 rear*/
-#define FW_IMX345_I		"I12LS"		/* STAR2 wide */
+#define FW_2P2_F		"F16LL"
+#define FW_2P2_I		"I16LL"
+#define FW_2P2_A		"A16LL"
+#define FW_2P2_B		"B16LL"
+#define FW_2P2_C		"C16LL"
+#define FW_3L2			"C13LL"
+#define FW_IMX135		"C13LS"
+#define FW_IMX134		"D08LS"
+#define FW_IMX228		"A20LS"
+#define FW_IMX240_A		"A16LS"
+#define FW_IMX240_B		"B16LS"
+#define FW_IMX240_C		"C16LS"
+#define FW_IMX240_Q		"H16US"
+#define FW_IMX240_Q_C1	"H16UL"
+#define FW_IMX260_C		"C12LS"
+#define FW_2P2_12M		"G16LL"
+#define FW_4H5			"F08LL"
+#define FW_2P3			"J16LL"
+#define FW_2T2			"A20LL"
+#define FW_3P3			"D16LL"
+#define FW_2L1_C		"C12LL"
 
-#define FW_3H1_W		"W08LL"		/* STAR1/2 front*/
-#define FW_IMX320_W		"W08LS"
+#define FW_IMX260_D		"D12LS"
+#define FW_IMX333_S		"F12LS"		/* rear -sony, front-sony */
+#define FW_IMX333_Y		"F12LY"		/* rear -sony, front-lsi */
+
+#define FW_2L2_EL		"E12LL"		/* rear -lsi dream2 dual, front-lsi */
+#define FW_2L2_L		"F12LL"		/* rear -lsi, front-lsi */
+#define FW_2L2_X		"F12LX"		/* rear -lsi, front-sony */
+
+#define FW_IMX333_GS		"G12LS"		/* great rear -sony, front-sony */
+#define FW_IMX333_GY		"G12LY"		/* great rear -sony, front-lsi */
+#define FW_2L2_GL		"G12LL"		/* great rear -lsi, front-lsi */
+#define FW_2L2_GX		"G12LX"		/* great rear -lsi, front-sony */
+
+#define FW_3M3_D		"D13LL"
+#define FW_3M3			"E13LL"
+
+#define FW_4E6			"D05LL"
+#define FW_3H1			"V08LL"
+#define FW_IMX320		"V08LS"
+
+#define FW_COMP_IMX260_IMX320	"D12LS"
+#define FW_COMP_2L2_3H1		"E12LL"
+#define FW_COMP_IMX333_IMX320	"E12LS"
+#define FW_COMP_IMX333_3H1	"E12LY"
+#define FW_COMP_2L2_IMX320	"E12LX"
+
+#define FW_4H5YC_P		"P08LL"
+#define FW_5E3			"D05LL"
 
 #define SDCARD_FW
 
 #define FIMC_IS_DDK						"fimc_is_lib.bin"
-#define FIMC_IS_RTA						"fimc_is_rta.bin"
-#define FIMC_IS_RTA_2L3_3H1				"fimc_is_rta_2l3_3h1.bin"
-#define FIMC_IS_RTA_2L3_IMX320			"fimc_is_rta_2l3_imx320.bin"
-#define FIMC_IS_RTA_IMX345_3H1			"fimc_is_rta_imx345_3h1.bin"
-#define FIMC_IS_RTA_IMX345_IMX320		"fimc_is_rta_imx345_imx320.bin"
+#define FIMC_IS_RTA_2L2_3H1				"fimc_is_rta_2l2_3h1.bin"
+#define FIMC_IS_RTA_2L2_IMX320			"fimc_is_rta_2l2_imx320.bin"
+#define FIMC_IS_RTA_IMX333_3H1			"fimc_is_rta_imx333_3h1.bin"
+#define FIMC_IS_RTA_IMX333_IMX320		"fimc_is_rta_imx333_imx320.bin"
+
+#define FIMC_IS_FW_2P2				"fimc_is_fw2_2p2.bin"
+#define FIMC_IS_FW_2P2_12M				"fimc_is_fw2_2p2_12m.bin"
+#define FIMC_IS_FW_2P3				"fimc_is_fw2_2p3.bin"
+#define FIMC_IS_FW_3P3				"fimc_is_fw2_3p3.bin"
+#define FIMC_IS_FW_3L2				"fimc_is_fw2_3l2.bin"
+#define FIMC_IS_FW_4H5				"fimc_is_fw2_4h5.bin"
+#define FIMC_IS_FW_IMX134			"fimc_is_fw2_imx134.bin"
+#define FIMC_IS_FW_IMX228			"fimc_is_fw2_imx228.bin"
+#define FIMC_IS_FW_IMX240		"fimc_is_fw2_imx240.bin"
+#define FIMC_IS_FW_IMX260		"fimc_is_fw2_imx260.bin"
+#define FIMC_IS_FW_2T2_EVT0				"fimc_is_fw2_2t2_evt0.bin"
+#define FIMC_IS_FW_2T2_EVT1				"fimc_is_fw2_2t2_evt1.bin"
+#define FIMC_IS_FW_2L1					"fimc_is_fw2_2l1.bin"
+#define FIMC_IS_FW_COMPANION_EVT0				"companion_fw_evt0.bin"
+#define FIMC_IS_FW_COMPANION_EVT1				"companion_fw_evt1.bin"
+#define FIMC_IS_FW_COMPANION_2P2_EVT1				"companion_fw_2p2_evt1.bin"
+#define FIMC_IS_FW_COMPANION_2T2_EVT1				"companion_fw_2t2_evt1.bin"
+#define FIMC_IS_FW_COMPANION_2P2_12M_EVT1				"companion_fw_2p2_12m_evt1.bin"
+#define FIMC_IS_FW_COMPANION_2L1					"companion_fw_2l1.bin"
+#define FIMC_IS_FW_COMPANION_IMX260					"companion_fw_imx260.bin"
+#define FIMC_IS_FW_COMPANION_IMX240_EVT1				"companion_fw_imx240_evt1.bin"
+#define FIMC_IS_FW_COMPANION_IMX228_EVT1				"companion_fw_imx228_evt1.bin"
+
+#define FIMC_IS_FW_COMPANION_IMX260_IMX320			"companion_fw_imx260.bin"
+
+#define FIMC_IS_FW_COMPANION_2L2_3H1				"companion_fw_2l2_3h1.bin"
+#define FIMC_IS_FW_COMPANION_2L2_IMX320				"companion_fw_2l2_imx320.bin"
+#define FIMC_IS_FW_COMPANION_IMX333_IMX320			"companion_fw_imx333_imx320.bin"
+#define FIMC_IS_FW_COMPANION_IMX333_3H1				"companion_fw_imx333_3h1.bin"
 
 /*#define FIMC_IS_FW_SDCARD			"/data/media/0/fimc_is_fw.bin" */
-/* Rear setfile */
-#define FIMC_IS_2L3_SETF			"setfile_2l3.bin"
-#define FIMC_IS_3M3_SETF			"setfile_3m3.bin"
-#define FIMC_IS_IMX345_SETF			"setfile_imx345.bin"
+#define FIMC_IS_IMX260_SETF			"setfile_imx260.bin"
+#define FIMC_IS_IMX240_SETF			"setfile_imx240.bin"
+#define FIMC_IS_IMX228_SETF			"setfile_imx228.bin"
+#define FIMC_IS_IMX135_SETF			"setfile_imx135.bin"
+#define FIMC_IS_IMX134_SETF			"setfile_imx134.bin"
+#define FIMC_IS_4H5_SETF			"setfile_4h5.bin"
+#define FIMC_IS_4H5YC_SETF			"setfile_4h5yc.bin"
+#define FIMC_IS_3L2_SETF			"setfile_3l2.bin"
+#define FIMC_IS_6B2_SETF			"setfile_6b2.bin"
+#define FIMC_IS_8B1_SETF			"setfile_8b1.bin"
+#define FIMC_IS_6D1_SETF			"setfile_6d1.bin"
+#define FIMC_IS_2P2_SETF			"setfile_2p2.bin"
+#define FIMC_IS_2P2_12M_SETF			"setfile_2p2_12m.bin"
+#define FIMC_IS_2T2_SETF			"setfile_2t2.bin"
+#define FIMC_IS_2P3_SETF			"setfile_2p3.bin"
+#define FIMC_IS_3P3_SETF			"setfile_3p3.bin"
+#define FIMC_IS_2L1_SETF			"setfile_2l1.bin"
 
-/* Front setfile */
+#define FIMC_IS_IMX333_SETF			"setfile_imx333.bin"
+#define FIMC_IS_2L2_SETF			"setfile_2l2.bin"
+#define FIMC_IS_3M3_SETF			"setfile_3m3.bin"
+
 #define FIMC_IS_IMX320_SETF			"setfile_imx320.bin"
 #define FIMC_IS_3H1_SETF			"setfile_3h1.bin"
+#define FIMC_IS_4E6_SETF			"setfile_4e6.bin"
+#define FIMC_IS_5E3_SETF			"setfile_5e3.bin"
+#define FIMC_IS_COMPANION_MASTER_SETF			"companion_master_setfile.bin"
+#define FIMC_IS_COMPANION_MODE_SETF			"companion_mode_setfile.bin"
+#define FIMC_IS_COMPANION_2P2_MASTER_SETF			"companion_2p2_master_setfile.bin"
+#define FIMC_IS_COMPANION_2P2_MODE_SETF			"companion_2p2_mode_setfile.bin"
+#define FIMC_IS_COMPANION_2L1_MASTER_SETF			"companion_2l1_master_setfile.bin"
+#define FIMC_IS_COMPANION_2L1_MODE_SETF				"companion_2l1_mode_setfile.bin"
+#define FIMC_IS_COMPANION_IMX260_MASTER_SETF			"companion_imx260_master_setfile.bin"
+#define FIMC_IS_COMPANION_IMX260_MODE_SETF			"companion_imx260_mode_setfile.bin"
+#define FIMC_IS_COMPANION_IMX240_MASTER_SETF			"companion_imx240_master_setfile.bin"
+#define FIMC_IS_COMPANION_IMX240_MODE_SETF			"companion_imx240_mode_setfile.bin"
+#define FIMC_IS_COMPANION_IMX228_MASTER_SETF			"companion_imx228_master_setfile.bin"
+#define FIMC_IS_COMPANION_IMX228_MODE_SETF			"companion_imx228_mode_setfile.bin"
+#define FIMC_IS_COMPANION_2P2_12M_MASTER_SETF			"companion_2p2_12m_master_setfile.bin"
+#define FIMC_IS_COMPANION_2P2_12M_MODE_SETF			"companion_2p2_12m_mode_setfile.bin"
+#define FIMC_IS_COMPANION_2T2_MASTER_SETF			"companion_2t2_master_setfile.bin"
+#define FIMC_IS_COMPANION_2T2_MODE_SETF			"companion_2t2_mode_setfile.bin"
+
+#define FIMC_IS_COMPANION_2L2_MASTER_SETF			"companion_2l2_master_setfile.bin"
+#define FIMC_IS_COMPANION_2L2_MODE_SETF				"companion_2l2_mode_setfile.bin"
+#define FIMC_IS_COMPANION_IMX333_MASTER_SETF			"companion_imx333_master_setfile.bin"
+#define FIMC_IS_COMPANION_IMX333_MODE_SETF			"companion_imx333_mode_setfile.bin"
 
 #define FIMC_IS_CAL_SDCARD_FRONT		"/data/cal_data_front.bin"
 #define FIMC_IS_FW_FROM_SDCARD		"/data/media/0/CamFW_Main.bin"
 #define FIMC_IS_SETFILE_FROM_SDCARD		"/data/media/0/CamSetfile_Main.bin"
+#define FIMC_IS_COMPANION_FROM_SDCARD	"/data/media/0/CamFW_Companion.bin"
 #define FIMC_IS_KEY_FROM_SDCARD		"/data/media/0/1q2w3e4r.key"
 
 #define FIMC_IS_HEADER_VER_SIZE      11
@@ -209,6 +321,9 @@ struct fimc_is_from_info {
 	u32		oem_section_crc_addr;
 	u32		awb_section_crc_addr;
 	u32		shading_section_crc_addr;
+	u32		comp_shading_section_crc_addr;
+	u32		paf_cal_section_crc_addr;
+	u32		concord_cal_section_crc_addr;
 	u32		af_cal_pan;
 	u32		af_cal_macro;
 	u32		af_cal_d1;
@@ -240,39 +355,84 @@ struct fimc_is_from_info {
 	u8		from_module_id[FIMC_IS_MODULE_ID_SIZE + 1];
 	u8		eeprom_front_module_id[FIMC_IS_MODULE_ID_SIZE + 1];
 	bool		is_caldata_read;
-	bool		is_fw_find_done;
-	bool		is_check_bin_done;
 	bool		is_check_cal_reload;
 	u8		sensor_version;
 	u32		awb_master_addr;
 	u32		awb_module_addr;
+#ifdef CONFIG_COMPANION_USE
+	u32		concord_master_setfile_start_addr;
+	u32		concord_master_setfile_end_addr;
+	u32		concord_mode_setfile_start_addr;
+	u32		concord_mode_setfile_end_addr;
 	u32		lsc_gain_start_addr;
 	u32		lsc_gain_end_addr;
+	u32		pdaf_start_addr;
+	u32		pdaf_end_addr;
+	u32		coefficient_cal_start_addr;
+	u32		coefficient_cal_end_addr;
 	u32		pdaf_cal_start_addr;
 	u32		pdaf_cal_end_addr;
+	u32		concord_cal_start_addr;
+	u32		concord_cal_end_addr;
+	u32		concord_bin_start_addr;
+	u32		concord_bin_end_addr;
 	u32		lsc_i0_gain_addr;
 	u32		lsc_j0_gain_addr;
 	u32		lsc_a_gain_addr;
 	u32		lsc_k4_gain_addr;
 	u32		lsc_scale_gain_addr;
+	u32		pdaf_crc_addr;
 	u32		lsc_gain_crc_addr;
-#ifdef FROM_SUPPORT_APERTURE_F2
-	u32		shading_f2_start_addr;
-	u32		shading_f2_end_addr;
-	u32		mtf_f2_data_addr;
-	u32		awb_f2_master_addr;
-	u32		awb_f2_module_addr;
-	u32		pdaf_cal_f2_start_addr;
-	u32		pdaf_cal_f2_end_addr;
-	u32		lsc_gain_f2_start_addr;
-	u32		lsc_gain_f2_end_addr;
-	u32		lsc_i0_f2_gain_addr;
-	u32		lsc_j0_f2_gain_addr;
-	u32		lsc_a_f2_gain_addr;
-	u32		lsc_k4_f2_gain_addr;
-	u32		lsc_scale_f2_gain_addr;
-	u32		lsc_gain_f2_crc_addr;
+#ifdef CONFIG_COMPANION_C1_USE
+	u32		wcoefficient1_addr;
+	u32		coef1_start;
+	u32		coef1_end;
+	u32		coef2_start;
+	u32		coef2_end;
+	u32		coef3_start;
+	u32		coef3_end;
+	u32		coef4_start;
+	u32		coef4_end;
+	u32		coef5_start;
+	u32		coef5_end;
+	u32		coef6_start;
+	u32		coef6_end;
+	u32		af_inf_addr;
+	u32		af_macro_addr;
+	u32		coef1_crc_addr;
+	u32		coef2_crc_addr;
+	u32		coef3_crc_addr;
+	u32		coef4_crc_addr;
+	u32		coef5_crc_addr;
+	u32		coef6_crc_addr;
 #endif
+#if defined(CONFIG_COMPANION_C2_USE) || defined(CONFIG_COMPANION_C3_USE)
+	u32		grasTuning_AwbAshCord_N_addr;
+	u32		grasTuning_awbAshCordIndexes_N_addr;
+	u32		grasTuning_GASAlpha_M__N_addr;
+	u32		grasTuning_GASBeta_M__N_addr;
+	u32		grasTuning_GASOutdoorAlpha_N_addr;
+	u32		grasTuning_GASOutdoorBeta_N_addr;
+	u32		grasTuning_GASIndoorAlpha_N_addr;
+	u32		grasTuning_GASIndoorBeta_N_addr;
+	u32		xtalk_coef_start;
+	u32		coef_offset_R;
+	u32		coef_offset_G;
+	u32		coef_offset_B;
+	u32		pdaf_shad_start_addr;
+	u32		pdaf_shad_end_addr;
+	u32		pdaf_shad_crc_addr;
+	u32		xtalk_coef_crc_addr;
+	u32		lsc_parameter_crc_addr;
+	u32		c2_shading_start_addr;
+	u32		c2_shading_end_addr;
+	char		c2_shading_ver[FIMC_IS_SHADING_VER_SIZE + 1];
+#endif
+	char		concord_header_ver[FIMC_IS_HEADER_VER_SIZE + 1];
+	char		load_c1_fw_name[50];
+	char		load_c1_mastersetf_name[50];
+	char		load_c1_modesetf_name[50];
+	bool		is_c1_caldata_read;
 	unsigned long		fw_size;
 #ifdef USE_RTA_BINARY
 	unsigned long		rta_fw_size;
@@ -282,7 +442,9 @@ struct fimc_is_from_info {
 	unsigned long		setfile2_size;
 #endif
 	unsigned long		front_setfile_size;
+	unsigned long		comp_fw_size;
 	unsigned long		hifi_tunning_size;
+#endif
 };
 
 bool fimc_is_sec_get_force_caldata_dump(void);
@@ -308,8 +470,6 @@ int fimc_is_sec_get_camid_from_hal(char *fw_name, char *setf_name);
 int fimc_is_sec_get_camid(void);
 int fimc_is_sec_set_camid(int id);
 int fimc_is_sec_get_pixel_size(char *header_ver);
-int fimc_is_sec_sensorid_find(struct fimc_is_core *core);
-int fimc_is_sec_sensorid_find_front(struct fimc_is_core *core);
 int fimc_is_sec_fw_find(struct fimc_is_core *core);
 int fimc_is_sec_run_fw_sel(struct device *dev, int position);
 
@@ -345,7 +505,6 @@ int fimc_is_sec_core_voltage_select(struct device *dev, char *header_ver);
 int fimc_is_sec_ldo_enable(struct device *dev, char *name, bool on);
 int fimc_is_sec_rom_power_on(struct fimc_is_core *core, int position);
 int fimc_is_sec_rom_power_off(struct fimc_is_core *core, int position);
-int fimc_is_sec_check_bin_files(struct fimc_is_core *core);
+int fimc_is_sec_check_bin_files(struct fimc_is_core * core);
 void remove_dump_fw_file(void);
-void fimc_is_get_rear_dual_cal_buf(char **buf, int *size);
 #endif /* FIMC_IS_SEC_DEFINE_H */

@@ -512,7 +512,7 @@ u32 fimc_is_scaler_get_scaler_path(void __iomem *base_addr, u32 hw_id, u32 outpu
 		default:
 			break;
 	}
-	dbg_hw(2, "[ID:%d]%s:[SRC:%d]->[OUT:%d], en(poly:%d, post:%d), dma(%d)\n",
+	dbg_hw("[ID:%d]%s:[SRC:%d]->[OUT:%d], en(poly:%d, post:%d), dma(%d)\n",
 		hw_id, __func__, input, output_id, enable_poly, enable_post, enable_dma);
 
 	return (DEV_HW_MCSC0 + input);
@@ -1446,11 +1446,7 @@ void fimc_is_scaler_set_poly_scaler_v_coef(void __iomem *base_addr, u32 output_i
 	}
 }
 
-void fimc_is_scaler_set_poly_scaler_coef(void __iomem *base_addr,
-	u32 output_id,
-	u32 hratio,
-	u32 vratio,
-	enum exynos_sensor_position sensor_position)
+void fimc_is_scaler_set_poly_scaler_coef(void __iomem *base_addr, u32 output_id, u32 hratio, u32 vratio)
 {
 	u32 h_coef = 0;
 	u32 v_coef = 0;

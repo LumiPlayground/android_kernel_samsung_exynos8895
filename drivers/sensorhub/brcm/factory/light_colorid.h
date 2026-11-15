@@ -31,18 +31,16 @@
 
 #define COLOR_ID_IDS_LENGTH					20
 
-#define COLOR_ID_PREDEFINED_FILENAME_LENGTH	30
+#define COLOR_ID_PREDEFINED_FILENAME_LENTH	30
 
 #define WRITE_ALL_DATA_NUMBER				12
 
 ssize_t light_hiddendhole_version_show(struct device *dev, struct device_attribute *attr, char *buf);
 ssize_t light_hiddenhole_version_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size);
 ssize_t light_hiddendhole_hh_write_all_data_show(struct device *dev,	struct device_attribute *attr, char *buf);
-ssize_t light_hiddenhole_write_all_data_store(struct device *dev, struct device_attribute *attr,
-		const char *buf, size_t size);
+ssize_t light_hiddenhole_write_all_data_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size);
 ssize_t light_hiddendhole_is_exist_efs_show(struct device *dev, struct device_attribute *attr, char *buf);
 ssize_t light_hiddendhole_check_coef_show(struct device *dev, struct device_attribute *attr, char *buf);
-ssize_t light_hiddendhole_check_coef_store(struct device *dev, struct device_attribute *attr,
-		const char *buf, size_t size);
+ssize_t light_hiddendhole_check_coef_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size);
 
 #endif

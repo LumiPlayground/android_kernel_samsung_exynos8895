@@ -64,12 +64,6 @@ static inline enum s5p_mfc_node_type s5p_mfc_get_node_type(struct file *file)
 	case 3:
 		node_type = MFCNODE_ENCODER_DRM;
 		break;
-	case 4:
-		node_type = MFCNODE_ENCODER_OTF;
-		break;
-	case 5:
-		node_type = MFCNODE_ENCODER_OTF_DRM;
-		break;
 	default:
 		node_type = MFCNODE_INVALID;
 		break;
@@ -88,16 +82,7 @@ static inline int s5p_mfc_is_decoder_node(enum s5p_mfc_node_type node)
 
 static inline int s5p_mfc_is_drm_node(enum s5p_mfc_node_type node)
 {
-	if (node == MFCNODE_DECODER_DRM || node == MFCNODE_ENCODER_DRM ||
-			node == MFCNODE_ENCODER_OTF_DRM)
-		return 1;
-
-	return 0;
-}
-
-static inline int s5p_mfc_is_encoder_otf_node(enum s5p_mfc_node_type node)
-{
-	if (node == MFCNODE_ENCODER_OTF || node == MFCNODE_ENCODER_OTF_DRM)
+	if (node == MFCNODE_DECODER_DRM || node == MFCNODE_ENCODER_DRM)
 		return 1;
 
 	return 0;
@@ -105,14 +90,10 @@ static inline int s5p_mfc_is_encoder_otf_node(enum s5p_mfc_node_type node)
 
 int s5p_mfc_check_vb_with_fmt(struct s5p_mfc_fmt *fmt, struct vb2_buffer *vb);
 
-void s5p_mfc_raw_protect(struct s5p_mfc_ctx *ctx, struct s5p_mfc_buf *mfc_buf,
-					int index);
-void s5p_mfc_raw_unprotect(struct s5p_mfc_ctx *ctx, struct s5p_mfc_buf *mfc_buf,
-					int index);
-void s5p_mfc_stream_protect(struct s5p_mfc_ctx *ctx, struct s5p_mfc_buf *mfc_buf,
-					int index);
-void s5p_mfc_stream_unprotect(struct s5p_mfc_ctx *ctx, struct s5p_mfc_buf *mfc_buf,
-					int index);
+int s5p_mfc_stream_buf_prot(struct s5p_mfc_ctx *ctx,
+				struct s5p_mfc_buf *buf, bool en);
+int s5p_mfc_raw_buf_prot(struct s5p_mfc_ctx *ctx,
+				struct s5p_mfc_buf *buf, bool en);
 
 void s5p_mfc_dec_calc_dpb_size(struct s5p_mfc_ctx *ctx);
 void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);

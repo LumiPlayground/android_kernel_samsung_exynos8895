@@ -286,8 +286,10 @@
 #define DISPIF_RGB_ORDER_F(_v)		((_v) << 8)
 #define DISPIF_RGB_ORDER_MASK			(0x7 << 8)
 #define DISPIF_CLOCK_FREE_RUN_EN		(1 << 4)
-#define DISPIF_VSYNC_ACTIVE_VALUE		(1 << 2)
-#define DISPIF_HSYNC_ACTIVE_VALUE		(1 << 1)
+#define DISPIF_VSYNC_ACTIVE_VALUE(_v)		((_v) << 2)
+#define DISPIF_VSYNC_ACTIVE_VALUE_MASK		(1 << 2)
+#define DISPIF_HSYNC_ACTIVE_VALUE(_v)		((_v) << 1)
+#define DISPIF_HSYNC_ACTIVE_VALUE_MASK		(1 << 1)
 #define DISPIF_VDEN_ACTIVE_VALUE		(1 << 0)
 
 #define DISPIF_TIMING_CONTROL_0			0x0150

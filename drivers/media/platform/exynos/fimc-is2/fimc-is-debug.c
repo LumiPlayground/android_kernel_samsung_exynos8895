@@ -20,7 +20,9 @@
 struct fimc_is_debug fimc_is_debug;
 EXPORT_SYMBOL(fimc_is_debug);
 
+#ifdef ENABLE_DBG_EVENT
 struct fimc_is_debug_event fimc_is_debug_event;
+#endif
 
 #define DEBUG_FS_ROOT_NAME	"fimc-is"
 #define DEBUG_FS_LOGFILE_NAME	"isfw-msg"
@@ -504,7 +506,7 @@ void fimc_is_dmsg_concate(const char *fmt, ...)
 	vsnprintf(term, sizeof(term), fmt, ap);
 	va_end(ap);
 
-	copy_len = (u32)min((DEBUG_SENTENCE_MAX - fimc_is_debug.dsentence_pos), strlen(term));
+	copy_len = min((DEBUG_SENTENCE_MAX - fimc_is_debug.dsentence_pos), strlen(term));
 	strncpy(fimc_is_debug.dsentence + fimc_is_debug.dsentence_pos, term, copy_len);
 	fimc_is_debug.dsentence_pos += copy_len;
 }
@@ -521,7 +523,7 @@ void fimc_is_print_buffer(char *buffer, size_t len)
 	char sentence[250];
 	char letter;
 
-	FIMC_BUG_VOID(!buffer);
+	BUG_ON(!buffer);
 
 	sentence_i = 0;
 
@@ -564,10 +566,15 @@ int fimc_is_debug_probe(void)
 	if (fimc_is_debug.logfile)
 		probe_info("%s is created\n", DEBUG_FS_LOGFILE_NAME);
 
+#ifdef ENABLE_DBG_EVENT
+	atomic_set(&fimc_is_debug_event.event_index, -1);
+	atomic_set(&fimc_is_debug_event.critical_log_tail, -1);
+	atomic_set(&fimc_is_debug_event.normal_log_tail, -1);
+
 	fimc_is_debug.event_dir = debugfs_create_dir(DEBUG_FS_EVENT_DIR_NAME, fimc_is_debug.root);
-	fimc_is_debug_event.logfilter = debugfs_create_u32(DEBUG_FS_EVENT_FILTER, 0644,
+	fimc_is_debug_event.log_print_filter = debugfs_create_u32(DEBUG_FS_EVENT_FILTER, 0644,
 		fimc_is_debug.event_dir,
-		&fimc_is_debug_event.log_filter);
+		&fimc_is_debug_event.logfilter);
 	fimc_is_debug_event.log = debugfs_create_file(DEBUG_FS_EVENT_LOGFILE, 0644,
 		fimc_is_debug.event_dir,
 		&fimc_is_debug_event,
@@ -577,12 +584,8 @@ int fimc_is_debug_probe(void)
 		&fimc_is_debug_event.log_enable);
 
 	fimc_is_debug_event.log_enable = 1;
-	fimc_is_debug_event.log_filter = (0x1 << FIMC_IS_EVENT_ALL) - 1;
-
-#ifdef ENABLE_DBG_EVENT_PRINT
-	atomic_set(&fimc_is_debug_event.event_index, -1);
-	atomic_set(&fimc_is_debug_event.critical_log_tail, -1);
-	atomic_set(&fimc_is_debug_event.normal_log_tail, -1);
+	fimc_is_debug_event.logfilter = FIMC_IS_EVENT_ALL;
+	spin_lock_init(&fimc_is_debug_event.slock);
 #endif
 #endif
 	clear_bit(FIMC_IS_DEBUG_OPEN, &fimc_is_debug.state);
@@ -627,7 +630,7 @@ int fimc_is_debug_dma_dump(struct fimc_is_queue *queue, u32 index, u32 vid, u32 
 	u32 flags = 0;
 	int total_size = 0;
 	u32 framecount = 0;
-	char *filename;
+	char *filename = NULL;
 	struct vb2_buffer *buf;
 	struct fimc_is_binary bin;
 	buf = queue->vbq->bufs[index];
@@ -668,14 +671,12 @@ int fimc_is_debug_dma_dump(struct fimc_is_queue *queue, u32 index, u32 vid, u32 
 			ret = put_filesystem_binary(filename, &bin, flags);
 			if (ret) {
 				err("failed to dump %s (%d)", filename, ret);
-				__putname(filename);
-				return -EINVAL;
+				ret = -EINVAL;
+				goto p_err;
 			}
 		}
 
 		info("[V%d][F%d] img dumped..(%s, %d)\n", vid, framecount, filename, total_size);
-		__putname(filename);
-
 		break;
 	case DBG_DMA_DUMP_META:
 		filename = __getname();
@@ -696,20 +697,22 @@ int fimc_is_debug_dma_dump(struct fimc_is_queue *queue, u32 index, u32 vid, u32 
 		ret = put_filesystem_binary(filename, &bin, flags);
 		if (ret) {
 			err("failed to dump %s (%d)", filename, ret);
-			__putname(filename);
-			return -EINVAL;
+			ret = -EINVAL;
+			goto p_err;
 		}
 
 		info("[V%d][F%d] meta dumped..(%s, %d)\n", vid, framecount, filename, total_size);
-		__putname(filename);
-
 		break;
 	default:
 		err("invalid type(%d)", type);
 		break;
 	}
 
-	return 0;
+p_err:
+	if (filename)
+		__putname(filename);
+
+	return ret;
 }
 
 static int isfw_debug_open(struct inode *inode, struct file *file)
@@ -730,11 +733,12 @@ static ssize_t isfw_debug_read(struct file *file, char __user *user_buf,
 	size_t read_cnt, read_cnt1, read_cnt2;
 	struct fimc_is_minfo *minfo;
 
-	if (!test_bit(FIMC_IS_DEBUG_OPEN, &fimc_is_debug.state))
-		return 0;
+	while (!test_bit(FIMC_IS_DEBUG_OPEN, &fimc_is_debug.state))
+		msleep(500);
 
 	minfo = fimc_is_debug.minfo;
 
+retry:
 	CALL_BUFOP(minfo->pb_fw, sync_for_cpu, minfo->pb_fw,
 		DEBUG_REGION_OFFSET, DEBUG_REGION_SIZE + 4, DMA_FROM_DEVICE);
 
@@ -790,6 +794,11 @@ static ssize_t isfw_debug_read(struct file *file, char __user *user_buf,
 
 	/* info("[DBG] FW_READ : read_vptr(%zd), write_vptr(%zd) - dump(%zd)\n", read_vptr, write_vptr, read_cnt); */
 
+	if (read_cnt == 0) {
+		msleep(500);
+		goto retry;
+	}
+
 	return read_cnt;
 }
 #else
@@ -802,10 +811,12 @@ static ssize_t isfw_debug_read(struct file *file, char __user *user_buf,
 	size_t read_cnt, read_cnt1, read_cnt2;
 	struct fimc_is_minfo *minfo;
 
-	if (!test_bit(FIMC_IS_DEBUG_OPEN, &fimc_is_debug.state))
-		return 0;
+	while (!test_bit(FIMC_IS_DEBUG_OPEN, &fimc_is_debug.state))
+		msleep(500);
 
 	minfo = fimc_is_debug.minfo;
+
+retry:
 
 	write_vptr = *((int *)(minfo->kvaddr_debug_cnt));
 	read_vptr = fimc_is_debug.read_vptr;
@@ -859,6 +870,11 @@ static ssize_t isfw_debug_read(struct file *file, char __user *user_buf,
 
 	/* info("[DBG] FW_READ : read_vptr(%zd), write_vptr(%zd) - dump(%zd)\n", read_vptr, write_vptr, read_cnt); */
 
+	if (read_cnt == 0) {
+		msleep(500);
+		goto retry;
+	}
+
 	return read_cnt;
 }
 
@@ -870,6 +886,7 @@ static const struct file_operations debug_log_fops = {
 	.llseek	= default_llseek
 };
 
+#ifdef ENABLE_DBG_EVENT
 struct seq_file *seq_f;
 
 /* this func for print seq_msg
@@ -899,167 +916,182 @@ static int fimc_is_debug_event_open(struct inode *inode, struct file *file)
 	return single_open(file, fimc_is_event_show, inode->i_private);
 }
 
-#ifdef ENABLE_DBG_EVENT_PRINT
-void fimc_is_debug_event_print(fimc_is_event_store_type_t event_store_type,
-	void (*callfunc)(void *),
-	void *ptrdata,
-	size_t datasize,
-	const char *fmt, ...)
+void fimc_is_debug_event_add(fimc_is_event_store_type_t event_store_type, char *msg, void (*callfunc)(void *), void *ptrdata, u32 datasize)
 {
 	int index;
+	unsigned int len;
+	u8 *buf = NULL;
 	struct fimc_is_debug_event_log *event_log;
+	unsigned long flag;
 	unsigned int log_num;
-	va_list args;
 
 	if (fimc_is_debug_event.log_enable == 0)
 		return;
 
+	len = strlen(msg);
+	if (len >= EVENT_STR_MAX)
+		len = EVENT_STR_MAX - 2;
+
+	if (len) {
+		buf = vmalloc(len + 1);
+		if (!buf) {
+			warn("buf alloc fail..!");
+		}
+		else {
+			strncpy(buf, msg, len + 1);
+			buf[len] = '\0';
+		}
+	} else {
+		info("no debug message stored");
+	}
+
+	spin_lock_irqsave(&fimc_is_debug_event.slock, flag);
+
 	switch (event_store_type) {
 	case FIMC_IS_EVENT_CRITICAL:
-		index = atomic_inc_return(&fimc_is_debug_event.critical_log_tail);
+		index = atomic_read(&fimc_is_debug_event.critical_log_tail);
 		if (index >= FIMC_IS_EVENT_MAX_NUM - 1) {
-			if (index % LOG_INTERVAL_OF_WARN == 0)
-				warn("critical event log buffer full...!");
-
+			warn("critical event log buffer full...!");
+			spin_unlock_irqrestore(&fimc_is_debug_event.slock, flag);
 			return;
+		} else {
+			index = atomic_inc_return(&fimc_is_debug_event.critical_log_tail);
 		}
 		event_log = &fimc_is_debug_event.event_log_critical[index];
 		break;
 	case FIMC_IS_EVENT_NORMAL:
-		index = atomic_inc_return(&fimc_is_debug_event.normal_log_tail) &
-				(FIMC_IS_EVENT_MAX_NUM - 1);
-
+		index = atomic_inc_return(&fimc_is_debug_event.normal_log_tail);
+		if (index >= FIMC_IS_EVENT_MAX_NUM - 1) {
+			index = index % FIMC_IS_EVENT_MAX_NUM;
+			if (fimc_is_debug_event.event_log_normal[index].ptrdata != NULL)
+				vfree(fimc_is_debug_event.event_log_normal[index].ptrdata);
+			if (fimc_is_debug_event.event_log_normal[index].dbg_msg != NULL)
+				vfree(fimc_is_debug_event.event_log_normal[index].dbg_msg);
+		}
 		event_log = &fimc_is_debug_event.event_log_normal[index];
 		break;
 	default:
-		warn("invalid event type(%d)", event_store_type);
-		goto p_err;
+		break;
 	}
 
 	log_num = atomic_inc_return(&fimc_is_debug_event.event_index);
+	spin_unlock_irqrestore(&fimc_is_debug_event.slock, flag);
 
-	event_log->time = ktime_get();
-	va_start(args, fmt);
-	vsnprintf(event_log->dbg_msg, sizeof(event_log->dbg_msg), fmt, args);
-	va_end(args);
+	event_log->dbg_msg = buf;
+	event_log->dbg_msg_size = len + 1;
 	event_log->log_num = log_num;
 	event_log->event_store_type = event_store_type;
 	event_log->callfunc = callfunc;
-	event_log->cpu = raw_smp_processor_id();
-
-	/* ptrdata should be used in non-atomic context */
-	if (!in_atomic()) {
-		if (event_log->ptrdata) {
-			vfree(event_log->ptrdata);
-			event_log->ptrdata = NULL;
-		}
-
-		if (datasize) {
-			event_log->ptrdata = vmalloc(datasize);
-			if (event_log->ptrdata)
-				memcpy(event_log->ptrdata, ptrdata, datasize);
-			else
-				warn("couldn't allocate ptrdata");
-		}
+	event_log->datasize = datasize;
+	if (datasize) {
+		event_log->ptrdata = vmalloc(datasize);
+		memcpy(event_log->ptrdata, ptrdata, datasize);
+	} else {
+		event_log->ptrdata = NULL;
 	}
 
-p_err:
-	return;
-}
-#endif
+	event_log->time = ktime_get();
 
-void fimc_is_debug_event_count(fimc_is_event_store_type_t event_store_type)
-{
 
-	switch (event_store_type) {
-	case FIMC_IS_EVENT_OVERFLOW_CSI:
-		atomic_inc(&fimc_is_debug_event.overflow_csi);
-		break;
-	case FIMC_IS_EVENT_OVERFLOW_3AA:
-		atomic_inc(&fimc_is_debug_event.overflow_3aa);
-		break;
-	default:
-		warn("invalid event type(%d)", event_store_type);
-		goto p_err;
-	}
-
-p_err:
 	return;
 }
 
 int fimc_is_debug_info_dump(struct seq_file *s, struct fimc_is_debug_event *debug_event)
 {
+	int index = atomic_read(&fimc_is_debug_event.event_index);
+	int index_normal = 0;
+	int latest_normal = atomic_read(&fimc_is_debug_event.normal_log_tail);
+	int index_critical = 0;
+	int latest_critical = atomic_read(&fimc_is_debug_event.critical_log_tail);
+	bool normal_done = 0;
+	bool critical_done = 0;
+	struct timeval tv;
+	ktime_t prev_ktime;
+	struct fimc_is_debug_event_log *log_critical;
+	struct fimc_is_debug_event_log *log_normal;
+	struct fimc_is_debug_event_log *log_print;
+
+	unsigned int log_num_normal;
+	unsigned int log_num_critical;
+	bool log_normal_en;
+	bool log_critical_en;
+
 	seq_f = s;
 	seq_printf(s, "------------------- FIMC-IS EVENT LOGGER - START --------------\n");
 
-#ifdef ENABLE_DBG_EVENT_PRINT
-	{
-		int index_normal = 0;
-		int latest_normal = atomic_read(&fimc_is_debug_event.normal_log_tail);
-		int index_critical = 0;
-		int latest_critical = atomic_read(&fimc_is_debug_event.critical_log_tail);
-		bool normal_done = 0;
-		bool critical_done = 0;
-		struct timeval tv;
-		struct fimc_is_debug_event_log *log_critical;
-		struct fimc_is_debug_event_log *log_normal;
-		struct fimc_is_debug_event_log *log_print;
+	if (index < 0)
+		return -1;
 
-		if ((latest_normal < 0) || !(fimc_is_debug_event.log_filter & FIMC_IS_EVENT_NORMAL))
-			normal_done = 1; /* normal log empty */
-		else if (latest_normal > FIMC_IS_EVENT_MAX_NUM - 1)
-			index_normal = (latest_normal % FIMC_IS_EVENT_MAX_NUM) + 1;
-		else
-			index_normal = 0;
+	if (latest_normal < 0)
+		normal_done = 1; /* normal log empty */
+	else if (latest_normal > FIMC_IS_EVENT_MAX_NUM - 1)
+		index_normal = (latest_normal % FIMC_IS_EVENT_MAX_NUM) + 1;
+	else
+		index_normal = 0;
 
-		latest_normal = latest_normal % FIMC_IS_EVENT_MAX_NUM;
+	latest_normal = latest_normal % FIMC_IS_EVENT_MAX_NUM;
 
-		if ((latest_critical < 0) || !(fimc_is_debug_event.log_filter & FIMC_IS_EVENT_CRITICAL))
-			critical_done = 1; /* critical log empty */
+	if (latest_critical < 0)
+		critical_done = 1; /* critical log empty */
 
-		while (!(normal_done) || !(critical_done)) {
-			index_normal = index_normal % FIMC_IS_EVENT_MAX_NUM;
-			index_critical = index_critical % FIMC_IS_EVENT_MAX_NUM;
-			log_normal = &fimc_is_debug_event.event_log_normal[index_normal];
-			log_critical = &fimc_is_debug_event.event_log_critical[index_critical];
+	prev_ktime = ktime_set(0, 0);
 
-			if (!normal_done && !critical_done) {
-				if (log_normal->log_num < log_critical->log_num) {
-					log_print = log_normal;
-					index_normal++;
-				} else {
-					log_print = log_critical;
-					index_critical++;
-				}
-			} else if (!normal_done) {
-				log_print = log_normal;
-				index_normal++;
-			} else if (!critical_done) {
-				log_print = log_critical;
-				index_critical++;
-			}
+	if ((fimc_is_debug_event.logfilter) & FIMC_IS_EVENT_NORMAL)
+		log_normal_en = 1;
+	else
+		log_normal_en = 0;
 
+	if ((fimc_is_debug_event.logfilter) & FIMC_IS_EVENT_CRITICAL)
+		log_critical_en = 1;
+	else
+		log_critical_en = 0;
+
+	while (!(normal_done) || !(critical_done)) {
+
+		index_normal = index_normal % FIMC_IS_EVENT_MAX_NUM;
+		log_num_normal = fimc_is_debug_event.event_log_normal[index_normal].log_num;
+		log_num_critical = fimc_is_debug_event.event_log_critical[index_critical].log_num;
+
+		if (normal_done)
+			log_num_normal = 0xffffffff;
+		if (critical_done)
+			log_num_critical = 0xffffffff;
+
+		log_normal = &fimc_is_debug_event.event_log_normal[index_normal];
+		log_critical = &fimc_is_debug_event.event_log_critical[index_critical];
+
+		if (!normal_done) {
 			if (latest_normal == index_normal)
 				normal_done = 1;
+		}
 
+		if (!critical_done) {
 			if (latest_critical == index_critical)
 				critical_done = 1;
-
-			tv = ktime_to_timeval(log_print->time);
-			seq_printf(s, "[%d][%6ld.%06ld] num(%d) ", log_print->cpu,
-				tv.tv_sec, tv.tv_usec, log_print->log_num);
-			seq_printf(s, "%s\n", log_print->dbg_msg);
-
-			if (log_print->callfunc != NULL)
-				log_print->callfunc(log_print->ptrdata);
-
 		}
-	}
-#endif
 
-	seq_printf(s, "overflow: csi(%d), 3aa(%d)\n",
-		atomic_read(&debug_event->overflow_csi),
-		atomic_read(&debug_event->overflow_3aa));
+		if (log_num_normal < log_num_critical) {
+			log_print = log_normal;
+			if (!normal_done)
+				index_normal++;
+			if (!log_normal_en)
+				continue;
+		} else {
+			log_print = log_critical;
+			if (!critical_done)
+				index_critical++;
+			if (!log_critical_en)
+				continue;
+		}
+
+		tv = ktime_to_timeval(log_print->time);
+		seq_printf(s, "[%6ld.%06ld] num(%d) ", tv.tv_sec, tv.tv_usec, log_print->log_num);
+		seq_printf(s, "%s\n", log_print->dbg_msg);
+
+		if (log_print->callfunc != NULL)
+			log_print->callfunc(log_print->ptrdata);
+
+	}
 
 	seq_printf(s, "------------------- FIMC-IS EVENT LOGGER - END ----------------\n");
 	return 0;
@@ -1071,3 +1103,4 @@ static const struct file_operations debug_event_fops = {
 	.llseek = seq_lseek,
 	.release = seq_release,
 };
+#endif

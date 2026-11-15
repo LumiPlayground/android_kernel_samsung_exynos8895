@@ -5244,7 +5244,7 @@ int read_extent_buffer_pages(struct extent_io_tree *tree,
 	 * the uptodate bit of our pages won't be affected by
 	 * clear_extent_buffer_uptodate().
 	 */
-	for (i = 0; i < num_pages; i++) {
+	for (i = start_i; i < num_pages; i++) {
 		page = eb->pages[i];
 		if (!PageUptodate(page)) {
 			num_reads++;

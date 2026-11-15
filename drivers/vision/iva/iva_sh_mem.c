@@ -38,7 +38,7 @@ static int __maybe_unused sh_mem_wait_mcu_init(struct iva_dev_data *iva, uint32_
 			sh_mem->magic2 != SHMEM_MAGIC2_FAULT) {
 		if (ret < 0)
 			return ret;
-		usleep_range(VALUE_CHECK_DECREMENT, VALUE_CHECK_DECREMENT+1);
+		usleep_range(VALUE_CHECK_DECREMENT, VALUE_CHECK_DECREMENT);
 		ret -= VALUE_CHECK_DECREMENT;
 	}
 
@@ -63,7 +63,7 @@ int sh_mem_wait_mcu_ready(struct iva_dev_data *iva, uint32_t to_us)
 	while (sh_mem->magic2 != SHMEM_MAGIC2_NORMAL) {
 		if (ret < 0)
 			return -1;
-		usleep_range(VALUE_CHECK_DECREMENT, VALUE_CHECK_DECREMENT+1);
+		usleep_range(VALUE_CHECK_DECREMENT, VALUE_CHECK_DECREMENT);
 		ret -= VALUE_CHECK_DECREMENT;
 	}
 
@@ -80,7 +80,7 @@ int sh_mem_wait_stop(struct iva_dev_data *iva, uint32_t to_us)
 			sh_mem->magic2 != SHMEM_MAGIC2_FATAL) {
 		if (ret < 0)
 			return -1;
-		usleep_range(VALUE_CHECK_DECREMENT, VALUE_CHECK_DECREMENT+1);
+		usleep_range(VALUE_CHECK_DECREMENT, VALUE_CHECK_DECREMENT);
 		ret -= VALUE_CHECK_DECREMENT;
 	}
 	return 0;
@@ -95,7 +95,9 @@ void sh_mem_dump_info(struct iva_dev_data *iva)
 	dev_info(dev, "===============(sh_mem, %p)=================\n", sh_mem);
 	dev_info(dev, "magic1(0x%08x), size(0x%08x)\n",
 			sh_mem->magic1, sh_mem->shmem_size);
-	dev_info(dev, "build_info(%s)\n", sh_mem->build_info);
+	dev_info(dev, "target_product(%s)\n", sh_mem->target_product);
+	dev_info(dev, "build_id(%s)\n", sh_mem->build_id);
+	dev_info(dev, "build_num(%s)\n", sh_mem->build_number);
 	dev_info(dev, "magic2(0x%08x)\n", sh_mem->magic2);
 	dev_info(dev, "log_pos(%p), log_size(0x%x) head(%d) tail(%d)\n",
 			&sh_mem->log_pos, sh_mem->log_buf_size,
@@ -129,7 +131,6 @@ int sh_mem_init(struct iva_dev_data *iva)
 
 	dev_dbg(dev, "%s() mapped addr(0x%p)\n", __func__, iva->shmem_va);
 
-	sh_mem_set_iva_clk_rate(iva, iva->iva_qos_rate);
 #ifdef ENABLE_MCU_INIT_CHECK
 	ret = sh_mem_wait_mcu_init(iva, WAIT_DELAY_US);
 	if (ret) {

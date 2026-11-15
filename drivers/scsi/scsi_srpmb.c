@@ -53,16 +53,6 @@ static void swap_packet(u8 *p, u8 *d)
 		d[i] = p[RPMB_PACKET_SIZE - 1 - i];
 }
 
-static void update_rpmb_status_flag(struct rpmb_irq_ctx *ctx,
-				Rpmb_Req *req, int status)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&ctx->lock, flags);
-	req->status_flag = status;
-	spin_unlock_irqrestore(&ctx->lock, flags);
-}
-
 static void srpmb_worker(struct work_struct *data)
 {
 	int ret;
@@ -88,15 +78,12 @@ static void srpmb_worker(struct work_struct *data)
 	}
 	req = (Rpmb_Req *)rpmb_ctx->vir_addr;
 
-	__pm_stay_awake(&rpmb_ctx->wakesrc);
-
-	dev_info(&sr_pdev->dev, "start rpmb workqueue with command(%d)\n", req->type);
+	wake_lock(&rpmb_ctx->wakelock);
 
 	switch(req->type) {
 	case GET_WRITE_COUNTER:
 		if (req->data_len != RPMB_PACKET_SIZE) {
-			update_rpmb_status_flag(rpmb_ctx, req,
-					WRITE_COUTNER_DATA_LEN_ERROR);
+			req->status_flag = WRITE_COUTNER_DATA_LEN_ERROR;
 			dev_err(&sr_pdev->dev, "data len is invalid\n");
 			break;
 		}
@@ -106,8 +93,7 @@ static void srpmb_worker(struct work_struct *data)
 
 		ret = srpmb_scsi_ioctl(sdp, req);
 		if (ret < 0) {
-			update_rpmb_status_flag(rpmb_ctx, req,
-					WRITE_COUTNER_SECURITY_OUT_ERROR);
+			req->status_flag = WRITE_COUTNER_SECURITY_OUT_ERROR;
 			dev_err(&sr_pdev->dev, "ioctl read_counter error: %x\n", ret);
 			break;
 		}
@@ -118,19 +104,17 @@ static void srpmb_worker(struct work_struct *data)
 
 		ret = srpmb_scsi_ioctl(sdp, req);
 		if (ret < 0) {
-			update_rpmb_status_flag(rpmb_ctx, req,
-					WRITE_COUTNER_SECURITY_IN_ERROR);
+			req->status_flag = WRITE_COUTNER_SECURITY_IN_ERROR;
 			dev_err(&sr_pdev->dev, "ioctl error : %x\n", ret);
 			break;
 		}
-		update_rpmb_status_flag(rpmb_ctx, req, RPMB_PASSED);
+		req->status_flag = PASS_STATUS;
 
 		break;
 	case WRITE_DATA:
 		if (req->data_len < RPMB_PACKET_SIZE ||
 			req->data_len > RPMB_PACKET_SIZE * 64) {
-			update_rpmb_status_flag(rpmb_ctx, req,
-					WRITE_DATA_LEN_ERROR);
+			req->status_flag = WRITE_DATA_LEN_ERROR;
 			dev_err(&sr_pdev->dev, "data len is invalid\n");
 			break;
 		}
@@ -140,8 +124,7 @@ static void srpmb_worker(struct work_struct *data)
 
 		ret = srpmb_scsi_ioctl(sdp, req);
 		if (ret < 0) {
-			update_rpmb_status_flag(rpmb_ctx, req,
-					WRITE_DATA_SECURITY_OUT_ERROR);
+			req->status_flag = WRITE_DATA_SECURITY_OUT_ERROR;
 			dev_err(&sr_pdev->dev, "ioctl write data error: %x\n", ret);
 			break;
 		}
@@ -155,8 +138,7 @@ static void srpmb_worker(struct work_struct *data)
 
 		ret = srpmb_scsi_ioctl(sdp, req);
 		if (ret < 0) {
-			update_rpmb_status_flag(rpmb_ctx, req,
-					WRITE_DATA_RESULT_SECURITY_OUT_ERROR);
+			req->status_flag = WRITE_DATA_RESULT_SECURITY_OUT_ERROR;
 			dev_err(&sr_pdev->dev,
 					"ioctl write_data result error: %x\n", ret);
 			break;
@@ -168,8 +150,7 @@ static void srpmb_worker(struct work_struct *data)
 
 		ret = srpmb_scsi_ioctl(sdp, req);
 		if (ret < 0) {
-			update_rpmb_status_flag(rpmb_ctx, req,
-					WRITE_DATA_SECURITY_IN_ERROR);
+			req->status_flag = WRITE_DATA_SECURITY_IN_ERROR;
 			dev_err(&sr_pdev->dev,
 					"ioctl write_data result error: %x\n", ret);
 			break;
@@ -177,9 +158,9 @@ static void srpmb_worker(struct work_struct *data)
 
 		swap_packet(req->rpmb_data, (uint8_t *)&packet);
 		if (packet.result == 0) {
-			update_rpmb_status_flag(rpmb_ctx, req, RPMB_PASSED);
+			req->status_flag = PASS_STATUS;
 		} else {
-			update_rpmb_status_flag(rpmb_ctx, req, packet.result);
+			req->status_flag = packet.result;
 			dev_err(&sr_pdev->dev,
 					"packet result error: %x\n", req->status_flag);
 		}
@@ -187,7 +168,7 @@ static void srpmb_worker(struct work_struct *data)
 	case READ_DATA:
 		if (req->data_len < RPMB_PACKET_SIZE ||
 			req->data_len > RPMB_PACKET_SIZE * 64) {
-			update_rpmb_status_flag(rpmb_ctx, req, READ_LEN_ERROR);
+			req->status_flag = READ_LEN_ERROR;
 			dev_err(&sr_pdev->dev, "data len is invalid\n");
 			break;
 		}
@@ -197,8 +178,7 @@ static void srpmb_worker(struct work_struct *data)
 
 		ret = srpmb_scsi_ioctl(sdp, req);
 		if (ret < 0) {
-			update_rpmb_status_flag(rpmb_ctx, req,
-					READ_DATA_SECURITY_OUT_ERROR);
+			req->status_flag = READ_DATA_SECURITY_OUT_ERROR;
 			dev_err(&sr_pdev->dev, "ioctl read data error: %x\n", ret);
 			break;
 		}
@@ -209,56 +189,35 @@ static void srpmb_worker(struct work_struct *data)
 
 		ret = srpmb_scsi_ioctl(sdp, req);
 		if (ret < 0) {
-			update_rpmb_status_flag(rpmb_ctx, req,
-					READ_DATA_SECURITY_IN_ERROR);
+			req->status_flag = READ_DATA_SECURITY_IN_ERROR;
 			dev_err(&sr_pdev->dev,
 					"ioctl result read data error : %x\n", ret);
 			break;
 		}
-		update_rpmb_status_flag(rpmb_ctx, req, RPMB_PASSED);
+		req->status_flag = PASS_STATUS;
 
 		break;
 	default:
 		dev_err(&sr_pdev->dev, "invalid requset type : %x\n", req->type);
 	}
 
-	__pm_relax(&rpmb_ctx->wakesrc);
-	dev_info(&sr_pdev->dev, "finish rpmb workqueue with command(%d)\n", req->type);
+	wake_unlock(&rpmb_ctx->wakelock);
 }
 
 static int srpmb_suspend_notifier(struct notifier_block *nb, unsigned long event,
 				void *dummy)
 {
 	struct rpmb_irq_ctx *rpmb_ctx;
-	struct device *dev;
-	Rpmb_Req *req;
 
 	if (!nb) {
 		dev_err(&sr_pdev->dev, "noti_blk work_struct data invalid\n");
 		return -1;
 	}
 	rpmb_ctx = container_of(nb, struct rpmb_irq_ctx, pm_notifier);
-	dev = rpmb_ctx->dev;
-	req = (Rpmb_Req *)rpmb_ctx->vir_addr;
-	if (!req) {
-		dev_err(dev, "Invalid wsm address for rpmb\n");
-		return -EINVAL;
-	}
 
 	switch (event) {
-	case PM_HIBERNATION_PREPARE:
 	case PM_SUSPEND_PREPARE:
-	case PM_RESTORE_PREPARE:
 		flush_workqueue(rpmb_ctx->srpmb_queue);
-		update_rpmb_status_flag(rpmb_ctx, req, RPMB_FAIL_SUSPEND_STATUS);
-		break;
-	case PM_POST_SUSPEND:
-	case PM_POST_HIBERNATION:
-	case PM_POST_RESTORE:
-		update_rpmb_status_flag(rpmb_ctx, req, 0);
-		break;
-	default:
-		break;
 	}
 
 	return 0;
@@ -267,17 +226,7 @@ static int srpmb_suspend_notifier(struct notifier_block *nb, unsigned long event
 static irqreturn_t rpmb_irq_handler(int intr, void *arg)
 {
 	struct rpmb_irq_ctx *rpmb_ctx = (struct rpmb_irq_ctx *)arg;
-	struct device *dev;
-	Rpmb_Req *req;
 
-	dev = rpmb_ctx->dev;
-	req = (Rpmb_Req *)rpmb_ctx->vir_addr;
-	if (!req) {
-		dev_err(dev, "Invalid wsm address for rpmb\n");
-		return IRQ_HANDLED;
-	}
-
-	update_rpmb_status_flag(rpmb_ctx, req, RPMB_IN_PROGRESS);
 	queue_work(rpmb_ctx->srpmb_queue, &rpmb_ctx->work);
 
 	return IRQ_HANDLED;
@@ -302,9 +251,6 @@ int init_wsm(struct device *dev)
 			&rpmb_ctx->phy_addr, GFP_KERNEL);
 
 	if (rpmb_ctx->vir_addr && rpmb_ctx->phy_addr) {
-		dev_info(dev, "srpmb dma addr: virt_pK(%pK), phy(%llx)\n",
-			rpmb_ctx->vir_addr, (uint64_t)rpmb_ctx->phy_addr);
-
 		rpmb_ctx->irq = irq_of_parse_and_map(sr_pdev->dev.of_node, 0);
 		if (rpmb_ctx->irq <= 0) {
 			dev_err(&sr_pdev->dev, "No IRQ number, aborting\n");
@@ -324,7 +270,7 @@ int init_wsm(struct device *dev)
 
 		rpmb_ctx->dev = dev;
 		rpmb_ctx->srpmb_queue = alloc_workqueue("srpmb_wq",
-				WQ_MEM_RECLAIM | WQ_UNBOUND | WQ_HIGHPRI, 1);
+						WQ_MEM_RECLAIM | WQ_UNBOUND, 1);
 		if (!rpmb_ctx->srpmb_queue) {
 			dev_err(&sr_pdev->dev,
 				"Fail to alloc workqueue for ufs sprmb\n");
@@ -351,8 +297,7 @@ int init_wsm(struct device *dev)
 			goto out_srpmb_unregister_pm;
 		}
 
-		wakeup_source_init(&rpmb_ctx->wakesrc, "srpmb");
-		spin_lock_init(&rpmb_ctx->lock);
+		wake_lock_init(&rpmb_ctx->wakelock, WAKE_LOCK_SUSPEND, "srpmb");
 		INIT_WORK(&rpmb_ctx->work, srpmb_worker);
 
 	} else {

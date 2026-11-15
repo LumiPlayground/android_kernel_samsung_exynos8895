@@ -303,7 +303,7 @@ int jbd2_journal_recover(journal_t *journal)
  * Locate any valid recovery information from the journal and set up the
  * journal structures in memory to ignore it (presumably because the
  * caller has evidence that it is out of date).
- * This function doesn't appear to be exported..
+ * This function does'nt appear to be exorted..
  *
  * We perform one pass over the journal to allow us to tell the user how
  * much recovery information is being erased, and to let us initialise
@@ -324,7 +324,7 @@ int jbd2_journal_skip_recovery(journal_t *journal)
 		++journal->j_transaction_sequence;
 	} else {
 #ifdef CONFIG_JBD2_DEBUG
-		int dropped = info.end_transaction - 
+		int dropped = info.end_transaction -
 			be32_to_cpu(journal->j_superblock->s_sequence);
 		jbd_debug(1,
 			  "JBD2: ignoring %d transaction%s from the journal.\n",

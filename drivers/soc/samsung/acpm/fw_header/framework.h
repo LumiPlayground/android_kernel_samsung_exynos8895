@@ -66,7 +66,6 @@ struct acpm_framework {
 	u32 fw_size;
 	u32 intr_to_skip;
 	u32 intr_flag_offset;
-	struct build_info info;
 };
 
 /**
@@ -131,8 +130,6 @@ struct acpm_interrupt {
 	s32 (*handler)(u32 intr);
 	s32 owner;
 	bool is_disabled;
-	bool log_skip;
-	bool idle_ip_skip;
 };
 
 /**
@@ -160,9 +157,6 @@ struct apm_peri {
 	void (*peri_timer_init) (void);
 	void (*set_peri_timer_event) (u32 msec);
 	void (*del_peri_timer_event) (void);
-	u32 (*get_peri_timer_cvr) (void);
-	u32 (*get_peri_timer_icvr) (void);
-	u32 (*get_peri_timer_icvra) (void);
 	void (*mpu_init) (void);
 	void (*enable_systick) (void);
 	void (*disable_systick) (void);
@@ -180,9 +174,6 @@ struct apm_peri {
 	u32 (*get_mbox_pend_intr) (u32 mbox_addr);
 	void (*clr_mbox_pend_intr) (u32 mbox_addr, u32 intr);
 	void (*gen_mbox_intr) (struct ipc_channel *ipc_ch);
-	u32 (*set_idle_ip) (u32 is_idle, u32 intr_filed);
-	s32 (*udelay_systick) (u32 udelay_us);
-	void (*set_wdtrst_req) (void);
 };
 extern struct apm_peri apm_peri;
 
@@ -200,10 +191,6 @@ struct plat_ops {
 	void (*ipc_channel_init) (struct acpm_framework *acpm);
 	void *(*get_plugins_extern_fn) (void);
 	u32 (*get_mbox_addr) (u32 intr);
-	u32 (*filter_buff_int_status) (u32 intr, u32 int_status);
-	u32 (*filter_queue_int_status) (u32 intr, u32 int_status);
-	void (*wait_for_intr) (void);
-	u32 (*system_reset) (void);
 };
 extern struct plat_ops plat_ops;
 
@@ -220,9 +207,9 @@ enum shard_buffer_type {
 	TYPE_BUFFER,
 };
 
-#define LOG_ID_SHIFT			(28)
-#define LOG_LEVEL			(27)
-#define LOG_TIME_INDEX			(22)
+#define LOG_ID_SHIFT			(29)
+#define LOG_TIME_INDEX			(23)
+#define LOG_LEVEL			(28)
 #define AVAILABLE_TIME			(26000)
 
 #define ACPM_DEBUG_PRINT
@@ -252,7 +239,6 @@ enum shard_buffer_type {
 
 #define ERR_NOPLUGIN			(10)
 #define ERR_REJECTED			(11)
-#define ERR_NOTYET			(12)
 
 /* speedy definition */
 struct speedyops {

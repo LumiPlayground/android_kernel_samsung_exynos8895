@@ -39,8 +39,7 @@ u8 DREAM2_A2_SA_COPR[] = {
 	0xE1, 0x03, 0x5D, 0x6E, 0xB5, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
-static DEFINE_PKTUI(dream2_a2_sa_copr, &dream2_a2_sa_copr_maptbl[COPR_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(dream2_a2_sa_copr, DSI_PKT_TYPE_WR, DREAM2_A2_SA_COPR, 0);
+DEFINE_VARIABLE_PACKET(dream2_a2_sa_copr, DSI_PKT_TYPE_WR, DREAM2_A2_SA_COPR, &dream2_a2_sa_copr_maptbl[COPR_MAPTBL], 1);
 
 static void *dream2_a2_sa_set_copr_cmdtbl[] = {
 	&PKTINFO(dream2_a2_sa_level2_key_enable),

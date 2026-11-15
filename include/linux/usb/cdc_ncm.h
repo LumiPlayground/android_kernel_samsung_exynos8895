@@ -81,8 +81,7 @@
 #define CDC_NCM_TIMER_INTERVAL_MAX		(U32_MAX / NSEC_PER_USEC)
 
 /* Driver flags */
-#define CDC_NCM_FLAG_NDP_TO_END			0x02	/* NDP is placed at end of frame */
-#define CDC_MBIM_FLAG_AVOID_ALTSETTING_TOGGLE	0x04	/* Avoid altsetting toggle during init */
+#define CDC_NCM_FLAG_NDP_TO_END	0x02		/* NDP is placed at end of frame */
 #define CDC_NCM_FLAG_RESET_NTB16 0x08	/* set NDP16 one more time after altsetting switch */
 
 #define cdc_ncm_comm_intf_is_mbim(x)  ((x)->desc.bInterfaceSubClass == USB_CDC_SUBCLASS_MBIM && \
@@ -151,3 +150,5 @@ cdc_ncm_tx_fixup(struct usbnet *dev, struct sk_buff *skb, gfp_t flags);
 int cdc_ncm_rx_fixup(struct usbnet *dev, struct sk_buff *skb_in);
 
 #endif /* __LINUX_USB_CDC_NCM_H */
+
+#define CDC_MBIM_FLAG_AVOID_ALTSETTING_TOGGLE	0x04	/* Avoid altsetting toggle during init */

@@ -18,14 +18,13 @@
 /* factory Sysfs                                                         */
 /*************************************************************************/
 
-#define MODEL_NAME	"BCM47752KUB1G"
+#define MODEL_NAME			"BCM4774IUB2G"
 
 ssize_t mcu_revision_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
 
-	pr_info("BR01%u,BR01%u\n", get_module_rev(data), data->uCurFirmRev);
 	return sprintf(buf, "BR01%u,BR01%u\n", get_module_rev(data), data->uCurFirmRev);
 }
 

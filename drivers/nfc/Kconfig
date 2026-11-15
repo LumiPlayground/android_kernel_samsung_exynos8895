@@ -28,7 +28,7 @@ config SEC_NFC
 	  kernel.
 
 config ESE_P3_LSI
-	bool "eSE driver"
+	bool "Oberthur ese driver"
 	depends on SPI
 	default n
 	help
@@ -36,10 +36,8 @@ config ESE_P3_LSI
 	  This driver provides support for LSI NXP combined ESE products.
 	  You should select your NFC product and interface.
 
-	  Say Y here to compile support for eSE driver into the kernel.
-
 config ESE_FACTORY_ONLY
-	bool "eSE driver factory"
+	bool "Oberthur ese driver factory"
 	depends on SPI
 	default n
 	help

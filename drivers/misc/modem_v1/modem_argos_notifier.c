@@ -22,7 +22,7 @@
 #define MIF_ARGOS_IPC_LABEL	"IPC"
 #define MIF_ARGOS_CLAT_LABEL	"CLAT"
 
-//#define MIF_ARGOS_DEBUG
+//#define MIF_ARGOS_DEBUG 
 
 const char *ndev_prefix[2] = {"rmnet", "v4-rmnet"};
 
@@ -66,9 +66,6 @@ unsigned int mif_rps_thresh = 200;
 module_param(mif_rps_thresh, uint, S_IRUGO | S_IWUSR | S_IWGRP);
 MODULE_PARM_DESC(mif_rps_thresh, "threshold speed");
 
-int mif_gro_flush_thresh[] = {100, 200, -1};
-long mif_gro_flush_time[] = {10000, 50000, 100000};
-
 static int mif_store_rps_map(struct netdev_rx_queue *queue, char *buf, size_t len)
 {
 	struct rps_map *old_map, *map;
@@ -88,7 +85,7 @@ static int mif_store_rps_map(struct netdev_rx_queue *queue, char *buf, size_t le
 		return err;
 	}
 
-	map = kzalloc(max_t(unsigned long,
+	map = kzalloc(max_t(unsigned int,
 		RPS_MAP_SIZE(cpumask_weight(mask)), L1_CACHE_BYTES),
 		GFP_KERNEL);
 	if (!map) {
@@ -129,13 +126,13 @@ static int mif_store_rps_map(struct netdev_rx_queue *queue, char *buf, size_t le
 		kfree_rcu(old_map, rcu);
 
 	free_cpumask_var(mask);
-#ifdef MIF_ARGOS_DEBUG
+#ifdef MIF_ARGOS_DEBUG 
 	mif_info("map:%d\n", map->len);
 #endif
 	return map->len;
 }
 
-static void mif_update_ndevs_rps(const char *ndev_prefix, unsigned int rps_value)
+static void mif_update_ndevs_rps(const char *ndev_prefix, unsigned int rps_vaule)
 {
 	struct net_device *ndev;
 	char ndev_name[IFNAMSIZ];
@@ -143,10 +140,10 @@ static void mif_update_ndevs_rps(const char *ndev_prefix, unsigned int rps_value
 	int ret;
 	int i;
 
-	if (!rps_value)
+	if (!rps_vaule)
 		return;
 
-	snprintf(value, MIF_MAX_RPS_STR, "%x", rps_value);
+	snprintf(value, MIF_MAX_RPS_STR, "%x", rps_vaule);
 
 	for (i = 0; i < MIF_MAX_NDEV_NUM; i++) {
 		memset(ndev_name, 0, IFNAMSIZ);
@@ -154,7 +151,7 @@ static void mif_update_ndevs_rps(const char *ndev_prefix, unsigned int rps_value
 
 		ndev = dev_get_by_name(&init_net, ndev_name);
 		if (!ndev) {
-#ifdef MIF_ARGOS_DEBUG
+#ifdef MIF_ARGOS_DEBUG 
 			mif_info("Cannot find %s from init_net\n", ndev_name);
 #endif
 			continue;
@@ -168,29 +165,11 @@ static void mif_update_ndevs_rps(const char *ndev_prefix, unsigned int rps_value
 			continue;
 		}
 
-#ifdef MIF_ARGOS_DEBUG
+#ifdef MIF_ARGOS_DEBUG 
 		mif_info("%s's rps: 0x%s\n", ndev_name, value);
 #endif
 	}
 }
-
-#ifdef CONFIG_MODEM_IF_NET_GRO
-extern long gro_flush_time;
-
-static void mif_argos_notifier_gro_flushtime(unsigned long speed)
-{
-	int loop;
-
-	for (loop = 0; mif_gro_flush_thresh[loop] != -1; loop++)
-		if (speed < mif_gro_flush_thresh[loop])
-			break;
-	gro_flush_time = mif_gro_flush_time[loop];
-
-	mif_info("Speed: %luMbps, GRO flush time: %ld\n", speed, gro_flush_time);
-}
-#else
-static inline void mif_argos_notifier_gro_flushtime(unsigned long speed) {}
-#endif
 
 static int mif_argos_notifier_ipc(struct notifier_block *nb, unsigned long speed, void *data)
 {
@@ -214,8 +193,6 @@ static int mif_argos_notifier_ipc(struct notifier_block *nb, unsigned long speed
 		mif_info("Speed: %luMbps, IPC|CLAT: 0x%02x|0x%02x -> 0x%02x|0x%02x\n",
 			speed, prev_ipc_rps, nf->prev_clat_rps, new_ipc_rps, nf->prev_clat_rps);
 	}
-
-	mif_argos_notifier_gro_flushtime(speed);
 
 	return NOTIFY_OK;
 }
@@ -257,9 +234,6 @@ static int mif_argos_notifier_clat(struct notifier_block *nb, unsigned long spee
 		mif_info("Speed: %luMbps, IPC|CLAT: 0x%02x|0x%02x -> 0x%02x|0x%02x\n",
 			speed, prev_ipc_rps, prev_clat_rps, new_ipc_rps, new_clat_rps);
 	}
-
-	mif_argos_notifier_gro_flushtime(speed);
-
 	return NOTIFY_OK;
 }
 
@@ -301,4 +275,3 @@ exit:
 	kfree(argos_nf);
 	return ret;
 }
-

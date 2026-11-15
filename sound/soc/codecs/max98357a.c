@@ -74,12 +74,10 @@ static int max98357a_codec_probe(struct snd_soc_codec *codec)
 
 static struct snd_soc_codec_driver max98357a_codec_driver = {
 	.probe			= max98357a_codec_probe,
-	.component_driver = {
-		.dapm_widgets		= max98357a_dapm_widgets,
-		.num_dapm_widgets	= ARRAY_SIZE(max98357a_dapm_widgets),
-		.dapm_routes		= max98357a_dapm_routes,
-		.num_dapm_routes	= ARRAY_SIZE(max98357a_dapm_routes),
-	},
+	.dapm_widgets		= max98357a_dapm_widgets,
+	.num_dapm_widgets	= ARRAY_SIZE(max98357a_dapm_widgets),
+	.dapm_routes		= max98357a_dapm_routes,
+	.num_dapm_routes	= ARRAY_SIZE(max98357a_dapm_routes),
 };
 
 static const struct snd_soc_dai_ops max98357a_dai_ops = {

@@ -40,8 +40,7 @@
 #define V4L2_PIX_FMT_FIMV4    v4l2_fourcc('F', 'I', 'M', '4') /* FIMV4 */
 #define V4L2_PIX_FMT_VP8      v4l2_fourcc('V', 'P', '8', '0') /* VP8 */
 #define V4L2_PIX_FMT_VP9      v4l2_fourcc('V', 'P', '9', '0') /* VP9 */
-#define V4L2_PIX_FMT_HEVC     v4l2_fourcc('H', 'E', 'V', 'C') /* HEVC */
-#define V4L2_PIX_FMT_BPG      v4l2_fourcc('B', 'P', 'G', '0') /* BPG */
+#define V4L2_PIX_FMT_HEVC    v4l2_fourcc('H', 'E', 'V', 'C') /* HEVC */
 
 enum v4l2_mpeg_mfc51_video_frame_type {
 	V4L2_MPEG_MFC51_VIDEO_FRAME_TYPE_NOT_CODED	= 0,
@@ -135,9 +134,9 @@ enum v4l2_mpeg_video_hevc_hierarchical_coding_type {
 #define V4L2_CID_MPEG_MFC51_VIDEO_CRC_DATA_CHROMA1	\
 					(V4L2_CID_MPEG_MFC_BASE + 26)
 #define V4L2_CID_MPEG_MFC51_VIDEO_CRC_DATA_2BIT_LUMA	\
-					(V4L2_CID_MPEG_MFC_BASE + 27)
+						(V4L2_CID_MPEG_MFC_BASE + 27)
 #define V4L2_CID_MPEG_MFC51_VIDEO_CRC_DATA_2BIT_CHROMA	\
-					(V4L2_CID_MPEG_MFC_BASE + 28)
+						(V4L2_CID_MPEG_MFC_BASE + 28)
 
 #define V4L2_CID_MPEG_VIDEO_H264_MVC_VIEW_ID			\
 					(V4L2_CID_MPEG_MFC_BASE + 42)
@@ -403,8 +402,6 @@ enum v4l2_mpeg_video_hevc_hierarchical_coding_type {
 					(V4L2_CID_MPEG_MFC_BASE + 180)
 #define V4L2_CID_MPEG_VIDEO_DISABLE_IVF_HEADER			\
 					(V4L2_CID_MPEG_MFC_BASE + 181)
-#define V4L2_CID_MPEG_VIDEO_VP9_PROFILE				\
-					(V4L2_CID_MPEG_MFC_BASE + 182)
 
 /* CIDs for new common interface */
 #define V4L2_CID_MPEG_VIDEO_ROI_CONTROL				\
@@ -491,14 +488,5 @@ enum v4l2_mpeg_video_hevc_hierarchical_coding_type {
 					(V4L2_CID_MPEG_MFC_BASE + 230)
 #define V4L2_CID_MPEG_VIDEO_TRANSFER_CHARACTERISTICS		\
 					(V4L2_CID_MPEG_MFC_BASE + 231)
-#define V4L2_CID_MPEG_VIDEO_STATIC_INFO_ENABLE			\
-					(V4L2_CID_MPEG_MFC_BASE + 232)
-
-#define V4L2_CID_MPEG_VIDEO_BPG_THUMBNAIL_SIZE			\
-					(V4L2_CID_MPEG_MFC_BASE + 250)
-#define V4L2_CID_MPEG_VIDEO_BPG_EXIF_SIZE			\
-					(V4L2_CID_MPEG_MFC_BASE + 251)
-#define V4L2_CID_MPEG_VIDEO_BPG_HEADER_SIZE			\
-					(V4L2_CID_MPEG_MFC_BASE + 252)
 
 #endif /* __EXYNOS_MFC_MEDIA_H */

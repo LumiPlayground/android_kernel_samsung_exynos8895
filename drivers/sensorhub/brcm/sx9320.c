@@ -30,8 +30,11 @@
 
 #define VENDOR_NAME              "SEMTECH"
 #define MODEL_NAME               "SX9320"
+#if defined(CONFIG_SENSORS_SX9320_MULTI)
+#define MODULE_NAME              "grip_sensor_multi1"
+#else
 #define MODULE_NAME              "grip_sensor"
-
+#endif
 #define I2C_M_WR                 0 /* for i2c Write */
 #define I2c_M_RD                 1 /* for i2c Read */
 
@@ -59,8 +62,9 @@
 #define NONE_ENABLE		-1
 #define IDLE_STATE		0
 #define TOUCH_STATE		1
+#define BODY_STATE		2
 
-#define HALLIC_PATH		"/sys/class/sec/sec_key/hall_detect"
+#define HALLIC1_PATH		"/sys/class/sec/sec_key/hall_detect"
 
 struct sx9320_p {
 	struct i2c_client *client;
@@ -124,42 +128,40 @@ struct sx9320_p {
 
 	atomic_t enable;
 
-	char hall_ic[6];
+	unsigned char hall_ic1[6];
+	unsigned char hall_ic2[6];
 };
 
-static int sx9320_check_hallic_state(char *file_path, char hall_ic_status[])
+static int sx9320_check_hallic_state(char *file_path,
+	unsigned char hall_ic_status[])
 {
 	int iRet = 0;
 	mm_segment_t old_fs;
 	struct file *filep;
-	char hall_sysfs[5];
+	u8 hall_sysfs[5];
 
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	filep = filp_open(file_path, O_RDONLY, 0440);
+	filep = filp_open(file_path, O_RDONLY, 0666);
 	if (IS_ERR(filep)) {
 		iRet = PTR_ERR(filep);
-		pr_err("[SX9320]: %s - file open fail %d\n", __func__, iRet);
 		set_fs(old_fs);
-		return iRet;
+		goto exit;
 	}
 
 	iRet = filep->f_op->read(filep, hall_sysfs,
 		sizeof(hall_sysfs), &filep->f_pos);
 
-	if (iRet <= 0) {
-		pr_err("[SX9320]: %s - file read fail %d\n", __func__, iRet);
-		filp_close(filep, current->files);
-		set_fs(old_fs);
-		return -EIO;
-	} else {
+	if (iRet != sizeof(hall_sysfs))
+		iRet = -EIO;
+	else
 		strncpy(hall_ic_status, hall_sysfs, sizeof(hall_sysfs));
-	}
 
 	filp_close(filep, current->files);
 	set_fs(old_fs);
 
+exit:
 	return iRet;
 }
 
@@ -678,7 +680,8 @@ static ssize_t sx9320_normal_threshold_show(struct device *dev,
 	thresh_temp = data->normal_th;
 	thresh_temp = thresh_temp * thresh_temp / 2;
 
-	hysteresis = data->hyst;
+	/* AdvCtrl13 */
+	hysteresis = (setup_reg[33].val >> 2) & 0x3;
 
 	switch (hysteresis) {
 	case 0x01: /* 6% */
@@ -851,6 +854,58 @@ static ssize_t sx9320_ch_state_show(struct device *dev,
 	}
 
 	return ret;
+}
+
+static ssize_t sx9320_body_threshold_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct sx9320_p *data = dev_get_drvdata(dev);
+	u16 thresh_temp = 0, hysteresis = 0;
+	u16 thresh_table[8] = {0, 300, 600, 900, 1200, 1500, 1800, 30000};
+
+	thresh_temp = (data->normal_th) & 0x07;
+	thresh_temp = thresh_table[thresh_temp];
+
+	/* CTRL10 */
+	hysteresis = (setup_reg[16].val >> 4) & 0x3;
+
+	switch (hysteresis) {
+	case 0x01: /* 6% */
+		hysteresis = thresh_temp >> 4;
+		break;
+	case 0x02: /* 12% */
+		hysteresis = thresh_temp >> 3;
+		break;
+	case 0x03: /* 25% */
+		hysteresis = thresh_temp >> 2;
+		break;
+	default:
+		/* None */
+		break;
+	}
+
+	return snprintf(buf, PAGE_SIZE, "%d,%d\n", thresh_temp + hysteresis,
+			thresh_temp - hysteresis);
+}
+
+static ssize_t sx9320_body_threshold_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	unsigned long val;
+	struct sx9320_p *data = dev_get_drvdata(dev);
+
+	if (kstrtoul(buf, 10, &val)) {
+		pr_err("[SX9320]: %s - Invalid Argument\n", __func__);
+		return count;
+	}
+
+	data->normal_th &= 0xf8;
+	data->normal_th |= val;
+
+	pr_info("[SX9320]: %s - body threshold %lu\n", __func__, val);
+	data->normal_th_buf = data->normal_th = (u8)(val);
+
+	return count;
 }
 
 static ssize_t sx9320_grip_flush_store(struct device *dev,
@@ -1096,6 +1151,9 @@ static DEVICE_ATTR(normal_threshold, 0664,
 static DEVICE_ATTR(freq, 0664,
 		sx9320_freq_show, sx9320_freq_store);
 static DEVICE_ATTR(ch_state, 0444, sx9320_ch_state_show, NULL);
+static DEVICE_ATTR(body_threshold, 0664,
+		sx9320_body_threshold_show, sx9320_body_threshold_store);
+
 static DEVICE_ATTR(avg_negfilt, 0444, sx9320_avgnegfilt_show, NULL);
 static DEVICE_ATTR(avg_posfilt, 0444, sx9320_avgposfilt_show, NULL);
 static DEVICE_ATTR(avg_thresh, 0444, sx9320_avgthresh_show, NULL);
@@ -1130,6 +1188,7 @@ static struct device_attribute *sensor_attrs[] = {
 	&dev_attr_calibration,
 	&dev_attr_freq,
 	&dev_attr_ch_state,
+	&dev_attr_body_threshold,
 	&dev_attr_grip_flush,
 	&dev_attr_avg_negfilt,
 	&dev_attr_avg_posfilt,
@@ -1304,17 +1363,18 @@ static void sx9320_debug_work_func(struct work_struct *work)
 
 	static int hall_flag = 1;
 
-	sx9320_check_hallic_state(HALLIC_PATH, data->hall_ic);
+	sx9320_check_hallic_state(HALLIC1_PATH, data->hall_ic1);
 
-	if (strcmp(data->hall_ic, "CLOSE") == 0) {
+	/* Hall IC closed : offset cal (once) */
+	if (strcmp(data->hall_ic1, "CLOSE") == 0) {
 		if (hall_flag) {
-			pr_info("[SX9320]: %s - hall IC is closed\n", __func__);
+			pr_info("[SX9320]: %s - hall IC1 is closed\n",
+				__func__);
 			sx9320_set_offset_calibration(data);
 			hall_flag = 0;
 		}
-	} else {
+	} else
 		hall_flag = 1;
-	}
 
 	if (atomic_read(&data->enable) == ON) {
 		if (data->abnormal_mode) {
@@ -1602,28 +1662,6 @@ static int sx9320_cpuidle_muic_notifier(struct notifier_block *nb,
 }
 #endif
 
-static int sx9320_check_chip_id(struct sx9320_p *data)
-{
-	int ret;
-	unsigned char value = 0;
-
-	ret = sx9320_i2c_read(data, SX9320_WHOAMI_REG, &value);
-	if (ret < 0) {
-		pr_err("[SX9320]: whoami[0x%x] read failed %d\n", value, ret);
-		return ret;
-	}
-
-	switch (value) {
-	case 0x20:
-		return 0;
-	case 0x21:
-		return 0;
-	default:
-		pr_err("[SX9320]: invalid whoami(%x)\n", value);
-		return -1;
-	}
-}
-
 static int sx9320_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
@@ -1666,12 +1704,6 @@ static int sx9320_probe(struct i2c_client *client,
 	}
 
 	/* read chip id */
-	ret = sx9320_check_chip_id(data);
-	if (ret < 0) {
-		pr_err("[SX9320]: %s - chip id check failed %d\n", __func__, ret);
-		goto exit_chip_reset;
-	}
-
 	ret = sx9320_i2c_write(data, SX9320_SOFTRESET_REG, SX9320_SOFTRESET);
 	if (ret < 0) {
 		pr_err("[SX9320]: %s - reset failed %d\n", __func__, ret);

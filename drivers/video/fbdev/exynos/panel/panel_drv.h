@@ -1,6 +1,8 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) Samsung Electronics Co., Ltd.
+ * Copyright (c) 2016 Samsung Electronics Co., Ltd.
+ *	      http://www.samsung.com/
+ *
+ * Samsung's Panel Driver
  * Author: Minwoo Kim <minwoo7945.kim@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,24 +24,12 @@
 #include <linux/workqueue.h>
 #include <linux/miscdevice.h>
 
-#include "../dpu_9810/disp_err.h"
-#include "../dpu_9810/dsim.h"
-#include "../dpu_9810/decon.h"
-#include "../dpu_9810/panels/decon_lcd.h"
+#include "../dpu/decon_lcd.h"
 #include "panel.h"
 #include "mdnie.h"
 #include "copr.h"
-#ifdef CONFIG_SUPPORT_DDI_FLASH
+#ifdef CONFIG_SUPPORT_POC_FLASH
 #include "panel_poc.h"
-#endif
-#ifdef CONFIG_ACTIVE_CLOCK
-#include "active_clock.h"
-#endif
-#ifdef CONFIG_EXTEND_LIVE_CLOCK
-#include "./aod/aod_drv.h"
-#endif
-#if defined(CONFIG_TDMB_NOTIFIER)
-#include <linux/tdmb_notifier.h>
 #endif
 
 extern int panel_log_level;
@@ -70,28 +60,14 @@ void clear_disp_det_pend(struct panel_device *panel);
 			pr_info(pr_fmt(fmt), ##__VA_ARGS__);			\
 	} while (0)
 
-#ifdef CONFIG_OLD_DISP_TIMING
-enum {
-	REGULATOR_1p8V = 0,
-	REGULATOR_3p0V,
-	REGULATOR_1p6V,
-	REGULATOR_MAX
-};
-#define REGULATOR_1_NAME "regulator,1p8"
-#define REGULATOR_2_NAME "regulator,3p0"
-#define REGULATOR_3_NAME "regulator,1p6"
-#else
+
 enum {
 	REGULATOR_3p0V = 0,
 	REGULATOR_1p8V,
 	REGULATOR_1p6V,
 	REGULATOR_MAX
 };
-#define REGULATOR_1_NAME "regulator,3p0"
-#define REGULATOR_2_NAME "regulator,1p8"
-#define REGULATOR_3_NAME "regulator,1p6"
 
-#endif
 enum panel_gpio_lists {
 	PANEL_GPIO_RESET = 0,
 	PANEL_GPIO_DISP_DET,
@@ -100,10 +76,14 @@ enum panel_gpio_lists {
 	PANEL_GPIO_MAX,
 };
 
-#define GPIO_NAME_RESET		"gpio,lcd-reset"
-#define GPIO_NAME_DISP_DET	"gpio,disp-det"
+#define GPIO_NAME_RESET 	"gpio,lcd-reset"
+#define GPIO_NAME_DISP_DET 	"gpio,disp-det"
 #define GPIO_NAME_PCD		"gpio,pcd"
 #define GPIO_NAME_ERR_FG	"gpio,err_fg"
+
+#define REGULATOR_3p0_NAME "regulator,3p0"
+#define REGULATOR_1p8_NAME "regulator,1p8"
+#define REGULATOR_1p6_NAME "regulator,1p6"
 
 struct panel_pad {
 	int gpio_reset;
@@ -122,20 +102,16 @@ struct panel_pad {
 };
 
 struct mipi_drv_ops {
-	int (*read)(u32 id, u8 addr, u8 ofs, u8 *buf, int size);
-	int (*write)(u32 id, u8 cmd_id, const u8 *cmd, u8 ofs, int size);
+	int (*read)(u32 id, u8 addr, u8 *buf, int size);
+	int (*write)(u32 id, u8 cmd_id, const u8 *cmd, int size);
 	enum dsim_state(*get_state)(u32 id);
-	void (*parse_dt)(struct device_node *node, struct decon_lcd *lcd_info);
 };
 
-#define PANEL_INIT_KERNEL		0
-#define PANEL_INIT_BOOT			1
+#define PANEL_INIT_KERNEL 		0
+#define PANEL_INIT_BOOT 		1
 
 #define PANEL_DISCONNECT		0
 #define PANEL_CONNECT			1
-
-#define ALPM_MODE	0
-#define HLPM_MODE	1
 
 enum panel_active_state {
 	PANEL_STATE_OFF = 0,
@@ -168,8 +144,57 @@ struct panel_state {
 #ifdef CONFIG_SUPPORT_HMD
 	int hmd_on;
 #endif
-	int lpm_brightness;
 };
+
+#ifdef CONFIG_ACTIVE_CLOCK
+enum {
+	IMG_UPDATE_NEED = 0,
+	IMG_UPDATE_DONE,
+};
+
+struct act_clk_info {
+	u32 en;
+	u32 interval;
+	u32 time_hr;
+	u32 time_min;
+	u32 time_sec;
+	u32 time_ms;
+	u32 pos_x;
+	u32 pos_y;
+/* flag to check need to update side ram img */
+	u32 update_img;
+	char *img_buf;
+	u32 img_buf_size;
+	u32 update_time;
+};
+
+struct act_blink_info {
+	u32 en;
+	u32 interval;
+	u32 radius;
+	u32 color;
+	u32 line_width;
+	u32 pos1_x;
+	u32 pos1_y;
+	u32 pos2_x;
+	u32 pos2_y;
+};
+
+struct act_drawer_info {
+	u32 sd_line_color;
+	u32 sd2_line_color;
+	u32 sd_radius;
+};
+
+struct act_clock_dev {
+	struct miscdevice dev;
+	struct act_clk_info act_info;
+	struct act_blink_info blink_info;
+	struct act_drawer_info draw_info;
+	u32 opened;
+};
+#endif
+
 
 struct copr_spi_gpios {
 	int gpio_sck;
@@ -177,44 +202,10 @@ struct copr_spi_gpios {
 	int gpio_mosi;
 	int gpio_cs;
 };
-
 struct host_cb {
-	int (*cb)(void *data);
+	int (*cb)(void *data, int (*check_cond)(void));
 	void *data;
 };
-
-enum GAMMA_FLASH_RESULT {
-	GAMMA_FLASH_ERROR_MTP_OFFSET = -4,
-	GAMMA_FLASH_ERROR_CHECKSUM_MISMATCH = -3,
-	GAMMA_FLASH_ERROR_NOT_EXIST = -2,
-	GAMMA_FLASH_ERROR_READ_FAIL = -1,
-	GAMMA_FLASH_PROGRESS = 0,
-	GAMMA_FLASH_SUCCESS = 1,
-};
-
-struct dim_flash_result {
-	u8 mtp_reg[34];
-	u8 mtp_flash[34];
-	bool exist;
-
-	u32 dim_chksum_ok;
-	u32 dim_chksum_by_calc;
-	u32 dim_chksum_by_read;
-
-	u32 mtp_chksum_ok;
-	u32 mtp_chksum_by_calc;
-	u32 mtp_chksum_by_read;
-};
-
-struct panel_work {
-	struct mutex lock;
-	struct workqueue_struct *wq;
-	struct delayed_work dwork;
-	struct dim_flash_result result;
-	atomic_t running;
-	int ret;
-};
-
 struct panel_device {
 	int id;
 	int dsi_id;
@@ -259,82 +250,23 @@ struct panel_device {
 #ifdef CONFIG_ACTIVE_CLOCK
 	struct act_clock_dev act_clk_dev;
 #endif
+	struct host_cb reset_cb;
 
-#ifdef CONFIG_EXTEND_LIVE_CLOCK
-	struct aod_dev_info aod;
-#endif
-#ifdef CONFIG_SUPPORT_DDI_FLASH
+#ifdef CONFIG_SUPPORT_POC_FLASH
 	struct panel_poc_device poc_dev;
 #endif
-#ifdef CONFIG_SUPPORT_TDMB_TUNE
-	struct notifier_block tdmb_notif;
-#endif
-	struct disp_error_cb_info error_cb_info;
 
 	ktime_t ktime_panel_on;
 	ktime_t ktime_panel_off;
-
-#ifdef CONFIG_SUPPORT_DIM_FLASH
-	struct panel_work dim_flash_work;
-#endif
 };
 
-#ifdef CONFIG_SUPPORT_DIM_FLASH
-int panel_update_dim_type(struct panel_device *panel, u32 dim_type);
-#endif
-
-static inline bool IS_PANEL_PWR_ON_STATE(struct panel_device *panel)
-{
-	return (panel->state.cur_state == PANEL_STATE_ON ||
-			panel->state.cur_state == PANEL_STATE_NORMAL ||
-			panel->state.cur_state == PANEL_STATE_ALPM);
-}
-
-static inline bool IS_PANEL_PWR_OFF_STATE(struct panel_device *panel)
-{
-	return panel->state.cur_state == PANEL_STATE_OFF;
-}
-
-int panel_display_on(struct panel_device *panel);
-int __set_panel_power(struct panel_device *panel, int power);
-
-#ifdef CONFIG_EXTEND_LIVE_CLOCK
-static inline int panel_aod_init_panel(struct panel_device *panel)
-{
-	return (panel->aod.ops && panel->aod.ops->init_panel) ?
-		panel->aod.ops->init_panel(&panel->aod) : 0;
-}
-
-static inline int panel_aod_enter_to_lpm(struct panel_device *panel)
-{
-	return (panel->aod.ops && panel->aod.ops->enter_to_lpm) ?
-		panel->aod.ops->enter_to_lpm(&panel->aod) : 0;
-}
-
-static inline int panel_aod_exit_from_lpm(struct panel_device *panel)
-{
-	return (panel->aod.ops && panel->aod.ops->exit_from_lpm) ?
-		panel->aod.ops->exit_from_lpm(&panel->aod) : 0;
-}
-
-static inline int panel_aod_doze_suspend(struct panel_device *panel)
-{
-	return (panel->aod.ops && panel->aod.ops->doze_suspend) ?
-		panel->aod.ops->doze_suspend(&panel->aod) : 0;
-}
-
-static inline int panel_aod_power_off(struct panel_device *panel)
-{
-	return (panel->aod.ops && panel->aod.ops->power_off) ?
-		panel->aod.ops->power_off(&panel->aod) : 0;
-}
-#endif
 
 #define PANEL_DRV_NAME "panel-drv"
 
 #define PANEL_IOC_BASE	'P'
 
 #define PANEL_IOC_DSIM_PROBE			_IOW(PANEL_IOC_BASE, 1, struct decon_lcd *)
+#define PANEL_IOC_DECON_PROBE			_IOW(PANEL_IOC_BASE, 2, struct decon_lcd *)
 #define PANEL_IOC_GET_PANEL_STATE		_IOW(PANEL_IOC_BASE, 3, struct panel_state *)
 #define PANEL_IOC_DSIM_PUT_MIPI_OPS		_IOR(PANEL_IOC_BASE, 4, struct mipi_ops *)
 #define PANEL_IOC_PANEL_PROBE			_IO(PANEL_IOC_BASE, 5)
@@ -351,19 +283,15 @@ static inline int panel_aod_power_off(struct panel_device *panel)
 #define PANEL_IOC_EVT_FRAME_DONE		_IOW(PANEL_IOC_BASE, 11, struct timespec *)
 #define PANEL_IOC_EVT_VSYNC				_IOW(PANEL_IOC_BASE, 12, struct timespec *)
 
-#define PANEL_IOC_PANEL_RESET			_IO(PANEL_IOC_BASE, 13)
-
 #ifdef CONFIG_SUPPORT_DOZE
-#define PANEL_IOC_DOZE					_IO(PANEL_IOC_BASE, 31)
-#define PANEL_IOC_DOZE_SUSPEND			_IO(PANEL_IOC_BASE, 32)
+#define PANEL_IOC_DOZE					_IO(PANEL_IOC_BASE, 13)
 #endif
 
 #ifdef CONFIG_SUPPORT_DSU
-#define PANEL_IOC_SET_DSU				_IOW(PANEL_IOC_BASE, 41, struct dsu_info *)
+#define PANEL_IOC_SET_DSU				_IOW(PANEL_IOC_BASE, 14, struct dsu_info *)
 #endif
-#define PANEL_IOC_REG_RESET_CB			_IOR(PANEL_IOC_BASE, 51, struct host_cb *)
+#define PANEL_IOC_REG_RESET_CB			_IOR(PANEL_IOC_BASE, 15, struct host_cb *)
 #ifdef CONFIG_SUPPORT_INDISPLAY
-#define PANEL_IOC_SET_FINGER_SET		_IO(PANEL_IOC_BASE, 61)
+#define PANEL_IOC_SET_FINGER_SET		_IO(PANEL_IOC_BASE, 16)
 #endif
-
 #endif //__PANEL_DRV_H__

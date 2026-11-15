@@ -30,23 +30,4 @@ config EXYNOS8895_ACPM
 	depends on SOC_EXYNOS8895
 	help
 	  Enable ACPM support
-
-config EXYNOS9810_ACPM
-	bool "EXYNOS9810_ACPM support"
-	default y
-	depends on SOC_EXYNOS9810
-	help
-	  Enable ACPM support
-
-config EXYNOS_ACPM_MFD
-	bool "EXYNOS_ACPM_MFD support"
-	default y
-	help
-	  Enable ACPM_MFD support
-
-config EXYNOS_ACPM_S2D
-	bool "EXYNOS_ACPM_S2D support"
-	help
-	  Enable ACPM_S2D support
-
 endif

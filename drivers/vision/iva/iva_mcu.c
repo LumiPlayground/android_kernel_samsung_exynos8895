@@ -29,13 +29,10 @@
 #include "iva_ram_dump.h"
 #include "iva_mbox.h"
 #include "iva_ipc_queue.h"
-#include "iva_ipc_header.h"
 #include "iva_vdma.h"
-#include "iva_mem.h"
-#include "iva_rt_table.h"
 
-#undef MCU_SRAM_VIA_MEMCPY
-#define MCU_RAMDUMP_REUSE_BOOT_MEM
+//#define MEASURE_MCU_BOOT_PERF
+#define MCU_SRAM_VIA_MEMCPY
 
 #define PRINT_CHARS_ALIGN_SIZE		(sizeof(uint32_t))
 #define PRINT_CHARS_ALIGN_MASK		(PRINT_CHARS_ALIGN_SIZE - 1)
@@ -45,8 +42,8 @@ static inline void iva_mcu_print_putchar(struct device *dev, int ch)
 {
 	#define MCU_PRINT_BUF_SIZE	(512)
 	static char	mcu_print_buf[MCU_PRINT_BUF_SIZE];
-	static size_t	mcu_print_pos;
-	static const char *mcu_tag = "[mcu] ";
+	static size_t	mcu_print_pos = 0;
+	static const char *mcu_tag = "	[mcu] ";
 
 	if (ch != 0 && ch != '\n') {
 		if (mcu_print_pos == 0) {
@@ -111,8 +108,7 @@ static int iva_mcu_put_uint_chars(struct device *dev, uint32_t chars,
 static void iva_mcu_print_emit_pending_chars_nolock(struct mcu_print_info *pi)
 {
 	u32		ch_vals;
-	uint32_t	pos_s;
-	uint64_t	pos_e;
+	uint32_t	pos_s, pos_e;
 	int		align_ch_pos;
 	u32		head;
 
@@ -124,15 +120,13 @@ static void iva_mcu_print_emit_pending_chars_nolock(struct mcu_print_info *pi)
 		struct device		*dev = pi->dev;
 		struct iva_dev_data	*iva = dev_get_drvdata(dev);
 		struct sh_mem_info	*sh_mem = sh_mem_get_sm_pointer(iva);
-
-		dev_err(dev,
-			"%s() magic3(0x%x), head(%d, %d), tail(%d), size(%d)\n",
-			__func__,
-			readl(&sh_mem->magic3),
-			(int) readl(&sh_mem->log_pos.head),
-			(int) head,
-			(int) readl(&sh_mem->log_pos.tail),
-			(int) readl(&sh_mem->log_buf_size));
+		dev_err(dev, "%s() magic3(0x%x), head(%d, %d), tail(%d), "
+				"size(%d)\n", __func__,
+				readl(&sh_mem->magic3),
+				(int) readl(&sh_mem->log_pos.head),
+				(int) head,
+				(int) readl(&sh_mem->log_pos.tail),
+				(int) readl(&sh_mem->log_buf_size));
 		return;
 	}
 	if (pi->ch_pos == head)
@@ -159,8 +153,9 @@ static void iva_mcu_print_emit_pending_chars_nolock(struct mcu_print_info *pi)
 				PRINT_CHARS_ALIGN_SIZE - 1 :
 					head - align_ch_pos - 1;
 
-		pi->ch_pos += iva_mcu_put_uint_chars(pi->dev, ch_vals, pos_s, (uint32_t)pos_e);
+		pi->ch_pos += iva_mcu_put_uint_chars(pi->dev, ch_vals, pos_s, pos_e);
 	}
+
 }
 
 static void iva_mcu_print_worker(struct work_struct *work)
@@ -173,35 +168,47 @@ static void iva_mcu_print_worker(struct work_struct *work)
 	queue_delayed_work(system_wq, &pi->dwork, pi->delay_jiffies);
 }
 
-static bool iva_mcu_print_init_print_info(struct iva_dev_data *iva,
-		struct mcu_print_info *pi)
+static void iva_mcu_print_start(struct iva_dev_data *iva)
 {
 	struct sh_mem_info	*sh_mem = sh_mem_get_sm_pointer(iva);
 	struct buf_pos __iomem	*log_pos = &sh_mem->log_pos;
+	struct mcu_print_info	*pi;
 	struct device		*dev = iva->dev;
 	u32			tail;
 	int			lb_sz;
 
+	if (iva->mcu_print_delay == 0) {
+		dev_dbg(dev, "%s() will not print out iva log\n", __func__);
+		return;
+	}
+
 	lb_sz = readl(&sh_mem->log_buf_size);
 	if (lb_sz & PRINT_CHARS_ALIGN_MASK) {
-		dev_err(dev, "%s() log_buf_size(0x%x) is not aligned to %d. ",
-			__func__, lb_sz, (int) PRINT_CHARS_ALIGN_SIZE);
-		dev_err(dev, "check the mcu shmem.\n");
-		return false;
+		dev_err(dev, "%s() log_buf_size(0x%x) is not aligned to %d. "
+				"check the mcu shmem.\n",
+				__func__, lb_sz, (int) PRINT_CHARS_ALIGN_SIZE);
+		return;
 	}
 
 	if (((long) sh_mem->log_buf) & PRINT_CHARS_ALIGN_MASK) {
-		dev_err(dev, "%s() log_buf(%p) is not aligned to %d. ",
-			__func__, sh_mem->log_buf, (int) PRINT_CHARS_ALIGN_SIZE);
-		dev_err(dev, "check the mcu shmem.\n");
-		return false;
+		dev_err(dev, "%s() log_buf(%p) is not aligned to %d. "
+				"check the mcu shmem.\n",
+				__func__, sh_mem->log_buf,
+				(int) PRINT_CHARS_ALIGN_SIZE);
+		return;
 	}
 
-	pi->dev			= iva->dev;
-	pi->delay_jiffies	= usecs_to_jiffies(iva->mcu_print_delay);
-	pi->log_buf_size	= lb_sz;
-	pi->log_buf		= &sh_mem->log_buf[0];
-	pi->log_pos		= log_pos;
+	pi = devm_kmalloc(dev, sizeof(*pi), GFP_KERNEL);
+	if (!pi) {
+		dev_err(dev, "%s() fail to allocate memory\n", __func__);
+		return;
+	}
+
+	pi->dev		= iva->dev;
+	pi->delay_jiffies= usecs_to_jiffies(iva->mcu_print_delay);
+	pi->log_buf_size= lb_sz;
+	pi->log_buf	= &sh_mem->log_buf[0];
+	pi->log_pos	= log_pos;
 	tail = readl(&log_pos->tail);
 	if (tail >= pi->log_buf_size)
 		pi->ch_pos = 0;
@@ -209,36 +216,6 @@ static bool iva_mcu_print_init_print_info(struct iva_dev_data *iva,
 		pi->ch_pos = tail;
 
 	INIT_DELAYED_WORK(&pi->dwork, iva_mcu_print_worker);
-
-	return true;
-}
-
-static void iva_mcu_print_start(struct iva_dev_data *iva)
-{
-	struct mcu_print_info	*pi;
-	struct device		*dev = iva->dev;
-
-	if (iva->mcu_print) {
-		dev_warn(dev, "%s() already started, check.\n", __func__);
-		return;
-	}
-
-	if (iva->mcu_print_delay == 0) {
-		dev_dbg(dev, "%s() will not print out iva log\n", __func__);
-		return;
-	}
-
-	pi = devm_kmalloc(dev, sizeof(*pi), GFP_KERNEL);
-	if (!pi) {
-		dev_err(dev, "%s() fail to alloc mem\n", __func__);
-		return;
-	}
-
-	if (!iva_mcu_print_init_print_info(iva, pi)) {
-		dev_err(dev, "%s() fail to init print info\n", __func__);
-		return;
-	}
-
 	queue_delayed_work(system_wq, &pi->dwork, msecs_to_jiffies(1));
 
 	iva->mcu_print = pi;
@@ -250,103 +227,40 @@ static void iva_mcu_print_start(struct iva_dev_data *iva)
 
 static void iva_mcu_print_stop(struct iva_dev_data *iva)
 {
-	struct mcu_print_info *pi = iva->mcu_print;
+	struct device *dev = iva->dev;
 
-	if (pi) {
+	if (iva->mcu_print) {
+		struct mcu_print_info *pi = iva->mcu_print;
 		cancel_delayed_work_sync(&pi->dwork);
-		devm_kfree(iva->dev, pi);
+		devm_kfree(dev, pi);
 		iva->mcu_print = NULL;
 	}
 }
 
-void iva_mcu_print_flush_pending_mcu_log(struct iva_dev_data *iva)
+static noinline_for_stack uint32_t iva_mcu_file_size(struct file *file)
 {
-	struct mcu_print_info	pi;
+	struct kstat st;
 
-	if (iva->mcu_print) {
-		flush_delayed_work(&iva->mcu_print->dwork);
-		return;
-	}
+	if (vfs_getattr(&file->f_path, &st))
+		return 0;
+	if (!S_ISREG(st.mode))
+		return 0;
 
-	if (!iva_mcu_print_init_print_info(iva, &pi)) {
-		dev_err(iva->dev, "%s() fail to init print info\n", __func__);
-		return;
-	}
-
-	iva_mcu_print_emit_pending_chars_nolock(&pi);
+	return (uint32_t) st.size;
 }
 
-void iva_mcu_handle_error_k(struct iva_dev_data *iva,
-		enum mcu_err_context from, uint32_t msg)
+void iva_mcu_handle_panic_k(struct iva_dev_data *iva)
 {
-	struct iva_ipcq		*ipcq	= &iva->mcu_ipcq;
-	struct device		*dev	= iva->dev;
-	struct ipc_res_param	rsp_param;
-
-	dev_err(dev, "%s() mcu err, from(%d) msg(%d), err_cnt(%d)\n",
-			__func__, from, msg, atomic_read(&iva->mcu_err_cnt));
-
-	if (from == mcu_err_from_abort)	/* no necessary */
-		return;
-
-	if (atomic_inc_return(&iva->mcu_err_cnt) == 1) {
-		rsp_param.header	= IPC_MK_HDR(ipc_func_iva_ctrl, 0x0, 0x0);
-		rsp_param.rep_id	= 0x0ace0bad;
-		rsp_param.ret		= (uint32_t) -1;
-		rsp_param.ipc_cmd_type	= msg;
-		rsp_param.extra		= (uint16_t) 0;
-
-		iva_ipcq_send_rsp_k(ipcq, &rsp_param,
-				(from == mcu_err_from_irq) ? true : false);
-	}
+#if 0	/* entrusts the log to work queue */
+	iva_mcu_print_emit_pending_chars_nolock(iva->mcu_print);
+#endif
 }
 
-void iva_mcu_show_status(struct iva_dev_data *iva)
-{
-	struct mcu_binary	*mcu_bin = iva->mcu_bin;
-	struct sh_mem_info	*sh_mem;
-	void			*tsst = NULL, *ndl = NULL, *dbg_bin = NULL;
-	const char		delims[] = "\n";
-	char			*token, *vcm_dbg;
-
-	iva_pmu_show_status(iva);
-	iva_vdma_show_status(iva);
-
-	if (!mcu_bin->bin)
-		return;
-
-	iva_pmu_prepare_sfr_dump(iva);
-
-	iva_ram_dump_copy_vcm_dbg(iva, mcu_bin->bin, mcu_bin->bin_size);
-	vcm_dbg = (char *) mcu_bin->bin;
-	while ((token = strsep(&vcm_dbg, delims)) != NULL)
-		dev_info(iva->dev, "%s", token);
-
-	iva_ram_dump_copy_mcu_sram(iva, mcu_bin->bin, mcu_bin->bin_size);
-
-	/* always last */
-	sh_mem = sh_mem_get_sm_pointer(iva);
-	if (sh_mem->gen_purpose[1])
-		tsst = (void *) (mcu_bin->bin + sh_mem->gen_purpose[1]);
-	if (sh_mem->gen_purpose[2])
-		ndl = (void *) (mcu_bin->bin + sh_mem->gen_purpose[2]);
-	iva_rt_print_iva_entries(iva, tsst, ndl);
-
-	if (sh_mem->gen_purpose[3])
-		dbg_bin = (void *) (mcu_bin->bin + sh_mem->gen_purpose[3]);
-	iva_ram_dump_print_iva_bin_log(iva, dbg_bin);
-
-	/* invalid as cached file, anymore */
-	memset(&mcu_bin->last_mtime, 0x0, sizeof(mcu_bin->last_mtime));
-	mcu_bin->file[0] = 0;
-}
-
-static int32_t iva_mcu_wait_ready(struct iva_dev_data *iva)
+int32_t iva_mcu_wait_ready(struct iva_dev_data *iva)
 {
 	#define WAIT_DELAY_US	(1000)
 
 	int ret = sh_mem_wait_mcu_ready(iva, WAIT_DELAY_US);
-
 	if (ret) {
 		dev_err(iva->dev, "%s() mcu is not ready within %d us.\n",
 				__func__, WAIT_DELAY_US);
@@ -356,72 +270,17 @@ static int32_t iva_mcu_wait_ready(struct iva_dev_data *iva)
 	return 0;
 }
 
-static int32_t iva_mcu_map_boot_mem(struct iva_dev_data *iva,
-		struct mcu_binary *mcu_bin)
+static inline s32 __maybe_unused timeval_diff_us(struct timeval *a,
+		struct timeval *b)
 {
-	struct device	*dev = iva->dev;
-	int		ret;
-
-	if (!(mcu_bin->flag & MCU_BIN_ION))
-		return 0;
-
-	if (mcu_bin->bin)	/* reuse */
-		return 0;
-
-#if defined(CONFIG_SOC_EXYNOS8895)
-	ret = dma_buf_begin_cpu_access(mcu_bin->dmabuf, 0, VMCU_MEM_SIZE, 0);
-#elif defined(CONFIG_SOC_EXYNOS9810)
-	ret = dma_buf_begin_cpu_access(mcu_bin->dmabuf, 0);
-#endif
-	if (ret) {
-		dev_err(dev, "%s() fail to begin cpu access. ret(%d)\n",
-				__func__, ret);
-		return ret;
-	}
-
-	mcu_bin->bin = dma_buf_kmap(mcu_bin->dmabuf, 0);
-	if (!mcu_bin->bin) {
-		dev_err(dev, "%s() fail to kmap ion.\n", __func__);
-#if defined(CONFIG_SOC_EXYNOS8895)
-		dma_buf_end_cpu_access(mcu_bin->dmabuf, 0, VMCU_MEM_SIZE, 0);
-#elif defined(CONFIG_SOC_EXYNOS9810)
-		dma_buf_end_cpu_access(mcu_bin->dmabuf, 0);
-#endif
-		return -ENOMEM;
-	}
-
-	return 0;
-}
-
-static int32_t iva_mcu_unmap_boot_mem(struct iva_dev_data *iva,
-		struct mcu_binary *mcu_bin)
-{
-	if (!(mcu_bin->flag & MCU_BIN_ION))
-		return 0;
-
-	if (!mcu_bin->bin)
-		return 0;
-
-	dma_buf_kunmap(mcu_bin->dmabuf, 0, mcu_bin->bin);
-#if defined(CONFIG_SOC_EXYNOS8895)
-	dma_buf_end_cpu_access(mcu_bin->dmabuf, 0, VMCU_MEM_SIZE, 0);
-#elif defined(CONFIG_SOC_EXYNOS9810)
-	dma_buf_end_cpu_access(mcu_bin->dmabuf, 0);
-#endif
-	mcu_bin->bin = NULL;
-
-	return 0;
+	return (a->tv_sec - b->tv_sec) * USEC_PER_SEC +
+			(a->tv_usec - b->tv_usec);
 }
 
 static inline void iva_mcu_update_iva_sram(struct iva_dev_data *iva,
 		struct mcu_binary *mcu_bin)
 {
-#ifdef MCU_SRAM_VIA_MEMCPY
-	void __iomem *mcu_va = iva->iva_va + IVA_VMCU_MEM_BASE_ADDR;
-
-	memcpy(mcu_va, mcu_bin->bin, mcu_bin->bin_size);
-#else
-#if defined(CONFIG_SOC_EXYNOS8895)
+#ifdef CONFIG_ION_EXYNOS
 	uint32_t vdma_hd = ID_CH_TO_HANDLE(vdma_id_1, vdma_ch_2);
 
 	dev_dbg(iva->dev, "%s() prepare vdma iova(0x%x) size(0x%x, 0x%x)\n",
@@ -429,26 +288,16 @@ static inline void iva_mcu_update_iva_sram(struct iva_dev_data *iva,
 			mcu_bin->file_size, ALIGN(mcu_bin->file_size, 16));
 
 	iva_vdma_enable(iva, vdma_id_1, true);
+
 	iva_vdma_config_dram_to_mcu(iva, vdma_hd,
 			mcu_bin->io_va, 0x0, ALIGN(mcu_bin->file_size, 16),
 			true);
 	iva_vdma_wait_done(iva, vdma_hd);
 	iva_vdma_enable(iva, vdma_id_1, false);
+#else
+	void __iomem *mcu_va = iva->iva_va + IVA_VMCU_MEM_BASE_ADDR;
 
-#elif defined(CONFIG_SOC_EXYNOS9810)
-	uint32_t vdma_hd = CH_TO_HANDLE(vdma_ch15_type_rw);
-
-	dev_dbg(iva->dev, "%s() prepare vdma iova(0x%x) size(0x%x, 0x%x)\n",
-			__func__, (uint32_t) mcu_bin->io_va,
-			mcu_bin->file_size, ALIGN(mcu_bin->file_size, 16));
-
-	iva_vdma_enable(iva, true);
-	iva_vdma_config_dram_to_mcu(iva, vdma_hd,
-			mcu_bin->io_va, 0x0, ALIGN(mcu_bin->file_size, 16),
-			true);
-	iva_vdma_wait_done(iva, vdma_hd);
-	iva_vdma_enable(iva, false);
-#endif
+	memcpy(mcu_va, mcu_bin->bin, mcu_bin->bin_size);
 #endif
 }
 
@@ -512,7 +361,6 @@ int32_t iva_mcu_boot_file(struct iva_dev_data *iva,
 {
 	struct device	*dev = iva->dev;
 	struct file	*mcu_fp;
-	struct kstat	mcu_st;
 	uint32_t	mcu_size;
 	struct mcu_binary *mcu_bin = iva->mcu_bin;
 	int		ret = 0;
@@ -520,75 +368,71 @@ int32_t iva_mcu_boot_file(struct iva_dev_data *iva,
 
 	dev_dbg(dev, "%s() try to boot with %s", __func__, mcu_file);
 
-	if (test_bit(IVA_ST_MCU_BOOT_DONE, &iva->state)) {
-		dev_warn(dev, "%s() already iva booted(0x%lx)\n",
-				__func__, iva->state);
-		return 0;
-	}
-
 	mcu_fp = filp_open(mcu_file, O_RDONLY, 0);
 	if (IS_ERR_OR_NULL(mcu_fp)) {
-		dev_err(dev, "%s() unable to open mcu file(%s)\n",
-				__func__, mcu_file);
+		dev_err(dev, "%s() unable to open mcu binary: %s\n",
+			__func__, mcu_file);
 		return -EINVAL;
 	}
 
-	ret = vfs_getattr(&mcu_fp->f_path, &mcu_st);
-	if (ret) {
-		dev_err(dev, "%s() fail to get attr for file(%s)\n",
-				__func__, mcu_file);
-		goto err_mcu_file;
-	}
-
-	if (!S_ISREG(mcu_st.mode)) {
-		dev_err(dev, "%s() file(%s) is not regular. mode(0x%x)\n",
-				__func__, mcu_file, mcu_st.mode);
-		ret = -EINVAL;
-		goto err_mcu_file;
-	}
-
-	mcu_size = (uint32_t) mcu_st.size;
-	if (mcu_size == 0 || mcu_size > VMCU_MEM_SIZE) {
+	mcu_size = iva_mcu_file_size(mcu_fp);
+	if (mcu_size <= 0 || mcu_size > VMCU_MEM_SIZE) {
 		dev_err(dev, "%s() file size(0x%x) is larger that expected %d\n",
-				__func__, mcu_size, VMCU_MEM_SIZE);
-		ret = -EFBIG;
+			__func__, mcu_size, VMCU_MEM_SIZE);
 		goto err_mcu_file;
 	}
 
-	if (timespec_equal(&mcu_st.mtime, &mcu_bin->last_mtime) &&
+	/* only one case is not covered, fix it */
+	if (mcu_size == mcu_bin->file_size &&
 			strcmp(mcu_file, mcu_bin->file) == 0) {
 		dev_dbg(dev, "%s() regard the same as previous(%s, 0x%x)\n",
 				__func__, mcu_file, mcu_size);
 		goto skip_read;
+
 	}
 
-	ret = iva_mcu_map_boot_mem(iva, mcu_bin);
-	if (ret) {
-		dev_err(dev, "%s() fail to map boot mem, ret(%d)\n",
-				__func__, ret);
-		goto err_mcu_file;
+	if (mcu_bin->flag & MCU_BIN_ION) {
+		if (dma_buf_begin_cpu_access(mcu_bin->dmabuf, DMA_BIDIRECTIONAL)) {
+			ret = -ENOMEM;
+			goto err_mcu_file;
+		}
+
+		mcu_bin->bin = dma_buf_kmap(mcu_bin->dmabuf, 0);
+		if (!mcu_bin->bin) {
+			dev_err(dev, "%s() fail to kmap ion\n", __func__);
+			dma_buf_end_cpu_access(mcu_bin->dmabuf, DMA_BIDIRECTIONAL);
+			ret = -ENOMEM;
+			goto err_mcu_file;
+		}
 	}
 
-	read_bytes = kernel_read(mcu_fp, 0, mcu_bin->bin, (unsigned long) mcu_size);
+	read_bytes = kernel_read(mcu_fp, 0, mcu_bin->bin,
+			(unsigned long) mcu_size);
 	if ((read_bytes <= 0) || ((uint32_t) read_bytes != mcu_size)) {
-		dev_err(dev, "%s() fail to read %s. read(%d) file size(%d)\n",
+		dev_err(dev, "%s() unable to read %s sucessfully. "
+				"read(%d) file size(%d)\n",
 				__func__, mcu_file, read_bytes, mcu_size);
 		ret = -EIO;
-		goto err_mcu_file;
+		goto err_ion_kmap;
 	}
 
-	mcu_bin->last_mtime = mcu_st.mtime;
 	mcu_bin->file_size = mcu_size;
 	strncpy(mcu_bin->file, mcu_file, sizeof(mcu_bin->file) - 1);
 	mcu_bin->file[sizeof(mcu_bin->file) - 1] = 0x0;
-
 skip_read:
 	ret = iva_mcu_boot(iva, mcu_bin, wait_ready);
 	if (ret) {
 		dev_err(dev, "%s() fail to boot mcu. ret(%d)\n",
 				__func__, ret);
-	} else {
-		set_bit(IVA_ST_MCU_BOOT_DONE, &iva->state);
+	}
+
+err_ion_kmap:
+	if (mcu_bin->flag & MCU_BIN_ION) {
+		if (mcu_bin->bin) {
+			dma_buf_kunmap(mcu_bin->dmabuf, 0, mcu_bin->bin);
+			dma_buf_end_cpu_access(mcu_bin->dmabuf, DMA_BIDIRECTIONAL);
+			mcu_bin->bin = NULL;
+		}
 	}
 
 err_mcu_file:
@@ -597,30 +441,22 @@ err_mcu_file:
 	return ret;
 }
 
+
 int32_t iva_mcu_exit(struct iva_dev_data *iva)
 {
-	if (!test_and_clear_bit(IVA_ST_MCU_BOOT_DONE, &iva->state)) {
-		dev_info(iva->dev, "%s() already mcu exited(0x%lx)\n",
-				__func__, iva->state);
-		return 0;
-	}
-
 	iva_ipcq_deinit(&iva->mcu_ipcq);
 
 	iva_mcu_print_stop(iva);
 
 	sh_mem_deinit(iva);
 
-	iva_mcu_unmap_boot_mem(iva, iva->mcu_bin);
-
-	iva_pmu_ctrl_mcu(iva, pmu_mcu_reset_n, false);
-	iva_pmu_ctrl_mcu(iva, pmu_boothold, true);
-
-	dev_dbg(iva->dev, "%s() mcu exited(0x%lx) successfully\n",
-			__func__, iva->state);
-
 	return 0;
 }
+
+#ifdef CONFIG_ION_EXYNOS
+#include <linux/exynos_ion.h>
+#define REQ_ION_HEAP_ID		EXYNOS_ION_HEAP_SYSTEM_MASK
+#endif
 
 static int32_t iva_mcu_boot_mem_alloc(struct iva_dev_data *iva,
 			struct mcu_binary *mcu_bin)
@@ -637,9 +473,10 @@ static int32_t iva_mcu_boot_mem_alloc(struct iva_dev_data *iva,
 	handle = ion_alloc(client, VMCU_MEM_SIZE, 16, REQ_ION_HEAP_ID,
 			/*ION_FLAG_CACHED | ION_FLAG_CACHED_NEEDS_SYNC*/ 0);
 	if (IS_ERR(handle)) {
-		dev_err(dev,
-			"%s() fail to alloc ion with id(0x%x), size(0x%x),ret(%ld)\n",
-			__func__, REQ_ION_HEAP_ID, VMCU_MEM_SIZE, PTR_ERR(handle));
+		dev_err(dev, "%s() fail to alloc ion with id(0x%x), "
+				"size(0x%x),ret(%ld)\n",
+				__func__, REQ_ION_HEAP_ID,
+				VMCU_MEM_SIZE, PTR_ERR(handle));
 		return PTR_ERR(handle);
 	}
 
@@ -672,7 +509,7 @@ static int32_t iva_mcu_boot_mem_alloc(struct iva_dev_data *iva,
 	mcu_bin->flag		= MCU_BIN_ION;
 	mcu_bin->bin_size	= VMCU_MEM_SIZE;
 	mcu_bin->handle		= handle;
-	mcu_bin->dmabuf		= dmabuf;
+	mcu_bin->dmabuf 	= dmabuf;
 	mcu_bin->attachment	= attachment;
 	mcu_bin->io_va		= io_va;
 
@@ -684,7 +521,7 @@ err_attach:
 err_dmabuf:
 	ion_free(client, handle);
 #else
-	mcu_bin->bin = devm_kmalloc(dev, VMCU_MEM_SIZE, GFP_KERNEL);
+	mcu_bin->bin = kmalloc(VMCU_MEM_SIZE, GFP_KERNEL);
 	if (!mcu_bin->bin) {
 		dev_err(dev, "%s() unable to alloc mem for mcu boot\n",
 				__func__);
@@ -699,7 +536,6 @@ err_dmabuf:
 static void iva_mcu_boot_mem_free(struct iva_dev_data *iva,
 		struct mcu_binary *mcu_bin)
 {
-
 #ifdef CONFIG_ION_EXYNOS
 	struct ion_client	*client = iva->ion_client;
 
@@ -722,13 +558,16 @@ static void iva_mcu_boot_mem_free(struct iva_dev_data *iva,
 		mcu_bin->bin_size = 0;
 	}
 #else
+	struct device		*dev = iva->dev;
 	if (mcu_bin->bin) {
-		devm_kfree(iva->dev, mcu_bin->bin);
+		devm_kfree(dev, mcu_bin->bin);
 		mcu_bin->bin = NULL;
 		mcu_bin->bin_size = 0;
 	}
 #endif
 	mcu_bin->flag = 0x0;
+
+	return;
 }
 
 int32_t iva_mcu_probe(struct iva_dev_data *iva)
@@ -736,9 +575,9 @@ int32_t iva_mcu_probe(struct iva_dev_data *iva)
 	int32_t		ret;
 	struct device	*dev = iva->dev;
 
-	iva->mcu_bin = devm_kzalloc(dev, sizeof(*iva->mcu_bin), GFP_KERNEL);
+	iva->mcu_bin = kzalloc(sizeof(*iva->mcu_bin), GFP_KERNEL);
 	if (!iva->mcu_bin) {
-		dev_err(dev, "%s() fail to alloc mem for mcu_bin struct\n",
+		dev_err(iva->dev, "%s() fail to alloc mem for mcu_bin struct\n",
 				__func__);
 		return -ENOMEM;
 	}
@@ -774,7 +613,7 @@ err_ipcq_prb:
 err_mbox_prb:
 	iva_mcu_boot_mem_free(iva, iva->mcu_bin);
 err_boot_mem:
-	devm_kfree(dev, iva->mcu_bin);
+	devm_kfree(iva->dev, iva->mcu_bin);
 	iva->mcu_bin = NULL;
 	return ret;
 }

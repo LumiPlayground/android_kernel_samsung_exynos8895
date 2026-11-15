@@ -28,7 +28,6 @@
 #define SMC_CMD_GET_LOCKUP_REASON	(-121)
 #define SMC_CMD_KERNEL_PANIC_NOTICE	(-122)
 #define SMC_CMD_SET_SEH_ADDRESS		(-123)
-#define SMC_CMD_LOCKUP_NOTICE		(0x8200007C)
 
 /* For protecting kernel text area */
 #define SMC_CMD_PROTECT_KERNEL_TEXT	(-125)
@@ -40,23 +39,12 @@
 /* For D-GPIO/D-TZPC */
 #define SMC_CMD_PREAPRE_PD_ONOFF	(0x82000410)
 
-/* For FMP/SMU Ctrl */
-#define SMC_CMD_FMP_SECURITY		(0xC2001810)
-#define SMC_CMD_FMP_DISK_KEY_STORED	(0xC2001820)
-#define SMC_CMD_FMP_DISK_KEY_SET	(0xC2001830)
-#define SMC_CMD_FMP_DISK_KEY_CLEAR	(0xC2001840)
-#define SMC_CMD_SMU			(0xC2001850)
-#define SMC_CMD_FMP_SMU_RESUME		(0xC2001860)
-#define SMC_CMD_FMP_SMU_DUMP		(0xC2001870)
-#define SMC_CMD_UFS_LOG			(0xC2001880)
-
 /* Command ID for smc */
 #define SMC_PROTECTION_SET		(0x82002010)
 #define SMC_DRM_FW_LOADING		(0x82002011)
 #define SMC_DCPP_SUPPORT		(0x82002012)
 #define SMC_DRM_SECBUF_PROT		(0x82002020)
 #define SMC_DRM_SECBUF_UNPROT		(0x82002021)
-#define SMC_DRM_G2D_CMD_DATA		(0x8200202d)
 #define SMC_DRM_SECBUF_CFW_PROT		(0x82002030)
 #define SMC_DRM_SECBUF_CFW_UNPROT	(0x82002031)
 #define SMC_DRM_PPMP_PROT		(0x82002110)
@@ -65,11 +53,6 @@
 #define SMC_DRM_PPMP_MFCFW_UNPROT	(0x82002113)
 #define MC_FC_SET_CFW_PROT		(0x82002040)
 #define SMC_DRM_SEC_SMMU_INFO		(0x820020D0)
-
-/* PPMPU */
-#define SMC_PPMPU_PR_VIOLATION		(0x820020DE)
-#define SMC_PPMPU_GET_PROT		(0x820020DF)
-
 #define MC_FC_DRM_SET_CFW_PROT		(0x10000000)
 #define SMC_SRPMB_WSM			(0x82003811)
 
@@ -83,6 +66,21 @@
 /* Parameter for smc */
 #define SMC_PROTECTION_ENABLE		(1)
 #define SMC_PROTECTION_DISABLE		(0)
+
+/* Parameter for FMP ID */
+#define ID_FMP_UFS_MMC			(0)
+#define ID_FMP_UFS_CARD			(1)
+
+#define FMP_DESCTYPE_0			(0)
+#define FMP_DESCTYPE_3			(3)
+
+/* For FMP/SMU Ctrl */
+#define SMC_CMD_FMP_SECURITY		(0xC2001810)
+#define SMC_CMD_FMP_DISKENC		(0xC2001820)
+#define SMC_CMD_SMU			(0xC2001830)
+#define SMC_CMD_FMP_RESUME		(0xC2001840)
+#define SMC_CMD_FMP_DUMP		(0xC2001850)
+#define SMC_CMD_LOG			(0xC2001860)
 
 /* For DTRNG Access */
 #ifdef CONFIG_EXYRNG_USE_CRYPTOMANAGER
@@ -111,11 +109,21 @@
 #define SMC_POWERSTATE_IDLE		(0x1)
 #define SMC_POWERSTATE_SWITCH		(0x2)
 
+/* For FMP ID list */
+#define ID_UFS_MMC_FMP			(0x0)
+#define ID_UFS_CARD_FMP			(0x1)
 
-/*
- * For SMC CMD for SRPMB
- */
-#define SMC_SRPMB_WSM			(0x82003811)
+/* For FMP Disk key list */
+#define FMP_DISKKEY_STORE		(0x0)
+#define FMP_DISKKEY_SET			(0x1)
+#define FMP_DISKKEY_CLEAR		(0x2)
+
+/* For SMU command list */
+#define FMP_SMU_INIT			(0x0)
+#define FMP_SMU_SET			(0x1)
+#define FMP_SMU_CHK_VALID		(0x2)
+
+#define SMU_INVALID			(0x0014)
 
 /* For DTRNG Access */
 #define HWRNG_INIT			(0x0)
@@ -140,7 +148,7 @@
 #define PROT_G2				(7)
 #define PROT_G3				(8)
 #define PROT_VGR0			(9)
-#define PROT_VGRF			(10)
+#define PROT_VGR1			(10)
 #define PROT_WB1			(11)
 #define PROT_G3D			(12)
 #define PROT_JPEG			(13)

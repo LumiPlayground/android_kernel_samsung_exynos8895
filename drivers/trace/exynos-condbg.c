@@ -19,6 +19,7 @@
 #include <linux/io.h>
 #include <linux/console.h>
 #include <linux/interrupt.h>
+#include <linux/clk.h>
 #include <linux/platform_device.h>
 #include <linux/kernel_stat.h>
 #include <linux/kmsg_dump.h>
@@ -35,6 +36,7 @@
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
 #include <linux/kthread.h>
+#include <linux/completion.h>
 #include <linux/err.h>
 #include <linux/wakelock.h>
 #include <linux/clocksource.h>
@@ -45,32 +47,26 @@
 #include <linux/file.h>
 #include <linux/firmware.h>
 #include <linux/exynos-ss.h>
+#include <soc/samsung/exynos-condbg.h>
 #include <linux/kallsyms.h>
 #include <linux/ptrace.h>
 #include <linux/proc_fs.h>
 #include <linux/syscalls.h>
 #include <linux/notifier.h>
-#include <linux/suspend.h>
-#include <linux/cpuidle.h>
 #include <soc/samsung/exynos-itmon.h>
 
+#include <asm/debug-monitors.h>
 #include <asm/system_misc.h>
 #include <asm/stacktrace.h>
 #include <asm/cacheflush.h>
 #include <asm/tlbflush.h>
 #include <asm/map.h>
 #include <asm/smp_plat.h>
-#include <asm/debug-monitors.h>
-#ifdef CONFIG_EXYNOS_ITMON
-#include <soc/samsung/exynos-itmon.h>
-#endif
-#include <soc/samsung/exynos-condbg.h>
 
 #include "exynos-condbg-dev.h"
 #include "exynos-condbg-ringbuf.h"
 
-#define MAX_DEBUGGER_PORTS	(4)
-#define MAX_IRQS		(512)
+#define MAX_DEBUGGER_PORTS	(1)
 #define ECD_RC_PATH "/data/ecd.rc"
 #define PR_ECD "[ECD]"
 
@@ -79,12 +75,11 @@
 #else
 #define FW_PATH "/vendor/firmware/"
 #endif
-#define FW_NAME "ecd_fw.bin"
 
 static struct ecd_interface *interface = NULL;
 static bool initial_console_enable = false;
 static bool initial_ecd_enable = false;
-bool initial_no_firmware = false;
+static bool initial_no_firmware = false;
 
 extern int ecd_init_binary(unsigned long, unsigned long);
 extern int ecd_start_binary(unsigned long);
@@ -154,9 +149,9 @@ struct ecd_interface {
 	bool				fw_ready;
 	bool				unhandled_irq;
 
-	spinlock_t			iomap_lock;
+	spinlock_t			printf_lock;
 	spinlock_t			work_lock;
-	unsigned int			last_irqs[MAX_IRQS];
+	unsigned int			last_irqs[NR_IRQS];
 	struct delayed_work		check_load_firmware;
 #ifdef CONFIG_EXYNOS_CONSOLE_DEBUGGER_INTERFACE
 	spinlock_t			console_lock;
@@ -201,43 +196,22 @@ int ecd_do_bad(unsigned long addr, struct pt_regs *regs)
 	if (interface && interface->fw_loaded)
 		return interface->ops.do_bad(addr, regs);
 	else
-		return 1;
+		return 0;
 }
 
 int ecd_hook_ioremap(unsigned long paddr, unsigned long vaddr, unsigned int size)
 {
-	struct ecd_ioremap_item *item;
-	if (interface) {
-		spin_lock(&interface->iomap_lock);
-		item = kmalloc(sizeof(struct ecd_ioremap_item), GFP_ATOMIC);
-		if (!item)
-			return -ENOMEM;
+	if (initial_ecd_enable) {
+		struct ecd_ioremap_item *item =
+			kmalloc(sizeof(struct ecd_ioremap_item), GFP_ATOMIC);
 
 		item->paddr = paddr;
 		item->vaddr = vaddr;
 		item->size = size;
 
 		list_add(&item->list, &ecd_ioremap_list);
-		spin_unlock(&interface->iomap_lock);
 	}
 	return 0;
-}
-
-void ecd_hook_iounmap(unsigned long vaddr)
-{
-	struct ecd_ioremap_item *item, *next_item;
-	struct list_head *list_main = &ecd_ioremap_list;
-
-	if (interface) {
-		spin_lock(&interface->iomap_lock);
-		list_for_each_entry_safe(item, next_item, list_main, list) {
-			if (vaddr == item->vaddr) {
-				list_del(&item->list);
-				break;
-			}
-		}
-		spin_unlock(&interface->iomap_lock);
-	}
 }
 
 bool ecd_lookup_check_sfr(unsigned long vaddr)
@@ -354,12 +328,6 @@ static void ecd_uart_flush(void)
 {
 	if (interface && interface->pdata->uart_flush)
 		interface->pdata->uart_flush(interface->pdev);
-}
-
-static void ecd_uart_clear_rxfifo(void)
-{
-	if (interface && interface->pdata->uart_clear_rxfifo)
-		interface->pdata->uart_clear_rxfifo(interface->pdev);
 }
 
 static void ecd_uart_init(void)
@@ -482,9 +450,6 @@ static int ecd_tty_init(void)
 	int ret;
 	struct ecd_interface **interfaces = NULL;
 
-	if (initial_no_firmware)
-		return -EINVAL;
-
 	interfaces = kzalloc(sizeof(*interfaces) * MAX_DEBUGGER_PORTS, GFP_KERNEL);
 	if (!interfaces) {
 		pr_err("Failed to allocate console debugger state structres\n");
@@ -571,8 +536,8 @@ err:
 #endif
 
 #define CONDBG_FW_ADDR		(VMALLOC_START + 0xF1000000)
-#define CONDBG_FW_SIZE		(SZ_256K)
-#define CONDBG_FW_TEXT_SIZE	(SZ_64K)
+#define CONDBG_FW_SIZE		(SZ_512K)
+#define CONDBG_FW_TEXT_SIZE	(SZ_128K)
 
 struct page_change_data {
 	pgprot_t set_mask;
@@ -1108,12 +1073,8 @@ static void ecd_dump_stacktrace_task(struct pt_regs *regs, struct task_struct *t
 	walk_stackframe(NULL, &frame, report_trace, NULL);
 }
 
-#ifndef CONFIG_THREAD_INFO_IN_TASK
 #define THREAD_INFO(sp) ((struct thread_info *) \
 		((unsigned long)(sp) & ~(THREAD_SIZE - 1)))
-#else
-#define THREAD_INFO(tsk) ((struct thread_info *)(tsk))
-#endif
 
 static void ecd_dump_stacktrace(const struct pt_regs *regs, void *ssp)
 {
@@ -1150,7 +1111,7 @@ static void ecd_dump_one_task(struct task_struct *tsk, bool is_main)
 {
 	char state_array[] = {'R', 'S', 'D', 'T', 't', 'Z', 'X', 'x', 'K', 'W'};
 	unsigned char idx = 0;
-	unsigned long status = (unsigned long)((tsk->state & TASK_REPORT) | tsk->exit_state);
+	unsigned int status = (tsk->state & TASK_REPORT) | tsk->exit_state;
 	unsigned long wchan;
 	unsigned long pc = 0;
 	char symname[KSYM_NAME_LEN];
@@ -1269,7 +1230,7 @@ static void ecd_dump_ps(void)
 {
 	struct task_struct *g;
 	struct task_struct *p;
-	unsigned long task_state;
+	unsigned task_state;
 	static const char stat_nam[] = "RSDTtZX";
 
 	ecd_printf("pid   ppid  prio task            pc\n");
@@ -1334,20 +1295,11 @@ static ktime_t ecd_ktime_sub(ktime_t lhs, ktime_t rhs)
 	return ktime_sub(lhs, rhs);
 }
 
-static int ecd_cpuhp_setup_state(const char *name,
-				int (*startup)(unsigned int cpu),
-				int (*teardown)(unsigned int cpu))
-{
-	return cpuhp_setup_state(CPUHP_AP_ECD_STARTING, name, startup, teardown);
-}
-
 static int ecd_register_hotcpu_notifier(void *nbp, notifier_fn_t func)
 {
 	struct notifier_block *nb = (struct notifier_block *)nbp;
 
-	nb = devm_kzalloc(&interface->pdev->dev, sizeof(struct notifier_block), GFP_KERNEL);
-	if (!nb)
-		return -ENOMEM;
+	nb = kzalloc(sizeof(struct notifier_block), GFP_KERNEL);
 	nb->notifier_call = func;
 	return register_hotcpu_notifier((struct notifier_block *)nb);
 }
@@ -1356,23 +1308,11 @@ static int ecd_register_lowpm_notifier(void *nbp, notifier_fn_t func)
 {
 	struct notifier_block *nb = (struct notifier_block *)nbp;
 
-	nb = devm_kzalloc(&interface->pdev->dev, sizeof(struct notifier_block), GFP_KERNEL);
-	if (!nb)
-		return -ENOMEM;
+	nb = kzalloc(sizeof(struct notifier_block), GFP_KERNEL);
 	nb->notifier_call = func;
 	return cpu_pm_register_notifier((struct notifier_block *)nb);
 }
 
-static int ecd_register_str_pm_notifier(void *nbp, notifier_fn_t func)
-{
-	struct notifier_block *nb = (struct notifier_block *)nbp;
-
-	nb = devm_kzalloc(&interface->pdev->dev, sizeof(struct notifier_block), GFP_KERNEL);
-	if (!nb)
-		return -ENOMEM;
-	nb->notifier_call = func;
-	return register_pm_notifier((struct notifier_block *)nb);
-}
 
 static int ecd_do_breakpoint(unsigned long addr, unsigned int esr,
 				      struct pt_regs *regs)
@@ -1399,12 +1339,10 @@ void ecd_do_break_now(void)
 
 static int __init add_exception_func(void)
 {
-	if (!initial_no_firmware) {
-		hook_debug_fault_code(DBG_ESR_EVT_HWBP, ecd_do_breakpoint, SIGTRAP,
-		                     TRAP_HWBKPT, "hw-breakpoint handler");
-		hook_debug_fault_code(DBG_ESR_EVT_HWWP, ecd_do_watchpoint, SIGTRAP,
-		                     TRAP_HWBKPT, "hw-watchpoint handler");
-	}
+	hook_debug_fault_code(DBG_ESR_EVT_HWBP, ecd_do_breakpoint, SIGTRAP,
+			      TRAP_HWBKPT, "hw-breakpoint handler");
+	hook_debug_fault_code(DBG_ESR_EVT_HWWP, ecd_do_watchpoint, SIGTRAP,
+			      TRAP_HWBKPT, "hw-watchpoint handler");
 	return 0;
 }
 arch_initcall(add_exception_func);
@@ -1452,8 +1390,6 @@ enum os_func {
 	PANIC,
 	MACHINE_RESTART,
 	KERNEL_RESTART,
-	CPUHP_SETUP_STATE,
-	REGISTER_STR_PM_NOTIFIER,
 
 	PRINTK = 60,
 	KALLSYMS_LOOKUP,
@@ -1465,9 +1401,6 @@ enum os_func {
 	REQUEST_IRQ = 70,
 	IRQ_FORCE_AFFINITY,
 	GET_IRQ_REGS,
-
-	CPUIDLE_PAUSE = 80,
-	CPUIDLE_RESUME,
 
 	HOOK_DEBUG_FAULT_CODE = 90,
 	SMP_CALL_FUNCTION,
@@ -1511,7 +1444,6 @@ enum os_func {
 
 	ECD_LOOKUP_DUMP_SFR = 130,
 	ECD_LOOKUP_CHECK_SFR,
-	ECD_UART_CLEAR_RXFIFO,
 
 	ITMON_ENABLE = 140,
 	EXYNOS_SS_DUMPER_ONE,
@@ -1574,8 +1506,6 @@ static void set_param(set_param_fn_t *fn)
 	fn[PANIC] = (set_param_fn_t)panic;
 	fn[MACHINE_RESTART] = (set_param_fn_t)machine_restart;
 	fn[KERNEL_RESTART] = (set_param_fn_t)kernel_restart;
-	fn[CPUHP_SETUP_STATE] = (set_param_fn_t)ecd_cpuhp_setup_state;
-	fn[REGISTER_STR_PM_NOTIFIER] = (set_param_fn_t)ecd_register_str_pm_notifier;
 
 	fn[PRINTK] = (set_param_fn_t)printk;
 	fn[KALLSYMS_LOOKUP] = (set_param_fn_t)kallsyms_lookup;
@@ -1587,9 +1517,6 @@ static void set_param(set_param_fn_t *fn)
 	fn[REQUEST_IRQ] = (set_param_fn_t)ecd_request_irq;
 	fn[IRQ_FORCE_AFFINITY] = (set_param_fn_t)ecd_irq_force_affinity;
 	fn[GET_IRQ_REGS] = (set_param_fn_t)get_irq_regs;
-
-	fn[CPUIDLE_PAUSE] = (set_param_fn_t)cpuidle_pause;
-	fn[CPUIDLE_RESUME] = (set_param_fn_t)cpuidle_resume;
 
 	fn[SMP_CALL_FUNCTION_SINGLE] = (set_param_fn_t)smp_call_function_single;
 	fn[SMP_CALL_FUNCTION] = (set_param_fn_t)smp_call_function;
@@ -1632,10 +1559,8 @@ static void set_param(set_param_fn_t *fn)
 
 	fn[ECD_LOOKUP_DUMP_SFR] = (set_param_fn_t)ecd_lookup_dump_sfr;
 	fn[ECD_LOOKUP_CHECK_SFR] = (set_param_fn_t)ecd_lookup_check_sfr;
-	fn[ECD_UART_CLEAR_RXFIFO] = (set_param_fn_t)ecd_uart_clear_rxfifo;
-#ifdef CONFIG_EXYNOS_ITMON
+
 	fn[ITMON_ENABLE] = (set_param_fn_t)itmon_enable;
-#endif
 	fn[EXYNOS_SS_DUMPER_ONE] = (set_param_fn_t)exynos_ss_dumper_one;
 	fn[WDT_SET_EMERGENCY_RESET] = (set_param_fn_t)s3c2410wdt_set_emergency_reset;
 	fn[WAKE_LOCK_INIT] = (set_param_fn_t)ecd_wake_lock_init;
@@ -1646,7 +1571,7 @@ static void set_param(set_param_fn_t *fn)
 int ecd_start_binary(unsigned long jump_addr)
 {
 	/* address information */
-	set_param_fn_t fn[SZ_256] = {0, };
+	set_param_fn_t fn[SZ_256];
 
 	/* Set/Get parameter */
 	set_param(fn);
@@ -1663,11 +1588,14 @@ int ecd_init_binary(unsigned long fw_addr, unsigned long fw_size)
 {
 	int ret;
 
-	ret = request_binary(interface, FW_PATH, FW_NAME, NULL);
+	ret = request_binary(interface, FW_PATH, "ecd_fw.bin", NULL);
 	if (ret) {
 		pr_err("failed to load ECD firmware - %d\n", ret);
-		goto out;
+		return ret;
 	}
+
+	fw_size = CONDBG_FW_TEXT_SIZE;
+	fw_addr = CONDBG_FW_ADDR;
 
 	/* Memory attributes => NX */
 	ret = ecd_set_memory_nx(fw_addr, PFN_UP(fw_size));
@@ -1686,13 +1614,13 @@ int ecd_init_binary(unsigned long fw_addr, unsigned long fw_size)
 	release_binary(interface);
 
 	/* Memory attributes => RO */
-	ret = ecd_set_memory_ro(fw_addr, PFN_UP(CONDBG_FW_TEXT_SIZE));
+	ret = ecd_set_memory_ro(fw_addr, PFN_UP(fw_size));
 	if (ret) {
 		pr_err("failed to change memory attributes to RO - %d\n", ret);
-		goto out;
+		return ret;
 	}
 	/* Memory attributes => X */
-	ret = ecd_set_memory_x(fw_addr, PFN_UP(CONDBG_FW_TEXT_SIZE));
+	ret = ecd_set_memory_x(fw_addr, PFN_UP(fw_size));
 	if (ret) {
 		pr_err("failed to change memory attributes to X - %d\n", ret);
 		goto out;
@@ -1703,14 +1631,14 @@ out:
 
 static irqreturn_t ecd_uart_irq(int irq, void *dev)
 {
-	int c;
+	int c, count = 0;
 	irqreturn_t ret = IRQ_HANDLED;
 
 	if (!interface->fw_loaded) {
 		while (((c = ecd_uart_getc()) != DEBUGGER_NO_CHAR) && interface->tty_rbuf) {
+			count++;
 			if (interface->param.console_enable) {
 				ecd_ringbuf_push(interface->tty_rbuf, c);
-				ecd_uart_clear_rxfifo();
 			} else if (c == 26) {
 				/* CTRL + Z */
 				ecd_uart_puts("console mode\n");
@@ -1718,10 +1646,12 @@ static irqreturn_t ecd_uart_irq(int irq, void *dev)
 				interface->param.console_enable = true;
 				interface->param.debug_mode = MODE_CONSOLE;
 				ecd_ringbuf_push(interface->tty_rbuf, '\n');
-			} else {
-				ecd_uart_clear_rxfifo();
-				udelay(1);
 			}
+			/*
+			else if ((c >= ' ') && (c < 127) && (c != 91)) {
+				ecd_uart_putc(c);
+			}
+			*/
 		};
 		if (interface->param.console_enable)
 			ecd_tty_ringbuf_consume();
@@ -1846,13 +1776,13 @@ void read_ecd_rc(void)
 				continue;
 			}
 			if (strnstr(data, "console=", strlen(data)))
-				param->console_enable = (unsigned int)val;
+				param->console_enable = val;
 			else if (strnstr(data, "panic=", strlen(data)))
-				param->debug_panic = (unsigned int)val;
+				param->debug_panic = val;
 			else if (strnstr(data, "sleep=", strlen(data)))
-				param->no_sleep = (unsigned int)val;
+				param->no_sleep = val;
 			else if (strnstr(data, "count=", strlen(data)))
-				param->count_break = (unsigned int)val;
+				param->count_break = val;
 			break;
 		case 1:
 			strncpy(rc->setup[rc->setup_idx++], data, SZ_64 - 1);
@@ -1941,10 +1871,8 @@ static int ecd_probe(struct platform_device *pdev)
 	struct page *page;
 	struct page **pages;
 
-	if (!initial_ecd_enable) {
-		dev_err(&pdev->dev, "initial_ecd_enable is not set");
+	if (!initial_ecd_enable)
 		return -EINVAL;
-	}
 
 	inf = devm_kzalloc(&pdev->dev, sizeof(*inf), GFP_KERNEL);
 	if (!inf) {
@@ -1962,32 +1890,23 @@ static int ecd_probe(struct platform_device *pdev)
 	ret = map_vm_area(&ecd_early_vm, PAGE_KERNEL, pages);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to mapping between virt and phys for firmware");
-		kfree(pages);
 		return -ENOMEM;
 	}
 	kfree(pages);
 
-	if (pdev->id >= MAX_DEBUGGER_PORTS) {
-		dev_err(&pdev->dev, "MAX_DEBUGGER_PORTS over");
+	if (pdev->id >= MAX_DEBUGGER_PORTS)
 		return -EINVAL;
-	}
 
-	if (!pdata->uart_getc || !pdata->uart_putc) {
-		dev_err(&pdev->dev, "did not have getc & putc function");
+	if (!pdata->uart_getc || !pdata->uart_putc)
 		return -EINVAL;
-	}
 
 	if ((pdata->uart_enable && !pdata->uart_disable) ||
-	    (!pdata->uart_enable && pdata->uart_disable)) {
-		dev_err(&pdev->dev, "did not have uart_enable or uart_disable");
+	    (!pdata->uart_enable && pdata->uart_disable))
 		return -EINVAL;
-	}
 
 	uart_irq = platform_get_irq_byname(pdev, "uart_irq");
-	if (uart_irq < 0) {
-		dev_err(&pdev->dev, "did not find uart_irq");
+	if (uart_irq < 0)
 		return -EINVAL;
-	}
 
 	inf->fw_loaded = false;
 	inf->param.console_enable = initial_console_enable;
@@ -2001,10 +1920,10 @@ static int ecd_probe(struct platform_device *pdev)
 	inf->output_buf = devm_kzalloc(&pdev->dev, SZ_1K, GFP_KERNEL);
 	inf->uart_irq = uart_irq;
 	inf->unhandled_irq = false;
-
-	spin_lock_init(&inf->iomap_lock);
-	spin_lock_init(&inf->work_lock);
 	interface = inf;
+
+	spin_lock_init(&inf->printf_lock);
+	spin_lock_init(&inf->work_lock);
 
 	platform_set_drvdata(pdev, inf);
 
@@ -2012,6 +1931,13 @@ static int ecd_probe(struct platform_device *pdev)
 		ret = pdata->uart_init(pdev);
 		if (ret)
 			goto err_uart_init;
+	}
+
+	ret = devm_request_irq(&pdev->dev, uart_irq, ecd_uart_irq,
+			IRQF_NO_SUSPEND, "ecd_uart", inf);
+	if (ret) {
+		pr_err("%s: could not install irq handler\n", __func__);
+		goto err_register_irq;
 	}
 
 	spin_lock_init(&inf->console_lock);
@@ -2023,13 +1949,6 @@ static int ecd_probe(struct platform_device *pdev)
 
 	register_console(&inf->console);
 	ecd_tty_init_one(inf);
-
-	ret = devm_request_irq(&pdev->dev, uart_irq, ecd_uart_irq,
-			IRQF_NO_SUSPEND, "ecd_uart", inf);
-	if (ret) {
-		pr_err("%s: could not install irq handler\n", __func__);
-		goto err_register_irq;
-	}
 
 	ecd_sysfs_init(&pdev->dev);
 
@@ -2054,6 +1973,7 @@ static int __init ecd_setup(char *str)
 {
 	char *move;
 	char *console = NULL, *option = NULL;
+	unsigned long paddr;
 
 	if (!str)
 		goto out;
@@ -2066,10 +1986,6 @@ static int __init ecd_setup(char *str)
 		option = strsep(&str, " ");
 	}
 
-	if (console && !strncmp(console, "disable", strlen("disable"))) {
-		initial_no_firmware = true;
-		goto out;
-	}
 	if (console && !strncmp(console, "console", strlen("console")))
 		initial_console_enable = true;
 	if (option && strncmp(option, "no_firmare", strlen("no_firmare")))
@@ -2083,8 +1999,8 @@ static int __init ecd_setup(char *str)
 		/* Reserved fixed virtual memory within VMALLOC region */
 		vm_area_add_early(&ecd_early_vm);
 
-		pr_info("ECD reserved memory:%llx, %zx, for firmware\n",
-				ecd_early_vm.phys_addr, CONDBG_FW_ADDR);
+		pr_info("ECD reserved memory:%zx, %zx, for firmware\n",
+						paddr, CONDBG_FW_ADDR);
 		initial_ecd_enable = true;
 
 		INIT_LIST_HEAD(&ecd_ioremap_list);

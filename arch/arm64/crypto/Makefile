@@ -48,8 +48,5 @@ CFLAGS_crc32-arm64.o	:= -mcpu=generic+crc
 $(obj)/aes-glue-%.o: $(src)/aes-glue.c FORCE
 	$(call if_changed_rule,cc_o_c)
 
-# KASAN White list
-KASAN_SANITIZE_sha2-ce-glue.o := n
-
 #Keep this at the bottom
 obj-$(CONFIG_CRYPTO_FIPS) += last_file_asm.o

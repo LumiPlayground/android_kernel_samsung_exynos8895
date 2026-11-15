@@ -112,7 +112,7 @@ void ssp_dump_task(struct work_struct *work)
 
 		char FAILSTRING[100];
 
-		sprintf(FAILSTRING, "FAIL OCCURRED(%d)(%d)(%d)",
+		sprintf(FAILSTRING, "FAIL OCCURED(%d)(%d)(%d)",
 			iRetTrans,
 			iRetWrite,
 			big->length);
@@ -244,7 +244,7 @@ void reset_mcu(struct ssp_data *data)
 
 	ssp_enable(data, false);
 	clean_pending_list(data);
-	bbd_mcu_reset(false);
+	bbd_mcu_reset();
 
 	data->uTimeOutCnt = 0;
 	data->uComFailCnt = 0;
@@ -288,8 +288,6 @@ void sync_sensor_state(struct ssp_data *data)
 		}
 		mutex_unlock(&data->enable_mutex);
 	}
-        if (atomic64_read(&data->aSensorEnable) & (1ULL << GYROSCOPE_SENSOR))
-                send_vdis_flag(data, data->IsVDIS_Enabled);
 
 	if (data->bProximityRawEnabled == true) {
 		s32 dMsDelay = 20;
@@ -313,26 +311,20 @@ static void print_sensordata(struct ssp_data *data, unsigned int uSensor)
 {
 	switch (uSensor) {
 	case ACCELEROMETER_SENSOR:
+	case GYROSCOPE_SENSOR:
+#ifdef CONFIG_SENSORS_SSP_INTERRUPT_GYRO_SENSOR
+	case INTERRUPT_GYRO_SENSOR:
+#endif
 		ssp_dbg("[SSP] %u : %d, %d, %d (%ums, %dms)\n", uSensor,
 			data->buf[uSensor].x, data->buf[uSensor].y,
 			data->buf[uSensor].z,
 			get_msdelay(data->adDelayBuf[uSensor]),
 			data->batchLatencyBuf[uSensor]);
 		break;
-	case GYROSCOPE_SENSOR:
-#ifdef CONFIG_SENSORS_SSP_INTERRUPT_GYRO_SENSOR
-	case INTERRUPT_GYRO_SENSOR:
-#endif
-		ssp_dbg("[SSP] %u : %d, %d, %d (%ums, %dms)\n", uSensor,
-			data->buf[uSensor].gyro.x, data->buf[uSensor].gyro.y,
-			data->buf[uSensor].gyro.z,
-			get_msdelay(data->adDelayBuf[uSensor]),
-			data->batchLatencyBuf[uSensor]);
-		break;
 	case GEOMAGNETIC_SENSOR:
 		ssp_dbg("[SSP] %u : %d, %d, %d, %d (%ums)\n", uSensor,
 			data->buf[uSensor].cal_x, data->buf[uSensor].cal_y,
-			data->buf[uSensor].cal_z, data->buf[uSensor].accuracy,
+			data->buf[uSensor].cal_y, data->buf[uSensor].accuracy,
 			get_msdelay(data->adDelayBuf[uSensor]));
 		break;
 	case GEOMAGNETIC_UNCALIB_SENSOR:
@@ -376,6 +368,7 @@ static void print_sensordata(struct ssp_data *data, unsigned int uSensor)
 		ssp_dbg("[SSP] %u : %u, (%ums)\n", uSensor,
 			data->buf[uSensor].light_flicker, get_msdelay(data->adDelayBuf[uSensor]));
 		break;
+#if ANDROID_VERSION >= 80000
 	case LIGHT_CCT_SENSOR:
 		ssp_dbg("[SSP] %u : %u, %u, %u, %u, %u, %u (%ums)\n", uSensor,
 			data->buf[uSensor].r, data->buf[uSensor].g,
@@ -383,14 +376,10 @@ static void print_sensordata(struct ssp_data *data, unsigned int uSensor)
 			data->buf[uSensor].a_time, data->buf[uSensor].a_gain,
 			get_msdelay(data->adDelayBuf[uSensor]));
 		break;
+#endif
 	case PROXIMITY_SENSOR:
 		ssp_dbg("[SSP] %u : %d, %d (%ums)\n", uSensor,
 			data->buf[uSensor].prox_detect, data->buf[uSensor].prox_adc,
-			get_msdelay(data->adDelayBuf[uSensor]));
-		break;
-	case PROXIMITY_POCKET:
-		ssp_dbg("[SSP] %u : %d, %d (%ums)\n", uSensor,
-			data->buf[uSensor].proximity_pocket_detect, data->buf[uSensor].proximity_pocket_adc,
 			get_msdelay(data->adDelayBuf[uSensor]));
 		break;
 	case PROXIMITY_ALERT_SENSOR:
@@ -420,10 +409,10 @@ static void print_sensordata(struct ssp_data *data, unsigned int uSensor)
 		break;
 	case GYRO_UNCALIB_SENSOR:
 		ssp_dbg("[SSP] %u : %d, %d, %d, %d, %d, %d (%ums)\n", uSensor,
-			data->buf[uSensor].uncal_gyro.x, data->buf[uSensor].uncal_gyro.y,
-			data->buf[uSensor].uncal_gyro.z, data->buf[uSensor].uncal_gyro.offset_x,
-			data->buf[uSensor].uncal_gyro.offset_y,
-			data->buf[uSensor].uncal_gyro.offset_z,
+			data->buf[uSensor].uncal_x, data->buf[uSensor].uncal_y,
+			data->buf[uSensor].uncal_z, data->buf[uSensor].offset_x,
+			data->buf[uSensor].offset_y,
+			data->buf[uSensor].offset_z,
 			get_msdelay(data->adDelayBuf[uSensor]));
 		break;
 	case STEP_COUNTER:
@@ -449,12 +438,7 @@ static void print_sensordata(struct ssp_data *data, unsigned int uSensor)
 			data->buf[uSensor].pickup_gesture,
 			get_msdelay(data->adDelayBuf[uSensor]));
 		break;
-	case THERMISTOR_SENSOR:
-		ssp_dbg("[SSP] %u : %u %u (%ums)\n", uSensor,
-			data->buf[uSensor].thermistor_type,
-			data->buf[uSensor].thermistor_raw,
-			get_msdelay(data->adDelayBuf[uSensor]));
-		break;
+#if ANDROID_VERSION >= 80000
 	case ACCEL_UNCALIB_SENSOR:
 		ssp_dbg("[SSP] %u : %d, %d, %d, %d, %d, %d (%ums)\n", uSensor,
 			data->buf[uSensor].uncal_x, data->buf[uSensor].uncal_y,
@@ -465,8 +449,10 @@ static void print_sensordata(struct ssp_data *data, unsigned int uSensor)
 		break;
 	case WAKE_UP_MOTION:
 		ssp_dbg("[SSP] %u : %d (%ums)\n", uSensor,
-			data->buf[uSensor].wakeup_motion,
+			data->buf[uSensor].wakeup_event,
 			get_msdelay(data->adDelayBuf[uSensor]));
+        break;
+#endif
 	case BULK_SENSOR:
 	case GPS_SENSOR:
 		break;
@@ -491,7 +477,7 @@ bool check_wait_event(struct ssp_data *data)
 	for (i = 0 ; i < arrSize ; i++) { // because light sensor does not check anymore
 		sensor = check_sensors[i];
 		//the sensor is registered
-		if ((atomic64_read(&data->aSensorEnable) & (1 << sensor) && !(data->IsGyroselftest))
+		if ((atomic64_read(&data->aSensorEnable) & (1 << sensor))
 			//non batching mode
 			&& data->IsBypassMode[sensor] == 1
 			//there is no sensor event over 3sec
@@ -513,13 +499,9 @@ static void debug_work_func(struct work_struct *work)
 	unsigned int uSensorCnt;
 	struct ssp_data *data = container_of(work, struct ssp_data, work_debug);
 
-	ssp_dbg("[SSP]: %s(%u) - Sensor state: 0x%llx, RC: %u(%u, %u, %u), CC: %u, TC: %u NSC: %u EC: %u GPS: %s\n",
-		__func__, data->uIrqCnt, data->uSensorState, data->uResetCnt, data->mcuCrashedCnt, data->IsNoRespCnt,
-		data->resetCntGPSisOn, data->uComFailCnt, data->uTimeOutCnt, data->uNoRespSensorCnt, data->errorCount,
-		data->IsGpsWorking ? "true" : "false");
-    
-        if(!strstr("", data->resetInfoDebug))
-            pr_info("[SSP]: %s(%lld, %lld)\n", data->resetInfoDebug, data->resetInfoDebugTime, get_current_timestamp());
+	ssp_dbg("[SSP]: %s(%u) - Sensor state: 0x%llx, RC: %u(%u, %u), CC: %u, TC: %u NSC: %u EC: %u\n",
+		__func__, data->uIrqCnt, data->uSensorState, data->uResetCnt, data->mcuCrashedCnt,
+		data->resetCntGPSisOn, data->uComFailCnt, data->uTimeOutCnt, data->uNoRespSensorCnt, data->errorCount);
 
 	for (uSensorCnt = 0; uSensorCnt < SENSOR_MAX; uSensorCnt++) {
 		if ((atomic64_read(&data->aSensorEnable) & (1ULL << uSensorCnt))

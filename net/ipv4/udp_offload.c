@@ -301,7 +301,10 @@ unflush:
 
 	skb_gro_pull(skb, sizeof(struct udphdr)); /* pull encapsulating udp header */
 	skb_gro_postpull_rcsum(skb, uh, sizeof(struct udphdr));
-	pp = call_gro_receive_sk(udp_sk(sk)->gro_receive, sk, head, skb);
+	if (unlikely(gro_recursion_inc_test(skb)))
+		NAPI_GRO_CB(skb)->flush |= 1;
+	else
+		pp = udp_sk(sk)->gro_receive(sk, head, skb);
 
 out_unlock:
 	rcu_read_unlock();

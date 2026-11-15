@@ -12,7 +12,11 @@
 #ifndef _FMP_DERIVE_IV_H_
 #define _FMP_DERIVE_IV_H_
 
-int fmplib_derive_iv(struct exynos_fmp *fmp,
-			struct fmp_crypto_setting *crypto,
-			enum fmp_crypto_enc_mode enc_mode);
+#define SHA256_HASH_SIZE	32
+#define MD5_DIGEST_SIZE		16
+
+int calculate_sha256(struct crypto_shash *hash_tfm, char *dst, char *src, int len);
+int calculate_md5(struct crypto_shash *hash_tfm, char *dst, char *src, int len);
+int file_enc_derive_iv(struct address_space *mapping, loff_t offset, char *extent_iv);
+
 #endif

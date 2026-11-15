@@ -6,8 +6,6 @@
 #include <linux/sizes.h>
 #include <linux/mmzone.h>
 #include <linux/memblock.h>
-#include <linux/kernel.h>
-
 #include <asm/memory.h>
 
 #define _DEBUG
@@ -15,15 +13,16 @@
 void __init reserve_ext_bootmem(void)
 {
 	if (memblock_reserve(PRE_RESERVED_PA_START, PRE_RESERVED_PA_SIZE)) {
-		pr_err("memblock reserve is failed!(pa: 0x%08X, size: 0x%08X)\n",
+		printk("memblock reserve is failed!(pa: 0x%08X, size: 0x%08X)\n",
 				PRE_RESERVED_PA_START, PRE_RESERVED_PA_SIZE);
+		return;
 	} else {
 #ifdef _DEBUG
-		pr_info("Pre-reserved Memory : SUCCESS\n");
-		pr_info("- Physical memory = 0x%08X ~ 0x%08X\n",
+		printk("Pre-reserved Memory : SUCCESS\n");
+		printk("- Physical memory = 0x%08X ~ 0x%08X\n",
 			PRE_RESERVED_PA_START,
-			PRE_RESERVED_PA_START + PRE_RESERVED_PA_SIZE);
-		pr_info("- Pre-reserved size = %d KB\n", PRE_RESERVED_PA_SIZE >> 10);
+			PRE_RESERVED_PA_START +	PRE_RESERVED_PA_SIZE);
+		printk("- Pre-reserved size = %d KB\n", PRE_RESERVED_PA_SIZE >> 10);
 #endif
 	}
 }

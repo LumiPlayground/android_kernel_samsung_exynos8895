@@ -87,8 +87,7 @@ static const struct v4l2_subdev_core_ops core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops video_ops = {
-	.s_stream = sensor_module_s_stream,
-	.s_parm = sensor_module_s_param
+	.s_stream = sensor_module_s_stream
 };
 
 static const struct v4l2_subdev_pad_ops pad_ops = {
@@ -116,7 +115,7 @@ static int sensor_module_3p3_power_setpin(struct platform_device *pdev,
 	int gpio_camsensor_core_en = 0;
 #endif
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -198,7 +197,7 @@ static int sensor_module_3p3_power_setpin(struct platform_device *pdev,
 	return 0;
 }
 
-static int __init sensor_module_3p3_probe(struct platform_device *pdev)
+int sensor_module_3p3_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -209,7 +208,7 @@ static int __init sensor_module_3p3_probe(struct platform_device *pdev)
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -231,9 +230,9 @@ static int __init sensor_module_3p3_probe(struct platform_device *pdev)
 		goto p_err;
 	}
 
-	probe_info("%s pdta->id(%d), module_enum id = %d \n", __func__, pdata->id, atomic_read(&device->module_count));
-	module = &device->module_enum[atomic_read(&device->module_count)];
-	atomic_inc(&device->module_count);
+	probe_info("%s pdta->id(%d), module_enum id = %d \n", __func__, pdata->id, atomic_read(&core->resourcemgr.rsccount_module));
+	module = &device->module_enum[atomic_read(&core->resourcemgr.rsccount_module)];
+	atomic_inc(&core->resourcemgr.rsccount_module);
 	clear_bit(FIMC_IS_MODULE_GPIO_ON, &module->state);
 	module->pdata = pdata;
 	module->dev = dev;
@@ -274,6 +273,7 @@ static int __init sensor_module_3p3_probe(struct platform_device *pdev)
 
 	ext = &module->ext;
 	ext->mipi_lane_num = module->lanes;
+	ext->I2CSclk = 0;
 
 	ext->sensor_con.product_name = module->sensor_id;
 	ext->sensor_con.peri_type = SE_I2C;
@@ -338,6 +338,15 @@ p_err:
 	return ret;
 }
 
+static int sensor_module_3p3_remove(struct platform_device *pdev)
+{
+        int ret = 0;
+
+        info("%s\n", __func__);
+
+        return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_module_3p3_match[] = {
 	{
 		.compatible = "samsung,sensor-module-3p3",
@@ -347,6 +356,8 @@ static const struct of_device_id exynos_fimc_is_sensor_module_3p3_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_3p3_match);
 
 static struct platform_driver sensor_module_3p3_driver = {
+	.probe  = sensor_module_3p3_probe,
+	.remove = sensor_module_3p3_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-MODULE-3P3",
 		.owner  = THIS_MODULE,
@@ -354,16 +365,4 @@ static struct platform_driver sensor_module_3p3_driver = {
 	}
 };
 
-static int __init fimc_is_sensor_module_3p3_init(void)
-{
-	int ret;
-
-	ret = platform_driver_probe(&sensor_module_3p3_driver,
-				sensor_module_3p3_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_3p3_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall(fimc_is_sensor_module_3p3_init);
+module_platform_driver(sensor_module_3p3_driver);

@@ -1,6 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) Samsung Electronics Co., Ltd.
+ * linux/drivers/video/fbdev/exynos/panel/panel_bl.h
+ *
+ * Header file for Samsung Common LCD Driver.
+ *
+ * Copyright (c) 2016 Samsung Electronics
  * Gwanghui Lee <gwanghui.lee@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -11,17 +14,11 @@
 #ifndef __PANEL_BL_H__
 #define __PANEL_BL_H__
 
-#include "timenval.h"
-
 struct panel_info;
 struct panel_device;
 
 #undef DEBUG_PAC
-#undef CONFIG_PANEL_BL_USE_BRT_CACHE
-
-#ifndef CONFIG_EXYNOS_DECON_LCD_S6E3HF4
 #define CONFIG_LCD_EXTEND_HBM
-#endif
 
 #ifdef CONFIG_PANEL_BACKLIGHT_PAC_3_0
 #define BRT_SCALE	(100)
@@ -34,46 +31,33 @@ struct panel_device;
 #define BRT_SCALE_DN(_val_)	((_val_) / BRT_SCALE)
 #define BRT_TBL_INDEX(_val_)	(BRT_SCALE_DN((_val_) + ((BRT_SCALE) - 1)))
 #define BRT(brt)			(BRT_SCALE_UP(brt))
-#define BRT_LT(brt)			(BRT_SCALE_UP(brt) - 1)
-#define BRT_GT(brt)			(BRT_SCALE_UP(brt) + 1)
 #define BRT_USER(brt)		(BRT_SCALE_DN(brt))
 
 #define UI_MIN_BRIGHTNESS			(BRT(0))
 #define UI_DEF_BRIGHTNESS			(BRT(128))
 #define UI_MAX_BRIGHTNESS			(BRT(255))
 #define UI_BRIGHTNESS_STEPS		(UI_MAX_BRIGHTNESS - UI_MIN_BRIGHTNESS + 1)
+#define HBM_MIN_BRIGHTNESS			(UI_MAX_BRIGHTNESS + 1)
+#define HBM_MAX_BRIGHTNESS			(BRT(365))
+#define HBM_BRIGHTNESS_STEPS		(8)
+#define EXTEND_HBM_MIN_BRIGHTNESS	(HBM_MAX_BRIGHTNESS + 1)
+#define EXTEND_HBM_MAX_BRIGHTNESS	(BRT(366))
+#define EXTEND_HBM_BRIGHTNESS_STEPS	(1)
+
+#ifdef CONFIG_LCD_EXTEND_HBM
+#define EXTEND_BRIGHTNESS			(EXTEND_HBM_MAX_BRIGHTNESS)
+#else
+#define EXTEND_BRIGHTNESS			(HBM_MAX_BRIGHTNESS)
+#endif
 #define IS_UI_BRIGHTNESS(br)            (((br) <= UI_MAX_BRIGHTNESS) ? 1 : 0)
-
-#define AOR_TO_RATIO(aor, vtotal) \
-	(((aor) * disp_pow(10, 5) / (vtotal) + 5 * disp_pow(10, 0)) / disp_pow(10, 1))
-
-#define VIRTUAL_BASE_LUMINANCE(lum, aor_ratio) \
-	((lum) * disp_pow(10, 6) / (disp_pow(10, 4) - (aor_ratio)))
+#define IS_HBM_BRIGHTNESS(br)           ((((br) >= HBM_MIN_BRIGHTNESS) && ((br) <= HBM_MAX_BRIGHTNESS)) ? 1 : 0)
+#define IS_EXT_HBM_BRIGHTNESS(br)       ((((br) >= EXTEND_HBM_MIN_BRIGHTNESS) && ((br) <= EXTEND_HBM_MAX_BRIGHTNESS)) ? 1 : 0)
 
 enum SEARCH_TYPE {
 	SEARCH_TYPE_EXACT,
 	SEARCH_TYPE_LOWER,
 	SEARCH_TYPE_UPPER,
 	MAX_SEARCH_TYPE,
-};
-
-enum DIMTYPE {
-	A_DIMMING = 0,
-	S_DIMMING,
-	MAX_DIMMING_TYPE,
-};
-
-enum {
-	IRC_R_64 = 8,
-	IRC_G_64,
-	IRC_B_64,
-	IRC_R_128,
-	IRC_G_128,
-	IRC_B_128,
-	IRC_R_192,
-	IRC_G_192,
-	IRC_B_192,
-	MAX_IRC_PARAM,
 };
 
 struct brightness_table {
@@ -89,18 +73,16 @@ struct brightness_table {
 	/* actual brightness table */
 	u32 *lum;
 	u32 sz_lum;
-
-	/*
-	 * luminance table has 3 (ui, hbm, ext_hbm) regions.
-	 * to determine current luminance's region, these sizes are necessary.
-	 * ui luminance : ui brightness region. (typ:0 ~ 255)
-	 * hbm luminance : hbm interpolation brightness region
-	 * ext hbm luminance : extended hbm brightness
-	 */
 	u32 sz_ui_lum;
 	u32 sz_hbm_lum;
 	u32 sz_ext_hbm_lum;
-	u32 vtotal;
+	u32 max_ui_lum;
+	u32 max_hbm_lum;
+};
+
+struct panel_bl_ops {
+    int (*set_brightness)(void *, int level);
+	int (*get_brightness)(void *);
 };
 
 enum panel_bl_hw_type {
@@ -111,12 +93,7 @@ enum panel_bl_hw_type {
 
 enum panel_bl_subdev_type {
 	PANEL_BL_SUBDEV_TYPE_DISP,
-#ifdef CONFIG_SUPPORT_HMD
 	PANEL_BL_SUBDEV_TYPE_HMD,
-#endif
-#ifdef CONFIG_SUPPORT_AOD_BL
-	PANEL_BL_SUBDEV_TYPE_AOD,
-#endif
 	MAX_PANEL_BL_SUBDEV,
 };
 
@@ -126,8 +103,6 @@ struct panel_bl_properties {
 	int actual_brightness;
 	int actual_brightness_index;
 	int actual_brightness_intrp;
-	int step;
-	int brightness_of_step;
 	int acl_pwrsave;
 	int acl_opr;
 };
@@ -138,10 +113,6 @@ struct panel_bl_sub_dev {
 	enum panel_bl_subdev_type subdev_type;
 	struct brightness_table brt_tbl;
 	int brightness;
-#if defined(CONFIG_PANEL_BL_USE_BRT_CACHE)
-	int *brt_cache_tbl;
-	int sz_brt_cache_tbl;
-#endif
 };
 
 struct panel_bl_device {
@@ -149,6 +120,7 @@ struct panel_bl_device {
 	struct backlight_device *bd;
 	void *bd_data;
 	struct mutex ops_lock;
+	const struct panel_bl_ops *ops;
 	struct mutex lock;
 	struct panel_bl_properties props;
 	struct panel_bl_sub_dev subdev[MAX_PANEL_BL_SUBDEV];
@@ -156,37 +128,18 @@ struct panel_bl_device {
 	int saved_br;
 	bool finger_layer;
 #endif
-	struct timenval tnv[2];
 };
 
 int panel_bl_probe(struct panel_device *panel);
-int panel_bl_set_brightness(struct panel_bl_device *panel_bl, int id, int force);
-int get_max_brightness(struct panel_bl_device *panel_bl);
-int get_brightness_pac_step(struct panel_bl_device *panel_bl, int brightness);
-int get_brightness_of_brt_to_step(struct panel_bl_device *panel_bl, int id, int brightness);
-int get_actual_brightness(struct panel_bl_device *panel_bl, int brightness);
-int get_subdev_actual_brightness(struct panel_bl_device *panel_bl, int id, int brightness);
-int get_actual_brightness_index(struct panel_bl_device *panel_bl, int brightness);
-int get_subdev_actual_brightness_index(struct panel_bl_device *panel_bl,
-		int id, int brightness);
-int get_actual_brightness_interpolation(struct panel_bl_device *panel_bl, int brightness);
-int get_subdev_actual_brightness_interpolation(struct panel_bl_device *panel_bl, int id, int brightness);
-int panel_bl_get_acl_pwrsave(struct panel_bl_device *panel_bl);
-int panel_bl_get_acl_opr(struct panel_bl_device *panel_bl);
+int panel_bl_set_brightness(struct panel_bl_device *, int, int);
+int get_brightness_pac_step(struct panel_bl_device *, int);
+int get_actual_brightness(struct panel_bl_device *, int);
+int get_subdev_actual_brightness(struct panel_bl_device *, int, int);
+int get_actual_brightness_index(struct panel_bl_device *, int);
+int get_subdev_actual_brightness_index(struct panel_bl_device *, int, int);
+int get_actual_brightness_interpolation(struct panel_bl_device *, int);
+int get_subdev_actual_brightness_interpolation(struct panel_bl_device *, int, int);
+int panel_bl_get_acl_pwrsave(struct panel_bl_device *);
+int panel_bl_get_acl_opr(struct panel_bl_device *);
 bool is_hbm_brightness(struct panel_bl_device *panel_bl, int brightness);
-bool is_ext_hbm_brightness(struct panel_bl_device *panel_bl, int brightness);
-int panel_bl_set_subdev(struct panel_bl_device *panel_bl, int id);
-
-int panel_bl_update_average(struct panel_bl_device *panel_bl, size_t index);
-int panel_bl_clear_average(struct panel_bl_device *panel_bl, size_t index);
-int panel_bl_get_average_and_clear(struct panel_bl_device *panel_bl, size_t index);
-int aor_interpolation(unsigned int *brt_tbl, unsigned int *lum_tbl,
-		u8 (*aor_tbl)[2], int size, int size_ui_lum, u32 vtotal, int brightness);
-int panel_bl_aor_interpolation(struct panel_bl_device *panel_bl,
-		int id, u8(*aor_tbl)[2]);
-int irc_interpolation(unsigned int *brt_tbl, unsigned int *lum_tbl,
-		u8 (*irc_tbl)[MAX_IRC_PARAM], int size, int size_ui_lum,
-		u8 *dst, int brightness);
-int panel_bl_irc_interpolation(struct panel_bl_device *panel_bl, int id,
-		u8 (*irc_tbl)[MAX_IRC_PARAM], u8 *dst);
 #endif /* __PANEL_BL_H__ */

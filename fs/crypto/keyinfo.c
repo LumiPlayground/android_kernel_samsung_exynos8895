@@ -177,9 +177,9 @@ static int determine_cipher_type(struct fscrypt_info *ci, struct inode *inode,
 		mode = ci->ci_data_mode;
 #ifdef CONFIG_FS_PRIVATE_ENCRYPTION
 		if (mode == FS_PRIVATE_ENCRYPTION_MODE_AES_256_XTS)
-			inode->i_mapping->fmp_ci.private_algo_mode = EXYNOS_FMP_ALGO_MODE_AES_XTS;
+			inode->i_mapping->private_algo_mode = FMP_XTS_ALGO_MODE;
 		else if (mode == FS_PRIVATE_ENCRYPTION_MODE_AES_256_CBC)
-			inode->i_mapping->fmp_ci.private_algo_mode = EXYNOS_FMP_ALGO_MODE_AES_CBC;
+			inode->i_mapping->private_algo_mode = FMP_CBC_ALGO_MODE;
 #endif
 	} else if (S_ISDIR(inode->i_mode) || S_ISLNK(inode->i_mode)) {
 		mode = ci->ci_filename_mode;
@@ -391,13 +391,13 @@ int fscrypt_get_encryption_info(struct inode *inode)
 sdp_dek:
 #endif
 
-	if (inode->i_mapping->fmp_ci.private_algo_mode == EXYNOS_FMP_ALGO_MODE_AES_XTS ||
-			inode->i_mapping->fmp_ci.private_algo_mode == EXYNOS_FMP_ALGO_MODE_AES_CBC) {
-		memset(inode->i_mapping->fmp_ci.key, 0, MAX_KEY_SIZE);
-		memcpy(inode->i_mapping->fmp_ci.key, raw_key, keysize);
-		inode->i_mapping->fmp_ci.key_length = keysize;
+	if (inode->i_mapping->private_algo_mode == FMP_XTS_ALGO_MODE ||
+			inode->i_mapping->private_algo_mode == FMP_CBC_ALGO_MODE) {
+		memset(inode->i_mapping->key, 0, MAX_KEY_SIZE);
+		memcpy(inode->i_mapping->key, raw_key, keysize);
+		inode->i_mapping->key_length = keysize;
 	} else {
-		inode->i_mapping->fmp_ci.private_algo_mode = EXYNOS_FMP_BYPASS_MODE;
+		inode->i_mapping->private_algo_mode = FMP_BYPASS_MODE;
 
 		ctfm = crypto_alloc_skcipher(cipher_str, 0, 0);
 		if (!ctfm || IS_ERR(ctfm)) {

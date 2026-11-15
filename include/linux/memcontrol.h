@@ -928,3 +928,7 @@ static inline void memcg_kmem_update_page_stat(struct page *page,
 #endif /* CONFIG_MEMCG && !CONFIG_SLOB */
 
 #endif /* _LINUX_MEMCONTROL_H */
+
+/* Legacy 8895 socket callers retain their original reference semantics. */
+#define sock_update_memcg mem_cgroup_sk_alloc
+#define sock_release_memcg mem_cgroup_sk_free

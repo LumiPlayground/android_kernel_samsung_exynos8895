@@ -20,7 +20,14 @@
 #ifdef __KERNEL__
 
 #include <linux/videodev2.h>
-#include <media/v4l2-mc.h>
+
+/* Tuner PADs */
+/* FIXME: is this the right place for it? */
+enum tuner_pad_index {
+	TUNER_PAD_RF_INPUT,
+	TUNER_PAD_IF_OUTPUT,
+	TUNER_NUM_PADS
+};
 
 #define ADDR_UNSET (255)
 

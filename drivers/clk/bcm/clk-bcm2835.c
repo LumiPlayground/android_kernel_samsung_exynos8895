@@ -881,23 +881,11 @@ static u32 bcm2835_clock_choose_div(struct clk_hw *hw,
 		div += unused_frac_mask + 1;
 	div &= ~unused_frac_mask;
 
-	/* different clamping limits apply for a mash clock */
-	if (data->is_mash_clock) {
-		/* clamp to min divider of 2 */
-		mindiv = 2 << CM_DIV_FRAC_BITS;
-		/* clamp to the highest possible integer divider */
-		maxdiv = (BIT(data->int_bits) - 1) << CM_DIV_FRAC_BITS;
-	} else {
-		/* clamp to min divider of 1 */
-		mindiv = 1 << CM_DIV_FRAC_BITS;
-		/* clamp to the highest possible fractional divider */
-		maxdiv = GENMASK(data->int_bits + CM_DIV_FRAC_BITS - 1,
-				 CM_DIV_FRAC_BITS - data->frac_bits);
-	}
-
-	/* apply the clamping  limits */
-	div = max_t(u32, div, mindiv);
-	div = min_t(u32, div, maxdiv);
+	/* clamp to min divider of 1 */
+	div = max_t(u32, div, 1 << CM_DIV_FRAC_BITS);
+	/* clamp to the highest possible fractional divider */
+	div = min_t(u32, div, GENMASK(data->int_bits + CM_DIV_FRAC_BITS - 1,
+				      CM_DIV_FRAC_BITS - data->frac_bits));
 
 	return div;
 }

@@ -70,7 +70,6 @@ struct fsg_opts {
 	struct fsg_common *common;
 	struct usb_function_instance func_inst;
 	struct fsg_lun_opts lun0;
-	struct config_group *default_groups[2];
 	bool no_configfs; /* for legacy gadgets */
 
 	/*
@@ -89,7 +88,6 @@ struct fsg_lun_config {
 	char removable;
 	char cdrom;
 	char nofua;
-	char inquiry_string[INQUIRY_STRING_LEN];
 };
 
 struct fsg_config {

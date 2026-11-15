@@ -13,6 +13,7 @@
 
 #include "../exynos-hdcp2-config.h"
 #include "../exynos-hdcp2-protocol-msg.h"
+#include "../exynos-hdcp2-teeif.h"
 #include "../exynos-hdcp2.h"
 #include "../exynos-hdcp2-misc.h"
 #include "../exynos-hdcp2-log.h"
@@ -87,7 +88,7 @@ static int dp_rp_verify_stream_ready(uint8_t *m_prime)
 {
 	int ret;
 
-	ret = teei_verify_m_prime(m_prime, NULL, 0);
+	ret = teei_verify_m_prime(m_prime);
 	if (ret) {
 		hdcp_err("teei_verify_m_prime() is failed with %x\n", ret);
 		return ERR_RP_INVALID_M_PRIME;
@@ -422,10 +423,9 @@ static int dp_cap_rpauth_send_ack(uint8_t *m,
 	}
 
 #ifdef HDCP_TX_REPEATER_DEBUG
-	hdcp_debug("RepeaterAuth_Send_Ack(%u)\n", *m_len);
+        hdcp_debug("RepeaterAuth_Send_Ack(%u)\n", *m_len);
 	hdcp_hexdump(m, *m_len);
 #endif
-
 	return 0;
 }
 
@@ -475,6 +475,8 @@ static int dp_decap_rpauth_stream_ready(uint8_t *m,
 
 	m_prime = m;
 	ret = dp_rp_verify_stream_ready(m_prime);
+	if (ret)
+		return ret;
 
 	return 0;
 }

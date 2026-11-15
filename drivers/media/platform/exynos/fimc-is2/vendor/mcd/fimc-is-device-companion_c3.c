@@ -340,7 +340,7 @@ static int fimc_is_comp_probe(struct platform_device *pdev)
 	resourcemgr = device->resourcemgr;
 	module_enum = device->module_enum;
 
-	mmax = atomic_read(&device->module_count);
+	mmax = atomic_read(&resourcemgr->rsccount_module);
 	for (mindex = 0; mindex < mmax; mindex++) {
 		if (module_enum[mindex].position == position) {
 			sensor_peri = (struct fimc_is_device_sensor_peri *)module_enum[mindex].private_data;

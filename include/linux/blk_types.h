@@ -69,19 +69,18 @@ struct bio {
 	};
 
 	unsigned short		bi_vcnt;	/* how many bio_vec's */
-	struct {
-		int		private_enc_mode;	/* Encryption mode */
-		int 		private_algo_mode;	/* Encryption algorithm */
-		unsigned char	*key;		/* Encryption Key */
-		unsigned int	key_length;	/* Encryption Key length */
-
-		/*
-		 * When using dircet-io (O_DIRECT), we can't get the inode from a bio
-		 * by walking bio->bi_io_vec->bv_page->mapping->host
-		 * since the page is anon.
-		 */
-		struct inode	*bi_dio_inode;
-	} fmp_ci;
+#if defined(CONFIG_FMP_DM_CRYPT) || defined(CONFIG_FMP_EXT4CRYPT_FS)
+	int			private_enc_mode;
+	int			private_algo_mode;
+	unsigned char		*key;
+	unsigned int		key_length;
+#endif
+	/*
+	 * When using dircet-io (O_DIRECT), we can't get the inode from a bio
+	 * by walking bio->bi_io_vec->bv_page->mapping->host
+	 * since the page is anon.
+	 */
+	struct inode		*bi_dio_inode;
 
 	/*
 	 * Everything starting with bi_max_vecs will be preserved by bio_reset()

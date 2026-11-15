@@ -12,16 +12,11 @@ config SEC_MODEM_SS310AP
 	select LINK_DEVICE_SHMEM
 	select CP_SECURE_BOOT
 	select CP_RAM_LOGGING
-	select KLAT
 	default y
 
 config CP_ZEROCOPY
 	bool "Support zero memory copy"
 	default y
-
-config CP_SMAPPER
-	bool "Support SMAPPER"
-	default n
 
 menu "Configuration Description"
 config BOOT_DEVICE_SPI
@@ -102,26 +97,15 @@ config CP_RAM_LOGGING
 	bool "Support CP ram logging feature"
 	default n
 
-config HW_REV_DETECT
-	bool "Support HW REV Detect"
+config MODEM_IF_LEGACY_QOS
+	bool "Implement QoS for legacy"
+	depends on LINK_DEVICE_SHMEM
 	default n
 
 config MODEM_IF_QOS
 	bool "Implement QoS for sbd"
 	depends on LINK_DEVICE_SHMEM
 	default n
-	---help---
-	  This enables Qos for SBD model
 
-config MODEM_IF_NET_GRO
-	bool "enable GRO feature"
-	depends on LINK_DEVICE_SHMEM
-	default n
-	---help---
-	 This enables GRO(Generic Receive Offload) feature
-
-config KLAT
-	bool "kernel CLAT"
-	default n
 endmenu
 endif

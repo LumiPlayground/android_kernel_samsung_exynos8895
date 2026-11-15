@@ -20,7 +20,6 @@ const u32 sensor_2p8_setfile_A_5328x3000_30fps[] = {
 	/* Arm go */
 	0x6028, 0x4000, 0x02,
 	0x6010, 0x0001, 0x02,
-	I2C_MODE_DELAY, 3000, 0x00, /* Delay 3000us */
 
 	/* page select */
 	0x6028,	0x4000,	0x02,
@@ -1158,7 +1157,6 @@ const u32 sensor_2p8_setfile_A_4000x3000_30fps[] = {
 	/* ARM go */
 	0x6028,	0x4000, 0x02,
 	0x6010, 0x0001, 0x02,
-	I2C_MODE_DELAY, 3000, 0x00, /* Delay 3000us */
 
 	/* page select */
 	0x6028,	0x4000,	0x02,
@@ -2332,7 +2330,6 @@ const u32 sensor_2p8_setfile_A_3008x3000_30fps[] = {
 	/* Arm Go */
 	0x6028, 0x4000, 0x02,
 	0x6010, 0x0001, 0x02,
-	I2C_MODE_DELAY, 3000, 0x00, /* Delay 3000us */
 
 	/* page select */
 	0x6028,	0x4000,	0x02,
@@ -3457,7 +3454,6 @@ const u32 sensor_2p8_setfile_A_2664x1500_60fps[] = {
 	/* Arm go */
 	0x6028, 0x4000, 0x02,
 	0x6010, 0x0001, 0x02,
-	I2C_MODE_DELAY, 3000, 0x00, /* Delay 3000us */
 
 	/* page select */
 	0x6028,	0x4000,	0x02,
@@ -4630,8 +4626,6 @@ const u32 sensor_2p8_setfile_A_2664x1500_60fps[] = {
 const u32 sensor_2p8_setfile_A_1328x748_120fps[] = {
 	/* Arm go */
 	0x6028, 0x4000, 0x02,
-	0x6010, 0x0001, 0x02,
-	I2C_MODE_DELAY, 3000, 0x00, /* Delay 3000us */
 
 	/* page select */
 	0x6028,	0x4000,	0x02,

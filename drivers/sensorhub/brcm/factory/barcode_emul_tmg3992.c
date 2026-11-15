@@ -34,7 +34,7 @@ enum {
 	index,
 };
 
-void mobeam_write(struct ssp_data *data, int type, u8 *u_buf)
+void mobeam_write(struct ssp_data *data, int type, u8 *u_buf, u8 length)
 {
 	int iRet = 0;
 	u8 command = -1;
@@ -52,19 +52,19 @@ void mobeam_write(struct ssp_data *data, int type, u8 *u_buf)
 	switch (type) {
 	case dataset:
 		command = MSG2SSP_AP_MOBEAM_DATA_SET;
-		data_length = 128;
+		data_length = length;
 		break;
 	case registerset:
 		command = MSG2SSP_AP_MOBEAM_REGISTER_SET;
-		data_length = 6;
+		data_length = length;
 		break;
 	case countset:
 		command = MSG2SSP_AP_MOBEAM_COUNT_SET;
-		data_length = 1;
+		data_length = length;
 		break;
 	case start:
 		command = MSG2SSP_AP_MOBEAM_START;
-		data_length = 1;
+		data_length = length;
 		is_beaming = BEAMING_ON;
 		break;
 	default:
@@ -74,7 +74,7 @@ void mobeam_write(struct ssp_data *data, int type, u8 *u_buf)
 
 	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	msg->cmd = command;
-	msg->length = data_length;
+	msg->length = data_length + 1; // for including '\n'
 	msg->options = AP2HUB_WRITE;
 	msg->buffer = kzalloc(data_length, GFP_KERNEL);
 	if ((msg->buffer) == NULL) {
@@ -84,7 +84,8 @@ void mobeam_write(struct ssp_data *data, int type, u8 *u_buf)
 	}
 	msg->free_buffer = 1;
 
-	memcpy(msg->buffer, u_buf, data_length);
+	u_buf[data_length] = '\0'; // for including '\n', because sensorhub uses strlen func.
+	memcpy(msg->buffer, u_buf, data_length + 1);
 
 	iRet = ssp_spi_async(data, msg);
 
@@ -149,13 +150,14 @@ static ssize_t barcode_emul_store(struct device *dev,
 		pr_info("[SSP] %s - not enough size of input data(%d)", __func__, (int)size);
 		return -EINVAL;
 	}
-	
+
 	memset(send_buf, 0xFF, 128);
 	if (buf[0] == 0xFF && buf[1] != STOP_BEAMING) {
 		pr_info("[SSP] %s - START BEAMING(0x%X, 0x%X)\n", __func__,
 			buf[0], buf[1]);
 		send_buf[1] = buf[1];
-		mobeam_write(data, start, &send_buf[1]);
+		len = 1;
+		mobeam_write(data, start, &send_buf[1], len);
 	} else if (buf[0] == 0xFF && buf[1] == STOP_BEAMING) {
 		pr_info("[SSP] %s - STOP BEAMING(0x%X, 0x%X)\n", __func__,
 			buf[0], buf[1]);
@@ -171,11 +173,12 @@ static ssize_t barcode_emul_store(struct device *dev,
 		pr_info("[SSP] %s - %u %u %u %u %u %u\n", __func__,
 			send_buf[0], send_buf[1], send_buf[2],
 			send_buf[3], send_buf[4], send_buf[5]);
-		mobeam_write(data, dataset, send_buf);
+		mobeam_write(data, dataset, send_buf, len);
 	} else if (buf[0] == 0x80) {
 		pr_info("[SSP] %s - HOP COUNT SET(0x%X)\n", __func__, buf[1]);
 		hop_count = buf[1];
-		mobeam_write(data, countset, &hop_count);
+		len = 1;
+		mobeam_write(data, countset, &hop_count, len);
 	} else {
 		pr_info("[SSP] %s - REGISTER SET(0x%X)\n", __func__, buf[0]);
 		if(size < 8) {
@@ -191,7 +194,8 @@ static ssize_t barcode_emul_store(struct device *dev,
 		send_buf[3] = buf[4];
 		send_buf[4] = buf[5];
 		send_buf[5] = buf[7];
-		mobeam_write(data, registerset, send_buf);
+		len = 6;
+		mobeam_write(data, registerset, send_buf, len);
 	}
 	return size;
 }
@@ -225,14 +229,16 @@ static ssize_t barcode_emul_test_store(struct device *dev,
 	u8 barcode_data[14] = {0xFF, 0xAC, 0xDB, 0x36, 0x42, 0x85,
 			0x0A, 0xA8, 0xD1, 0xA3, 0x46, 0xC5, 0xDA, 0xFF};
 	u8 test_data[128] = { 0, };
+	int len = 0;
 
 	memset(test_data, 0xFF, 128);
 	if (buf[0] == COUNT_TEST) {
 		test_data[0] = 0x80;
 		test_data[1] = 1;
+		len = 1;
 		pr_info("[SSP] %s, COUNT_TEST - 0x%X, %u\n", __func__,
 			test_data[0], test_data[1]);
-		mobeam_write(data, countset, &test_data[1]);
+		mobeam_write(data, countset, &test_data[1], len);
 	} else if (buf[0] == REGISTER_TEST) {
 		test_data[0] = 0;
 		test_data[1] = 10;
@@ -240,16 +246,18 @@ static ssize_t barcode_emul_test_store(struct device *dev,
 		test_data[3] = 30;
 		test_data[4] = 40;
 		test_data[5] = 50;
+		len = 6;
 		pr_info("[SSP] %s, REGISTER_TEST - %u: %u %u %u %u %u\n",
 			__func__, test_data[0], test_data[1], test_data[2],
 			test_data[3], test_data[4], test_data[5]);
-		mobeam_write(data, registerset, test_data);
+		mobeam_write(data, registerset, test_data, len);
 	} else if (buf[0] == DATA_TEST) {
 		memcpy(test_data, &barcode_data[1], 13);
+		len = 13;
 		pr_info("[SSP] %s, DATA_TEST - 0x%X 0x%X 0x%X 0x%X 0x%X 0x%X\n",
 			__func__, test_data[0], test_data[1], test_data[2],
 			test_data[3], test_data[4], test_data[5]);
-		mobeam_write(data, dataset, test_data);
+		mobeam_write(data, dataset, test_data, len);
 	}
 	return size;
 }

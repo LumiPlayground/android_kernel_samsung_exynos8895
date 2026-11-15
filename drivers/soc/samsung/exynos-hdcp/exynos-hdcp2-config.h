@@ -12,8 +12,8 @@
 
 #define TEST_HDCP
 
-#undef TEST_VECTOR_1
-#define TEST_VECTOR_2
+#define TEST_VECTOR_1
+#undef TEST_VECTOR_2
 #undef HDCP_AKE_DEBUG
 #undef HDCP_SKE_DEBUG
 #undef HDCP_TX_REPEATER_DEBUG

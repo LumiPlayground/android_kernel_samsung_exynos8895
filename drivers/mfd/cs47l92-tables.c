@@ -1,7 +1,7 @@
 /*
- * Regmap tables for CS47L92 codec
+ * cs47l92-tables.c  --  data tables for CS47L92/CS47L93 codecs
  *
- * Copyright 2016-2017 Cirrus Logic
+ * Copyright 2016 Cirrus Logic
  *
  * Author: Stuart Henderson <stuarth@opensource.wolfsonmicro.com>
  *
@@ -10,12 +10,11 @@
  * published by the Free Software Foundation.
  */
 
-#include <linux/device.h>
 #include <linux/module.h>
-#include <linux/regmap.h>
 
 #include <linux/mfd/madera/core.h>
 #include <linux/mfd/madera/registers.h>
+#include <linux/device.h>
 
 #include "madera.h"
 
@@ -151,6 +150,9 @@ static const struct reg_default cs47l92_reg_default[] = {
 	{ 0x00000114, 0x0011 }, /* R276 (0x114) - Async sample rate 2 */
 	{ 0x00000120, 0x0305 }, /* R288 (0x120) - DSP Clock 1 */
 	{ 0x00000122, 0x0000 }, /* R290 (0x122) - DSP Clock 2 */
+	{ 0x00000124, 0x0c49 }, /* R292 (0x124) - DSP Clock 3 */
+	{ 0x00000126, 0x0000 }, /* R294 (0x126) - DSP Clock 4 */
+	{ 0x00000127, 0x0000 }, /* R295 (0x127) - DSP Clock 5 */
 	{ 0x00000149, 0x0000 }, /* R329 (0x149) - Output system clock */
 	{ 0x0000014a, 0x0000 }, /* R330 (0x14a) - Output async clock */
 	{ 0x00000152, 0x0000 }, /* R338 (0x152) - Rate Estimator 1 */
@@ -176,6 +178,8 @@ static const struct reg_default cs47l92_reg_default[] = {
 	{ 0x00000184, 0x0000 }, /* R388 (0x184) - FLL1 Synchroniser 4 */
 	{ 0x00000185, 0x0001 }, /* R389 (0x185) - FLL1 Synchroniser 5 */
 	{ 0x00000186, 0x0000 }, /* R390 (0x186) - FLL1 Synchroniser 6 */
+	{ 0x00000188, 0x21f0 }, /* R392 (0x188) - FLL1 Synchroniser 7 */
+	{ 0x00000189, 0x0000 }, /* R393 (0x189) - FLL1 Synchroniser 8 */
 	{ 0x0000018e, 0x0c04 }, /* R398 (0x18e) - FLL1 GPIO Clock */
 	{ 0x00000191, 0x7000 }, /* R401 (0x191) - FLL2 Control 1 */
 	{ 0x00000192, 0x0004 }, /* R402 (0x192) - FLL2 Control 2 */
@@ -195,6 +199,8 @@ static const struct reg_default cs47l92_reg_default[] = {
 	{ 0x000001a4, 0x0000 }, /* R420 (0x1a4) - FLL2 Synchroniser 4 */
 	{ 0x000001a5, 0x0001 }, /* R421 (0x1a5) - FLL2 Synchroniser 5 */
 	{ 0x000001a6, 0x0000 }, /* R422 (0x1a6) - FLL2 Synchroniser 6 */
+	{ 0x000001a8, 0x21f0 }, /* R424 (0x1a8) - FLL2 Synchroniser 7 */
+	{ 0x000001a9, 0x0000 }, /* R425 (0x1a9) - FLL2 Synchroniser 8 */
 	{ 0x000001ae, 0x0c04 }, /* R430 (0x1ae) - FLL2 GPIO Clock */
 	{ 0x00000200, 0x0006 }, /* R512 (0x200) - Mic Charge Pump 1 */
 	{ 0x00000213, 0x03e4 }, /* R531 (0x213) - LDO2 Control 1 */
@@ -1119,15 +1125,13 @@ static const struct reg_default cs47l92_reg_default[] = {
 
 static bool cs47l92_is_adsp_memory(unsigned int reg)
 {
-	switch (reg) {
-	case 0x080000 ... 0x082ffe:
-	case 0x0a0000 ... 0x0a1ffe:
-	case 0x0c0000 ... 0x0c1ffe:
-	case 0x0e0000 ... 0x0e1ffe:
+	if ((reg >= 0x080000 && reg <= 0x082ffe) ||
+	    (reg >= 0x0a0000 && reg <= 0x0a1ffe) ||
+	    (reg >= 0x0c0000 && reg <= 0x0c1ffe) ||
+	    (reg >= 0x0e0000 && reg <= 0x0e1ffe))
 		return true;
-	default:
+	else
 		return false;
-	}
 }
 
 static bool cs47l92_16bit_readable_register(struct device *dev,
@@ -1179,6 +1183,9 @@ static bool cs47l92_16bit_readable_register(struct device *dev,
 	case MADERA_ASYNC_SAMPLE_RATE_2_STATUS:
 	case MADERA_DSP_CLOCK_1:
 	case MADERA_DSP_CLOCK_2:
+	case MADERA_DSP_CLOCK_3:
+	case MADERA_DSP_CLOCK_4:
+	case MADERA_DSP_CLOCK_5:
 	case MADERA_OUTPUT_SYSTEM_CLOCK:
 	case MADERA_OUTPUT_ASYNC_CLOCK:
 	case MADERA_RATE_ESTIMATOR_1:
@@ -1204,7 +1211,9 @@ static bool cs47l92_16bit_readable_register(struct device *dev,
 	case MADERA_FLL1_SYNCHRONISER_4:
 	case MADERA_FLL1_SYNCHRONISER_5:
 	case MADERA_FLL1_SYNCHRONISER_6:
-	case CS47L92_FLL1_GPIO_CLOCK:
+	case MADERA_FLL1_SYNCHRONISER_7:
+	case CS47L92_FLL1_SYNCHRONISER_8:
+	case MADERA_FLL1_GPIO_CLOCK:
 	case MADERA_FLL2_CONTROL_1:
 	case MADERA_FLL2_CONTROL_2:
 	case MADERA_FLL2_CONTROL_3:
@@ -1223,7 +1232,9 @@ static bool cs47l92_16bit_readable_register(struct device *dev,
 	case MADERA_FLL2_SYNCHRONISER_4:
 	case MADERA_FLL2_SYNCHRONISER_5:
 	case MADERA_FLL2_SYNCHRONISER_6:
-	case CS47L92_FLL2_GPIO_CLOCK:
+	case MADERA_FLL2_SYNCHRONISER_7:
+	case CS47L92_FLL2_SYNCHRONISER_8:
+	case MADERA_FLL2_GPIO_CLOCK:
 	case MADERA_MIC_CHARGE_PUMP_1:
 	case MADERA_LDO2_CONTROL_1:
 	case MADERA_MIC_BIAS_CTRL_1:
@@ -2360,8 +2371,6 @@ const struct regmap_config cs47l92_16bit_spi_regmap = {
 	.reg_bits = 32,
 	.pad_bits = 16,
 	.val_bits = 16,
-	.reg_format_endian = REGMAP_ENDIAN_BIG,
-	.val_format_endian = REGMAP_ENDIAN_BIG,
 
 	.max_register = MADERA_INTERRUPT_RAW_STATUS_1,
 	.readable_reg = cs47l92_16bit_readable_register,
@@ -2377,8 +2386,6 @@ const struct regmap_config cs47l92_16bit_i2c_regmap = {
 	.name = "cs47l92_16bit",
 	.reg_bits = 32,
 	.val_bits = 16,
-	.reg_format_endian = REGMAP_ENDIAN_BIG,
-	.val_format_endian = REGMAP_ENDIAN_BIG,
 
 	.max_register = MADERA_INTERRUPT_RAW_STATUS_1,
 	.readable_reg = cs47l92_16bit_readable_register,
@@ -2396,8 +2403,6 @@ const struct regmap_config cs47l92_32bit_spi_regmap = {
 	.reg_stride = 2,
 	.pad_bits = 16,
 	.val_bits = 32,
-	.reg_format_endian = REGMAP_ENDIAN_BIG,
-	.val_format_endian = REGMAP_ENDIAN_BIG,
 
 	.max_register = MADERA_DSP1_PMEM_ERR_ADDR___XMEM_ERR_ADDR,
 	.readable_reg = cs47l92_32bit_readable_register,
@@ -2412,8 +2417,6 @@ const struct regmap_config cs47l92_32bit_i2c_regmap = {
 	.reg_bits = 32,
 	.reg_stride = 2,
 	.val_bits = 32,
-	.reg_format_endian = REGMAP_ENDIAN_BIG,
-	.val_format_endian = REGMAP_ENDIAN_BIG,
 
 	.max_register = MADERA_DSP1_PMEM_ERR_ADDR___XMEM_ERR_ADDR,
 	.readable_reg = cs47l92_32bit_readable_register,

@@ -106,7 +106,7 @@ static int muic_notifier_notify(void)
 			muic_notifier.cxt.cable_type);
 
 #ifdef CONFIG_SEC_FACTORY
-	if (muic_notifier.cxt.attach != 0)
+	if(muic_notifier.cxt.attach != 0)
 		muic_send_attached_muic_cable_intent(muic_notifier.cxt.cable_type);
 	else
 		muic_send_attached_muic_cable_intent(0);
@@ -183,6 +183,13 @@ void muic_notifier_logically_detach_attached_dev(muic_attached_dev_t cur_dev)
 
 	__set_noti_cxt(0, ATTACHED_DEV_NONE_MUIC);
 }
+
+#ifdef CONFIG_CCIC_NOTIFIER
+extern int ccic_notifier_init(void);
+#endif
+#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
+extern int manager_notifier_init(void);
+#endif
 
 static int __init muic_notifier_init(void)
 {

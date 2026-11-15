@@ -12,45 +12,67 @@
 #ifndef __SND_SOC_VTS_H
 #define __SND_SOC_VTS_H
 
-#include <sound/memalloc.h>
-#include <linux/wakelock.h>
-
 /* SYSREG_VTS */
-#define VTS_DEBUG			(0x0404)
-#define VTS_DMIC_CLK_CTRL		(0x0408)
-#define VTS_HWACG_CM4_CLKREQ		(0x0428)
-#define VTS_DMIC_CLK_CON		(0x0434)
-#define VTS_SYSPOWER_CTRL		(0x0500)
-#define VTS_SYSPOWER_STATUS		(0x0504)
+#define VTS_USER_REG2			(0x0008)
+#define VTS_BUS_COMPONENT_DRCG_EN	(0x0200)
+#define VTS_DEBUG			(0x1004)
+#define VTS_DMIC_CLK_CTRL		(0x1008)
+#define VTS_SHARED_MEM_CTRL		(0x100C)
+#define VTS_VTS_MEM_CONFIG0		(0x1010)
+#define VTS_VTS_MEM_CONFIG1		(0x1014)
+#define VTS_VTS_MEM_CONFIG2 		(0x1018)
+#define VTS_VTS_MEM_CONFIG3		(0x101C)
+#define VTS_HWACG_CM4_STATUS		(0x1020)
+#define VTS_HWACG_CM4_CONFIG		(0x1024)
+#define VTS_HWACG_CM4_CLKREQ		(0x1028)
 
+/* VTS_USER_REG2 */
+#define VTS_ENABLE_CLK_GEN_OFFSET	(0)
+#define VTS_ENABLE_CLK_GEN_SIZE		(1)
+#define VTS_SEL_EXT_DMIC_CLK_OFFSET	(1)
+#define VTS_SEL_EXT_DMIC_CLK_SIZE	(1)
+#define VTS_ENABLE_CLK_CLK_GEN_OFFSET	(14)
+#define VTS_ENABLE_CLK_CLK_GEN_SIZE	(1)
+
+/* VTS_BUS_COMPONENT_DRCG_EN */
+#define VTS_LHS_AXI_D_VTS_OFFSET	(1)
+#define VTS_LHS_AXI_D_VTS_SIZE		(1)
+#define VTS_LHM_AXI_P_VTS_OFFSET	(0)
+#define VTS_LHM_AXI_P_VTS_SIZE		(1)
 /* VTS_DEBUG */
 #define VTS_NMI_EN_BY_WDT_OFFSET	(0)
 #define VTS_NMI_EN_BY_WDT_SIZE		(1)
 /* VTS_DMIC_CLK_CTRL */
-#define VTS_CG_STATUS_OFFSET            (5)
+#define VTS_CG_STATUS_OFFSET		(5)
 #define VTS_CG_STATUS_SIZE		(1)
 #define VTS_CLK_ENABLE_OFFSET		(4)
 #define VTS_CLK_ENABLE_SIZE		(1)
 #define VTS_CLK_SEL_OFFSET		(0)
 #define VTS_CLK_SEL_SIZE		(1)
+/* VTS_SHARED_MEM_CTRL */
+#define VTS_MEM_SEL_OFFSET		(0)
+#define VTS_MEM_SEL_SIZE		(1)
+/* VTS_VTS_MEM_CONFIG0 */
+#define VTS_VTS_MEM_SIZE_OFFSET		(0)
+#define VTS_VTS_MEM_SIZE_SIZE		(20)
+/* VTS_VTS_MEM_CONFIG1 */
+#define VTS_VTS_MEM_BA0_OFFSET		(0)
+#define VTS_VTS_MEM_BA0_SIZE		(24)
+/* VTS_VTS_MEM_CONFIG2 */
+#define VTS_VTS_MEM_BA1_OFFSET		(0)
+#define VTS_VTS_MEM_BA1_SIZE		(24)
+/* VTS_VTS_MEM_CONFIG3 */
+#define VTS_VTS_ADDR_RNG_OFFSET		(0)
+#define VTS_VTS_ADDR_RNG_SIZE		(20)
+/* VTS_HWACG_CM4_STATUS */
+#define VTS_STATES_OFFSET		(0)
+#define VTS_STATES_SIZE			(3)
+/* VTS_HWACG_CM4_CONFIG */
+#define VTS_EXPIRE_VALUE_OFFSET		(0)
+#define VTS_EXPIRE_VALUE_SIZE		(8)
 /* VTS_HWACG_CM4_CLKREQ */
 #define VTS_MASK_OFFSET			(0)
 #define VTS_MASK_SIZE			(32)
-/* VTS_DMIC_CLK_CON */
-#define VTS_ENABLE_CLK_GEN_OFFSET       (0)
-#define VTS_ENABLE_CLK_GEN_SIZE         (1)
-#define VTS_SEL_EXT_DMIC_CLK_OFFSET     (1)
-#define VTS_SEL_EXT_DMIC_CLK_SIZE       (1)
-#define VTS_ENABLE_CLK_CLK_GEN_OFFSET   (14)
-#define VTS_ENABLE_CLK_CLK_GEN_SIZE     (1)
-
-/* VTS_SYSPOWER_CTRL */
-#define VTS_SYSPOWER_CTRL_OFFSET	(0)
-#define VTS_SYSPOWER_CTRL_SIZE		(1)
-/* VTS_SYSPOWER_STATUS */
-#define VTS_SYSPOWER_STATUS_OFFSET	(0)
-#define VTS_SYSPOWER_STATUS_SIZE	(1)
-
 
 #define VTS_DMIC_ENABLE_DMIC_IF		(0x0000)
 #define VTS_DMIC_CONTROL_DMIC_IF	(0x0004)
@@ -91,40 +113,32 @@
 #define VTS_CM4_R(x)			(0x0010 + (x * 0x4))
 #define VTS_CM4_PC			(0x0004)
 
-#define VTS_IRQ_VTS_ERROR               (16)
-#define VTS_IRQ_VTS_BOOT_COMPLETED      (17)
-#define VTS_IRQ_VTS_IPC_RECEIVED        (18)
-#define VTS_IRQ_VTS_VOICE_TRIGGERED     (19)
-#define VTS_IRQ_VTS_PERIOD_ELAPSED      (20)
-#define VTS_IRQ_VTS_REC_PERIOD_ELAPSED  (21)
-#define VTS_IRQ_VTS_DBGLOG_BUFZERO      (22)
-#define VTS_IRQ_VTS_DBGLOG_BUFONE       (23)
-#define VTS_IRQ_VTS_AUDIO_DUMP          (24)
-#define VTS_IRQ_VTS_LOG_DUMP            (25)
-#define VTS_IRQ_COUNT                   (26)
+#define VTS_IRQ_VTS_ERROR		(0)
+#define VTS_IRQ_VTS_BOOT_COMPLETED	(1)
+#define VTS_IRQ_VTS_IPC_RECEIVED	(2)
+#define VTS_IRQ_VTS_VOICE_TRIGGERED	(3)
+#define VTS_IRQ_VTS_PERIOD_ELAPSED	(4)
+#define VTS_IRQ_VTS_REC_PERIOD_ELAPSED	(5)
+#define VTS_IRQ_COUNT			(6)
 
-#define VTS_IRQ_AP_IPC_RECEIVED		(0)
-#define VTS_IRQ_AP_SET_DRAM_BUFFER	(1)
-#define VTS_IRQ_AP_START_RECOGNITION	(2)
-#define VTS_IRQ_AP_STOP_RECOGNITION	(3)
-#define VTS_IRQ_AP_START_COPY		(4)
-#define VTS_IRQ_AP_STOP_COPY		(5)
-#define VTS_IRQ_AP_SET_MODE		(6)
-#define VTS_IRQ_AP_POWER_DOWN		(7)
-#define VTS_IRQ_AP_TARGET_SIZE		(8)
-#define VTS_IRQ_AP_SET_REC_BUFFER	(9)
-#define VTS_IRQ_AP_START_REC		(10)
-#define VTS_IRQ_AP_STOP_REC		(11)
-#define VTS_IRQ_AP_RESTART_RECOGNITION	(13)
-#define VTS_IRQ_AP_TEST_COMMAND		(15)
+#define VTS_IRQ_AP_IPC_RECEIVED		(16)
+#define VTS_IRQ_AP_SET_DRAM_BUFFER	(17)
+#define VTS_IRQ_AP_START_RECOGNITION	(18)
+#define VTS_IRQ_AP_STOP_RECOGNITION	(19)
+#define VTS_IRQ_AP_START_COPY		(20)
+#define VTS_IRQ_AP_STOP_COPY		(21)
+#define VTS_IRQ_AP_SET_MODE		(22)
+#define VTS_IRQ_AP_POWER_DOWN		(23)
+#define VTS_IRQ_AP_TARGET_SIZE		(24)
+#define VTS_IRQ_AP_SET_REC_BUFFER	(25)
+#define VTS_IRQ_AP_START_REC		(26)
+#define VTS_IRQ_AP_STOP_REC		(27)
+#define VTS_IRQ_AP_RESTART_RECOGNITION	(29)
+#define VTS_IRQ_AP_TEST_COMMAND		(31)
 
 #define VTS_IRQ_LIMIT			(32)
 
 #define VTS_BAAW_BASE			(0x60000000)
-#define VTS_BAAW_SRC_START_ADDRESS	(0x10000)
-#define VTS_BAAW_SRC_END_ADDRESS	(0x10004)
-#define VTS_BAAW_REMAPPED_ADDRESS	(0x10008)
-#define VTS_BAAW_INIT_DONE		(0x1000C)
 
 #define BUFFER_BYTES_MAX (0xa0000)
 #define PERIOD_BYTES_MIN (SZ_4)
@@ -144,7 +158,7 @@
 /* svoice net(0x8000) & grammar(0x300) binary sizes defined in firmware */
 #define SOUND_MODEL_SVOICE_SIZE_MAX (0x8000 + 0x300)
 
-/* google binary size defined in firmware (It is same with VTSDRV_MISC_MODEL_BIN_MAXSZ) */
+/* google binary size defined in firmware */
 #define SOUND_MODEL_GOOGLE_SIZE_MAX (0xB500)
 
 /* VTS Model Binary Max buffer sizes */
@@ -198,18 +212,11 @@ enum executionmode {
 };
 
 enum vts_dump_type {
-	KERNEL_PANIC_DUMP,
-	VTS_FW_NOT_READY,
-	VTS_IPC_TRANS_FAIL,
-	RUNTIME_SUSPEND_DUMP,
-	VTS_DUMP_LAST,
+	KERNEL_PANIC_DUMP = 0,
+	RUNTIME_SUSPEND_DUMP = 1,
 };
 
 enum vts_test_command {
-	VTS_DISABLE_LOGDUMP	= 0x01000000,
-	VTS_ENABLE_LOGDUMP	= 0x02000000,
-	VTS_DISABLE_AUDIODUMP	= 0x04000000,
-	VTS_ENABLE_AUDIODUMP	= 0x08000000,
 	VTS_DISABLE_DEBUGLOG	= 0x10000000,
 	VTS_ENABLE_DEBUGLOG	= 0x20000000,
 	VTS_ENABLE_SRAM_LOG	= 0x80000000,
@@ -247,24 +254,9 @@ struct vts_model_bin_info {
 	bool loaded;
 };
 
-struct vts_dbg_dump {
-	long long time;
-	enum vts_dump_type dbg_type;
-	unsigned int gpr[17];
-	char *sram_log;
-	char *sram_fw;
-};
-
-struct vts_log_buffer {
-	char *addr;
-	unsigned int size;
-};
-
 struct vts_data {
 	struct platform_device *pdev;
-	struct snd_soc_component *cmpnt;
 	void __iomem *sfr_base;
-	void __iomem *baaw_base;
 	void __iomem *sram_base;
 	void __iomem *dmic_base;
 	void __iomem *gpr_base;
@@ -292,7 +284,6 @@ struct vts_data {
 	struct snd_dma_buffer dmab;
 	struct snd_dma_buffer dmab_rec;
 	struct snd_dma_buffer dmab_log;
-	struct snd_dma_buffer dmab_model;
 	u32 target_size;
 	volatile enum trigger active_trigger;
 	u32 voicerecog_start;
@@ -313,13 +304,9 @@ struct vts_data {
 	u32 running_ipc;
 	struct wake_lock wake_lock;
 	unsigned int vts_state;
-	u32 vtslog_enabled;
-	bool audiodump_enabled;
-	bool logdump_enabled;
 	struct vts_model_bin_info svoice_info;
 	struct vts_model_bin_info google_info;
 	spinlock_t state_spinlock;
-	struct vts_dbg_dump p_dump[VTS_DUMP_LAST];
 };
 
 struct vts_platform_data {
@@ -331,12 +318,17 @@ struct vts_platform_data {
 	volatile unsigned int pointer;
 };
 
+struct vts_dbg_dump {
+	char sram[SZ_2K];
+	unsigned int gpr[17];
+	long long time;
+	char reason[SZ_32];
+};
+
 extern int vts_start_ipc_transaction(struct device *dev, struct vts_data *data,
 		int msg, u32 (*values)[3], int atomic, int sync);
 
-extern int vts_send_ipc_ack(struct vts_data *data, u32 result);
 extern void vts_register_dma(struct platform_device *pdev_vts,
 		struct platform_device *pdev_vts_dma, unsigned int id);
 extern int vts_set_dmicctrl(struct platform_device *pdev, int micconf_type, bool enable);
-extern int vts_sound_machine_drv_register(void);
 #endif /* __SND_SOC_VTS_H */

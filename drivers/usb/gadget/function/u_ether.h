@@ -81,7 +81,6 @@ struct gether {
 	unsigned		dl_max_pkts_per_xfer;
 	bool				multi_pkt_xfer;
 	bool				supports_multi_frame;
-	struct rndis_packet_msg_type	*header;
 	struct sk_buff			*(*wrap)(struct gether *port,
 						struct sk_buff *skb);
 	int				(*unwrap)(struct gether *port,

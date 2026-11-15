@@ -937,7 +937,7 @@ void intel_pmu_lbr_init_hsw(void);
 
 void intel_pmu_lbr_init_skl(void);
 
-void intel_pmu_lbr_init_knl(void);
+void intel_pmu_pebs_data_source_nhm(void);
 
 void intel_pmu_pebs_data_source_nhm(void);
 

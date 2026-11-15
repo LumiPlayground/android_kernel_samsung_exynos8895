@@ -24,10 +24,10 @@ struct iva_ipcq_trans {
 };
 
 
-extern int	iva_ipcq_send_cmd_usr(struct iva_proc *proc,
+extern int	iva_ipcq_send_cmd_usr(struct iva_ipcq *ipcq,
 			struct ipc_cmd_param __user *ipc_param);
 
-extern int	iva_ipcq_wait_res_usr(struct iva_proc *proc,
+extern int	iva_ipcq_wait_res_usr(struct iva_ipcq *ipcq,
 			struct ipc_res_param __user *r_param);
 extern int	iva_ipcq_send_rsp_k(struct iva_ipcq *ipcq,
 			struct ipc_res_param *res_param, bool from_irq);

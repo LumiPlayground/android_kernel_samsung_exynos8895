@@ -18,6 +18,10 @@
 #include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <video/videonode.h>
+#include <media/exynos_mc.h>
+#include <asm/cacheflush.h>
+#include <asm/pgtable.h>
 #include <linux/firmware.h>
 #include <linux/dma-mapping.h>
 #include <linux/scatterlist.h>
@@ -41,7 +45,7 @@ int fimc_is_pre_video_probe(void *data)
 	struct fimc_is_device_preproc *device;
 	struct fimc_is_video *video;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	device = (struct fimc_is_device_preproc *)data;
 	video = &device->video;
@@ -83,7 +87,6 @@ static int fimc_is_pre_video_open(struct file *file)
 	struct fimc_is_video_ctx *vctx;
 	struct fimc_is_device_preproc *device;
 	struct fimc_is_resourcemgr *resourcemgr;
-	char name[FIMC_IS_STR_LEN];
 
 	vctx = NULL;
 	video = video_drvdata(file);
@@ -103,8 +106,7 @@ static int fimc_is_pre_video_open(struct file *file)
 
 	minfo("[PRE:V] %s\n", device, __func__);
 
-	snprintf(name, sizeof(name), "PRE");
-	ret = open_vctx(file, video, &vctx, device->instance, FRAMEMGR_ID_INVALID, name);
+	ret = open_vctx(file, video, &vctx, device->instance, FRAMEMGR_ID_INVALID);
 	if (ret) {
 		err("open_vctx is fail(%d)", ret);
 		goto p_err;
@@ -132,7 +134,7 @@ static int fimc_is_pre_video_close(struct file *file)
 	struct fimc_is_video *video = NULL;
 	struct fimc_is_device_preproc *device = NULL;
 
-	FIMC_BUG(!vctx);
+	BUG_ON(!vctx);
 
 	video = video_drvdata(file);
 	device = container_of(video, struct fimc_is_device_preproc, video);
@@ -173,7 +175,7 @@ static int fimc_is_pre_video_s_input(struct file *file, void *priv,
 	struct fimc_is_video_ctx *vctx = file->private_data;
 	struct fimc_is_device_preproc *device = NULL;
 
-	FIMC_BUG(!vctx);
+	BUG_ON(!vctx);
 
 	mdbgv_pre("%s(input : %08X)\n", vctx, __func__, input);
 

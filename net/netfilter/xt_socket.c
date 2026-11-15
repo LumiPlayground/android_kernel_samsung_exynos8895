@@ -112,7 +112,7 @@ extract_icmp4_fields(const struct sk_buff *skb,
  *     box.
  */
 static struct sock *
-xt_socket_get_sock_v4(struct net *net, struct sk_buff *skb, const int doff,
+xt_socket_get_sock_v4(struct net *net, struct sk_buff *skb, int doff,
 		      const u8 protocol,
 		      const __be32 saddr, const __be32 daddr,
 		      const __be16 sport, const __be16 dport,
@@ -149,9 +149,9 @@ struct sock *xt_socket_lookup_slow_v4(struct net *net,
 					     const struct net_device *indev)
 {
 	const struct iphdr *iph = ip_hdr(skb);
+	struct sock *sk = skb->sk;
 	struct sk_buff *data_skb = NULL;
 	int doff = 0;
-	struct sock *sk = skb->sk;
 	__be32 uninitialized_var(daddr), uninitialized_var(saddr);
 	__be16 uninitialized_var(dport), uninitialized_var(sport);
 	u8 uninitialized_var(protocol);
@@ -174,9 +174,17 @@ struct sock *xt_socket_lookup_slow_v4(struct net *net,
 		daddr = iph->daddr;
 		dport = hp->dest;
 		data_skb = (struct sk_buff *)skb;
-		doff = iph->protocol == IPPROTO_TCP ?
-			ip_hdrlen(skb) + __tcp_hdrlen((struct tcphdr *)hp) :
-			ip_hdrlen(skb) + sizeof(*hp);
+		doff = ip_hdrlen(skb) + sizeof(*hp);
+		if (iph->protocol == IPPROTO_TCP) {
+			struct tcphdr _tcp, *tcp;
+
+			tcp = skb_header_pointer(skb, ip_hdrlen(skb), sizeof(_tcp), &_tcp);
+			if (!tcp || tcp->doff < 5)
+				return NULL;
+			doff = ip_hdrlen(skb) + __tcp_hdrlen(tcp);
+			if (doff > skb->len)
+				return NULL;
+		}
 
 	} else if (iph->protocol == IPPROTO_ICMP) {
 		if (extract_icmp4_fields(skb, &protocol, &saddr, &daddr,
@@ -356,11 +364,11 @@ struct sock *xt_socket_lookup_slow_v6(struct net *net,
 					     const struct net_device *indev)
 {
 	struct sock *sk = skb->sk;
+	struct sk_buff *data_skb = NULL;
+	int doff = 0;
 	__be16 uninitialized_var(dport), uninitialized_var(sport);
 	const struct in6_addr *daddr = NULL, *saddr = NULL;
 	struct ipv6hdr *iph = ipv6_hdr(skb);
-	struct sk_buff *data_skb = NULL;
-	int doff = 0;
 	int thoff = 0, tproto;
 
 	tproto = ipv6_find_hdr(skb, &thoff, -1, NULL, NULL);
@@ -381,9 +389,17 @@ struct sock *xt_socket_lookup_slow_v6(struct net *net,
 		daddr = &iph->daddr;
 		dport = hp->dest;
 		data_skb = (struct sk_buff *)skb;
-		doff = tproto == IPPROTO_TCP ?
-			thoff + __tcp_hdrlen((struct tcphdr *)hp) :
-			thoff + sizeof(*hp);
+		doff = thoff + sizeof(*hp);
+		if (tproto == IPPROTO_TCP) {
+			struct tcphdr _tcp, *tcp;
+
+			tcp = skb_header_pointer(skb, thoff, sizeof(_tcp), &_tcp);
+			if (!tcp || tcp->doff < 5)
+				return NULL;
+			doff = thoff + __tcp_hdrlen(tcp);
+			if (doff > skb->len)
+				return NULL;
+		}
 
 	} else if (tproto == IPPROTO_ICMPV6) {
 		struct ipv6hdr ipv6_var;

@@ -105,11 +105,11 @@ smb2_hdr_assemble(struct smb2_hdr *hdr, __le16 smb2_cmd /* command */ ,
 
 		spin_lock(&server->req_lock);
 		/* Request up to 2 credits but don't go over the limit. */
-		if (server->credits >= server->max_credits)
+		if (server->credits >= SMB2_MAX_CREDITS_AVAILABLE)
 			hdr->CreditRequest = cpu_to_le16(0);
 		else
 			hdr->CreditRequest = cpu_to_le16(
-				min_t(int, server->max_credits -
+				min_t(int, SMB2_MAX_CREDITS_AVAILABLE -
 						server->credits, 2));
 		spin_unlock(&server->req_lock);
 	} else {
@@ -638,6 +638,43 @@ SMB2_sess_alloc_buffer(struct SMB2_sess_data *sess_data)
 	struct cifs_ses *ses = sess_data->ses;
 	struct smb2_sess_setup_req *req;
 	struct TCP_Server_Info *server = ses->server;
+	u16 blob_length = 0;
+	struct key *spnego_key = NULL;
+	char *security_blob = NULL;
+	unsigned char *ntlmssp_blob = NULL;
+	bool use_spnego = false; /* else use raw ntlmssp */
+	u64 previous_session = ses->Suid;
+
+	cifs_dbg(FYI, "Session Setup\n");
+
+	if (!server) {
+		WARN(1, "%s: server is NULL!\n", __func__);
+		return -EIO;
+	}
+
+	/*
+	 * If we are here due to reconnect, free per-smb session key
+	 * in case signing was required.
+	 */
+	kfree(ses->auth_key.response);
+	ses->auth_key.response = NULL;
+
+	/*
+	 * If memory allocation is successful, caller of this function
+	 * frees it.
+	 */
+	ses->ntlmssp = kmalloc(sizeof(struct ntlmssp_auth), GFP_KERNEL);
+	if (!ses->ntlmssp)
+		return -ENOMEM;
+	ses->ntlmssp->sesskey_per_smbsess = true;
+
+	/* FIXME: allow for other auth types besides NTLMSSP (e.g. krb5) */
+	if (ses->sectype != Kerberos && ses->sectype != RawNTLMSSP)
+		ses->sectype = RawNTLMSSP;
+
+ssetup_ntlmssp_authenticate:
+	if (phase == NtLmChallenge)
+		phase = NtLmAuthenticate; /* if ntlmssp, now final phase */
 
 	rc = small_smb2_init(SMB2_SESSION_SETUP, NULL, (void **) &req);
 	if (rc)
@@ -646,7 +683,7 @@ SMB2_sess_alloc_buffer(struct SMB2_sess_data *sess_data)
 	req->hdr.SessionId = 0; /* First session, not a reauthenticate */
 
 	/* if reconnect, we need to send previous sess id, otherwise it is 0 */
-	req->PreviousSessionId = sess_data->previous_session;
+	req->PreviousSessionId = previous_session;
 
 	req->Flags = 0; /* MBZ */
 	/* to enable echos and oplocks */

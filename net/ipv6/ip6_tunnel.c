@@ -1180,13 +1180,8 @@ route_lookup:
 		skb = new_skb;
 	}
 
-	if (t->parms.collect_md) {
-		if (t->encap.type != TUNNEL_ENCAP_NONE)
-			goto tx_err_dst_release;
-	} else {
-		if (use_cache && ndst)
-			dst_cache_set_ip6(&t->dst_cache, ndst, &fl6->saddr);
-	}
+	if (use_cache && ndst)
+		dst_cache_set_ip6(&t->dst_cache, ndst, &fl6->saddr);
 	skb_dst_set(skb, dst);
 
 	if (encap_limit >= 0) {

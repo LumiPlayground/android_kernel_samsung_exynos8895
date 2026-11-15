@@ -32,8 +32,8 @@ enum fimc_is_subdev_state {
 	FIMC_IS_SUBDEV_START,
 	FIMC_IS_SUBDEV_RUN,
 	FIMC_IS_SUBDEV_FORCE_SET,
-	FIMC_IS_SUBDEV_PARAM_ERR,
 	FIMC_IS_SUBDEV_INTERNAL_USE,
+	FIMC_IS_SUBDEV_PARAM_ERR,
 	FIMC_IS_SUBDEV_INTERNAL_S_FMT
 };
 
@@ -44,7 +44,6 @@ struct fimc_is_subdev_path {
 	struct fimc_is_crop			crop;
 };
 
-/* Caution: Do not exceed 64 */
 enum fimc_is_subdev_id {
 	ENTRY_SENSOR,
 	ENTRY_SSVC0,
@@ -63,21 +62,16 @@ enum fimc_is_subdev_id {
 	ENTRY_DXC,
 	ENTRY_ODC,
 	ENTRY_DNR,
-	ENTRY_DCP, /* Master Input */
-	ENTRY_DC1S, /* Slave Input */
-	ENTRY_DC0C, /* Master Main Capture */
-	ENTRY_DC1C, /* Slave Main Capture */
-	ENTRY_DC2C, /* Disparity + Confidence + Master */
-	ENTRY_DC3C, /* Master Sub Capture */
-	ENTRY_DC4C, /* Slave Sub Capture */
+	ENTRY_SCC,
+	ENTRY_SCP,
 	ENTRY_MCS,
 	ENTRY_M0P,
 	ENTRY_M1P,
 	ENTRY_M2P,
 	ENTRY_M3P,
 	ENTRY_M4P,
-	ENTRY_M5P,
 	ENTRY_VRA,
+	ENTRY_DCP,
 	ENTRY_SRDZ,
 	ENTRY_END
 };
@@ -120,8 +114,6 @@ struct fimc_is_subdev {
 	struct fimc_is_subdev_path		input;
 	struct fimc_is_subdev_path		output;
 
-	struct list_head			list;
-
 	/* for internal use */
 	u32					pixelformat;
 	struct fimc_is_framemgr			internal_framemgr;
@@ -135,15 +127,6 @@ struct fimc_is_subdev {
 	struct fimc_is_video_ctx		*vctx;
 	struct fimc_is_subdev			*leader;
 	const struct fimc_is_subdev_ops		*ops;
-
-	/*
-	 * Parameter for DMA abstraction:
-	 * This value is physical DMA & VC.
-	 * [0]: Without PDP (Use this when none PD mode is enabled.)
-	 * [1]: With PDP (Use this when PD mode is enabled.)
-	 */
-	int					dma_ch[2];
-	int					vc_ch[2];
 };
 
 int fimc_is_sensor_subdev_open(struct fimc_is_device_sensor *device,

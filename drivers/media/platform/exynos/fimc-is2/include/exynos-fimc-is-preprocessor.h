@@ -26,7 +26,6 @@ struct exynos_platform_fimc_is_preproc {
 	u32 id;
 };
 
-#if defined(CONFIG_COMPANION_USE)
 int exynos_fimc_is_preproc_iclk_cfg(struct device *dev,
 	u32 scenario,
 	u32 channel);
@@ -42,22 +41,5 @@ int exynos_fimc_is_preproc_mclk_on(struct device *dev,
 int exynos_fimc_is_preproc_mclk_off(struct device *dev,
 	u32 scenario,
 	u32 channel);
-#else
-static inline int exynos_fimc_is_preproc_iclk_cfg(struct device *dev,
-	u32 scenario,
-	u32 channel) {return 0;}
-static inline int exynos_fimc_is_preproc_iclk_on(struct device *dev,
-	u32 scenario,
-	u32 channel) {return 0;}
-static inline int exynos_fimc_is_preproc_iclk_off(struct device *dev,
-	u32 scenario,
-	u32 channel) {return 0;}
-static inline int exynos_fimc_is_preproc_mclk_on(struct device *dev,
-	u32 scenario,
-	u32 channel) {return 0;}
-static inline int exynos_fimc_is_preproc_mclk_off(struct device *dev,
-	u32 scenario,
-	u32 channel) {return 0;}
-#endif
 
 #endif /* MEDIA_EXYNOS_PREPROCESSOR_H */

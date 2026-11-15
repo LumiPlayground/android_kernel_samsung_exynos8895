@@ -121,6 +121,11 @@ nfsd4_block_commit_blocks(struct inode *inode, struct nfsd4_layoutcommit *lcp,
 	struct iattr iattr = { .ia_valid = 0 };
 	int error;
 
+	nr_iomaps = nfsd4_block_decode_layoutupdate(lcp->lc_up_layout,
+			lcp->lc_up_len, &iomaps, i_blocksize(inode));
+	if (nr_iomaps < 0)
+		return nfserrno(nr_iomaps);
+
 	if (lcp->lc_mtime.tv_nsec == UTIME_NOW ||
 	    timespec_compare(&lcp->lc_mtime, &inode->i_mtime) < 0)
 		lcp->lc_mtime = current_time(inode);

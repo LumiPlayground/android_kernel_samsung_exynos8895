@@ -116,6 +116,30 @@ struct s5p_mfc_ctrl_cfg mfc_ctrl_list[] = {
 	},
 	{
 		.type = MFC_CTRL_TYPE_GET_DST,
+		.id = V4L2_CID_MPEG_MFC51_VIDEO_CRC_DATA_LUMA_BOT,
+		.is_volatile = 0,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_D_DECODED_FIRST_PLANE_CRC,
+		.mask = 0xFFFFFFFF,
+		.shft = 0,
+		.flag_mode = MFC_CTRL_MODE_NONE,
+		.flag_addr = 0,
+		.flag_shft = 0,
+	},
+	{
+		.type = MFC_CTRL_TYPE_GET_DST,
+		.id = V4L2_CID_MPEG_MFC51_VIDEO_CRC_DATA_CHROMA_BOT,
+		.is_volatile = 0,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_D_DECODED_SECOND_PLANE_CRC,
+		.mask = 0xFFFFFFFF,
+		.shft = 0,
+		.flag_mode = MFC_CTRL_MODE_NONE,
+		.flag_addr = 0,
+		.flag_shft = 0,
+	},
+	{
+		.type = MFC_CTRL_TYPE_GET_DST,
 		.id = V4L2_CID_MPEG_MFC51_VIDEO_CRC_GENERATED,
 		.is_volatile = 0,
 		.mode = MFC_CTRL_MODE_SFR,
@@ -323,7 +347,7 @@ struct s5p_mfc_ctrl_cfg mfc_ctrl_list[] = {
 		.id = V4L2_CID_MPEG_VIDEO_SEI_DISPLAY_PRIMARIES_1,
 		.is_volatile = 0,
 		.mode = MFC_CTRL_MODE_SFR,
-		.addr = S5P_FIMV_D_MASTERING_DISPLAY_COLOUR_VOLUME_SEI_4,
+		.addr = S5P_FIMV_D_MASTERING_DISPLAY_COLOUR_VOLUME_SEI_3,
 		.mask = 0xFFFFFFFF,
 		.shft = 0,
 		.flag_mode = MFC_CTRL_MODE_NONE,
@@ -335,7 +359,7 @@ struct s5p_mfc_ctrl_cfg mfc_ctrl_list[] = {
 		.id = V4L2_CID_MPEG_VIDEO_SEI_DISPLAY_PRIMARIES_2,
 		.is_volatile = 0,
 		.mode = MFC_CTRL_MODE_SFR,
-		.addr = S5P_FIMV_D_MASTERING_DISPLAY_COLOUR_VOLUME_SEI_5,
+		.addr = S5P_FIMV_D_MASTERING_DISPLAY_COLOUR_VOLUME_SEI_3,
 		.mask = 0xFFFFFFFF,
 		.shft = 0,
 		.flag_mode = MFC_CTRL_MODE_NONE,
@@ -691,7 +715,6 @@ static int s5p_mfc_dec_get_buf_ctrls_val(struct s5p_mfc_ctx *ctx, struct list_he
 {
 	struct s5p_mfc_buf_ctrl *buf_ctrl;
 	struct s5p_mfc_dev *dev = ctx->dev;
-	struct s5p_mfc_dec *dec = ctx->dec_priv;
 	unsigned int value = 0;
 
 	list_for_each_entry(buf_ctrl, head, list) {
@@ -704,12 +727,6 @@ static int s5p_mfc_dec_get_buf_ctrls_val(struct s5p_mfc_ctx *ctx, struct list_he
 		buf_ctrl->val = value;
 		buf_ctrl->has_new = 1;
 
-		if (IS_VP9_DEC(ctx)) {
-			if (buf_ctrl->id == V4L2_CID_MPEG_VIDEO_FULL_RANGE_FLAG)
-				buf_ctrl->val = dec->color_range;
-			else if (buf_ctrl->id == V4L2_CID_MPEG_VIDEO_COLOUR_PRIMARIES)
-				buf_ctrl->val = dec->color_space;
-		}
 		mfc_debug(8, "Get buffer control "\
 				"id: 0x%08x val: %d\n",
 				buf_ctrl->id, buf_ctrl->val);
@@ -756,7 +773,6 @@ static int s5p_mfc_dec_set_buf_ctrls_val_nal_q_dec(struct s5p_mfc_ctx *ctx,
 static int s5p_mfc_dec_get_buf_ctrls_val_nal_q_dec(struct s5p_mfc_ctx *ctx,
 			struct list_head *head, DecoderOutputStr *pOutStr)
 {
-	struct s5p_mfc_dec *dec = ctx->dec_priv;
 	struct s5p_mfc_buf_ctrl *buf_ctrl;
 	unsigned int value = 0;
 
@@ -787,6 +803,12 @@ static int s5p_mfc_dec_get_buf_ctrls_val_nal_q_dec(struct s5p_mfc_ctx *ctx,
 		case V4L2_CID_MPEG_MFC51_VIDEO_CRC_DATA_2BIT_CHROMA:
 			value = pOutStr->DisplaySecond2BitCrc;
 			break;
+		case V4L2_CID_MPEG_MFC51_VIDEO_CRC_DATA_LUMA_BOT:
+			value = pOutStr->DecodedFirstCrc;
+			break;
+		case V4L2_CID_MPEG_MFC51_VIDEO_CRC_DATA_CHROMA_BOT:
+			value = pOutStr->DecodedSecondCrc;
+			break;
 		case V4L2_CID_MPEG_MFC51_VIDEO_CRC_GENERATED:
 			value = pOutStr->DisplayStatus;
 			break;
@@ -816,9 +838,9 @@ static int s5p_mfc_dec_get_buf_ctrls_val_nal_q_dec(struct s5p_mfc_ctx *ctx,
 		case V4L2_CID_MPEG_VIDEO_SEI_MIN_DISPLAY_LUMINANCE:
 			value = pOutStr->MasteringDisplayColourVolumeSei1;
 			break;
+		case V4L2_CID_MPEG_VIDEO_FORMAT:
 		case V4L2_CID_MPEG_VIDEO_FULL_RANGE_FLAG:
 		case V4L2_CID_MPEG_VIDEO_COLOUR_PRIMARIES:
-		case V4L2_CID_MPEG_VIDEO_FORMAT:
 		case V4L2_CID_MPEG_VIDEO_TRANSFER_CHARACTERISTICS:
 		case V4L2_CID_MPEG_VIDEO_MATRIX_COEFFICIENTS:
 			value = pOutStr->VideoSignalType;
@@ -844,13 +866,6 @@ static int s5p_mfc_dec_get_buf_ctrls_val_nal_q_dec(struct s5p_mfc_ctx *ctx,
 
 		buf_ctrl->val = value;
 		buf_ctrl->has_new = 1;
-
-		if (IS_VP9_DEC(ctx)) {
-			if (buf_ctrl->id == V4L2_CID_MPEG_VIDEO_FULL_RANGE_FLAG)
-				buf_ctrl->val = dec->color_range;
-			else if (buf_ctrl->id == V4L2_CID_MPEG_VIDEO_COLOUR_PRIMARIES)
-				buf_ctrl->val = dec->color_space;
-		}
 
 		mfc_debug(3, "NAL Q: dec_get_buf_ctrls, ctrl id: 0x%x, val: %d\n",
 				buf_ctrl->id, buf_ctrl->val);

@@ -110,7 +110,7 @@ again:
 	region->start = vstart;
 	region->size = vsize << PAGE_SHIFT;
 	region->dummy_size = region->size - size;
-	region->section_off = (unsigned int)(section_offset << PAGE_SHIFT);
+	region->section_off = section_offset << PAGE_SHIFT;
 
 	spin_lock(&vmm->vmlist_lock);
 	list_add_tail(&region->node, &vmm->regions_list);
@@ -194,7 +194,7 @@ static dma_addr_t add_iovm_region(struct exynos_iovmm *vmm,
 
 	INIT_LIST_HEAD(&region->node);
 	region->start = start;
-	region->size = (u32)size;
+	region->size = size;
 
 	spin_lock(&vmm->vmlist_lock);
 
@@ -529,9 +529,9 @@ dma_addr_t exynos_iovmm_map_userptr(struct device *dev, unsigned long vaddr,
 
 	/* non-cached user mapping should be treated as non-shareable mapping */
 	if ((pgprot_val(pgprot_writecombine(vma->vm_page_prot)) ==
-					pgprot_val(vma->vm_page_prot)) ||
+	     pgprot_val(vma->vm_page_prot)) ||
 		(pgprot_val(pgprot_noncached(vma->vm_page_prot)) ==
-					pgprot_val(vma->vm_page_prot)))
+	     pgprot_val(vma->vm_page_prot)))
 		prot &= ~IOMMU_CACHE;
 
 	while (eaddr > vma->vm_end) {
@@ -757,4 +757,33 @@ void iovmm_set_fault_handler(struct device *dev,
 	ret = exynos_iommu_add_fault_handler(dev, handler, token);
 	if (ret)
 		dev_err(dev, "Failed to add fault handler\n");
+}
+
+bool iovmm_address_verifier(struct device *dev,
+			dma_addr_t iova, struct _sysmmu_fi *fi)
+{
+	struct exynos_iovmm *vmm = exynos_get_iovmm(dev);
+
+	if (!vmm) {
+		pr_info("%s: No VMM was found for %s\n",
+					__func__, dev_name(dev));
+		return false;
+	}
+
+	if (!fi) {
+		pr_info("%s: Invalid parameter for %s\n",
+					__func__, dev_name(dev));
+		return false;
+	}
+
+	exynos_iovmm_find_last_log(IOVMM_TO_LOG(vmm), EVENT_SYSMMU_IOVMM_MAP,
+			iova, &fi->map_time, &fi->map_start, &fi->map_end);
+	exynos_iovmm_find_last_log(IOVMM_TO_LOG(vmm), EVENT_SYSMMU_IOVMM_UNMAP,
+			iova, &fi->unmap_time,
+			&fi->unmap_start, &fi->unmap_end);
+
+	if (find_iovm_region(vmm, iova))
+		return true;
+
+	return false;
 }

@@ -595,7 +595,7 @@ static ssize_t mtp_read(struct file *fp, char __user *buf,
 requeue_req:
 	/* queue a request */
 	req = dev->rx_req[0];
-	req->length = len;
+	req->length = count;
 	dev->rx_done = 0;
 	set_read_req_length(req);
 	ret = usb_ep_queue(dev->ep_out, req, GFP_KERNEL);
@@ -750,7 +750,6 @@ static void send_file_work(struct work_struct *data)
 	filp = dev->xfer_file;
 	offset = dev->xfer_file_offset;
 	count = dev->xfer_file_length;
-
 	if (count < 0) {
 		dev->xfer_result = -EINVAL;
 		return;
@@ -852,7 +851,7 @@ static void receive_file_work(struct work_struct *data)
 	struct usb_request *read_req = NULL, *write_req = NULL;
 	struct file *filp;
 	loff_t offset;
-	int64_t count, len;
+	int64_t count;
 	int ret, cur_buf = 0;
 	int r = 0;
 
@@ -861,7 +860,6 @@ static void receive_file_work(struct work_struct *data)
 	filp = dev->xfer_file;
 	offset = dev->xfer_file_offset;
 	count = dev->xfer_file_length;
-
 	if (count < 0) {
 		dev->xfer_result = -EINVAL;
 		return;
@@ -875,10 +873,8 @@ static void receive_file_work(struct work_struct *data)
 			read_req = dev->rx_req[cur_buf];
 			cur_buf = (cur_buf + 1) % RX_REQ_MAX;
 
-			len = usb_ep_align_maybe(cdev->gadget, dev->ep_out, count);
-			if (len > MTP_BULK_BUFFER_SIZE)
-				len = MTP_BULK_BUFFER_SIZE;
-			read_req->length = len;
+			read_req->length = (count > MTP_BULK_BUFFER_SIZE
+					? MTP_BULK_BUFFER_SIZE : count);
 			dev->rx_done = 0;
 
 			set_read_req_length(read_req);
@@ -1556,7 +1552,7 @@ struct usb_function *function_alloc_mtp_ptp(struct usb_function_instance *fi,
 		pr_err("\t2: Create MTP function\n");
 		pr_err("\t3: Create and symlink PTP function"
 				" with a gadget configuration\n");
-		return ERR_PTR(-EINVAL); /* Invalid Configuration */
+		return NULL;
 	}
 
 	dev = fi_mtp->dev;
@@ -1580,7 +1576,7 @@ struct usb_function *function_alloc_mtp_ptp(struct usb_function_instance *fi,
 	function->unbind = mtp_function_unbind;
 	function->set_alt = mtp_function_set_alt;
 	function->disable = mtp_function_disable;
-	function->setup = mtp_ctrlreq_configfs;
+	function->ctrlrequest = mtp_ctrlreq_configfs;
 	function->free_func = mtp_free;
 
 	return function;

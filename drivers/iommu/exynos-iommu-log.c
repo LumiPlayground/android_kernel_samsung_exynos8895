@@ -88,9 +88,7 @@ static void exynos_iommu_debug_log_show(struct seq_file *s,
 		break;
 	case EVENT_SYSMMU_IOMMU_ALLOCSLPD:
 	case EVENT_SYSMMU_IOMMU_FREESLPD:
-		seq_printf(s, " @ [iova:%#010x, entry:%#010x)\n",
-				log->eventdata.range.start,
-				log->eventdata.range.end);
+		seq_printf(s, " @ %#010x\n", log->eventdata.addr);
 		break;
 	case EVENT_SYSMMU_TLB_INV_RANGE:
 	case EVENT_SYSMMU_IOMMU_UNMAP:
@@ -139,6 +137,40 @@ static int exynos_iommu_debugfs_log_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, exynos_iommu_debugfs_log_show,
 				inode->i_private);
+}
+
+void exynos_iovmm_find_last_log(struct exynos_iommu_event_log *plog,
+		enum sysmmu_event_log_event event, dma_addr_t iova,
+		struct timeval *time, u32 *start, u32 *end)
+{
+	unsigned int index = atomic_read(&plog->index) % plog->log_len;
+	unsigned int begin = index;
+	struct sysmmu_event_log *log;
+
+	/* Only IOVMM related event can be handled. */
+	switch (event) {
+	case EVENT_SYSMMU_IOVMM_MAP:
+	case EVENT_SYSMMU_IOVMM_UNMAP:
+		break;
+	default:
+		return;
+	}
+
+	do {
+		log = &plog->log[index++];
+
+		if (log->event == event) {
+			if (iova >= log->eventdata.iovmm.start &&
+					iova < log->eventdata.iovmm.end) {
+				*start = log->eventdata.iovmm.start;
+				*end = log->eventdata.iovmm.end;
+				*time = ktime_to_timeval(log->timestamp);
+			}
+		}
+
+		if (index == plog->log_len)
+			index = 0;
+	} while (index != begin);
 }
 
 #define SYSMMU_DENTRY_LOG_ROOT_NAME "eventlog"

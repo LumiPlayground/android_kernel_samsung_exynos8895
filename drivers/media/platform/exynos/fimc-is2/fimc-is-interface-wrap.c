@@ -21,7 +21,7 @@ int fimc_is_itf_s_param_wrap(struct fimc_is_device_ischain *device,
 	u32 instance = 0;
 	int ret = 0;
 
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	hardware = device->hardware;
 	instance = device->instance;
@@ -42,7 +42,7 @@ int fimc_is_itf_a_param_wrap(struct fimc_is_device_ischain *device, u32 group)
 	u32 instance = 0;
 	int ret = 0;
 
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	hardware = device->hardware;
 	instance = device->instance;
@@ -65,7 +65,7 @@ int fimc_is_itf_f_param_wrap(struct fimc_is_device_ischain *device, u32 group)
 	u32 instance = 0;
 	int ret = 0;
 
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	hardware = device->hardware;
 	instance = device->instance;
@@ -77,21 +77,21 @@ int fimc_is_itf_enum_wrap(struct fimc_is_device_ischain *device)
 {
 	int ret = 0;
 
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	return ret;
 }
 
 void fimc_is_itf_storefirm_wrap(struct fimc_is_device_ischain *device)
 {
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	return;
 }
 
 void fimc_is_itf_restorefirm_wrap(struct fimc_is_device_ischain *device)
 {
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	return;
 }
@@ -100,7 +100,7 @@ int fimc_is_itf_set_fwboot_wrap(struct fimc_is_device_ischain *device, u32 val)
 {
 	int ret = 0;
 
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	return ret;
 }
@@ -137,6 +137,9 @@ int fimc_is_itf_open_wrap(struct fimc_is_device_ischain *device, u32 module_id,
 			err("failed to create threads for DDK, ret %d", ret);
 			return ret;
 		}
+#if defined(DEBUG_REPROCESSING_NDONE)
+		atomic_set(&hardware->sfr_dump_debug_count, 0);
+#endif
 	}
 
 	region = device->is_region;
@@ -156,9 +159,6 @@ int fimc_is_itf_open_wrap(struct fimc_is_device_ischain *device, u32 module_id,
 		case GROUP_SLOT_DIS:
 			group = &device->group_dis;
 			break;
-		case GROUP_SLOT_DCP:
-			group = &device->group_dcp;
-			break;
 		case GROUP_SLOT_MCS:
 			group = &device->group_mcs;
 			break;
@@ -171,14 +171,15 @@ int fimc_is_itf_open_wrap(struct fimc_is_device_ischain *device, u32 module_id,
 		}
 
 		group_id = path->group[group_slot];
-		dbg_hw(1, "itf_open_wrap: group[SLOT_%d]=[%x]\n", group_slot, group_id);
+		dbg_hw("itf_open_wrap: group[SLOT_%d]=[%x]\n", group_slot, group_id);
 		hw_maxnum = fimc_is_get_hw_list(group_id, hw_list);
 		for (hw_index = 0; hw_index < hw_maxnum; hw_index++) {
 			hw_id = hw_list[hw_index];
 			ret = fimc_is_hardware_open(hardware, hw_id, group, instance,
 					flag, module_id);
 			if (ret) {
-				merr("fimc_is_hardware_open(%d) is fail", device, hw_id);
+				merr("fimc_is_hardware_open(%d) is fail, ret(%d)", device, hw_id, ret);
+				set_bit(hw_id, &hardware->hw_map[instance]);
 				goto hardware_close;
 			}
 		}
@@ -227,7 +228,7 @@ int fimc_is_itf_close_wrap(struct fimc_is_device_ischain *device)
 	int hw_maxnum = 0;
 	u32 rsccount;
 
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	hardware = device->hardware;
 	instance = device->instance;
@@ -249,7 +250,7 @@ int fimc_is_itf_close_wrap(struct fimc_is_device_ischain *device)
 
 	for (group_slot = GROUP_SLOT_3AA; group_slot < GROUP_SLOT_MAX; group_slot++) {
 		group_id = path->group[group_slot];
-		dbg_hw(1, "itf_close_wrap: group[SLOT_%d]=[%x]\n", group_slot, group_id);
+		dbg_hw("itf_close_wrap: group[SLOT_%d]=[%x]\n", group_slot, group_id);
 		hw_maxnum = fimc_is_get_hw_list(group_id, hw_list);
 		for (hw_index = 0; hw_index < hw_maxnum; hw_index++) {
 			hw_id = hw_list[hw_index];
@@ -275,7 +276,7 @@ int fimc_is_itf_setaddr_wrap(struct fimc_is_interface *itf,
 {
 	int ret = 0;
 
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	*setfile_addr = device->resourcemgr->minfo.kvaddr_setfile;
 
@@ -289,7 +290,7 @@ int fimc_is_itf_setfile_wrap(struct fimc_is_interface *itf, ulong setfile_addr,
 	u32 instance = 0;
 	int ret = 0;
 
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	hardware = device->hardware;
 	instance = device->instance;
@@ -311,7 +312,7 @@ int fimc_is_itf_map_wrap(struct fimc_is_device_ischain *device,
 {
 	int ret = 0;
 
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	return ret;
 }
@@ -320,7 +321,7 @@ int fimc_is_itf_unmap_wrap(struct fimc_is_device_ischain *device, u32 group)
 {
 	int ret = 0;
 
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	return ret;
 }
@@ -332,7 +333,7 @@ int fimc_is_itf_stream_on_wrap(struct fimc_is_device_ischain *device)
 	ulong hw_map;
 	int ret = 0;
 
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	hardware = device->hardware;
 	instance = device->instance;
@@ -354,7 +355,7 @@ int fimc_is_itf_stream_off_wrap(struct fimc_is_device_ischain *device)
 	ulong hw_map;
 	int ret = 0;
 
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	hardware = device->hardware;
 	instance = device->instance;
@@ -379,7 +380,7 @@ int fimc_is_itf_process_on_wrap(struct fimc_is_device_ischain *device, u32 group
 	hardware = device->hardware;
 	instance = device->instance;
 
-	minfo_hw("itf_process_on_wrap: [G:0x%x]\n", instance, group);
+	info_hw("[%d]itf_process_on_wrap: [G:0x%x]\n", instance, group);
 
 	for (group_id = GROUP_ID_3AA0; group_id < GROUP_ID_MAX; group_id++) {
 		if (((group) & GROUP_ID(group_id)) &&
@@ -406,7 +407,7 @@ int fimc_is_itf_process_off_wrap(struct fimc_is_device_ischain *device, u32 grou
 	hardware = device->hardware;
 	instance = device->instance;
 
-	minfo_hw("itf_process_off_wrap: [G:0x%x](%d)\n", instance, group, fstop);
+	info_hw("[%d]itf_process_off_wrap: [G:0x%x](%d)\n", instance, group, fstop);
 
 	for (group_id = 0; group_id < GROUP_ID_MAX; group_id++) {
 		if ((group) & GROUP_ID(group_id)) {
@@ -429,18 +430,18 @@ void fimc_is_itf_sudden_stop_wrap(struct fimc_is_device_ischain *device, u32 ins
 	struct fimc_is_device_sensor *sensor;
 
 	if (!device) {
-		mwarn_hw("%s: device(null)\n", instance, __func__);
+		warn_hw("[%d]%s: device(null)\n", instance, __func__);
 		return;
 	}
 
 	sensor = device->sensor;
 	if (!sensor) {
-		mwarn_hw("%s: sensor(null)\n", instance, __func__);
+		warn_hw("[%d]%s: sensor(null)\n", instance, __func__);
 		return;
 	}
 
 	if (test_bit(FIMC_IS_SENSOR_FRONT_START, &sensor->state)) {
-		minfo_hw("%s: sudden close, call sensor_front_stop()\n", instance, __func__);
+		info_hw("[%d]%s: sudden close, call sensor_front_stop()\n", instance, __func__);
 
 		ret = fimc_is_sensor_front_stop(sensor);
 		if (ret)
@@ -454,29 +455,16 @@ int fimc_is_itf_power_down_wrap(struct fimc_is_interface *interface, u32 instanc
 {
 	int ret = 0;
 	struct fimc_is_core *core;
-#ifdef USE_DDK_SHUT_DOWN_FUNC
-	void *data = NULL;
-#endif
 
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	core = (struct fimc_is_core *)interface->core;
 	if (!core) {
-		mwarn_hw("%s: core(null)\n", instance, __func__);
+		warn_hw("[%d]%s: core(null)\n", instance, __func__);
 		return ret;
 	}
 
 	fimc_is_itf_sudden_stop_wrap(&core->ischain[instance], instance);
-
-#ifdef USE_DDK_SHUT_DOWN_FUNC
-#ifdef ENABLE_FPSIMD_FOR_USER
-	fpsimd_get();
-	((ddk_shut_down_func_t)DDK_SHUT_DOWN_FUNC_ADDR)(data);
-	fpsimd_put();
-#else
-	((ddk_shut_down_func_t)DDK_SHUT_DOWN_FUNC_ADDR)(data);
-#endif
-#endif
 
 	return ret;
 }
@@ -486,7 +474,7 @@ int fimc_is_itf_sys_ctl_wrap(struct fimc_is_device_ischain *device,
 {
 	int ret = 0;
 
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 
 	return ret;
 }
@@ -495,9 +483,9 @@ int fimc_is_itf_sensor_mode_wrap(struct fimc_is_device_ischain *device,
 	struct fimc_is_sensor_cfg *cfg)
 {
 #ifdef USE_RTA_BINARY
-	void *data = NULL;
+    void *data = NULL;
 
-	dbg_hw(2, "%s\n", __func__);
+    dbg_hw("%s\n", __func__);
 
 	if (cfg && cfg->mode == SENSOR_MODE_DEINIT) {
 		info_hw("%s: call RTA_SHUT_DOWN\n", __func__);
@@ -510,7 +498,7 @@ int fimc_is_itf_sensor_mode_wrap(struct fimc_is_device_ischain *device,
 #endif
 	}
 #else
-	dbg_hw(2, "%s\n", __func__);
+	dbg_hw("%s\n", __func__);
 #endif
 
 	return 0;
@@ -546,15 +534,15 @@ bool check_setfile_change(struct fimc_is_group *group_leader,
 	hw_id = get_hw_id_from_group(group_ischain->id);
 	hw_slot = fimc_is_hw_slot_id(hw_id);
 	if (!valid_hw_slot_id(hw_slot)) {
-		merr_hw("[G:0x%x]: invalid slot (%d,%d)", instance,
-			GROUP_ID(group->id), hw_id, hw_slot);
+		err_hw("[%d][G:0x%x]%s: invalid slot (%d,%d)", instance,
+			GROUP_ID(group->id), __func__, hw_id, hw_slot);
 		return false;
 	}
 
 	hw_ip = &hardware->hw_ip[hw_slot];
 	if (!hw_ip) {
-		merr_hw("[G:0x%x]: hw_ip(null) (%d,%d)", instance,
-			GROUP_ID(group->id), hw_id, hw_slot);
+		err_hw("[%d][G:0x%x]%s: hw_ip(null) (%d,%d)", instance,
+			GROUP_ID(group->id), __func__, hw_id, hw_slot);
 		return false;
 	}
 
@@ -566,9 +554,9 @@ bool check_setfile_change(struct fimc_is_group *group_leader,
 	   So, second option is more efficient way to support PIP scenario.
 	 */
 	if (scenario != hw_ip->applied_scenario) {
-		msinfo_hw("[G:0x%x,0x%x,0x%x]%s: scenario(%d->%d), instance(%d->%d)\n", instance, hw_ip,
-			GROUP_ID(group_leader->id), GROUP_ID(group_ischain->id),
-			GROUP_ID(group->id), __func__,
+		info_hw("[%d][G:0x%x,0x%x,0x%x][ID:%d]%s: scenario(%d->%d), instance(%d->%d)\n",
+			instance, GROUP_ID(group_leader->id), GROUP_ID(group_ischain->id),
+			GROUP_ID(group->id), hw_ip->id, __func__,
 			hw_ip->applied_scenario, scenario,
 			atomic_read(&hw_ip->instance), instance);
 		return true;
@@ -598,7 +586,7 @@ int fimc_is_itf_shot_wrap(struct fimc_is_device_ischain *device,
 	apply_flag = check_setfile_change(group_leader, group, hardware, instance, scenario);
 
 	if (!atomic_read(&group_leader->scount) || apply_flag) {
-		mdbg_hw(1, "[G:0x%x]%s: call apply_setfile()\n",
+		dbg_hw("[%d][G:0x%x]%s: call apply_setfile()\n",
 			instance, GROUP_ID(group->id), __func__);
 #if !defined(DISABLE_SETFILE)
 		ret = fimc_is_hardware_apply_setfile(hardware, instance,
@@ -622,20 +610,4 @@ int fimc_is_itf_shot_wrap(struct fimc_is_device_ischain *device,
 	spin_unlock_irqrestore(&itf->shot_check_lock, flags);
 
 	return ret;
-}
-
-void fimc_is_itf_sfr_dump_wrap(struct fimc_is_device_ischain *device, u32 group, bool flag_print_log)
-{
-	u32 hw_maxnum;
-	u32 hw_id;
-	int hw_list[GROUP_HW_MAX];
-	struct fimc_is_hardware *hardware;
-
-	hardware = device->hardware;
-
-	hw_maxnum = fimc_is_get_hw_list(group, hw_list);
-	if (hw_maxnum > 0) {
-		hw_id = hw_list[hw_maxnum - 1];
-		fimc_is_hardware_sfr_dump(hardware, hw_id, flag_print_log);
-	}
 }

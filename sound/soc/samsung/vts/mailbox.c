@@ -84,7 +84,7 @@ static void mailbox_handle_irq(struct irq_desc *desc)
 	chained_irq_enter(chip, desc);
 
 	while (stat) {
-		u32 hwirq = __fls(stat);
+		unsigned long hwirq = __fls(stat);
 		generic_handle_irq(irq_find_mapping(irq_domain, gc->irq_base + hwirq));
 		stat &= ~(1 << hwirq);
 	}
@@ -182,22 +182,22 @@ static int samsung_mailbox_probe(struct platform_device *pdev)
 	}
 
 	result = platform_get_irq(pdev, 0);
-	if (result < 0) {
+	if (IS_ERR_VALUE(result)) {
 		dev_err(dev, "Failed to get irq resource\n");
 		return result;
 	}
 	data->irq = result;
 
-	data->irq_domain = irq_domain_add_linear(np, MAILBOX_INT1_OFFSET + MAILBOX_INT1_SIZE,
+	data->irq_domain = irq_domain_add_linear(np, MAILBOX_INT1_SIZE,
 			&irq_generic_chip_ops, NULL);
 	if (IS_ERR_OR_NULL(data->irq_domain)) {
 		dev_err(dev, "Failed to add irq domain\n");
 		return -ENOMEM;
 	}
 
-	result = irq_alloc_domain_generic_chips(data->irq_domain, MAILBOX_INT1_OFFSET + MAILBOX_INT1_SIZE,
+	result = irq_alloc_domain_generic_chips(data->irq_domain, MAILBOX_INT1_SIZE,
 			1, "mailbox_irq_chip", handle_level_irq, 0, 0, IRQ_GC_INIT_MASK_CACHE);
-	if (result < 0) {
+	if (IS_ERR_VALUE(result)) {
 		dev_err(dev, "Failed to allocation generic irq chips\n");
 		return result;
 	}
@@ -211,11 +211,7 @@ static int samsung_mailbox_probe(struct platform_device *pdev)
 	gc->chip_types[0].chip.irq_unmask	= irq_gc_mask_clr_bit;
 	gc->chip_types[0].regs.mask		= MAILBOX_INTMR1;
 	gc->chip_types[0].regs.ack		= MAILBOX_INTCR1;
-#ifdef CONFIG_SOC_EXYNOS8895
 	gc->wake_enabled			= 0x0000FFFF;
-#else
-	gc->wake_enabled			= 0xFFFF0000;
-#endif
 	gc->chip_types[0].chip.irq_set_wake	= irq_gc_set_wake;
 
 	irq_set_handler_data(data->irq, pdev);

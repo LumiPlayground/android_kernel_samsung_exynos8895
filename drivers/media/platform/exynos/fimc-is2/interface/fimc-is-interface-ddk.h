@@ -27,6 +27,9 @@
 #define MODULE_ID_MASK		(0x0FFF0000)
 #define MODULE_ID_SHIFT		(16)
 
+#define CONVRES(src, src_max, tar_max) \
+	((src <= 0) ? (0) : ((src * tar_max + (src_max >> 1)) / src_max))
+
 struct fimc_is_lib_isp {
 	void				*object;
 	struct lib_interface_func	*func;
@@ -34,38 +37,31 @@ struct fimc_is_lib_isp {
 };
 
 enum lib_cb_event_type {
-	LIB_EVENT_CONFIG_LOCK			= 1,
-	LIB_EVENT_FRAME_START			= 2,
-	LIB_EVENT_FRAME_END			= 3,
-	LIB_EVENT_DMA_A_OUT_DONE		= 4,
-	LIB_EVENT_DMA_B_OUT_DONE		= 5,
-	LIB_EVENT_FRAME_START_ISR		= 6,
-	LIB_EVENT_ERROR_CIN_OVERFLOW		= 7,
-	LIB_EVENT_ERROR_CIN_COLUMN		= 8,
-	LIB_EVENT_ERROR_CIN_LINE		= 9,
-	LIB_EVENT_ERROR_CIN_TOTAL_SIZE		= 10,
-	LIB_EVENT_ERROR_COUT_OVERFLOW		= 11,
-	LIB_EVENT_ERROR_COUT_COLUMN		= 12,
-	LIB_EVENT_ERROR_COUT_LINE		= 13,
-	LIB_EVENT_ERROR_COUT_TOTAL_SIZE		= 14,
-	LIB_EVENT_ERROR_CONFIG_LOCK_DELAY	= 15,
+	LIB_EVENT_CONFIG_LOCK		= 1,
+	LIB_EVENT_FRAME_START		= 2,
+	LIB_EVENT_FRAME_END		= 3,
+	LIB_EVENT_DMA_A_OUT_DONE	= 4,
+	LIB_EVENT_DMA_B_OUT_DONE	= 5,
+	LIB_EVENT_FRAME_START_ISR	= 6,
+	LIB_EVENT_ERROR_CIN_OVERFLOW	= 7,
+	LIB_EVENT_ERROR_CIN_COLUMN	= 8,
+	LIB_EVENT_ERROR_CIN_LINE	= 9,
+	LIB_EVENT_ERROR_CIN_TOTAL_SIZE	= 10,
+	LIB_EVENT_ERROR_COUT_OVERFLOW	= 11,
+	LIB_EVENT_ERROR_COUT_COLUMN	= 12,
+	LIB_EVENT_ERROR_COUT_LINE	= 13,
+	LIB_EVENT_ERROR_COUT_TOTAL_SIZE	= 14,
 	LIB_EVENT_END
 };
 
-enum dcp_dma_in_type {
-	DCP_DMA_IN_GDC_MASTER,
-	DCP_DMA_IN_GDC_SLAVE,
-	DCP_DMA_IN_DISPARITY,
-	DCP_DMA_IN_MAX
-};
-
-enum dcp_dma_out_type {
-	DCP_DMA_OUT_MASTER,	/* plane order is [Y, C, Y2, C2] */
-	DCP_DMA_OUT_SLAVE,	/* plane order is [Y, C] */
-	DCP_DMA_OUT_MASTER_DS,
-	DCP_DMA_OUT_SLAVE_DS,
-	DCP_DMA_OUT_DISPARITY,
-	DCP_DMA_OUT_MAX
+enum dcp_dma_type {
+	DCP_DMA_MASTER_Y,
+	DCP_DMA_MASTER_C,
+	DCP_DMA_SLAVE,
+	DCP_DMA_DISPARITY,
+	DCP_DMA_DISPARITY_STAT,
+	DCP_DMA_FUSION,
+	DCP_DMA_MAX
 };
 
 #ifdef SOC_DRC
@@ -145,19 +141,15 @@ struct tpu_param_set {
 struct dcp_param_set {
 	struct param_control		control;
 	struct param_dcp_config		config;
-
 	struct param_dma_input		dma_input_m;	/* master input */
 	struct param_dma_input		dma_input_s;	/* slave input */
 	struct param_dma_output		dma_output_m;	/* master output */
 	struct param_dma_output		dma_output_s;	/* slave output */
-	struct param_dma_output		dma_output_m_ds;/* master Down Scale output */
-	struct param_dma_output		dma_output_s_ds;/* slave Down Scale output */
-
-	struct param_dma_input		dma_input_disparity;
-	struct param_dma_output		dma_output_disparity;
-
-	u32				input_dva[DCP_DMA_IN_MAX][4];
-	u32				output_dva[DCP_DMA_OUT_MAX][4];
+	struct param_dma_output		output_disparity;
+	struct param_dma_output		output_disparity_stat;
+	struct param_dma_output		dma_output_f;	/* fusion */
+	u32				input_dva[DCP_DMA_MAX];
+	u32				output_dva[DCP_DMA_MAX];
 
 	u32 				instance_id;
 	u32				fcount;
@@ -187,8 +179,8 @@ enum lib_func_type {
 	LIB_FUNC_3AA = 1,
 	LIB_FUNC_ISP,
 	LIB_FUNC_TPU,
-	LIB_FUNC_VRA,
 	LIB_FUNC_DCP,
+	LIB_FUNC_VRA,
 	LIB_FUNC_TYPE_END
 };
 

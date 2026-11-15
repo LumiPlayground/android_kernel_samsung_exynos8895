@@ -43,27 +43,6 @@ static int find_next_descriptor(unsigned char *buffer, int size,
 	return buffer - buffer0;
 }
 
-static void usb_parse_ssp_isoc_endpoint_companion(struct device *ddev,
-		int cfgno, int inum, int asnum, struct usb_host_endpoint *ep,
-		unsigned char *buffer, int size)
-{
-	struct usb_ssp_isoc_ep_comp_descriptor *desc;
-
-	/*
-	 * The SuperSpeedPlus Isoc endpoint companion descriptor immediately
-	 * follows the SuperSpeed Endpoint Companion descriptor
-	 */
-	desc = (struct usb_ssp_isoc_ep_comp_descriptor *) buffer;
-	if (desc->bDescriptorType != USB_DT_SSP_ISOC_ENDPOINT_COMP ||
-	    size < USB_DT_SSP_ISOC_EP_COMP_SIZE) {
-		dev_warn(ddev, "Invalid SuperSpeedPlus isoc endpoint companion"
-			 "for config %d interface %d altsetting %d ep %d.\n",
-			 cfgno, inum, asnum, ep->desc.bEndpointAddress);
-		return;
-	}
-	memcpy(&ep->ssp_isoc_ep_comp, desc, USB_DT_SSP_ISOC_EP_COMP_SIZE);
-}
-
 static void usb_parse_ss_endpoint_companion(struct device *ddev, int cfgno,
 		int inum, int asnum, struct usb_host_endpoint *ep,
 		unsigned char *buffer, int size)
@@ -75,7 +54,6 @@ static void usb_parse_ss_endpoint_companion(struct device *ddev, int cfgno,
 	 * be the first thing immediately following the endpoint descriptor.
 	 */
 	desc = (struct usb_ss_ep_comp_descriptor *) buffer;
-
 	if (desc->bDescriptorType != USB_DT_SS_ENDPOINT_COMP ||
 			size < USB_DT_SS_EP_COMP_SIZE) {
 		dev_warn(ddev, "No SuperSpeed endpoint companion for config %d "
@@ -98,8 +76,7 @@ static void usb_parse_ss_endpoint_companion(struct device *ddev, int cfgno,
 					ep->desc.wMaxPacketSize;
 		return;
 	}
-	buffer += desc->bLength;
-	size -= desc->bLength;
+
 	memcpy(&ep->ss_ep_comp, desc, USB_DT_SS_EP_COMP_SIZE);
 
 	/* Check the various values */
@@ -135,7 +112,6 @@ static void usb_parse_ss_endpoint_companion(struct device *ddev, int cfgno,
 				cfgno, inum, asnum, ep->desc.bEndpointAddress);
 		ep->ss_ep_comp.bmAttributes = 16;
 	} else if (usb_endpoint_xfer_isoc(&ep->desc) &&
-		   !USB_SS_SSP_ISOC_COMP(desc->bmAttributes) &&
 		   USB_SS_MULT(desc->bmAttributes) > 3) {
 		dev_warn(ddev, "Isoc endpoint has Mult of %d in "
 				"config %d interface %d altsetting %d ep %d: "
@@ -164,11 +140,6 @@ static void usb_parse_ss_endpoint_companion(struct device *ddev, int cfgno,
 				max_tx);
 		ep->ss_ep_comp.wBytesPerInterval = cpu_to_le16(max_tx);
 	}
-	/* Parse a possible SuperSpeedPlus isoc ep companion descriptor */
-	if (usb_endpoint_xfer_isoc(&ep->desc) &&
-	    USB_SS_SSP_ISOC_COMP(desc->bmAttributes))
-		usb_parse_ssp_isoc_endpoint_companion(ddev, cfgno, inum, asnum,
-							ep, buffer, size);
 }
 
 static const unsigned short low_speed_maxpacket_maxes[4] = {
@@ -186,9 +157,7 @@ static const unsigned short full_speed_maxpacket_maxes[4] = {
 static const unsigned short high_speed_maxpacket_maxes[4] = {
 	[USB_ENDPOINT_XFER_CONTROL] = 64,
 	[USB_ENDPOINT_XFER_ISOC] = 1024,
-
-	/* Bulk should be 512, but some devices use 1024: we will warn below */
-	[USB_ENDPOINT_XFER_BULK] = 1024,
+	[USB_ENDPOINT_XFER_BULK] = 512,
 	[USB_ENDPOINT_XFER_INT] = 1024,
 };
 static const unsigned short super_speed_maxpacket_maxes[4] = {
@@ -212,16 +181,6 @@ static int usb_parse_endpoint(struct device *ddev, int cfgno, int inum,
 	d = (struct usb_endpoint_descriptor *) buffer;
 	buffer += d->bLength;
 	size -= d->bLength;
-
-	if ((d->bmAttributes & 0x3) == 0x1) {
-		if (d->bEndpointAddress & USB_ENDPOINT_DIR_MASK) {
-			to_usb_device(ddev)->hwinfo.in_ep = d->bEndpointAddress;
-			dev_info(ddev, " This is IN ISO endpoint #0%x \n", d->bEndpointAddress);
-		} else {
-			to_usb_device(ddev)->hwinfo.out_ep = d->bEndpointAddress;
-			dev_info(ddev, " This is OUT ISO endpoint #0%x \n", d->bEndpointAddress);
-		}
-	}
 
 	if (d->bLength >= USB_DT_ENDPOINT_AUDIO_SIZE)
 		n = USB_DT_ENDPOINT_AUDIO_SIZE;
@@ -545,7 +504,7 @@ skip_to_next_interface_descriptor:
 	return buffer - buffer0 + i;
 }
 
-int usb_parse_configuration(struct usb_device *dev, int cfgidx,
+static int usb_parse_configuration(struct usb_device *dev, int cfgidx,
     struct usb_host_config *config, unsigned char *buffer, int size)
 {
 	struct device *ddev = &dev->dev;
@@ -876,9 +835,6 @@ int usb_get_configuration(struct usb_device *dev)
 
 		dev->do_remote_wakeup =
 			(desc->bmAttributes & USB_CONFIG_ATT_WAKEUP) ? 1 : 0;
-		if (dev->do_remote_wakeup == 1) {
-			device_init_wakeup(ddev, 1);
-		}
 
 		result = usb_get_descriptor(dev, USB_DT_CONFIG, cfgno,
 		    bigbuffer, length);
@@ -895,7 +851,6 @@ int usb_get_configuration(struct usb_device *dev)
 		}
 
 		dev->rawdescriptors[cfgno] = bigbuffer;
-		dev->rawdesc_length = length;
 
 		result = usb_parse_configuration(dev, cfgno,
 		    &dev->config[cfgno], bigbuffer, length);

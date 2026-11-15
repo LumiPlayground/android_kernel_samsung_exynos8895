@@ -13,7 +13,6 @@
 #define fimc_is_device_sensor_peri_H
 
 #ifdef CONFIG_MUIC_NOTIFIER
-#include <linux/device.h>
 #include <linux/muic/muic.h>
 #include <linux/muic/muic_notifier.h>
 #endif
@@ -78,26 +77,26 @@ struct fimc_is_cis {
 	u32				max_fps;
 	struct mutex			*i2c_lock;
 	struct mutex			control_lock;
-	bool				use_pdaf;
 
 	/* Long Term Exposure Mode(LTE mode) structure */
-	struct fimc_is_long_term_expo_mode	long_term_mode;
-	struct work_struct			long_term_mode_work;
+	struct fimc_is_long_term_expo_mode		long_term_mode;
+	struct work_struct				long_term_mode_work;
 
-	/* sensor control delay(N+1 or N+2) */
-	u32				ctrl_delay;
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION_RUNTIME
 	struct work_struct				mipi_clock_change_work;
 #endif
-	int				mipi_clock_index_new;
-	int				mipi_clock_index_cur;
+	u32				mipi_clock_index_new;
+	u32				mipi_clock_index_cur;
 #endif
 	u32				ae_exposure;
 	u32				ae_deltaev;
-#ifdef USE_CAMERA_FACTORY_DRAM_TEST
-	struct work_struct				factory_dramtest_work;
-	u32				factory_dramtest_section2_fcount;
+
+#ifdef USE_FACE_UNLOCK_AE_AWB_INIT
+    /* settins for initial AE */
+	bool			use_initial_ae;
+	ae_setting		init_ae_setting;
+	ae_setting		last_ae_setting;
 #endif
 };
 
@@ -129,7 +128,7 @@ struct fimc_is_actuator {
 	ulong					valid_time;
 
 	/* softlanding */
-	bool                             need_softlanding;
+	bool                             need_softlanding;      
 
 	/* WinAf value for M2M AF */
 	u32					left_x;
@@ -149,29 +148,6 @@ struct fimc_is_actuator {
 	struct fimc_is_device_sensor_peri	*sensor_peri;
 	struct fimc_is_actuator_ops			*actuator_ops;
 	struct mutex				*i2c_lock;
-
-	u32				vendor_product_id;
-	u32				vendor_first_pos;
-	u32				vendor_first_delay;
-	bool				vendor_use_sleep_mode;
-	bool				vendor_use_update_pid;
-};
-
-struct fimc_is_aperture {
-	u32				id;
-	struct v4l2_subdev		*subdev; /* connected module subdevice */
-	u32				device; /* connected sensor device */
-	struct i2c_client		*client;
-	struct fimc_is_aperture_ops		*aperture_ops;
-	struct fimc_is_device_sensor_peri	*sensor_peri;
-	struct mutex				*i2c_lock;
-	struct mutex			control_lock;
-	int				new_value;
-	int				cur_value; /* need to mode when aperture value change */
-	int				start_value;
-	enum fimc_is_aperture_control_step	step;
-	struct work_struct		aperture_set_start_work;
-	struct work_struct		aperture_set_work;
 };
 
 struct fimc_is_flash_data {
@@ -208,9 +184,8 @@ struct fimc_is_ois {
 	u32				id;
 	u32				device; /* connected sensor device */
 	u32				ois_mode; /* need to mode when ois mode change */
-	u32				pre_ois_mode; /* need to mode when ois mode change */
-	bool				ois_shift_available;
-	bool				ois_shift_available_rear2; /* need to mode when ois mode change */
+	u32                         pre_ois_mode; /* need to mode when ois mode change */
+	bool                        ois_shift_available;
 	struct v4l2_subdev		*subdev; /* connected module subdevice */
 	struct i2c_client		*client;
 
@@ -220,11 +195,6 @@ struct fimc_is_ois {
 	u8				coef;
 	u8				pre_coef;
 	bool				fadeupdown;
-	bool				initial_centering_mode;
-#ifdef CAMERA_REAR2_OIS
-	int				ois_power_mode;
-#endif
-	struct work_struct		ois_set_init_work;
 };
 
 struct fimc_is_preprocessor {
@@ -232,7 +202,7 @@ struct fimc_is_preprocessor {
 	struct v4l2_subdev		*subdev; /* connected module subdevice */
 	u32				device; /* connected sensor device */
 	struct i2c_client		*client;
-	struct fimc_is_device_preproc	*device_preproc;
+	struct fimc_is_device_preproc *device_preproc;
 
 	u32				cfgs;
 	struct fimc_is_preproc_cfg	*cfg;
@@ -245,44 +215,25 @@ struct fimc_is_preprocessor {
 	struct mutex			*i2c_lock;
 };
 
-struct fimc_is_pdp {
-	u32				id;
-	u32 __iomem			*base_reg;
-	resource_size_t			regs_start;
-	resource_size_t			regs_end;
-	int				irq;
-	size_t				width;
-	size_t				height;
-	struct mutex			control_lock;
-	struct fimc_is_pdp_ops		*pdp_ops;
-	struct v4l2_subdev		*subdev; /* connected module subdevice */
-};
-
 struct fimc_is_device_sensor_peri {
-	struct fimc_is_module_enum	*module;
+	struct fimc_is_module_enum			*module;
 
-	struct fimc_is_cis		cis;
-	struct v4l2_subdev		*subdev_cis;
+	struct fimc_is_cis				cis;
+	struct v4l2_subdev				*subdev_cis;
 
-	struct fimc_is_actuator		*actuator;
-	struct v4l2_subdev		*subdev_actuator;
+	struct fimc_is_actuator			*actuator;
+	struct v4l2_subdev				*subdev_actuator;
 
-	struct fimc_is_flash		*flash;
-	struct v4l2_subdev		*subdev_flash;
+	struct fimc_is_flash			*flash;
+	struct v4l2_subdev				*subdev_flash;
 
-	struct fimc_is_preprocessor	*preprocessor;
-	struct v4l2_subdev		*subdev_preprocessor;
+	struct fimc_is_preprocessor			*preprocessor;
+	struct v4l2_subdev				*subdev_preprocessor;
 
-	struct fimc_is_ois		*ois;
-	struct v4l2_subdev		*subdev_ois;
+	struct fimc_is_ois				*ois;
+	struct v4l2_subdev				*subdev_ois;
 
-	struct fimc_is_pdp		*pdp;
-	struct v4l2_subdev		*subdev_pdp;
-
-	struct fimc_is_aperture		*aperture;
-	struct v4l2_subdev		*subdev_aperture;
-
-	unsigned long			peri_state;
+	unsigned long					peri_state;
 
 	/* Thread for sensor and high spped recording setting */
 	u32				sensor_work_index;
@@ -299,9 +250,9 @@ struct fimc_is_device_sensor_peri {
 	/* first sensor mode setting flag */
         u32                             mode_change_first;
 
-	struct fimc_is_sensor_interface		sensor_interface;
+	struct fimc_is_sensor_interface			sensor_interface;
 #ifdef CONFIG_COMPANION_DIRECT_USE
-	struct fimc_is_preprocessor_interface	preprocessor_inferface;
+	struct fimc_is_preprocessor_interface		preprocessor_inferface;
 #endif
 	int						reuse_3a_value;
 };
@@ -340,6 +291,7 @@ int fimc_is_sensor_peri_notify_actuator_init(struct v4l2_subdev *subdev);
 
 int fimc_is_sensor_peri_call_m2m_actuator(struct fimc_is_device_sensor *device);
 int fimc_is_sensor_initial_preprocessor_setting(struct fimc_is_device_sensor_peri *sensor_peri);
+
 
 enum hrtimer_restart fimc_is_actuator_m2m_af_set(struct hrtimer *timer);
 
@@ -384,6 +336,4 @@ void fimc_is_sensor_peri_init_work(struct fimc_is_device_sensor_peri *sensor_per
 #define CALL_PREPROPOPS(s, op, args...) (((s)->preprocessor_ops->op) ? ((s)->preprocessor_ops->op(args)) : 0)
 #define CALL_OISOPS(s, op, args...) (((s)->ois_ops->op) ? ((s)->ois_ops->op(args)) : 0)
 #define CALL_ACTUATOROPS(s, op, args...) (((s)->actuator_ops->op) ? ((s)->actuator_ops->op(args)) : 0)
-#define CALL_APERTUREOPS(s, op, args...) (((s)->aperture_ops->op) ? ((s)->aperture_ops->op(args)) : 0)
-#define CALL_PDPOPS(s, op, args...) (((s)->pdp_ops->op) ? ((s)->pdp_ops->op(args)) : 0)
 #endif

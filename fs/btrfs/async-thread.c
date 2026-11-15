@@ -74,16 +74,18 @@ void btrfs_##name(struct work_struct *arg)				\
 	normal_work_helper(work);					\
 }
 
-struct btrfs_fs_info *
-btrfs_workqueue_owner(struct __btrfs_workqueue *wq)
+bool btrfs_workqueue_normal_congested(struct btrfs_workqueue *wq)
 {
-	return wq->fs_info;
-}
+	/*
+	 * We could compare wq->normal->pending with num_online_cpus()
+	 * to support "thresh == NO_THRESHOLD" case, but it requires
+	 * moving up atomic_inc/dec in thresh_queue/exec_hook. Let's
+	 * postpone it until someone needs the support of that case.
+	 */
+	if (wq->normal->thresh == NO_THRESHOLD)
+		return false;
 
-struct btrfs_fs_info *
-btrfs_work_owner(struct btrfs_work *work)
-{
-	return work->wq->fs_info;
+	return atomic_read(&wq->normal->pending) > wq->normal->thresh * 2;
 }
 
 bool btrfs_workqueue_normal_congested(struct btrfs_workqueue *wq)

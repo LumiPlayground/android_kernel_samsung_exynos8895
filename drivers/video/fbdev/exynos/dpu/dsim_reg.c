@@ -290,12 +290,14 @@ void dsim_reg_dphy_resetn(u32 id, u32 en)
 	dsim_write_mask(id, DSIM_SWRST, val, DSIM_DPHY_RST); /* reset active low */
 }
 
+
 void dsim_reg_function_reset(u32 id)
 {
+	//dsim_write_mask(id, DSIM_SWRST, ~0, DSIM_SWRST_FUNCRST);
 	u32 cnt = 1000;
 	u32 state;
-	dsim_write_mask(id, DSIM_SWRST, ~0,  DSIM_SWRST_FUNCRST);
 
+	dsim_write_mask(id, DSIM_SWRST, ~0,  DSIM_SWRST_FUNCRST);
 	do {
 		state = dsim_read(id, DSIM_SWRST) & DSIM_SWRST_FUNCRST;
 		cnt--;
@@ -304,7 +306,6 @@ void dsim_reg_function_reset(u32 id)
 
 	if (!cnt)
 		dsim_err("%s is timeout.\n", __func__);
-
 }
 
 u32 dsim_reg_get_clk_status(u32 id)
@@ -314,6 +315,15 @@ u32 dsim_reg_get_clk_status(u32 id)
 	val = dsim_read(id, DSIM_LINK_STATUS2);
 	return DSIM_LINK_STATUS2_CLK_LANE_STATUS_GET(val);
 }
+
+u32 dsim_reg_is_clk_stop(u32 id)
+{
+	if (dsim_read(id, DSIM_DPHY_STATUS) & DSIM_DPHY_STATUS_STOP_STATE_CLK)
+		return 1;
+
+	return 0;
+}
+
 
 void dsim_reg_dp_dn_swap(u32 id, u32 en)
 {
@@ -444,19 +454,22 @@ u32 dsim_reg_is_pll_stable(u32 id)
 
 int dsim_reg_enable_pll(u32 id, u32 en)
 {
-	u32 cnt;
+	int ret;
+	u32 cnt = 1000;
 
 	if (en) {
-		cnt = 1000;
 		dsim_reg_clear_int(id, DSIM_INTSRC_PLL_STABLE);
-
 		dsim_reg_set_pll(id, 1);
-		while (1) {
+		while (cnt--) {
 			cnt--;
-			if (dsim_reg_is_pll_stable(id))
+			ret = dsim_reg_is_pll_stable(id);
+			if (ret)
 				return 0;
-			if (cnt == 0)
+
+			if (cnt == 0) {
+				dsim_err("ERR:%s:failed to set pll\n", __func__);
 				return -EBUSY;
+			}
 			udelay(10);
 		}
 	} else {
@@ -477,11 +490,33 @@ void dsim_reg_set_esc_clk_prescaler(u32 id, u32 en, u32 p)
 
 void dsim_reg_set_esc_clk_on_lane(u32 id, u32 en, u32 lane)
 {
-	u32 val;
+	u32 val = 0;
 
-	lane = (lane >> 1) | (1 << 4);
+	if (en) {
+		/* set for data lane */
+		switch(lane) {
+			case 1 : 
+				val = 1;
+				break;
+			case 2 :
+				val = 3;
+				break;
+			case 3 : 
+				val = 7;
+				break;
+			case 4 :
+				val = 0xf;
+				break;
+			default:
+				dsim_err("DSIM:ERR:%s:invalid lane count : %d\n", __func__, lane);
+				break;
+		}
+		/* set for clock lane */
+		val |= (1 << 4);
 
-	val = en ? DSIM_CLK_CTRL_LANE_ESCCLK_EN(lane) : 0;
+		val = DSIM_CLK_CTRL_LANE_ESCCLK_EN(val);
+	}	
+
 	dsim_write_mask(id, DSIM_CLK_CTRL, val, DSIM_CLK_CTRL_LANE_ESCCLK_EN_MASK);
 }
 
@@ -715,7 +750,8 @@ void dsim_reg_get_num_of_slice(u32 id, u32 *num_of_slice)
 
 void dsim_reg_set_multi_slice(u32 id, struct decon_lcd *lcd_info)
 {
-	u32 multi_slice, val;
+	u32 multi_slice = 1;
+	u32 val;
 
 	/* if multi-slice(2~4 slices) DSC compression is used in video mode
 	 * MULTI_SLICE_PACKET configuration must be matched to DDI's configuration */
@@ -748,22 +784,32 @@ void dsim_reg_set_size_of_slice(u32 id, struct decon_lcd *lcd_info)
 
 		dsim_write_mask(id, DSIM_SLICE01, val_01, mask_01);
 		dsim_write_mask(id, DSIM_SLICE23, val_23, mask_23);
-	} else if (lcd_info->dsc_slice_num == 2) {
+
+	} else if (lcd_info->dsc_slice_num == 2 && lcd_info->dsc_cnt == 2) {
+
 		val_01 = DSIM_SLICE01_SIZE_OF_SLICE1(slice_w) |
 			DSIM_SLICE01_SIZE_OF_SLICE0(slice_w);
 		mask_01 = DSIM_SLICE01_SIZE_OF_SLICE1_MASK |
 			DSIM_SLICE01_SIZE_OF_SLICE0_MASK;
+		val_23 = DSIM_SLICE23_SIZE_OF_SLICE3(slice_w) |
+			DSIM_SLICE23_SIZE_OF_SLICE2(slice_w);
+		mask_23 = DSIM_SLICE23_SIZE_OF_SLICE3_MASK |
+			DSIM_SLICE23_SIZE_OF_SLICE2_MASK;
 
 		dsim_write_mask(id, DSIM_SLICE01, val_01, mask_01);
-	} else if (lcd_info->dsc_slice_num == 1) {
-		val_01 = DSIM_SLICE01_SIZE_OF_SLICE0(slice_w);
-		mask_01 = DSIM_SLICE01_SIZE_OF_SLICE0_MASK;
+		dsim_write_mask(id, DSIM_SLICE23, val_23, mask_23);
 
+	} else if (lcd_info->dsc_slice_num == 2 && lcd_info->dsc_cnt == 1) {
+		val_01 = DSIM_SLICE01_SIZE_OF_SLICE1(slice_w) |
+			DSIM_SLICE01_SIZE_OF_SLICE0(slice_w);
+		mask_01 = DSIM_SLICE01_SIZE_OF_SLICE1_MASK |
+			DSIM_SLICE01_SIZE_OF_SLICE0_MASK;
 		dsim_write_mask(id, DSIM_SLICE01, val_01, mask_01);
 	} else {
 		dsim_err("not supported slice mode. dsc(%d), slice(%d)\n",
 				lcd_info->dsc_cnt, lcd_info->dsc_slice_num);
 	}
+
 }
 
 void dsim_reg_print_size_of_slice(u32 id)
@@ -911,14 +957,6 @@ u32 dsim_reg_is_hs_clk_ready(u32 id)
 	return 0;
 }
 
-u32 dsim_reg_is_clk_stop(u32 id)
-{
-	if (dsim_read(id, DSIM_DPHY_STATUS) & DSIM_DPHY_STATUS_STOP_STATE_CLK)
-		return 1;
-
-	return 0;
-}
-
 void dsim_reg_enable_per_frame_read(u32 id, u32 en)
 {
 	u32 val = en ? ~0 : 0;
@@ -985,7 +1023,7 @@ void dsim_reg_force_dphy_stop_state(u32 id, u32 en)
 	dsim_write_mask(id, DSIM_ESCMODE, val, DSIM_ESCMODE_FORCE_STOP_STATE);
 }
 
-void dsim_reg_wr_tx_header(u32 id, u32 data_id, unsigned long data0, u32 data1, u32 bta_type)
+void dsim_reg_wr_tx_header(u32 id, u8 data_id, u8 data0, u8 data1, u32 bta_type)
 {
 	u32 tmp = (u32)data0;
 	u32 val = DSIM_PKTHDR_BTA_TYPE(bta_type) |DSIM_PKTHDR_ID(data_id) |
@@ -1363,22 +1401,22 @@ void dsim_reg_set_config(u32 id, struct decon_lcd *lcd_info, u32 data_lane_cnt,
 	/* dsim_set_bist(id, true); */
 }
 
+#if 0 
 void dsim_reg_init_probe(u32 id, struct decon_lcd *lcd_info, u32 data_lane_cnt,
 		struct dsim_clks *clks)
 {
 	return;
 }
-
+#endif
 int dsim_reg_init(u32 id, struct decon_lcd *lcd_info, u32 data_lane_cnt,
 		struct dsim_clks *clks)
 {
 	int ret = 0;
-
 	/*
 	 * DSIM does not need to init, if DSIM is already
 	 * becomes txrequest_hsclk = 1'b1 because of LCD_ON_UBOOT
 	 */
-
+#if 0 
 	if (dsim_read_mask(id, DSIM_CLK_CTRL, DSIM_CLK_CTRL_TX_REQUEST_HSCLK)) {
 		dsim_info("dsim%d is probed with LCD ON UBOOT\n", id);
 		dsim_reg_init_probe(id, lcd_info, data_lane_cnt, clks);
@@ -1387,7 +1425,7 @@ int dsim_reg_init(u32 id, struct decon_lcd *lcd_info, u32 data_lane_cnt,
 		ret = -EBUSY;
 		return ret;
 	}
-
+#endif
 	/*set config*/
 	dsim_reg_set_config(id, lcd_info, data_lane_cnt, clks);
 
@@ -1735,16 +1773,15 @@ int dsim_reg_set_ulps_by_ddi(u32 id, u32 ddi_type, u32 lanes, u32 en)
 int dsim_reg_exit_ulps_and_start(u32 id, u32 ddi_type, u32 lanes)
 {
 	int ret = 0;
-	/* just for test */
-	#if 0
+/* just for test */
+#if 0
 	/*
 	 * Guarantee 1.2v signal level for data lane(positive) when exit ULPS.
 	 * DSIM Should be set standby. If not, lane goes to 600mv sometimes.
 	*/
 	dsim_reg_set_hs_clock(id, 1);
 	dsim_reg_set_hs_clock(id, 0);
-	#endif
-
+#endif
 	/* try to exit ULPS mode. The sequence is depends on DDI type */
 	ret = dsim_reg_set_ulps_by_ddi(id, ddi_type, lanes, 0);
 	dsim_reg_start(id);
@@ -1765,14 +1802,17 @@ int dsim_reg_stop_and_enter_ulps(u32 id, u32 ddi_type, u32 lanes)
 			break;
 	} while (cnt--);
 #endif
+
+	dsim_reg_set_hs_clock(id, 0);
 	ret = dsim_reg_set_hs_clock(id, 0);
 	if (ret < 0) {
 		dsim_err("The CLK lane doesn't be switched to LP mode\n");
 	}
 	dsim_reg_set_ulps_by_ddi(id, ddi_type, lanes, 1);
+
 	dsim_reg_set_lanes(id, lanes, 0);
 	dsim_reg_set_esc_clk_on_lane(id, 0, lanes);
-//	dsim_reg_enable_word_clock(id, 0);	// 20161201 guide from DIP Team
+	//dsim_reg_enable_word_clock(id, 0);
 	dsim_reg_set_clocks(id, NULL, NULL, 0);
 	dsim_reg_sw_reset(id);
 	return ret;
@@ -1793,8 +1833,7 @@ void dsim_reg_stop(u32 id, u32 lanes)
 	dsim_reg_set_int(id, 0);
 
 	/* first disable HS clock */
-	if (dsim_reg_set_hs_clock(id, 0) < 0)
-	{
+	if (dsim_reg_set_hs_clock(id, 0) < 0) {
 		dsim_err("The CLK lane doesn't be switched to LP mode\n");
 	}
 	dsim_reg_set_lanes(id, lanes, 0);
@@ -1803,3 +1842,44 @@ void dsim_reg_stop(u32 id, u32 lanes)
 	dsim_reg_set_clocks(id, NULL, NULL, 0);
 	dsim_reg_sw_reset(id);
 }
+#ifdef CONFIG_SUPPORT_DSU
+void dsim_set_dsu_update(u32 id, struct decon_lcd *lcd_info)
+{
+	u32 threshold;
+	u32 num_of_slice;
+	u32 num_of_transfer;
+
+	threshold = lcd_info->xres;
+	num_of_transfer = lcd_info->xres * lcd_info->yres / threshold;
+
+	if (lcd_info->mode != DECON_MIPI_COMMAND_MODE)
+		return;
+
+	dsim_reg_set_cm_underrun_lp_ref(id, lcd_info->cmd_underrun_lp_ref);
+
+	if (lcd_info->dsc_enabled) {
+		threshold = lcd_info->xres / 3;
+		num_of_transfer = lcd_info->xres * lcd_info->yres / threshold / 3;
+	}
+	dsim_reg_set_threshold(id, threshold);
+
+	dsim_reg_set_vresol(id, lcd_info->yres);
+	dsim_reg_set_hresol(id, lcd_info->xres, lcd_info);
+	dsim_reg_set_porch(id, lcd_info);
+
+	dsim_reg_set_num_of_transfer(id, num_of_transfer);
+	
+	dsim_reg_enable_dsc(id, lcd_info->dsc_enabled);
+
+	if (lcd_info->dsc_enabled) {
+		dsim_dbg("%s: dsc configuration is set\n", __func__);
+		dsim_reg_set_num_of_slice(id, lcd_info->dsc_slice_num);
+		dsim_reg_set_multi_slice(id, lcd_info); /* multi slice */
+		dsim_reg_set_size_of_slice(id, lcd_info);
+
+		dsim_reg_get_num_of_slice(id, &num_of_slice);
+		dsim_dbg("dsim%d: number of DSC slice(%d)\n", id, num_of_slice);
+		dsim_reg_print_size_of_slice(id);
+	}
+}
+#endif

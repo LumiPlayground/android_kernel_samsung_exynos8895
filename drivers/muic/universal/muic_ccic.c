@@ -78,6 +78,8 @@ static struct mdev_desc_t {
 	int mdev; /* attached dev */
 }mdev_desc;
 
+static int __ccic_info = 0;
+
 static struct mdev_rid_desc_t mdev_rid_tbl[] = {
 	[RID_UNDEFINED] = {ATTACHED_DEV_NONE_MUIC},
 	[RID_000K] = {ATTACHED_DEV_OTG_MUIC},
@@ -88,6 +90,28 @@ static struct mdev_rid_desc_t mdev_rid_tbl[] = {
 	[RID_619K] = {ATTACHED_DEV_JIG_UART_ON_MUIC},
 	[RID_OPEN] = {ATTACHED_DEV_NONE_MUIC},
 };
+
+/*
+ * __ccic_info :
+ * b'0: 1 if an active ccic is present,
+ *        0 when muic works without ccic chip or
+ *              no ccic Noti. registration is needed
+ *              even though a ccic chip is present.
+ */
+static int set_ccic_info(char *str)
+{
+	get_option(&str, &__ccic_info);
+
+	pr_info("%s: ccic_info: 0x%04x\n", __func__, __ccic_info);
+
+	return __ccic_info;
+}
+__setup("ccic_info=", set_ccic_info);
+
+int get_ccic_info(void)
+{
+	return __ccic_info;
+}
 
 int muic_is_ccic_supported_jig(muic_data_t *pmuic, muic_attached_dev_t mdev)
 {
@@ -203,7 +227,8 @@ static void mdev_handle_ccic_detach(muic_data_t *pmuic)
 	hv_do_detach(pmuic->phv);
 #endif
 	pmuic->is_ccic_attach = false;
-	pmuic->is_ccic_afc_enable = false;
+	pmuic->is_ccic_afc_enable = 0;
+	pmuic->is_ccic_rp56_enable = false;
 
 	if (pdesc->ccic_evt_rprd) {
 		if (pvendor && pvendor->enable_chgdet)
@@ -214,6 +239,9 @@ static void mdev_handle_ccic_detach(muic_data_t *pmuic)
 		mdev_noti_detached(pdesc->mdev);
 	else if (pmuic->legacy_dev != ATTACHED_DEV_NONE_MUIC)
 		mdev_noti_detached(pmuic->legacy_dev);
+
+	if (pmuic->pdata->jig_uart_cb)
+		pmuic->pdata->jig_uart_cb(0);
 
 	/* Reset status & flags */
 	pdesc->mdev = 0;
@@ -341,7 +369,8 @@ int muic_get_current_legacy_dev(muic_data_t *pmuic)
 {
 	struct mdev_desc_t *pdesc = &mdev_desc;
 
-	pr_info("%s: mdev:%d legacy_dev:%d\n", __func__, pdesc->mdev, pmuic->legacy_dev);
+	pr_info("%s: mdev:%d legacy_dev:%d cable_type:%d\n",
+			__func__, pdesc->mdev, pmuic->legacy_dev, pmuic->is_ccic_afc_enable);
 
 	if (pdesc->mdev)
 		return pdesc->mdev;
@@ -446,20 +475,49 @@ static int muic_handle_ccic_ATTACH(muic_data_t *pmuic, CC_NOTI_ATTACH_TYPEDEF *p
 	pr_info("%s: src:%d dest:%d id:%d attach:%d cable_type:%d rprd:%d\n", __func__,
 		pnoti->src, pnoti->dest, pnoti->id, pnoti->attach, pnoti->cable_type, pnoti->rprd);
 
-	pdesc->ccic_evt_attached = pnoti->attach ? 
+	pdesc->ccic_evt_attached = pnoti->attach ?
 		MUIC_CCIC_NOTI_ATTACH : MUIC_CCIC_NOTI_DETACH;
 
 	/* Attached */
 	if (pdesc->ccic_evt_attached == MUIC_CCIC_NOTI_ATTACH) {
 		pr_info("%s: Attach\n", __func__);
 		pmuic->is_ccic_attach = true;
+		pmuic->is_ccic_afc_enable = pnoti->cable_type;
+#if !defined(CONFIG_SEC_FACTORY)
 		switch (pnoti->cable_type) {
 		case Rp_56K:
-			pmuic->is_ccic_afc_enable = true;
+			if (!pmuic->is_ccic_rp56_enable) {
+				switch (pmuic->attached_dev) {
+				case ATTACHED_DEV_AFC_CHARGER_5V_MUIC:
+					pr_info("%s: 9V HV Charging Start!\n", __func__);
+					pmuic->phv->tx_data = MUIC_HV_9V;
+					max77865_hv_muic_connect_start(pmuic->phv);
+					break;
+				default:
+					break;
+				}
+				pmuic->is_ccic_rp56_enable = true;
+			}
 			break;
+		case Rp_Abnormal:
+			// Chgtype re-detect for AFC detach -> TA attach
+			switch (pmuic->attached_dev) {
+			case ATTACHED_DEV_AFC_CHARGER_5V_MUIC:
+			case ATTACHED_DEV_AFC_CHARGER_9V_MUIC:
+			case ATTACHED_DEV_QC_CHARGER_5V_MUIC:
+			case ATTACHED_DEV_QC_CHARGER_9V_MUIC:
+				pr_info("%s: CC or SBU short. Chgdet Re-run.\n", __func__);
+				hv_muic_chgdet_ready(pmuic->phv);
+				if (pvendor && pvendor->run_chgdet)
+					pvendor->run_chgdet(pmuic->regmapdesc, 1);
+				break;
+			default:
+				break;
+			}
 		default:
 			break;
 		}
+#endif
 
 		if (pdesc->ccic_evt_roleswap) {
 			pr_info("%s: roleswap event, attach USB\n", __func__);
@@ -493,8 +551,8 @@ static int muic_handle_ccic_ATTACH(muic_data_t *pmuic, CC_NOTI_ATTACH_TYPEDEF *p
 			pmuic->afc_water_disable = false;
 		}
 
-		/* W/A for protect of CCIC damage when HV charging in case of Rp=0 cable detect */
-		/* CCIC attach after MUIC cable confirm */
+#if !defined(CONFIG_SEC_FACTORY)
+		/* For dry case after water */
 		if (pmuic->attached_dev == ATTACHED_DEV_TA_MUIC) {
 #if defined(CONFIG_MUIC_HV_MAX77854) || defined(CONFIG_MUIC_HV_MAX77865)
 			if (pmuic->pdata->afc_disable)
@@ -502,7 +560,7 @@ static int muic_handle_ccic_ATTACH(muic_data_t *pmuic, CC_NOTI_ATTACH_TYPEDEF *p
 					__func__, pmuic->pdata->afc_disable);
 			else if ((pmuic->phv->is_afc_muic_ready == false) &&
 					vps_is_hv_ta(&pmuic->vps)) {
-				if (pmuic->is_ccic_afc_enable) {
+				if (pmuic->is_ccic_afc_enable == Rp_56K) {
 					pmuic->phv->is_afc_muic_prepare = true;
 #if defined(CONFIG_MUIC_HV_MAX77854)
 					max77854_muic_prepare_afc_charger(pmuic->phv);
@@ -513,6 +571,7 @@ static int muic_handle_ccic_ATTACH(muic_data_t *pmuic, CC_NOTI_ATTACH_TYPEDEF *p
 			}
 #endif
 		}
+#endif
 
 		/* W/A for Incomplete insertion case */
 		pdesc->ccic_evt_dcdcnt = 0;
@@ -554,10 +613,14 @@ static int mdev_handle_factory_jig(muic_data_t *pmuic, int rid, int vbus)
 	switch (rid) {
 	case RID_255K:
 	case RID_301K:
+		if (pmuic->pdata->jig_uart_cb)
+			pmuic->pdata->jig_uart_cb(1);
 		mdev_com_to(pmuic, MUIC_PATH_USB_AP);
 		break;
 	case RID_523K:
 	case RID_619K:
+		if (pmuic->pdata->jig_uart_cb)
+			pmuic->pdata->jig_uart_cb(1);
 		mdev_com_to(pmuic, MUIC_PATH_UART_AP);
 		break;
 	default:
@@ -629,11 +692,14 @@ static int muic_handle_ccic_RID(muic_data_t *pmuic, CC_NOTI_RID_TYPEDEF *pnoti)
 		vbus = mdev_get_vbus(pmuic);
 		if (pdesc->ccic_evt_attached == MUIC_CCIC_NOTI_ATTACH &&
 				mdev_is_valid_RID_OPEN(pmuic, vbus)) {
+			if (pmuic->pdata->jig_uart_cb)
+				pmuic->pdata->jig_uart_cb(0);
 			/*
 			 * USB team's requirement.
 			 * Set AP USB for enumerations.
 			 */
 			mdev_com_to(pmuic, MUIC_PATH_USB_AP);
+
 			mdev_handle_legacy_TA_USB(pmuic);
 		} else {
 			/* RID OPEN + No VBUS = Assume detach */
@@ -761,3 +827,4 @@ void muic_register_ccic_notifier(muic_data_t *pmuic)
 
 	pr_info("%s: done.\n", __func__);
 }
+

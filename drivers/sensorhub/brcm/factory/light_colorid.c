@@ -23,7 +23,7 @@ enum {
 	COLOR_ID_GREEN = 5,
 	COLOR_ID_BLUE = 6,
 	COLOR_ID_PINKGOLD = 7,
-	COLOR_ID_DEFAULT,
+	COLOR_ID_DEFUALT,
 } COLOR_ID_INDEX;
 
 struct light_coef_predefine_item {
@@ -36,21 +36,15 @@ struct light_coef_predefine_item {
 
 #ifdef CONFIG_SENSORS_SSP_GREAT
 struct light_coef_predefine_item light_coef_predefine_table[COLOR_NUM+1] = {
-	{170609,	COLOR_ID_DEFAULT,	{-170, 80, -290, 1000, 2266, 1389, 1372},	{2300, 1000}, 550},
-	{170609,	COLOR_ID_UTYPE,		{-170, 80, -290, 1000, 2266, 1389, 1372},	{2300, 1000}, 550},
-	{170609,	COLOR_ID_BLACK,		{-170, 80, -290, 1000, 2266, 1389, 1372},	{2300, 1000}, 550},
-};
-#elif defined(CONFIG_SENSORS_SSP_STAR)
-struct light_coef_predefine_item light_coef_predefine_table[COLOR_NUM+1] = {
-	{181212,	COLOR_ID_DEFAULT,	{-170, 80, -290, 1000, 2266, 1116, 1500},	{2300, 1000}, 550},
-	{181212,	COLOR_ID_UTYPE,		{-170, 80, -290, 1000, 2266, 1116, 1500},	{2300, 1000}, 550},
-	{181212,	COLOR_ID_BLACK,		{-170, 80, -290, 1000, 2266, 1116, 1500},	{2300, 1000}, 550},
+	{170609,	COLOR_ID_DEFUALT,	{-170, 80, -290, 1000, 2266, 1389, 1372},		{2300, 1000}, 550},
+	{170609,	COLOR_ID_UTYPE,		{-170, 80, -290, 1000, 2266, 1389, 1372},		{2300, 1000}, 550},
+	{170609,	COLOR_ID_BLACK,		{-170, 80, -290, 1000, 2266, 1389, 1372},		{2300, 1000}, 550},
 };
 #else
 struct light_coef_predefine_item light_coef_predefine_table[COLOR_NUM+1] = {
-	{180509,	COLOR_ID_DEFAULT,	{-170, 80, -290, 1000, 2266, 1112, 1370},	{2300, 1000}, 550},
-	{180509,	COLOR_ID_UTYPE,		{-170, 80, -290, 1000, 2266, 1112, 1370},	{2300, 1000}, 550},
-	{180509,	COLOR_ID_BLACK,		{-170, 80, -290, 1000, 2266, 1112, 1370},	{2300, 1000}, 550},
+	{170427,	COLOR_ID_DEFUALT,	{-35, -55, -275, 1000, 2410, 1198, 1418},		{2100, 900}, 700},
+	{170427,	COLOR_ID_UTYPE,		{-35, -55, -275, 1000, 2410, 1198, 1418},		{2100, 900}, 700},
+	{170427,	COLOR_ID_BLACK,		{-35, -55, -275, 1000, 2410, 1198, 1418},		{2100, 900}, 700},
 };
 #endif
 
@@ -73,8 +67,9 @@ int light_corloid_read_colorid(void)
 	colorid_filp = filp_open(COLOR_ID_PATH, O_RDONLY, 0660);
 	if (IS_ERR(colorid_filp)) {
 		iRet = PTR_ERR(colorid_filp);
-		pr_err("[SSP] %s - Can't open colorid file %d\n",
-				__func__, iRet);
+		if (iRet != -ENOENT)
+			pr_err("[SSP] %s - Can't open colorid file\n",
+				__func__);
 		set_fs(old_fs);
 		return iRet;
 	}
@@ -90,12 +85,6 @@ int light_corloid_read_colorid(void)
 
 	filp_close(colorid_filp, current->files);
 	set_fs(old_fs);
-
-	// 00 00 00  or ff ff ff is not connected
-	if ((strcmp("00 00 00", buf) == 0) || (strcmp("ff ff ff", buf) == 0)) {
-		pr_err("[SSP] %s : lcd is not connected", __func__);
-		return ERROR;
-	}
 
 	str = buf;
 	token = strsep(&str, " ");
@@ -224,7 +213,7 @@ int light_colorid_write_predefined_file(int color_id, int coef[], int thresh[], 
 	int iRet = 0, crc;
 	mm_segment_t old_fs;
 	struct file *coef_filp = NULL;
-	char file_name[COLOR_ID_PREDEFINED_FILENAME_LENGTH] = {0, };
+	char file_name[COLOR_ID_PREDEFINED_FILENAME_LENTH] = {0, };
 	char file_contents[COLOR_ID_PREDEFINED_FILE_LENGTH] = {0, };
 
 	old_fs = get_fs();
@@ -232,9 +221,7 @@ int light_colorid_write_predefined_file(int color_id, int coef[], int thresh[], 
 
 	snprintf(file_name, sizeof(file_name), "%s%d", PREDEFINED_FILE_NAME, color_id);
 
-	crc = coef[0] + coef[1] + coef[2] + coef[3] + coef[4] + coef[5] + coef[6]
-		+ thresh[0] + thresh[1] + thresh_alert;
-
+	crc = coef[0] + coef[1] + coef[2] + coef[3] + coef[4] + coef[5] + coef[6] + thresh[0] + thresh[1] + thresh_alert;
 	snprintf(file_contents, sizeof(file_contents), "%d,%d,%d,%d,%d,%d,%d,%u,%u,%u,%d",
 		coef[4], coef[0], coef[1], coef[2], coef[3], coef[5], coef[6], thresh[0], thresh[1], thresh_alert, crc);
 
@@ -248,9 +235,7 @@ int light_colorid_write_predefined_file(int color_id, int coef[], int thresh[], 
 		return iRet;
 	}
 
-	iRet = vfs_write(coef_filp, (char *)file_contents,
-			sizeof(char)*COLOR_ID_PREDEFINED_FILE_LENGTH, &coef_filp->f_pos);
-
+	iRet = vfs_write(coef_filp, (char *)file_contents, sizeof(char)*COLOR_ID_PREDEFINED_FILE_LENGTH, &coef_filp->f_pos);
 	if (iRet < 0) {
 		pr_err("[SSP] %s - Can't write the coef data to file\n", __func__);
 		iRet = -EIO;
@@ -267,7 +252,7 @@ int light_colorid_read_predefined_file(int color_id, int coef[], unsigned int th
 	int iRet = 0, crc, i;
 	mm_segment_t old_fs;
 	struct file *coef_filp = NULL;
-	char file_name[COLOR_ID_PREDEFINED_FILENAME_LENGTH] = {0, };
+	char file_name[COLOR_ID_PREDEFINED_FILENAME_LENTH] = {0, };
 	char file_contents[COLOR_ID_PREDEFINED_FILE_LENGTH] = {0, };
 	char *token, *str;
 
@@ -386,12 +371,9 @@ int light_colorid_read_predefined_file(int color_id, int coef[], unsigned int th
 	token = strsep(&str, ",\n");
 	iRet = kstrtos32(token, 10, &crc);
 
-	if (crc != (coef[0] + coef[1] + coef[2] + coef[3] + coef[4] + coef[5] + coef[6]
-				+ thresh[0] + thresh[1] + (*thresh_alert))) {
+	if (crc != (coef[0] + coef[1] + coef[2] + coef[3] + coef[4] + coef[5] + coef[6] + thresh[0] + thresh[1] + (*thresh_alert))) {
 		pr_err("[SSP] %s - crc error %d(%d %d %d %d %d %d %d %u %u %u)\n", __func__,
-			crc, coef[0], coef[1], coef[2], coef[3], coef[4], coef[5], coef[6],
-			thresh[0], thresh[1], (*thresh_alert));
-
+			crc, coef[0], coef[1], coef[2], coef[3], coef[4], coef[5], coef[6], thresh[0], thresh[1], (*thresh_alert));
 		//use default coef
 		memcpy(coef, light_coef_predefine_table[0].coef, sizeof(int)*7);
 		memcpy(thresh, light_coef_predefine_table[0].thresh, sizeof(unsigned int)*2);
@@ -454,15 +436,10 @@ int initialize_light_colorid(struct ssp_data *data)
 	if (ret < 0)
 		pr_err("[SSP] %s - read predefined file failed : ret %d\n", __func__, ret);
 
-#if defined(CONFIG_SENSORS_SSP_HAECHI)
-	data->uProxHiThresh = DEFAULT_HIGH_THRESHOLD;
-	data->uProxLoThresh = DEFAULT_LOW_THRESHOLD;
-#else 
 	data->uProxHiThresh = thresh[0];
 	data->uProxLoThresh = thresh[1];
-	data->uProxHiThresh_detect = DEFAULT_DETECT_HIGH_THRESHOLD;
-	data->uProxLoThresh_detect = DEFAULT_DETECT_LOW_THRESHOLD;
-#endif
+	data->uProxHiThresh_detect = DEFUALT_DETECT_HIGH_THRESHOLD;
+	data->uProxLoThresh_detect = DEFUALT_DETECT_LOW_THRESHOLD;
 
 	data->uProxAlertHiThresh = thresh_alert;
 
@@ -542,9 +519,7 @@ ssize_t light_hiddenhole_version_store(struct device *dev,
 
 	pr_info("[SSP] %s - %s\n", __func__, buf);
 
-	iRet = sscanf(buf, "%1c%6d", &temp, &version);
-	if (iRet < 0)
-		return iRet;
+	sscanf(buf, "%1c%6d", &temp, &version);
 
 	str = (char *)buf;
 	strsep(&str, ".");
@@ -554,11 +529,9 @@ ssize_t light_hiddenhole_version_store(struct device *dev,
 		return -EINVAL;
 	}
 
-	if (strlen(str) < COLOR_ID_IDS_LENGTH) {
-		iRet = sscanf(str, "%20s", str_ids);
-		if (iRet < 0)
-			return iRet;
-	} else {
+	if (strlen(str) < COLOR_ID_IDS_LENGTH)
+		sscanf(str, "%20s", str_ids);
+	else {
 		pr_err("[SSP] %s - ids overflow\n", __func__);
 		return -EINVAL;
 	}
@@ -585,9 +558,7 @@ ssize_t light_hiddendhole_hh_write_all_data_show(struct device *dev,
 		unsigned int thresh_alert;
 
 		for (i = 1; i <= COLOR_NUM; i++) {
-			ret = light_colorid_read_predefined_file(light_coef_predefine_table[i].color_id,
-					coef, thresh, &thresh_alert);
-
+			ret = light_colorid_read_predefined_file(light_coef_predefine_table[i].color_id, coef, thresh, &thresh_alert);
 			if (ret < 0) {
 				err = 1;
 				pr_err("[SSP] %s - read coef fail, err = %d\n", __func__, err);
@@ -615,7 +586,7 @@ ssize_t light_hiddenhole_write_all_data_store(struct device *dev,
 
 	mm_segment_t old_fs;
 	struct file *coef_filp = NULL;
-	char file_name[COLOR_ID_PREDEFINED_FILENAME_LENGTH] = {0, };
+	char file_name[COLOR_ID_PREDEFINED_FILENAME_LENTH] = {0, };
 	char file_contents[COLOR_ID_PREDEFINED_FILE_LENGTH] = {0, };
 
 	old_fs = get_fs();
@@ -673,7 +644,7 @@ ssize_t  light_hiddendhole_is_exist_efs_show(struct device *dev,
 	int is_exist = 1, colorid;
 	mm_segment_t old_fs;
 	struct file *coef_filp = NULL;
-	char file_name[COLOR_ID_PREDEFINED_FILENAME_LENGTH];
+	char file_name[COLOR_ID_PREDEFINED_FILENAME_LENTH];
 
 	pr_info("[SSP] %s ", __func__);
 

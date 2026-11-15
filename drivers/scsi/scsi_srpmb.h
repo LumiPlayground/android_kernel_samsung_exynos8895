@@ -11,7 +11,7 @@
 #ifndef _SCSI_SRPMB_H
 #define _SCSI_SRPMB_H
 
-#include <linux/pm_wakeup.h>
+#include <linux/wakelock.h>
 
 #define GET_WRITE_COUNTER			1
 #define WRITE_DATA				2
@@ -34,11 +34,8 @@
 #define READ_LEN_ERROR				0x608
 #define READ_DATA_SECURITY_OUT_ERROR		0x609
 #define READ_DATA_SECURITY_IN_ERROR		0x60A
-#define RPMB_INVALID_COMMAND			0x60B
-#define RPMB_FAIL_SUSPEND_STATUS		0x60C
 
-#define RPMB_IN_PROGRESS			0xDCDC
-#define RPMB_PASSED				0xBABA
+#define PASS_STATUS 				0xBABA
 
 #define IS_INCLUDE_RPMB_DEVICE			"0:0:0:1"
 
@@ -55,20 +52,19 @@ struct rpmb_irq_ctx {
 	struct work_struct work;
 	struct workqueue_struct *srpmb_queue;
 	struct notifier_block pm_notifier;
-	struct wakeup_source wakesrc;
-	spinlock_t lock;
+	struct wake_lock wakelock;
 };
 
 struct rpmb_packet {
-	u16     request;
-	u16     result;
-	u16     count;
-	u16     address;
-	u32     write_counter;
-	u8      nonce[16];
-	u8      data[256];
-	u8      Key_MAC[32];
-	u8      stuff[196];
+       u16     request;
+       u16     result;
+       u16     count;
+       u16     address;
+       u32     write_counter;
+       u8      nonce[16];
+       u8      data[256];
+       u8      Key_MAC[32];
+       u8      stuff[196];
 };
 
 int init_wsm(struct device *dev);

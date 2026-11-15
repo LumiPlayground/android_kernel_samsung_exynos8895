@@ -6,12 +6,11 @@
 #include <linux/hash.h>
 #include <linux/ratelimit.h>
 #include <linux/msdos_fs.h>
-#include <linux/kobject.h>
 
 #ifdef CONFIG_FAT_SUPPORT_STLOG
 #include <linux/fslog.h>
 #else
-#define ST_LOG(fmt, ...)
+#define ST_LOG(fmt,...) 
 #endif
 
 /*
@@ -397,18 +396,6 @@ static inline unsigned long fat_dir_hash(int logstart)
 extern int fat_add_cluster(struct inode *inode);
 
 /* fat/misc.c */
-#ifdef CONFIG_FAT_UEVENT
-extern int fat_uevent_init(struct kset *fat_kset);
-extern void fat_uevent_uninit(void);
-extern void fat_uevent_ro_remount(struct super_block *sb);
-#else
-static inline int fat_uevent_init(struct kset *fat_kset)
-{
-	return 0;
-}
-static inline void fat_uevent_uninit(void) {};
-static inline void fat_uevent_ro_remount(struct super_block *sb) {};
-#endif
 extern __printf(3, 4) __cold
 void __fat_fs_error(struct super_block *sb, int report, const char *fmt, ...);
 #define fat_fs_error(sb, fmt, args...)		\
@@ -438,12 +425,13 @@ extern const struct export_operations fat_export_ops;
 extern const struct export_operations fat_export_ops_nostale;
 
 /* fat/xattr.c */
-#ifdef CONFIG_FAT_VIRTUAL_XATTR
-void setup_fat_xattr_handler(struct super_block *sb);
+extern const struct xattr_handler *fat_xattr_handlers[];
+extern int fat_setxattr(struct dentry *dentry, struct inode *inode, const char *name,
+				const void *value, size_t size, int flags);
+extern ssize_t fat_getxattr(struct dentry *dentry, struct inode *inode, const char *name,
+				void *value, size_t size);
 extern ssize_t fat_listxattr(struct dentry *dentry, char *list, size_t size);
-#else
-static inline void setup_fat_xattr_handler(struct super_block *sb) {};
-#endif
+extern int fat_removexattr(struct dentry *dentry, const char *name);
 
 /* helper for printk */
 typedef unsigned long long	llu;

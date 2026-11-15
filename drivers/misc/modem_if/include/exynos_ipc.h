@@ -78,12 +78,6 @@ enum exynos_ch_id {
 	EXYNOS_CH_ID_CPLOG = 81,   /*umts_dm0*/
 	EXYNOS_CH_ID_LOOPBACK,     /*umts_loopback*/
 
-	EXYNOS_CH_ID_RCS_0 = 236,    /*CH_RAW_CS_VT_DATA*/
-	EXYNOS_CH_ID_RCS_1 = 237,    /*CH_RAW_CIQ_BRIDGE*/
-
-	EXYNOS_CH_ID_PPT_0 = 238,    /*Mission-Critical Push to Talk*/
-	EXYNOS_CH_ID_PPT_1 = 239,    /*Mission-Critical Push to Talk*/
-
 	EXYNOS_CH_ID_BOOT = 241,
 	EXYNOS_CH_ID_DUMP = 242,
 
@@ -101,9 +95,8 @@ struct __packed frag_config {
 
 /* EXYNOS link-layer header */
 struct __packed exynos_link_header {
-	u16 sync;
 	u16 seq;
-	u16 cfg;
+	struct frag_config cfg;
 	u16 len;
 	u16 reserved_1;
 	u8 ch_id;
@@ -164,16 +157,6 @@ static inline bool exynos_single_frame(u8 *frm)
 {
 	u16 cfg = *(u16 *)(frm + EXYNOS_FRAG_CONFIG_OFFSET);
 	return ((cfg >> 8) & EXYNOS_SINGLE_MASK) == EXYNOS_SINGLE_MASK;
-}
-
-static inline bool exynos_rcs_ch(u8 ch)
-{
-   return (ch == EXYNOS_CH_ID_RCS_0 || ch == EXYNOS_CH_ID_RCS_1) ? true : false;
-}
-
-static inline bool exynos_ppt_ch(u8 ch)
-{
-   return (ch == EXYNOS_CH_ID_PPT_0 || ch == EXYNOS_CH_ID_PPT_1) ? true : false;
 }
 
 static inline u8 exynos_get_ch(u8 *frm)
@@ -262,37 +245,8 @@ static inline unsigned int exynos_get_total_len(u8 *frm)
 	return len + pad;
 }
 
-static inline u16 modify_next_frame(u16 fr_cfg)
-{
-	u8 frame_index;
-
-	frame_index = fr_cfg & 0x3fff;
-
-	if (!(--frame_index)) {
-		fr_cfg &= 0x3fff;
-		fr_cfg |= 0x4000;
-	}
-
-	return (fr_cfg & 0xff00) | frame_index;
-}
-
 static inline bool exynos_padding_exist(u8 *frm)
 {
 	return exynos_calc_padding_size(exynos_get_frame_len(frm)) ? true : false;
-}
-
-static inline u32 exynos_multi_packet_index(u16 ctrl)
-{
-	return ((ctrl >> 8) & 0x3f);
-}
-
-static inline u32 exynos_multi_frame_index(u16 ctrl)
-{
-	return ctrl & 0xff;
-}
-
-static inline bool exynos_multi_last(u16 ctrl)
-{
-	return (ctrl >> 8) & EXYNOS_MULTI_LAST_MASK ? true : false;
 }
 #endif

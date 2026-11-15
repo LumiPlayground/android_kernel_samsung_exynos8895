@@ -279,9 +279,6 @@ struct sbd_link_attr {
 	Bool variable to check if SBD ipc device supports zerocopy
 	*/
 	bool zerocopy;
-
-	/* Bool variable to check if SBD ipc device supports smapper */
-	bool smapper;
 };
 
 struct zerocopy_adaptor {
@@ -321,17 +318,6 @@ struct zerocopy_adaptor {
 	Timer for when buffer pool is full
 	*/
 	struct hrtimer datalloc_timer;
-
-	/* Smapper region */
-	void __iomem *smapper_base;
-
-	/* Pointer to smapper skb addresses */
-	u8 **smapper_skb_addresses;
-	dma_addr_t *smapper_dma_addresses;
-
-	/* Work for smapper skb allocation */
-	struct workqueue_struct *smapper_alloc_queue;
-	struct work_struct smapper_alloc_work;
 };
 
 struct sbd_ipc_device {
@@ -361,9 +347,6 @@ struct sbd_ipc_device {
 	Bool variable to check if SBD ipc device supports zerocopy
 	*/
 	bool zerocopy;
-
-	/* Bool variable to check if SBD ipc device supports smapper */
-	bool smapper;
 
 	/*
 	Pointer to Zerocopy adaptor : memory is allocated for UL/DL zerocopy_adaptor
@@ -448,9 +431,6 @@ struct sbd_link_device {
 	unsigned long rxdone_mask;
 
 	bool reset_zerocopy_done;
-
-	/* Flag for checking whether or not an smapper is active */
-	atomic_t smapper_active;
 };
 
 static inline void sbd_activate(struct sbd_link_device *sl)
@@ -510,8 +490,10 @@ static inline struct sbd_ring_buffer *sbd_ch2rb_with_skb(struct sbd_link_device 
 {
 	u16 id;
 
+#ifdef CONFIG_MODEM_IF_QOS
 	if (sipc_ps_ch(ch))
 		ch = (skb && skb->queue_mapping == 1) ? QOS_HIPRIO : QOS_NORMAL;
+#endif
 
 	id = sbd_ch2id(sl, ch);
 	return (id < MAX_LINK_CHANNELS) ? &sl->ipc_dev[id].rb[dir] : NULL;
@@ -584,25 +566,6 @@ static inline unsigned int rb_full(struct sbd_ring_buffer *rb)
 		return (rb_space(rb) == 0);
 }
 
-static inline void smapper_activate(struct sbd_link_device *sl)
-{
-	if (sl)
-		atomic_set(&sl->smapper_active, 1);
-}
-
-static inline void smapper_deactivate(struct sbd_link_device *sl)
-{
-	if (sl)
-		atomic_set(&sl->smapper_active, 0);
-}
-
-static inline bool smapper_active(struct sbd_link_device *sl)
-{
-	if (!sl)
-		return false;
-	return atomic_read(&sl->smapper_active) ? true : false;
-}
-
 int create_sbd_link_device(struct link_device *ld, struct sbd_link_device *sl,
 			   u8 *shmem_base, unsigned int shmem_size);
 
@@ -613,7 +576,6 @@ struct sk_buff *sbd_pio_rx_zerocopy_adaptor(struct sbd_ring_buffer *rb, int use_
 struct sk_buff *sbd_pio_rx(struct sbd_ring_buffer *rb);
 int allocate_data_in_advance(struct zerocopy_adaptor *zdptr);
 extern enum hrtimer_restart datalloc_timer_func(struct hrtimer *timer);
-int smapper_restore(struct sbd_ring_buffer *rb);
 
 #define SBD_UL_LIMIT		16	/* Uplink burst limit */
 

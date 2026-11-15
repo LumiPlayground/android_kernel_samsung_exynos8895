@@ -11,6 +11,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
 #ifndef ECRYPTFS_DEK_H
@@ -57,19 +61,19 @@ void ecryptfs_fs_request_callback(int opcode, int ret, unsigned long ino);
 
 typedef struct _dek_arg_sdp_info {
     int engine_id;
-	int sdp_enabled;
+	int sdp_enabled;	
 	int is_sensitive;
 	int is_chamber;
 	unsigned int type;
-} dek_arg_get_sdp_info;
+}dek_arg_get_sdp_info;
 
 typedef struct _dek_arg_set_sensitive {
 	int engine_id;
-} dek_arg_set_sensitive;
+}dek_arg_set_sensitive;
 
 typedef struct _dek_arg_add_chamber {
     int engine_id;
-} dek_arg_add_chamber;
+}dek_arg_add_chamber;
 
 #define ECRYPTFS_IOCTL_GET_SDP_INFO     _IOR('l', 0x11, __u32)
 #define ECRYPTFS_IOCTL_SET_SENSITIVE    _IOW('l', 0x15, __u32)

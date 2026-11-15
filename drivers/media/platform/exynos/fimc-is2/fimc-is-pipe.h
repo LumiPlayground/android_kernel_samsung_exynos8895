@@ -13,8 +13,6 @@
 
 #include "fimc-is-groupmgr.h"
 
-#define FIMC_IS_MAX_PIPE_BUFS (5)
-
 enum pipe_slot_type {
 	PIPE_SLOT_SRC,
 	PIPE_SLOT_JUNCTION,
@@ -29,8 +27,8 @@ struct fimc_is_pipe {
 	struct fimc_is_video_ctx *vctx[PIPE_SLOT_MAX];
 	struct camera2_dm pipe_dm;
 	struct camera2_udm pipe_udm;
-	struct v4l2_buffer buf[PIPE_SLOT_MAX][FIMC_IS_MAX_PIPE_BUFS];
-	struct v4l2_plane planes[PIPE_SLOT_MAX][FIMC_IS_MAX_PIPE_BUFS][FIMC_IS_MAX_PLANES];
+	struct v4l2_buffer buf[PIPE_SLOT_MAX][FIMC_IS_MAX_BUFS];
+	struct v4l2_plane planes[PIPE_SLOT_MAX][FIMC_IS_MAX_BUFS][FIMC_IS_MAX_PLANES];
 };
 
 int fimc_is_pipe_probe(struct fimc_is_pipe *pipe);

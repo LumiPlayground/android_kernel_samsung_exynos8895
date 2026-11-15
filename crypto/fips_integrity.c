@@ -1,214 +1,308 @@
 /*
  * Perform FIPS Integrity test on Kernel Crypto API
  *
+ * At build time, hmac(sha256) of crypto code, avaiable in different ELF sections
+ * of vmlinux file, is generated. vmlinux file is updated with built-time hmac
+ * in a read-only data variable, so that it is available at run-time
+ *
+ * At run time, hmac(sha256) is again calculated using crypto bytes of a running
+ * kernel.
+ * Run time hmac is compared to built time hmac to verify the integrity.
+ *
+ *
+ * Author : Rohit Kothari (r.kothari@samsung.com)
+ * Date	  : 11 Feb 2014
+ *
+ * Copyright (c) 2014 Samsung Electronics
+ *
  */
 
 #include <linux/crypto.h>
+#include <crypto/hash.h>
 #include <linux/kallsyms.h>
 #include <linux/err.h>
 #include <linux/scatterlist.h>
-#include <crypto/hash.h>
-#include "internal.h"
+#include "internal.h" /* For Functional test macros */
 
-/*
- * This function return kernel offset.
- * If CONFIG_RELOCATABLE_KERNEL is set
- * Then the kernel will be placed into the random offset in memory
- * At the build time, we write self address of the "crypto_buildtime_address"
- * to the "crypto_buildtime_address" variable
- */
-static __u64 get_kernel_offset(void)
-{
-	static __u64 runtime_address = (__u64) &crypto_buildtime_address;
-	__u64 kernel_offset = abs(crypto_buildtime_address - runtime_address);
-	return kernel_offset;
-}
+static const char *
+symtab[][3] = {{".text",      "first_crypto_text",   "last_crypto_text"  },
+	      {".rodata",    "first_crypto_rodata", "last_crypto_rodata"},
+	      {".init.text", "first_crypto_init",   "last_crypto_init"  },
+	      {"asm.text",      "first_crypto_asm_text",   "last_crypto_asm_text"  },
+	      {"asm.rodata",    "first_crypto_asm_rodata", "last_crypto_asm_rodata"},
+	      {"asm.init.text", "first_crypto_asm_init",   "last_crypto_asm_init"  }};
 
-struct sdesc {
-	struct shash_desc shash;
-	char ctx[];
-};
+extern const char * get_builtime_crypto_hmac(void);
 
-static struct sdesc *init_hash(void)
-{
-	struct crypto_shash *tfm = NULL;
-	struct sdesc *sdesc = NULL;
-	int size;
-	int ret = -1;
-
-	/* Same as build time */
-	const unsigned char *key = "The quick brown fox jumps over the lazy dog";
-
-	tfm = crypto_alloc_shash("hmac(sha256)", 0, 0);
-
-	if (IS_ERR(tfm)) {
-		pr_err("FIPS(%s): integ failed to allocate tfm %ld\n", __func__, PTR_ERR(tfm));
-		return ERR_PTR(-EINVAL);
-	}
-
-	ret = crypto_shash_setkey(tfm, key, strlen(key));
-
-	if (ret) {
-		pr_err("FIPS(%s): fail at crypto_hash_setkey\n", __func__);
-		return ERR_PTR(-EINVAL);
-	}
-
-	size = sizeof(struct shash_desc) + crypto_shash_descsize(tfm);
-	sdesc = kmalloc(size, GFP_KERNEL);
-	if (!sdesc)
-		return ERR_PTR(-ENOMEM);
-
-	sdesc->shash.tfm = tfm;
-	sdesc->shash.flags = 0x0;
-
-	ret = crypto_shash_init(&sdesc->shash);
-
-	if (ret) {
-		pr_err("FIPS(%s): fail at crypto_hash_init\n", __func__);
-		return ERR_PTR(-EINVAL);
-	}
-
-	return sdesc;
-}
-
+#ifdef FIPS_DEBUG
 static int
-finalize_hash(struct shash_desc *desc, unsigned char *out, unsigned int out_size)
+dump_bytes(const char * section_name, const char * first_symbol, const char * last_symbol)
 {
-	int ret = -1;
+	u8 * start_addr = (u8 *) kallsyms_lookup_name (first_symbol);
+	u8 * end_addr   = (u8 *) kallsyms_lookup_name (last_symbol);
 
-	if (!desc || !desc->tfm || !out || !out_size) {
-		pr_err("FIPS(%s): Invalid args\n", __func__);
-		return ret;
-	}
-
-	if (crypto_shash_digestsize(desc->tfm) > out_size) {
-		pr_err("FIPS(%s): Not enough space for digest\n", __func__);
-		return ret;
-	}
-
-	ret = crypto_shash_final(desc, out);
-
-	if (ret) {
-		pr_err("FIPS(%s): crypto_hash_final failed\n", __func__);
+	if (!start_addr || !end_addr || start_addr >= end_addr)
+	{
+		printk(KERN_ERR "FIPS(%s): Error Invalid Addresses in Section : %s, Start_Addr : %p , End_Addr : %p\n",
+                       __FUNCTION__,section_name, start_addr, end_addr);
 		return -1;
 	}
+
+	printk(KERN_INFO "FIPS CRYPTO RUNTIME : Section - %s, %s : %p, %s : %p \n", section_name, first_symbol, start_addr, last_symbol, end_addr);
+
+	print_hex_dump_bytes ("FIPS CRYPTO RUNTIME : ",DUMP_PREFIX_NONE, start_addr, end_addr - start_addr);
 
 	return 0;
 }
-
-static int
-update_hash(struct shash_desc *desc, unsigned char *start_addr, unsigned int size)
-{
-	int ret = -1;
-
-	ret = crypto_shash_update(desc, start_addr, size);
-
-	if (ret) {
-		pr_err("FIPS(%s): crypto_hash_update failed\n", __func__);
-		return -1;
-	}
-
-#ifdef CONFIG_CRYPTO_FIPS_FUNC_TEST
-	if (!strcmp("integrity", get_fips_functest_mode())) {
-		ret = crypto_shash_update(desc, start_addr, 4);
-
-		if (ret) {
-			pr_err("FIPS(%s): crypto_hash_update failed\n", __func__);
-			return -1;
-		}
-	}
 #endif
 
+
+static int
+query_symbol_addresses (const char * first_symbol, const char * last_symbol,
+                        unsigned long * start_addr,unsigned long * end_addr)
+{
+	unsigned long start = kallsyms_lookup_name (first_symbol);
+	unsigned long end   = kallsyms_lookup_name (last_symbol);
+
+#ifdef FIPS_DEBUG
+	printk(KERN_INFO "FIPS CRYPTO RUNTIME :  %s : %p, %s : %p\n", first_symbol, (u8*)start, last_symbol, (u8*)end);
+#endif
+
+	if (!start || !end || start >= end)
+	{
+		printk(KERN_ERR "FIPS(%s): Error Invalid Addresses.", __FUNCTION__);
+		return -1;
+	}
+
+	*start_addr = start;
+	*end_addr   = end;
+
+	return 0;
+
+}
+
+static void free_hash(struct shash_desc *desc)
+{
+	if (!desc)
+		return;
+	crypto_free_shash(desc->tfm);
+	kzfree(desc);
+}
+
+static int init_hash(struct shash_desc **desc)
+{
+	static const unsigned char key[] = "The quick brown fox jumps over the lazy dog";
+	struct crypto_shash *tfm;
+	struct shash_desc *hash;
+	int ret;
+
+	tfm = crypto_alloc_shash("hmac(sha256)", 0, 0);
+	if (IS_ERR(tfm))
+		return PTR_ERR(tfm);
+	ret = crypto_shash_setkey(tfm, key, sizeof(key) - 1);
+	if (ret)
+		goto out_tfm;
+	hash = kzalloc(sizeof(*hash) + crypto_shash_descsize(tfm), GFP_KERNEL);
+	if (!hash) {
+		ret = -ENOMEM;
+		goto out_tfm;
+	}
+	hash->tfm = tfm;
+	hash->flags = 0;
+	ret = crypto_shash_init(hash);
+	if (ret) {
+		kzfree(hash);
+		goto out_tfm;
+	}
+	*desc = hash;
+	return 0;
+
+out_tfm:
+	crypto_free_shash(tfm);
+	return ret;
+}
+
+static int
+finalize_hash (struct shash_desc *desc, unsigned char * out, unsigned int out_size)
+{
+	int ret = -1;
+
+	if (!desc || !desc->tfm || !out || !out_size)
+	{
+		printk(KERN_ERR "FIPS(%s): Invalid args\n", __FUNCTION__);
+		return ret;
+	}
+
+	if (crypto_shash_digestsize(desc->tfm) > out_size)
+	{
+		printk(KERN_ERR "FIPS(%s): Not enough space for digest\n", __FUNCTION__);
+		return ret;
+	}
+
+	ret = crypto_shash_final (desc, out);
+
+	if (ret)
+	{
+		printk(KERN_ERR "FIPS(%s): crypto_shash_final failed\n", __FUNCTION__);
+		return -1;
+	}
+
 	return 0;
 }
 
-int
-do_integrity_check(void)
+static int
+update_hash (struct shash_desc * desc, unsigned char * start_addr, unsigned int size)
 {
-	int i, rows;
-	int err = -1;
+
+	unsigned char * buf = NULL;
+	unsigned char * cur = NULL;
+	unsigned int bytes_remaining;
+	unsigned int bytes;
+	int ret = -1;
+#if FIPS_FUNC_TEST == 2
+	static int total = 0;
+#endif
+
+	buf = kmalloc (PAGE_SIZE, GFP_KERNEL);
+
+	if (!buf)
+	{
+		printk(KERN_ERR "FIPS(%s): kmalloc failed\n", __FUNCTION__);
+		return ret;
+	}
+
+	bytes_remaining = size;
+	cur = start_addr;
+
+	while (bytes_remaining > 0)
+	{
+		if (bytes_remaining >= PAGE_SIZE)
+			bytes = PAGE_SIZE;
+		else
+			bytes = bytes_remaining;
+
+		memcpy (buf, cur, bytes);
+
+
+#if FIPS_FUNC_TEST == 2
+		if (total == 0)
+		{
+			printk(KERN_INFO "FIPS : Failing Integrity Test\n");
+			buf[bytes / 2] += 1;
+		}
+#endif
+
+		ret = crypto_shash_update(desc, buf, bytes);
+
+		if (ret)
+		{
+			printk(KERN_ERR "FIPS(%s): crypto_hash_update failed\n", __FUNCTION__);
+			kfree(buf);
+			buf = 0;
+			return -1;
+		}
+
+		cur += bytes;
+
+		bytes_remaining -= bytes;
+
+#if FIPS_FUNC_TEST == 2
+		total += bytes;
+#endif
+	}
+
+	//printk(KERN_INFO "FIPS : total bytes = %d\n", total);
+
+	if (buf)
+        {
+		kfree(buf);
+		buf = 0;
+        }
+
+	return 0;
+}
+
+
+int
+do_integrity_check (void)
+{
+	int i,rows, err;
 	unsigned long start_addr = 0;
 	unsigned long end_addr   = 0;
 	unsigned char runtime_hmac[32];
-	struct sdesc *sdesc = NULL;
-	const char *builtime_hmac = 0;
+	struct shash_desc *desc = NULL;
+	const char * builtime_hmac = 0;
 	unsigned int size = 0;
-#ifdef FIPS_DEBUG_INTEGRITY
-	unsigned int covered = 0;
-	unsigned int num_addresses = 0;
-#endif
 
-	sdesc = init_hash();
+	err = init_hash (&desc);
 
-	if (IS_ERR(sdesc)) {
-		pr_err("FIPS(%s) : init_hash failed\n", __func__);
+	if (err)
+	{
+		printk (KERN_ERR "FIPS(%s) : init_hash failed\n", __FUNCTION__);
 		return -1;
 	}
 
-	rows = (unsigned int) ARRAY_SIZE(integrity_crypto_addrs);
+	rows = (unsigned int) sizeof (symtab) / sizeof (symtab[0]);
 
-	for (i = 0; integrity_crypto_addrs[i].first && i < rows; i++) {
-		start_addr = integrity_crypto_addrs[i].first + get_kernel_offset();
-		end_addr   = integrity_crypto_addrs[i].last  + get_kernel_offset();
+	for (i = 0; i < rows; i++)
+	{
+		err = query_symbol_addresses (symtab[i][1], symtab[i][2], &start_addr, &end_addr);
 
-/* Print addresses for HMAC calculation */
-#ifdef FIPS_DEBUG_INTEGRITY
-		pr_info("FIPS_DEBUG_INTEGRITY : first last %08llux %08llulx\n",
-			integrity_crypto_addrs[i].first,
-			integrity_crypto_addrs[i].last);
-		covered += (end_addr - start_addr);
+		if (err)
+		{
+			printk (KERN_ERR "FIPS(%s) : Error to get start / end addresses\n", __FUNCTION__);
+			free_hash(desc);
+			return -1;
+		}
+
+#ifdef FIPS_DEBUG
+		dump_bytes(symtab[i][0],  symtab[i][1], symtab[i][2]);
 #endif
 
 		size = end_addr - start_addr;
-		err = update_hash(&sdesc->shash, (unsigned char *)start_addr, size);
 
-		if (err) {
-			pr_err("FIPS(%s) : Error to update hash\n", __func__);
-			crypto_free_shash(sdesc->shash.tfm);
-			kzfree(sdesc);
+		err = update_hash(desc, (unsigned char *)start_addr, size);
+
+		if (err)
+		{
+			printk (KERN_ERR "FIPS(%s) : Error to update hash\n", __FUNCTION__);
+			free_hash(desc);
 			return -1;
 		}
 	}
 
-	/* Dump bytes for HMAC */
-#ifdef FIPS_DEBUG_INTEGRITY
-	num_addresses = i;
-	for (i = 0; integrity_crypto_addrs[i].first && i < rows; i++) {
+	err = finalize_hash(desc, runtime_hmac, sizeof(runtime_hmac));
 
-		start_addr = integrity_crypto_addrs[i].first + get_kernel_offset();
-		end_addr   = integrity_crypto_addrs[i].last  + get_kernel_offset();
-		size = end_addr - start_addr;
-		print_hex_dump(KERN_INFO, "FIPS_DEBUG_INTEGRITY : bytes for HMAC = ", DUMP_PREFIX_NONE,
-			16, 1,
-			(char *)start_addr, size, false);
-	}
-#endif
+	free_hash(desc);
 
-	err = finalize_hash(&sdesc->shash, runtime_hmac, sizeof(runtime_hmac));
-
-	crypto_free_shash(sdesc->shash.tfm);
-	kzfree(sdesc);
-
-	if (err) {
-		pr_err("FIPS(%s) : Error in finalize\n", __func__);
+	if (err)
+	{
+		printk (KERN_ERR "FIPS(%s) : Error in finalize\n", __FUNCTION__);
 		return -1;
 	}
 
-	builtime_hmac = builtime_crypto_hmac;
 
-#ifdef FIPS_DEBUG_INTEGRITY
-	pr_info("FIPS_DEBUG_INTEGRITY : %d bytes are covered, Address fragments (%d)", covered, num_addresses);
-	print_hex_dump(KERN_INFO, "FIPS_DEBUG_INTEGRITY : runtime hmac  = ", DUMP_PREFIX_NONE,
-		16, 1,
-		runtime_hmac, sizeof(runtime_hmac), false);
-	print_hex_dump(KERN_INFO, "FIPS_DEBUG_INTEGRITY : builtime_hmac = ", DUMP_PREFIX_NONE,
-		16, 1,
-		builtime_hmac, sizeof(runtime_hmac), false);
+	builtime_hmac =  get_builtime_crypto_hmac();
+
+	if (!builtime_hmac)
+	{
+		printk (KERN_ERR "FIPS(%s) : Unable to retrieve builtime_hmac\n", __FUNCTION__);
+		return -1;
+	}
+
+#ifdef FIPS_DEBUG
+	print_hex_dump_bytes ("FIPS CRYPTO RUNTIME : runtime hmac  = ",DUMP_PREFIX_NONE, runtime_hmac, sizeof(runtime_hmac));
+	print_hex_dump_bytes ("FIPS CRYPTO RUNTIME : builtime_hmac = ",DUMP_PREFIX_NONE, builtime_hmac , sizeof(runtime_hmac));
 #endif
 
-	if (!memcmp(builtime_hmac, runtime_hmac, sizeof(runtime_hmac)))
+	if (!memcmp (builtime_hmac, runtime_hmac, sizeof(runtime_hmac)))
+	{
 		return 0;
+	}
 	else
+	{
 		return -1;
+	}
 }
+
 EXPORT_SYMBOL_GPL(do_integrity_check);

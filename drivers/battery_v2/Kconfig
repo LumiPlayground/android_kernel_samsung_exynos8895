@@ -34,26 +34,18 @@ config CALC_TIME_TO_FULL
 	help
 	  Say Y to use calc time to full function.
 
+config SW_SELF_DISCHARGING
+	bool "enable sw_self_discharging"
+	default n
+	help
+	  Say Y to enable CONFIG_SW_SELF_DISCHARGING
+
 config BATTERY_AGE_FORECAST
 	tristate "battery age forecast"
 	default n
 	depends on BATTERY_SWELLING
 	help
-	Say Y to use battery age forecast
-
-config BATTERY_AGE_FORECAST_DETACHABLE
-	tristate "battery age forecast for detachable"
-	default n
-	select BATTERY_AGE_FORECAST
-	help
-	Say Y to use battery age forecast for detachable
-
-config BATTERY_AGE_FORECAST_B2B
-	tristate "battery age forecast for B2B"
-	default n
-	select BATTERY_AGE_FORECAST
-	help
-	Say Y to use battery age forecast for B2B
+	Say Y to use calc time to full function.
 
 config MULTI_CHARGING
 	bool "support for multi charger ICs"
@@ -221,14 +213,18 @@ config FUELGAUGE_MAX77865
 	 for MAXIM MAX77865 fuel gauge driver.
 	 This fuel-gauge can be used in coulomb-counting mode.
 
-config FUELGAUGE_MAX77705
-	tristate "MAX77705 fuel gauge driver"
+config MAX77865_FG_ADAPTATION_WA
+	bool "MAX77865 fuel gauge adaptation workaround"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on FUELGAUGE_MAX77865
 	help
-	 Say Y to include support
-	 for MAXIM MAX77705 fuel gauge driver.
-	 This fuel-gauge can be used in coulomb-counting mode.
+	  Enable adaptation workaround for the MAX77865 fuel gauge.
+
+	  This prevents inaccurate battery percentage readings
+	  caused by fuel gauge model drift over charge/discharge
+	  cycles by restoring the factory battery values.
+
+	  If unsure, say N.
 
 config FUELGAUGE_MAX77823_VOLTAGE_TRACKING
 	tristate "use MAX77823 fuel gauge only as voltage tracking"
@@ -371,26 +367,6 @@ config CHARGER_MAX77865
 	help
 	  Say Y here to enable support for the MAX77865 charger
 
-config CHARGER_MAX77705
-	tristate "MAX77705 battery charger support"
-	depends on BATTERY_SAMSUNG
-	help
-	  Say Y here to enable support for the MAX77705 charger
-
-config CHARGER_MAX77705_OTG_LIMIT
-	bool "enable for controlling limitation"
-	default n
-	depends on CHARGER_MAX77705
-	help
-	  Say Y to control limitation
-
-config MAX77705_CHECK_B2SOVRC
-	bool "enable for check B2SOVRC"
-	default n
-	depends on CHARGER_MAX77705
-	help
-	  Say Y to check B2SOVRC
-
 config CHARGER_MAX77804
 	tristate "MAX77804 battery charger support"
 	depends on (MFD_MAX77804 || MFD_MAX77804K) && I2C
@@ -487,13 +463,6 @@ config AFC_CHARGER_MODE
 	help
 	  Say Y to include support for sec afc charging support
 
-config SUPPORT_HV_CTRL
-	bool "afc charging support in sec battery driver"
-	default n
-	depends on AFC_CHARGER_MODE
-	help
-	  Say Y to include support for sec afc charging support
-
 config SAMSUNG_LPM_MODE
 	bool "Off charging mode support in sec battery driver"
 	default n
@@ -515,6 +484,13 @@ config STORE_MODE
        help
 	 Say Y to enable CONFIG_STORE_MODE
 
+config BATTERY_SBM_DATA
+	tristate "battery manager data"
+	default n
+	depends on BATTERY_SAMSUNG
+	help
+	Say Y to use update battery manager data
+
 config QH_ALGORITHM
        bool "enable QH algorithm"
        default n
@@ -532,11 +508,3 @@ config ENABLE_100MA_CHARGING_BEFORE_USB_CONFIGURED
 	default n
 	help
 	  Say Y to enable 100mA before usb configured
-
-config WIRELESS_FIRMWARE_65
-	tristate "p9220 battery charger support"
-	depends on BATTERY_SAMSUNG
-	help
-	  Say Y here to enable support for the wireless charger firmware update
-	  wireless charger IC firmware update.
-

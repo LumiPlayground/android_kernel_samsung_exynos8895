@@ -81,7 +81,6 @@ static void run_key_cx_data_read(void *device_data);
 #endif
 static void set_tsp_test_result(void *device_data);
 static void get_tsp_test_result(void *device_data);
-static void check_connection(void *device_data);
 #ifdef FTS_SUPPORT_HOVER
 static void hover_enable(void *device_data);
 /* static void hover_no_sleep_enable(void *device_data); */
@@ -124,8 +123,6 @@ static void spay_enable(void *device_data);
 static void edge_swipe_enable(void *device_data);
 static void aod_enable(void *device_data);
 #endif
-static void factory_cmd_result_all(void *device_data);
-
 static void delay(void *device_data);
 static void debug(void *device_data);
 static void run_autotune_enable(void *device_data);
@@ -141,10 +138,6 @@ static ssize_t store_cmd(struct device *dev, struct device_attribute *devattr,
 static ssize_t show_cmd_status(struct device *dev,
 				struct device_attribute *devattr, char *buf);
 static ssize_t show_cmd_result(struct device *dev,
-				struct device_attribute *devattr, char *buf);
-static ssize_t show_cmd_status_all(struct device *dev,
-				struct device_attribute *devattr, char *buf);
-static ssize_t show_cmd_result_all(struct device *dev,
 				struct device_attribute *devattr, char *buf);
 static ssize_t cmd_list_show(struct device *dev,
 				struct device_attribute *attr, char *buf);
@@ -219,7 +212,6 @@ struct ft_cmd ft_commands[] = {
 #endif
 	{FT_CMD("set_tsp_test_result", set_tsp_test_result),},
 	{FT_CMD("get_tsp_test_result", get_tsp_test_result),},
-	{FT_CMD("check_connection", check_connection),},
 #ifdef FTS_SUPPORT_HOVER
 	{FT_CMD("hover_enable", hover_enable),},
 #endif
@@ -257,7 +249,6 @@ struct ft_cmd ft_commands[] = {
 	{FT_CMD("edge_swipe_enable", edge_swipe_enable),},
 	{FT_CMD("aod_enable", aod_enable),},
 #endif
-	{FT_CMD("factory_cmd_result_all", factory_cmd_result_all),},
 #ifdef SMARTCOVER_COVER
 	{FT_CMD("smartcover_cmd", smartcover_cmd),},
 #endif
@@ -277,9 +268,7 @@ struct ft_cmd ft_commands[] = {
 
 static DEVICE_ATTR(cmd, S_IWUSR | S_IWGRP, NULL, store_cmd);
 static DEVICE_ATTR(cmd_status, S_IRUGO, show_cmd_status, NULL);
-static DEVICE_ATTR(cmd_status_all, S_IRUGO, show_cmd_status_all, NULL);
 static DEVICE_ATTR(cmd_result, S_IRUGO, show_cmd_result, NULL);
-static DEVICE_ATTR(cmd_result_all, S_IRUGO, show_cmd_result_all, NULL);
 static DEVICE_ATTR(cmd_list, S_IRUGO, cmd_list_show, NULL);
 static DEVICE_ATTR(scrub_pos, S_IRUGO, fts_scrub_position, NULL);
 static DEVICE_ATTR(edge_pos, S_IRUGO, fts_edge_x_position, NULL);
@@ -287,9 +276,7 @@ static DEVICE_ATTR(edge_pos, S_IRUGO, fts_edge_x_position, NULL);
 static struct attribute *sec_touch_facotry_attributes[] = {
 	&dev_attr_cmd.attr,
 	&dev_attr_cmd_status.attr,
-	&dev_attr_cmd_status_all.attr,
 	&dev_attr_cmd_result.attr,
-	&dev_attr_cmd_result_all.attr,
 	&dev_attr_cmd_list.attr,
 	&dev_attr_scrub_pos.attr,
 	&dev_attr_edge_pos.attr,
@@ -370,13 +357,8 @@ static ssize_t fts_edge_x_position(struct device *dev,
 		return -EINVAL;
 	}
 
-//	if ((lcdtype == S6E3HF2_WQXGA_ID1) || (lcdtype == S6E3HF2_WQXGA_ID2)) {
-//		edge_position_left = -1;
-//		edge_position_right = info->board->max_x + 1 - info->board->grip_area;
-//	} else {
-		edge_position_left = info->board->grip_area;
-		edge_position_right = info->board->max_x + 1 - info->board->grip_area;
-//	}
+	edge_position_left = info->board->grip_area;
+	edge_position_right = info->board->max_x + 1 - info->board->grip_area;
 
 	tsp_debug_info(true, &info->client->dev, "%s: %d,%d\n", __func__, edge_position_left, edge_position_right);
 	snprintf(buff, sizeof(buff), "%d,%d", edge_position_left, edge_position_right);
@@ -583,38 +565,6 @@ static ssize_t show_cmd_status(struct device *dev,
 	return snprintf(buf, TSP_BUF_SIZE, "%s\n", buff);
 }
 
-static ssize_t show_cmd_status_all(struct device *dev,
-				 struct device_attribute *devattr, char *buf)
-{
-	struct fts_ts_info *info = dev_get_drvdata(dev);
-	char buff[16] = { 0 };
-
-	if (!info) {
-		printk(KERN_ERR "%s: No platform data found\n",
-				__func__);
-		return -EINVAL;
-	}
-
-	if (info->cmd_all_factory_state == CMD_STATUS_WAITING)
-		snprintf(buff, sizeof(buff), "WAITING");
-
-	else if (info->cmd_all_factory_state == CMD_STATUS_RUNNING)
-		snprintf(buff, sizeof(buff), "RUNNING");
-
-	else if (info->cmd_all_factory_state == CMD_STATUS_OK)
-		snprintf(buff, sizeof(buff), "OK");
-
-	else if (info->cmd_all_factory_state == CMD_STATUS_FAIL)
-		snprintf(buff, sizeof(buff), "FAIL");
-
-	else if (info->cmd_all_factory_state == CMD_STATUS_NOT_APPLICABLE)
-		snprintf(buff, sizeof(buff), "NOT_APPLICABLE");
-
-	tsp_debug_info(true, &info->client->dev, "%s: %d, %s\n", __func__, info->cmd_all_factory_state, buff);
-
-	return snprintf(buf, TSP_BUF_SIZE, "%s\n", buff);
-}
-
 static ssize_t show_cmd_result(struct device *dev,
 				 struct device_attribute *devattr, char *buf)
 {
@@ -639,32 +589,6 @@ static ssize_t show_cmd_result(struct device *dev,
 	mutex_unlock(&info->cmd_lock);
 	info->cmd_state = 0;
 	return snprintf(buf, TSP_BUF_SIZE, "%s\n", info->cmd_result);
-}
-
-static ssize_t show_cmd_result_all(struct device *dev,
-				 struct device_attribute *devattr, char *buf)
-{
-	struct fts_ts_info *info = dev_get_drvdata(dev);
-	int size;
-
-	if (!info) {
-		printk(KERN_ERR "%s: No platform data found\n",
-				__func__);
-		return -EINVAL;
-	}
-
-	info->cmd_state = CMD_STATUS_WAITING;
-	tsp_debug_info(true, &info->client->dev,"%s: %d, %s\n", __func__, info->item_count, info->cmd_result_all);
-	size = snprintf(buf, CMD_RESULT_STR_LEN, "%d%s\n", info->item_count, info->cmd_result_all);
-
-	mutex_lock(&info->cmd_lock);
-	info->cmd_is_running = false;
-	mutex_unlock(&info->cmd_lock);
-	info->cmd_state = 0;
-	info->item_count = 0;
-	memset(info->cmd_result_all, 0x00, CMD_RESULT_STR_LEN);
-
-	return size;
 }
 
 static ssize_t cmd_list_show(struct device *dev,
@@ -695,26 +619,6 @@ static void set_default_result(struct fts_ts_info *info)
 	memset(info->cmd_result, 0x00, ARRAY_SIZE(info->cmd_result));
 	memcpy(info->cmd_result, info->cmd, strnlen(info->cmd, CMD_STR_LEN));
 	strncat(info->cmd_result, &delim, 1);
-}
-
-void set_cmd_result_all(struct fts_ts_info *info, char *buff, int len, char *item)
-{
-	char delim1 = ' ';
-	char delim2 = ':';
-	int cmd_result_len;
-
-	cmd_result_len = (int)strlen(info->cmd_result_all) + len + 2 + (int)strlen(item);
-
-	if (cmd_result_len >= CMD_RESULT_STR_LEN) {
-		pr_err("%s %s: cmd length is over (%d)!!", SECLOG, __func__, cmd_result_len);
-		return;
-	}
-
-	info->item_count++;
-	strncat(info->cmd_result_all, &delim1, 1);
-	strncat(info->cmd_result_all, item, strlen(item));
-	strncat(info->cmd_result_all, &delim2, 1);
-	strncat(info->cmd_result_all, buff, len);
 }
 
 static void set_cmd_result(struct fts_ts_info *info, char *buff, int len)
@@ -811,7 +715,6 @@ static int fts_get_channel_info(struct fts_ts_info *info)
 	fts_command(info, FLUSHBUFFER);
 
 	fts_write_reg(info, &cmd[0], 4);
-	fts_delay(100);
 	cmd[0]=READ_ONE_EVENT;
 	while (fts_read_reg
 	       (info, &cmd[0], 1, (unsigned char *)data, FTS_EVENT_SIZE)) {
@@ -1196,7 +1099,6 @@ static void get_fw_ver_bin(void *device_data)
 {
 	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
 	char buff[16] = { 0 };
-
 	set_default_result(info);
 
 	if (strncmp(info->board->model_name, "G928", 4) == 0) {
@@ -1213,8 +1115,6 @@ static void get_fw_ver_bin(void *device_data)
 	}
 
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-	if (info->cmd_all_factory_state == CMD_STATUS_RUNNING)
-		set_cmd_result_all(info, buff, strnlen(buff, sizeof(buff)), "FW_VER_BIN");
 	info->cmd_state = CMD_STATUS_OK;
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
@@ -1239,8 +1139,6 @@ static void get_fw_ver_ic(void *device_data)
 	}
 
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-	if (info->cmd_all_factory_state == CMD_STATUS_RUNNING)
-		set_cmd_result_all(info, buff, strnlen(buff, sizeof(buff)), "FW_VER_IC");
 	info->cmd_state = CMD_STATUS_OK;
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
@@ -1365,12 +1263,9 @@ static void get_chip_vendor(void *device_data)
 {
 	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
 	char buff[16] = { 0 };
-
 	strncpy(buff, "STM", sizeof(buff));
 	set_default_result(info);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-	if (info->cmd_all_factory_state == CMD_STATUS_RUNNING)
-		set_cmd_result_all(info, buff, strnlen(buff, sizeof(buff)), "IC_VENDOR");
 	info->cmd_state = CMD_STATUS_OK;
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
@@ -1391,8 +1286,6 @@ static void get_chip_name(void *device_data)
 
 	set_default_result(info);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-	if (info->cmd_all_factory_state == CMD_STATUS_RUNNING)
-		set_cmd_result_all(info, buff, strnlen(buff, sizeof(buff)), "IC_NAME");
 	info->cmd_state = CMD_STATUS_OK;
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
@@ -1653,8 +1546,6 @@ static void run_rawcap_read(void *device_data)
 			__func__);
 		snprintf(buff, sizeof(buff), "%s", "TSP turned off");
 		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-		if (info->cmd_all_factory_state == CMD_STATUS_RUNNING)
-			set_cmd_result_all(info, buff, strnlen(buff, sizeof(buff)), "RAW_DATA");
 		info->cmd_state = CMD_STATUS_NOT_APPLICABLE;
 		return;
 	}
@@ -1767,8 +1658,6 @@ rawcap_read:
 	fts_read_frame(info, TYPE_FILTERED_DATA, &min, &max);
 	snprintf(buff, sizeof(buff), "%d,%d", min, max);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-	if (info->cmd_all_factory_state == CMD_STATUS_RUNNING)
-		set_cmd_result_all(info, buff, strnlen(buff, sizeof(buff)), "RAW_DATA");
 	info->cmd_state = CMD_STATUS_OK;
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
@@ -2074,8 +1963,6 @@ static void fts_read_ix_data(struct fts_ts_info *info, bool allnode)
 		       __func__);
 		snprintf(buff, sizeof(buff), "%s", "TSP turned off");
 		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-		if (info->cmd_all_factory_state == CMD_STATUS_RUNNING)
-			set_cmd_result_all(info, buff, strnlen(buff, sizeof(buff)), "IX_DATA");
 		info->cmd_state = CMD_STATUS_NOT_APPLICABLE;
 		return;
 	}
@@ -2362,13 +2249,6 @@ static void fts_read_ix_data(struct fts_ts_info *info, bool allnode)
 		}
 		else{
 			snprintf(buff, sizeof(buff), "%d,%d,%d,%d", min_tx_ix_sum, max_tx_ix_sum, min_rx_ix_sum, max_rx_ix_sum);
-			if (info->cmd_all_factory_state == CMD_STATUS_RUNNING) {
-				char ret_buff[CMD_STR_LEN] = { 0 };
-				snprintf(ret_buff, sizeof(ret_buff), "%d,%d", min_rx_ix_sum, max_rx_ix_sum);
-				set_cmd_result_all(info, ret_buff, strnlen(ret_buff, sizeof(ret_buff)), "IX_DATA_X");
-				snprintf(ret_buff, sizeof(ret_buff), "%d,%d", min_tx_ix_sum, max_tx_ix_sum);
-				set_cmd_result_all(info, ret_buff, strnlen(ret_buff, sizeof(ret_buff)), "IX_DATA_Y");
-			}
 			info->cmd_state = CMD_STATUS_OK;
 		}
 		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
@@ -2578,13 +2458,6 @@ static void fts_read_self_raw_frame(struct fts_ts_info *info, unsigned short oAd
 		}
 		else{
 			snprintf(buff, sizeof(buff), "%d,%d,%d,%d", min_tx_self_raw_data, max_tx_self_raw_data, min_rx_self_raw_data, max_rx_self_raw_data);
-			if (info->cmd_all_factory_state == CMD_STATUS_RUNNING) {
-				char ret_buff[CMD_STR_LEN] = { 0 };
-				snprintf(ret_buff, sizeof(ret_buff), "%d,%d", (s16)min_rx_self_raw_data, (s16)max_rx_self_raw_data);
-				set_cmd_result_all(info, ret_buff, strnlen(ret_buff, sizeof(ret_buff)), "SELF_RAW_DATA_X");
-				snprintf(ret_buff, sizeof(ret_buff), "%d,%d", (s16)min_tx_self_raw_data, (s16)max_tx_self_raw_data);
-				set_cmd_result_all(info, ret_buff, strnlen(ret_buff, sizeof(ret_buff)), "SELF_RAW_DATA_Y");
-			}
 			info->cmd_state = CMD_STATUS_OK;
 		}
 		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
@@ -2844,7 +2717,7 @@ static void run_cx_data_read(void *device_data)
 	int i, j, cx_rx_length, max_tx_length, max_rx_length, address_offset = 0, start_tx_offset = 0, retry = 0;
 	unsigned char *pStr = NULL;
 	unsigned char pTmp[16] = { 0 };
-	unsigned char cx_min = 255, cx_max = 0;
+
 	int	comp_header_addr, comp_start_addr;
 
 	set_default_result(info);
@@ -2999,11 +2872,8 @@ static void run_cx_data_read(void *device_data)
 
 	if (info->cx_data) {
 		for (j = 0; j < tx_num; j++) {
-			for (i = 0; i < rx_num; i++) {
+			for(i = 0; i < rx_num; i++)
 				info->cx_data[(j * rx_num) + i] = ReadData[j][i];
-				cx_min = min(cx_min, info->cx_data[(j * rx_num) + i]);
-				cx_max = max(cx_max, info->cx_data[(j * rx_num) + i]);
-			}
 		}
 	}
 
@@ -3020,11 +2890,6 @@ static void run_cx_data_read(void *device_data)
 #endif
 	info->cmd_state = CMD_STATUS_OK;
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-	if (info->cmd_all_factory_state == CMD_STATUS_RUNNING) {
-		char ret_buff[CMD_STR_LEN] = { 0 };
-		snprintf(ret_buff, sizeof(ret_buff), "%d,%d", (s16)cx_min, (s16)cx_max);
-		set_cmd_result_all(info, ret_buff, strnlen(ret_buff, sizeof(ret_buff)), "CX_DATA");
-	}
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
@@ -3132,32 +2997,6 @@ static void get_cx_all_data(void *device_data)
 	info->cmd_state = CMD_STATUS_OK;
 	set_cmd_result(info, all_strbuff, strnlen(all_strbuff, sizeof(all_strbuff)));
 	tsp_debug_info(true, &info->client->dev, "%ld (%ld)\n", strnlen(all_strbuff, sizeof(all_strbuff)),sizeof(all_strbuff));
-}
-
-static void get_cx_gap_data(void *device_data)
-{
-	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
-	char buff[CMD_STR_LEN] = { 0 };
-	int rx_max = 0, tx_max = 0, ii;
-
-	for (ii = 0; ii < (info->SenseChannelLength * info->ForceChannelLength); ii++) {
-		/* rx(x) gap max */
-		if ((ii + 1) % (info->SenseChannelLength) != 0)
-			rx_max = max(rx_max, (int)abs(info->cx_data[ii + 1] - info->cx_data[ii]));
-
-		/* tx(y) gap max */
-		if (ii < (info->ForceChannelLength - 1) * info->SenseChannelLength)
-			tx_max = max(tx_max, (int)abs(info->cx_data[ii + info->SenseChannelLength] - info->cx_data[ii]));
-	}
-
-	tsp_debug_info(true, &info->client->dev, "%s: rx max:%d, tx max:%d\n", __func__, rx_max, tx_max);
-
-	if (info->cmd_all_factory_state == CMD_STATUS_RUNNING) {
-		snprintf(buff, sizeof(buff), "%d,%d", 0, rx_max);
-		set_cmd_result_all(info, buff, CMD_STR_LEN, "CX_DATA_GAP_X");
-		snprintf(buff, sizeof(buff), "%d,%d", 0, tx_max);
-		set_cmd_result_all(info, buff, CMD_STR_LEN, "CX_DATA_GAP_Y");
-	}
 }
 
 static void fts_read_wtr_cx_data(struct fts_ts_info *info, bool allnode)
@@ -3668,37 +3507,6 @@ static void set_tsp_test_result(void *device_data)
 	} else {
 	snprintf(buff, sizeof(buff), "%s", "OK");
 	info->cmd_state = CMD_STATUS_OK;
-	}
-
-	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
-}
-
-static void check_connection(void *device_data)
-{
-	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
-	char buff[CMD_STR_LEN] = { 0 };
-	int ret;
-	short min = 0x7FFF;
-	short max = 0x8000;
-
-	set_default_result(info);
-	if (info->touch_stopped) {
-		tsp_debug_info(true, &info->client->dev, "%s: [ERROR] Touch is stopped\n",
-			__func__);
-		snprintf(buff, sizeof(buff), "%s", "TSP turned off");
-		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-		info->cmd_state = CMD_STATUS_NOT_APPLICABLE;
-		return;
-	}
-
-	ret = fts_read_frame(info, TYPE_BASELINE_DATA, &min, &max);
-	if (ret > 0) {
-		snprintf(buff, sizeof(buff), "%s", "NG");
-		info->cmd_state = CMD_STATUS_FAIL;
-	} else {
-		snprintf(buff, sizeof(buff), "%s", "OK");
-		info->cmd_state = CMD_STATUS_OK;
 	}
 
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
@@ -5237,44 +5045,6 @@ out:
 
 
 #endif
-static void factory_cmd_result_all(void *device_data)
-{
-	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
-	char buff[16] = { 0 };
-
-	memset(info->cmd_result_all, 0x00, CMD_RESULT_STR_LEN);
-
-	if (info->fts_power_state == FTS_POWER_STATE_POWERDOWN) {
-		tsp_debug_err(true, &info->client->dev, "%s: [ERROR] Touch is stopped\n",
-				__func__);
-		info->cmd_all_factory_state = CMD_STATUS_FAIL;
-		goto out;
-	}
-
-	info->cmd_all_factory_state = CMD_STATUS_RUNNING;
-
-	snprintf(buff, sizeof(buff), "%d", info->board->item_version);
-	set_cmd_result_all(info, buff, sizeof(buff), "ITEM_VERSION");
-
-	get_chip_vendor(info);
-	get_chip_name(info);
-	get_fw_ver_bin(info);
-	get_fw_ver_ic(info);
-
-	run_rawcap_read(info);
-	run_self_raw_read(info);
-
-	run_cx_data_read(info);
-	get_cx_gap_data(info);
-	
-	run_ix_data_read(info);
-
-	info->cmd_all_factory_state = CMD_STATUS_OK;
-
-out:
-	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, info->cmd_result_all);
-}
-
 
 #ifdef FTS_SUPPROT_MULTIMEDIA
 static void brush_enable(void *device_data)

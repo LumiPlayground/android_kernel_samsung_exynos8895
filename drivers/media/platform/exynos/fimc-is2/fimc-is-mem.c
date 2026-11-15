@@ -19,6 +19,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <video/videonode.h>
+#include <media/exynos_mc.h>
 #include <asm/cacheflush.h>
 #include <asm/pgtable.h>
 #include <linux/firmware.h>
@@ -29,7 +30,6 @@
 #include <linux/vmalloc.h>
 #include <linux/interrupt.h>
 #include <linux/of.h>
-#include <linux/dma-buf.h>
 
 #include "fimc-is-core.h"
 #include "fimc-is-cmd.h"
@@ -158,65 +158,6 @@ static void fimc_is_vb2_ion_buf_finish(struct fimc_is_vb2_buf *vbuf, bool exact)
 		vb2_ion_sync_for_cpu((void *)vb2_plane_cookie(vb, plane), 0,
 				size, dir);
 	}
-
-	clear_bit(FIMC_IS_VBUF_CACHE_INVALIDATE, &vbuf->cache_state);
-}
-
-static dma_addr_t fimc_is_bufcon_map(struct fimc_is_vb2_buf *vbuf,
-	struct device *dev,
-	int idx,
-	struct dma_buf *dmabuf)
-{
-	int ret = 0;
-
-	vbuf->bufs[idx] = dmabuf;
-
-	vbuf->attachment[idx] = dma_buf_attach(dmabuf, dev);
-	if (IS_ERR(vbuf->attachment[idx])) {
-		ret = PTR_ERR(vbuf->attachment[idx]);
-		pr_err("%s: Failed to dma_buf_attach %d\n", __func__, idx);
-		goto err_attach;
-	}
-
-	vbuf->sgt[idx] = dma_buf_map_attachment(vbuf->attachment[idx], DMA_BIDIRECTIONAL);
-	if (IS_ERR(vbuf->sgt[idx])) {
-		ret = PTR_ERR(vbuf->sgt[idx]);
-		pr_err("%s: Failed to dma_buf_map_attachment %d\n", __func__, idx);
-		goto err_map_dmabuf;
-	}
-
-	vbuf->dva[idx] = ion_iovmm_map(vbuf->attachment[idx], 0, 0, DMA_BIDIRECTIONAL, 0);
-	if (IS_ERR_VALUE(vbuf->dva[idx])) {
-		pr_err("%s: Failed to ion_iovmm_map %d\n", __func__, idx);
-		ret = -ENOMEM;
-		goto err_ion_map_io;
-	}
-
-	return vbuf->dva[idx];
-
-err_ion_map_io:
-	dma_buf_unmap_attachment(vbuf->attachment[idx], vbuf->sgt[idx], DMA_BIDIRECTIONAL);
-err_map_dmabuf:
-	dma_buf_detach(dmabuf, vbuf->attachment[idx]);
-err_attach:
-	vbuf->bufs[idx] = NULL;
-
-	return 0;
-}
-
-static void fimc_is_bufcon_unmap(struct fimc_is_vb2_buf *vbuf,
-	int idx)
-{
-	if (!vbuf->bufs[idx])
-		return;
-
-	ion_iovmm_unmap(vbuf->attachment[idx], vbuf->dva[idx]);
-	vbuf->dva[idx] = 0;
-
-	dma_buf_unmap_attachment(vbuf->attachment[idx], vbuf->sgt[idx], DMA_BIDIRECTIONAL);
-	dma_buf_detach(vbuf->bufs[idx], vbuf->attachment[idx]);
-
-	vbuf->bufs[idx] = NULL;
 }
 
 const struct fimc_is_vb2_buf_ops fimc_is_vb2_buf_ops_ion = {
@@ -227,271 +168,144 @@ const struct fimc_is_vb2_buf_ops fimc_is_vb2_buf_ops_ion = {
 	.plane_finish	= fimc_is_vb2_ion_plane_finish,
 	.buf_prepare	= fimc_is_vb2_ion_buf_prepare,
 	.buf_finish	= fimc_is_vb2_ion_buf_finish,
-	.bufcon_map	= fimc_is_bufcon_map,
-	.bufcon_unmap	= fimc_is_bufcon_unmap,
 };
 
 /* fimc-is private buffer operations */
-static void fimc_is_ion_free(struct fimc_is_priv_buf *pbuf)
+static void fimc_is_vb2_ion_free(struct fimc_is_priv_buf *pbuf)
 {
-	struct fimc_is_ion_ctx *alloc_ctx;
-
-	alloc_ctx = pbuf->ctx;
-	mutex_lock(&alloc_ctx->lock);
-	if (pbuf->cookie.ioaddr)
-		ion_iovmm_unmap(pbuf->attachment, pbuf->cookie.ioaddr);
-	mutex_unlock(&alloc_ctx->lock);
-
-	dma_buf_unmap_attachment(pbuf->attachment, pbuf->cookie.sgt,
-				DMA_BIDIRECTIONAL);
-	dma_buf_detach(pbuf->dma_buf, pbuf->attachment);
-	dma_buf_put(pbuf->dma_buf);
-
-	if (pbuf->kva)
-		ion_unmap_kernel(alloc_ctx->client, pbuf->handle);
-	ion_free(alloc_ctx->client, pbuf->handle);
-
-	vfree(pbuf);
+	vb2_ion_private_free(pbuf->cookie);
+	kfree(pbuf);
 }
 
-static ulong fimc_is_ion_kvaddr(struct fimc_is_priv_buf *pbuf)
+static ulong fimc_is_vb2_ion_kvaddr(struct fimc_is_priv_buf *pbuf)
 {
-	struct fimc_is_ion_ctx *alloc_ctx;
+	void *kva;
 
 	if (!pbuf)
 		return 0;
 
-	alloc_ctx = pbuf->ctx;
-	if (!pbuf->kva) {
-		pbuf->kva = ion_map_kernel(alloc_ctx->client, pbuf->handle);
-		if (IS_ERR_OR_NULL(pbuf->kva))
-			pbuf->kva = NULL;
-
-		pbuf->kva += pbuf->cookie.offset;
+	kva = vb2_ion_private_vaddr(pbuf->cookie);
+	if (IS_ERR_OR_NULL(kva)) {
+		err("could not get kernel addr for @%p: %ld",
+			pbuf->cookie, PTR_ERR(kva));
+		return 0;
 	}
 
-	return (ulong)pbuf->kva;
+	return (ulong)kva;
 }
 
-static dma_addr_t fimc_is_ion_dvaddr(struct fimc_is_priv_buf *pbuf)
+static dma_addr_t fimc_is_vb2_ion_dvaddr(struct fimc_is_priv_buf *pbuf)
 {
 	dma_addr_t dva = 0;
 
 	if (!pbuf)
-		return -EINVAL;
+		return 0;
 
-	if (pbuf->cookie.ioaddr == 0)
-		return -EINVAL;
-
-	dva = pbuf->cookie.ioaddr;
+	WARN_ON(vb2_ion_dma_address((void *)pbuf->cookie, &dva) != 0);
 
 	return (ulong)dva;
 }
 
-static phys_addr_t fimc_is_ion_phaddr(struct fimc_is_priv_buf *pbuf)
+static phys_addr_t fimc_is_vb2_ion_phaddr(struct fimc_is_priv_buf *pbuf)
 {
 	/* PHCONTIG option is not supported in ION */
 	return 0;
 }
 
-static void fimc_is_ion_sync_for_device(struct fimc_is_priv_buf *pbuf,
+static void fimc_is_vb2_ion_sync_for_device(struct fimc_is_priv_buf *pbuf,
 		off_t offset, size_t size, enum dma_data_direction dir)
 {
-	struct fimc_is_ion_ctx *alloc_ctx = pbuf->ctx;
-
-	if (pbuf->kva) {
-		FIMC_BUG_VOID((offset < 0) || (offset > pbuf->size));
-		FIMC_BUG_VOID((offset + size) < size);
-		FIMC_BUG_VOID((size > pbuf->size) || ((offset + size) > pbuf->size));
-
-		exynos_ion_sync_vaddr_for_device(alloc_ctx->dev,
-			pbuf->dma_buf, pbuf->kva, size, offset, dir);
-	}
+	vb2_ion_sync_for_device(pbuf->cookie, offset, size, dir);
 }
 
-static void fimc_is_ion_sync_for_cpu(struct fimc_is_priv_buf *pbuf,
+static void fimc_is_vb2_ion_sync_for_cpu(struct fimc_is_priv_buf *pbuf,
 		off_t offset, size_t size, enum dma_data_direction dir)
 {
-	struct fimc_is_ion_ctx *alloc_ctx = pbuf->ctx;
-
-	if (pbuf->kva) {
-		FIMC_BUG_VOID((offset < 0) || (offset > pbuf->size));
-		FIMC_BUG_VOID((offset + size) < size);
-		FIMC_BUG_VOID((size > pbuf->size) || ((offset + size) > pbuf->size));
-
-		exynos_ion_sync_vaddr_for_cpu(alloc_ctx->dev,
-			pbuf->dma_buf, pbuf->kva, size, offset, dir);
-	}
+	vb2_ion_sync_for_cpu(pbuf->cookie, offset, size, dir);
 }
 
 const struct fimc_is_priv_buf_ops fimc_is_priv_buf_ops_ion = {
-	.free			= fimc_is_ion_free,
-	.kvaddr			= fimc_is_ion_kvaddr,
-	.dvaddr			= fimc_is_ion_dvaddr,
-	.phaddr			= fimc_is_ion_phaddr,
-	.sync_for_device	= fimc_is_ion_sync_for_device,
-	.sync_for_cpu		= fimc_is_ion_sync_for_cpu,
+	.free			= fimc_is_vb2_ion_free,
+	.kvaddr			= fimc_is_vb2_ion_kvaddr,
+	.dvaddr			= fimc_is_vb2_ion_dvaddr,
+	.phaddr			= fimc_is_vb2_ion_phaddr,
+	.sync_for_device	= fimc_is_vb2_ion_sync_for_device,
+	.sync_for_cpu		= fimc_is_vb2_ion_sync_for_cpu,
 };
 
 /* fimc-is memory operations */
-static void *fimc_is_ion_init(struct platform_device *pdev)
+static void *fimc_is_vb2_ion_init(struct platform_device *pdev,
+		long flag)
 {
-	struct fimc_is_ion_ctx *ctx;
-
-	ctx = vzalloc(sizeof(*ctx));
-	if (!ctx)
-		return ERR_PTR(-ENOMEM);
-
-	ctx->dev = &pdev->dev;
-	ctx->client = exynos_ion_client_create(dev_name(&pdev->dev));
-	if (IS_ERR(ctx->client)) {
-		void *retp = ctx->client;
-		kfree(ctx);
-		return retp;
-	}
-
-	ctx->alignment = SZ_4K;
-	ctx->flags = ION_FLAG_CACHED | ION_FLAG_CACHED_NEEDS_SYNC;
-	mutex_init(&ctx->lock);
-
-	return ctx;
-
+	return vb2_ion_create_context(&pdev->dev, SZ_4K,
+			VB2ION_CTX_IOMMU |
+			flag);
 }
 
-static void fimc_is_ion_deinit(void *ctx)
-{
-	struct fimc_is_ion_ctx *alloc_ctx = ctx;
-
-	mutex_destroy(&alloc_ctx->lock);
-	ion_client_destroy(alloc_ctx->client);
-	vfree(alloc_ctx);
-}
-
-static struct fimc_is_priv_buf *fimc_is_ion_alloc(void *ctx,
+static struct fimc_is_priv_buf *fimc_is_vb2_ion_alloc(void *ctx,
 		size_t size, size_t align)
 {
-	struct fimc_is_ion_ctx *alloc_ctx = ctx;
 	struct fimc_is_priv_buf *buf;
-	int heapflags = EXYNOS_ION_HEAP_SYSTEM_MASK;
 	int ret = 0;
 
-	buf = vzalloc(sizeof(*buf));
+	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
 	if (!buf)
 		return ERR_PTR(-ENOMEM);
 
-	size = PAGE_ALIGN(size);
-
-	buf->handle = ion_alloc(alloc_ctx->client, size, alloc_ctx->alignment,
-				heapflags, alloc_ctx->flags);
-	if (IS_ERR(buf->handle)) {
-		ret = -ENOMEM;
-		goto err_alloc;
+	buf->cookie = vb2_ion_private_alloc(ctx, size);
+	if (IS_ERR(buf->cookie)) {
+		err("failed to allocate a private buffer, size: %zd", size);
+		ret = PTR_ERR(buf->cookie);
+		goto err_priv_alloc;
 	}
 
-	buf->dma_buf = ion_share_dma_buf(alloc_ctx->client, buf->handle);
-	if (IS_ERR(buf->dma_buf)) {
-		ret = PTR_ERR(buf->dma_buf);
-		goto err_share;
-	}
-
-	buf->attachment = dma_buf_attach(buf->dma_buf, alloc_ctx->dev);
-	if (IS_ERR(buf->attachment)) {
-		ret = PTR_ERR(buf->attachment);
-		goto err_attach;
-	}
-
-	buf->cookie.sgt = dma_buf_map_attachment(
-				buf->attachment, DMA_BIDIRECTIONAL);
-	if (IS_ERR(buf->cookie.sgt)) {
-		ret = PTR_ERR(buf->cookie.sgt);
-		goto err_map_dmabuf;
-	}
-
-	buf->ctx = alloc_ctx;
 	buf->size = size;
-	buf->direction = DMA_BIDIRECTIONAL;
+	buf->align = align;
+	buf->ctx = ctx;
 	buf->ops = &fimc_is_priv_buf_ops_ion;
-
-	mutex_lock(&alloc_ctx->lock);
-	buf->cookie.ioaddr = ion_iovmm_map(buf->attachment, 0,
-				   buf->size, buf->direction, 0);
-	if (IS_ERR_VALUE(buf->cookie.ioaddr)) {
-		ret = (int)buf->cookie.ioaddr;
-		mutex_unlock(&alloc_ctx->lock);
-		goto err_ion_map_io;
-	}
-	mutex_unlock(&alloc_ctx->lock);
 
 	return buf;
 
-err_ion_map_io:
-	if (buf->kva)
-		ion_unmap_kernel(alloc_ctx->client, buf->handle);
-	dma_buf_unmap_attachment(buf->attachment, buf->cookie.sgt,
-				DMA_BIDIRECTIONAL);
-err_map_dmabuf:
-	dma_buf_detach(buf->dma_buf, buf->attachment);
-err_attach:
-	dma_buf_put(buf->dma_buf);
-err_share:
-	ion_free(alloc_ctx->client, buf->handle);
-err_alloc:
-	vfree(buf);
+err_priv_alloc:
+	kfree(buf);
 
-	pr_err("%s: Error occured while allocating\n", __func__);
 	return ERR_PTR(ret);
 }
 
-static int fimc_is_ion_resume(void *ctx)
+static int fimc_is_vb2_ion_resume(void *ctx)
 {
-	struct fimc_is_ion_ctx *alloc_ctx = ctx;
-	int ret = 0;
+	if (ctx)
+		return vb2_ion_attach_iommu(ctx);
 
-	if (!alloc_ctx)
-		return -ENOENT;
-
-	mutex_lock(&alloc_ctx->lock);
-	if (alloc_ctx->iommu_active_cnt == 0)
-		ret = iovmm_activate(alloc_ctx->dev);
-	if (!ret)
-		alloc_ctx->iommu_active_cnt++;
-	mutex_unlock(&alloc_ctx->lock);
-
-	return ret;
+	return -ENOENT;
 }
 
-static void fimc_is_ion_suspend(void *ctx)
+static void fimc_is_vb2_ion_suspend(void *ctx)
 {
-	struct fimc_is_ion_ctx *alloc_ctx = ctx;
-
-	if (!alloc_ctx)
-		return;
-
-	mutex_lock(&alloc_ctx->lock);
-	FIMC_BUG_VOID(alloc_ctx->iommu_active_cnt == 0);
-
-	if (--alloc_ctx->iommu_active_cnt == 0)
-		iovmm_deactivate(alloc_ctx->dev);
-	mutex_unlock(&alloc_ctx->lock);
+	if (ctx)
+		vb2_ion_detach_iommu(ctx);
 }
 
 const struct fimc_is_mem_ops fimc_is_mem_ops_ion = {
-	.init			= fimc_is_ion_init,
-	.cleanup		= fimc_is_ion_deinit,
-	.resume			= fimc_is_ion_resume,
-	.suspend		= fimc_is_ion_suspend,
-	.alloc			= fimc_is_ion_alloc,
+	.init			= fimc_is_vb2_ion_init,
+	.cleanup		= vb2_ion_destroy_context,
+	.resume			= fimc_is_vb2_ion_resume,
+	.suspend		= fimc_is_vb2_ion_suspend,
+	.set_cached		= vb2_ion_set_cached,
+	.set_alignment		= vb2_ion_set_alignment,
+	.alloc			= fimc_is_vb2_ion_alloc,
 };
 #endif
 
+
 /* fimc-is private buffer operations */
-static void fimc_is_km_free(struct fimc_is_priv_buf *pbuf)
+static void fimc_is_vb2_km_free(struct fimc_is_priv_buf *pbuf)
 {
 	kfree(pbuf->kvaddr);
 	kfree(pbuf);
 }
 
-static ulong fimc_is_km_kvaddr(struct fimc_is_priv_buf *pbuf)
+static ulong fimc_is_vb2_km_kvaddr(struct fimc_is_priv_buf *pbuf)
 {
 	if (!pbuf)
 		return 0;
@@ -499,7 +313,7 @@ static ulong fimc_is_km_kvaddr(struct fimc_is_priv_buf *pbuf)
 	return (ulong)pbuf->kvaddr;
 }
 
-static phys_addr_t fimc_is_km_phaddr(struct fimc_is_priv_buf *pbuf)
+static phys_addr_t fimc_is_vb2_km_phaddr(struct fimc_is_priv_buf *pbuf)
 {
 	phys_addr_t pa = 0;
 
@@ -511,9 +325,9 @@ static phys_addr_t fimc_is_km_phaddr(struct fimc_is_priv_buf *pbuf)
 	return pa;
 }
 const struct fimc_is_priv_buf_ops fimc_is_priv_buf_ops_km = {
-	.free			= fimc_is_km_free,
-	.kvaddr			= fimc_is_km_kvaddr,
-	.phaddr			= fimc_is_km_phaddr,
+	.free			= fimc_is_vb2_km_free,
+	.kvaddr			= fimc_is_vb2_km_kvaddr,
+	.phaddr			= fimc_is_vb2_km_phaddr,
 };
 
 static struct fimc_is_priv_buf *fimc_is_kmalloc(size_t size, size_t align)
@@ -552,7 +366,7 @@ int fimc_is_mem_init(struct fimc_is_mem *mem, struct platform_device *pdev)
 	mem->kmalloc = &fimc_is_kmalloc;
 #endif
 
-	mem->default_ctx = CALL_PTR_MEMOP(mem, init, pdev);
+	mem->default_ctx = CALL_PTR_MEMOP(mem, init, pdev, VB2ION_CTX_VMCONTIG);
 	if (IS_ERR_OR_NULL(mem->default_ctx)) {
 		if (IS_ERR(mem->default_ctx))
 			return PTR_ERR(mem->default_ctx);

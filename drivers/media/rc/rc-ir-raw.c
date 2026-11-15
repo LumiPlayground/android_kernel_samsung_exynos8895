@@ -20,13 +20,15 @@
 #include <linux/freezer.h>
 #include "rc-core-priv.h"
 
+/* Define the max number of pulse/space transitions to buffer */
+#define MAX_IR_EVENT_SIZE      512
+
 /* Used to keep track of IR raw clients, protected by ir_raw_handler_lock */
 static LIST_HEAD(ir_raw_client_list);
 
 /* Used to handle IR raw handler extensions */
 static DEFINE_MUTEX(ir_raw_handler_lock);
 static LIST_HEAD(ir_raw_handler_list);
-static DEFINE_MUTEX(available_protocols_lock);
 static u64 available_protocols;
 
 static int ir_raw_event_thread(void *data)
@@ -34,12 +36,14 @@ static int ir_raw_event_thread(void *data)
 	struct ir_raw_event ev;
 	struct ir_raw_handler *handler;
 	struct ir_raw_event_ctrl *raw = (struct ir_raw_event_ctrl *)data;
+	int retval;
 
 	while (!kthread_should_stop()) {
 
 		spin_lock_irq(&raw->lock);
+		retval = kfifo_len(&raw->kfifo);
 
-		if (!kfifo_len(&raw->kfifo)) {
+		if (retval < sizeof(ev)) {
 			set_current_state(TASK_INTERRUPTIBLE);
 
 			if (kthread_should_stop())
@@ -50,8 +54,7 @@ static int ir_raw_event_thread(void *data)
 			continue;
 		}
 
-		if(!kfifo_out(&raw->kfifo, &ev, 1))
-			dev_err(&raw->dev->dev, "IR event FIFO is empty!\n");
+		retval = kfifo_out(&raw->kfifo, &ev, sizeof(ev));
 		spin_unlock_irq(&raw->lock);
 
 		mutex_lock(&ir_raw_handler_lock);
@@ -84,10 +87,8 @@ int ir_raw_event_store(struct rc_dev *dev, struct ir_raw_event *ev)
 	IR_dprintk(2, "sample: (%05dus %s)\n",
 		   TO_US(ev->duration), TO_STR(ev->pulse));
 
-	if (!kfifo_put(&dev->raw->kfifo, *ev)) {
-		dev_err(&dev->dev, "IR event FIFO is full!\n");
-		return -ENOSPC;
-	}
+	if (kfifo_in(&dev->raw->kfifo, ev, sizeof(*ev)) != sizeof(*ev))
+		return -ENOMEM;
 
 	return 0;
 }
@@ -235,9 +236,9 @@ u64
 ir_raw_get_allowed_protocols(void)
 {
 	u64 protocols;
-	mutex_lock(&available_protocols_lock);
+	mutex_lock(&ir_raw_handler_lock);
 	protocols = available_protocols;
-	mutex_unlock(&available_protocols_lock);
+	mutex_unlock(&ir_raw_handler_lock);
 	return protocols;
 }
 
@@ -272,7 +273,11 @@ int ir_raw_event_register(struct rc_dev *dev)
 
 	dev->raw->dev = dev;
 	dev->change_protocol = change_protocol;
-	INIT_KFIFO(dev->raw->kfifo);
+	rc = kfifo_alloc(&dev->raw->kfifo,
+			 sizeof(struct ir_raw_event) * MAX_IR_EVENT_SIZE,
+			 GFP_KERNEL);
+	if (rc < 0)
+		goto out;
 
 	spin_lock_init(&dev->raw->lock);
 	dev->raw->thread = kthread_run(ir_raw_event_thread, dev->raw,
@@ -314,6 +319,7 @@ void ir_raw_event_unregister(struct rc_dev *dev)
 			handler->raw_unregister(dev);
 	mutex_unlock(&ir_raw_handler_lock);
 
+	kfifo_free(&dev->raw->kfifo);
 	kfree(dev->raw);
 	dev->raw = NULL;
 }
@@ -331,9 +337,7 @@ int ir_raw_handler_register(struct ir_raw_handler *ir_raw_handler)
 	if (ir_raw_handler->raw_register)
 		list_for_each_entry(raw, &ir_raw_client_list, list)
 			ir_raw_handler->raw_register(raw->dev);
-	mutex_lock(&available_protocols_lock);
 	available_protocols |= ir_raw_handler->protocols;
-	mutex_unlock(&available_protocols_lock);
 	mutex_unlock(&ir_raw_handler_lock);
 
 	return 0;
@@ -352,9 +356,7 @@ void ir_raw_handler_unregister(struct ir_raw_handler *ir_raw_handler)
 		if (ir_raw_handler->raw_unregister)
 			ir_raw_handler->raw_unregister(raw->dev);
 	}
-	mutex_lock(&available_protocols_lock);
 	available_protocols &= ~protocols;
-	mutex_unlock(&available_protocols_lock);
 	mutex_unlock(&ir_raw_handler_lock);
 }
 EXPORT_SYMBOL(ir_raw_handler_unregister);

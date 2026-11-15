@@ -220,36 +220,7 @@ void batadv_neigh_ifinfo_put(struct batadv_neigh_ifinfo *neigh_ifinfo)
 }
 
 /**
- * batadv_hardif_neigh_release - release hardif neigh node from lists and
- *  queue for free after rcu grace period
- * @ref: kref pointer of the neigh_node
- */
-static void batadv_hardif_neigh_release(struct kref *ref)
-{
-	struct batadv_hardif_neigh_node *hardif_neigh;
-
-	hardif_neigh = container_of(ref, struct batadv_hardif_neigh_node,
-				    refcount);
-
-	spin_lock_bh(&hardif_neigh->if_incoming->neigh_list_lock);
-	hlist_del_init_rcu(&hardif_neigh->list);
-	spin_unlock_bh(&hardif_neigh->if_incoming->neigh_list_lock);
-
-	batadv_hardif_put(hardif_neigh->if_incoming);
-	kfree_rcu(hardif_neigh, rcu);
-}
-
-/**
- * batadv_hardif_neigh_put - decrement the hardif neighbors refcounter
- *  and possibly release it
- * @hardif_neigh: hardif neigh neighbor to free
- */
-void batadv_hardif_neigh_put(struct batadv_hardif_neigh_node *hardif_neigh)
-{
-	kref_put(&hardif_neigh->refcount, batadv_hardif_neigh_release);
-}
-
-/**
+ * batadv_neigh_node_free_rcu - free the neigh_node
  * batadv_neigh_node_release - release neigh_node from lists and queue for
  *  free after rcu grace period
  * @ref: kref pointer of the neigh_node
@@ -257,19 +228,14 @@ void batadv_hardif_neigh_put(struct batadv_hardif_neigh_node *hardif_neigh)
 static void batadv_neigh_node_release(struct kref *ref)
 {
 	struct hlist_node *node_tmp;
-	struct batadv_neigh_node *neigh_node;
 	struct batadv_neigh_ifinfo *neigh_ifinfo;
-
-	neigh_node = container_of(ref, struct batadv_neigh_node, refcount);
 
 	hlist_for_each_entry_safe(neigh_ifinfo, node_tmp,
 				  &neigh_node->ifinfo_list, list) {
 		batadv_neigh_ifinfo_put(neigh_ifinfo);
 	}
 
-	batadv_hardif_neigh_put(neigh_node->hardif_neigh);
-
-	batadv_hardif_put(neigh_node->if_incoming);
+	batadv_hardif_free_ref(neigh_node->if_incoming);
 
 	kfree_rcu(neigh_node, rcu);
 }
@@ -668,142 +634,6 @@ out:
 	if (hardif_neigh)
 		batadv_hardif_neigh_put(hardif_neigh);
 	return neigh_node;
-}
-
-/**
- * batadv_neigh_node_get_or_create - retrieve or create a neigh node object
- * @orig_node: originator object representing the neighbour
- * @hard_iface: the interface where the neighbour is connected to
- * @neigh_addr: the mac address of the neighbour interface
- *
- * Return: the neighbour node if found or created or NULL otherwise.
- */
-struct batadv_neigh_node *
-batadv_neigh_node_get_or_create(struct batadv_orig_node *orig_node,
-				struct batadv_hard_iface *hard_iface,
-				const u8 *neigh_addr)
-{
-	struct batadv_neigh_node *neigh_node = NULL;
-
-	/* first check without locking to avoid the overhead */
-	neigh_node = batadv_neigh_node_get(orig_node, hard_iface, neigh_addr);
-	if (neigh_node)
-		return neigh_node;
-
-	return batadv_neigh_node_create(orig_node, hard_iface, neigh_addr);
-}
-
-#ifdef CONFIG_BATMAN_ADV_DEBUGFS
-/**
- * batadv_hardif_neigh_seq_print_text - print the single hop neighbour list
- * @seq: neighbour table seq_file struct
- * @offset: not used
- *
- * Return: always 0
- */
-int batadv_hardif_neigh_seq_print_text(struct seq_file *seq, void *offset)
-{
-	struct net_device *net_dev = (struct net_device *)seq->private;
-	struct batadv_priv *bat_priv = netdev_priv(net_dev);
-	struct batadv_hard_iface *primary_if;
-
-	primary_if = batadv_seq_print_text_primary_if_get(seq);
-	if (!primary_if)
-		return 0;
-
-	seq_printf(seq, "[B.A.T.M.A.N. adv %s, MainIF/MAC: %s/%pM (%s %s)]\n",
-		   BATADV_SOURCE_VERSION, primary_if->net_dev->name,
-		   primary_if->net_dev->dev_addr, net_dev->name,
-		   bat_priv->algo_ops->name);
-
-	batadv_hardif_put(primary_if);
-
-	if (!bat_priv->algo_ops->neigh.print) {
-		seq_puts(seq,
-			 "No printing function for this routing protocol\n");
-		return 0;
-	}
-
-	bat_priv->algo_ops->neigh.print(bat_priv, seq);
-	return 0;
-}
-#endif
-
-/**
- * batadv_hardif_neigh_dump - Dump to netlink the neighbor infos for a specific
- *  outgoing interface
- * @msg: message to dump into
- * @cb: parameters for the dump
- *
- * Return: 0 or error value
- */
-int batadv_hardif_neigh_dump(struct sk_buff *msg, struct netlink_callback *cb)
-{
-	struct net *net = sock_net(cb->skb->sk);
-	struct net_device *soft_iface;
-	struct net_device *hard_iface = NULL;
-	struct batadv_hard_iface *hardif = BATADV_IF_DEFAULT;
-	struct batadv_priv *bat_priv;
-	struct batadv_hard_iface *primary_if = NULL;
-	int ret;
-	int ifindex, hard_ifindex;
-
-	ifindex = batadv_netlink_get_ifindex(cb->nlh, BATADV_ATTR_MESH_IFINDEX);
-	if (!ifindex)
-		return -EINVAL;
-
-	soft_iface = dev_get_by_index(net, ifindex);
-	if (!soft_iface || !batadv_softif_is_valid(soft_iface)) {
-		ret = -ENODEV;
-		goto out;
-	}
-
-	bat_priv = netdev_priv(soft_iface);
-
-	primary_if = batadv_primary_if_get_selected(bat_priv);
-	if (!primary_if || primary_if->if_status != BATADV_IF_ACTIVE) {
-		ret = -ENOENT;
-		goto out;
-	}
-
-	hard_ifindex = batadv_netlink_get_ifindex(cb->nlh,
-						  BATADV_ATTR_HARD_IFINDEX);
-	if (hard_ifindex) {
-		hard_iface = dev_get_by_index(net, hard_ifindex);
-		if (hard_iface)
-			hardif = batadv_hardif_get_by_netdev(hard_iface);
-
-		if (!hardif) {
-			ret = -ENODEV;
-			goto out;
-		}
-
-		if (hardif->soft_iface != soft_iface) {
-			ret = -ENOENT;
-			goto out;
-		}
-	}
-
-	if (!bat_priv->algo_ops->neigh.dump) {
-		ret = -EOPNOTSUPP;
-		goto out;
-	}
-
-	bat_priv->algo_ops->neigh.dump(msg, cb, bat_priv, hardif);
-
-	ret = msg->len;
-
- out:
-	if (hardif)
-		batadv_hardif_put(hardif);
-	if (hard_iface)
-		dev_put(hard_iface);
-	if (primary_if)
-		batadv_hardif_put(primary_if);
-	if (soft_iface)
-		dev_put(soft_iface);
-
-	return ret;
 }
 
 /**

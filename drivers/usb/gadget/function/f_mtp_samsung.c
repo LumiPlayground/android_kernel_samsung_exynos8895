@@ -126,7 +126,7 @@ struct mtpg_dev {
 	struct usb_function function;
 #if IS_ENABLED(CONFIG_USB_CONFIGFS_UEVENT)
 	struct usb_function function_ptp;
-#endif
+#endif	
 	struct usb_composite_dev *cdev;
 	struct usb_gadget *gadget;
 
@@ -545,7 +545,7 @@ static ssize_t guid_store(struct device *dev,
 	printk(KERN_DEBUG "mtp: [%s]\tline = [%d]\n", __func__, __LINE__);
 	if (size > MAX_GUID_SIZE)
 		return -EINVAL;
-
+	
 	value = strlcpy(guid_info, buf, size);
 	return value;
 }
@@ -781,7 +781,7 @@ static ssize_t mtpg_write(struct file *fp, const char __user *buf,
 
 
 	DEBUG_MTPW("[%s] \t%d ep bulk_out name = %s\n",
-			__func__, __LINE__, dev->bulk_out->name);
+			__func__, __LINE__ , dev->bulk_out->name);
 
 	if (_lock(&dev->write_excl))
 			return -EBUSY;
@@ -931,7 +931,7 @@ static void read_send_work(struct work_struct *work)
 	printk(KERN_DEBUG "[%s:%d] offset=[%lld]\t leth+hder=[%lld]\n",
 					 __func__, __LINE__, file_pos, count);
 
-	if (count < 0) {
+	if(count<0) {
 		r = -EIO;
 		printk(KERN_ERR "[%s]\t%d ret = %d\n",
 						 __func__, __LINE__, r);
@@ -985,7 +985,7 @@ static void read_send_work(struct work_struct *work)
 		if (ret < 0 || !req) {
 			r = ret;
 			printk(KERN_DEBUG "[%s]\t%d ret = %d\n",
-						 __func__, __LINE__, r);
+						 __func__, __LINE__, r);			
 			break;
 		}
 		xfer = ret + hdr_length;
@@ -1074,7 +1074,7 @@ static long  mtpg_ioctl(struct file *fd, unsigned int code, unsigned long arg)
 	case MTP_WRITE_INT_DATA:
 		printk(KERN_INFO "[%s]\t%d MTP intrpt_Write no slep\n",
 						__func__, __LINE__);
-		if (copy_from_user(&event, (void __user *)arg, sizeof(event))) {
+		if (copy_from_user(&event, (void __user *)arg, sizeof(event))){
 			status = -EFAULT;
 			printk(KERN_ERR "[%s]\t%d:copyfrmuser fail\n",
 							 __func__, __LINE__);
@@ -1137,14 +1137,7 @@ static long  mtpg_ioctl(struct file *fd, unsigned int code, unsigned long arg)
 		printk(KERN_DEBUG "[%s]SET_SETUP_DATA size=%d line=[%d]\n",
 						 __func__, size, __LINE__);
 
-		if (size < 0) {
-			status = -EIO;
-			printk(KERN_ERR "[%s]\t%d:size is negative\n",
-							 __func__, __LINE__);
-			break;
-		}				 
-						 
-		if (size > USB_PTPREQUEST_GETSTATUS_SIZE) {
+		if ( size > USB_PTPREQUEST_GETSTATUS_SIZE) {
 			size = USB_PTPREQUEST_GETSTATUS_SIZE;
 		}
 
@@ -1278,7 +1271,7 @@ static const struct file_operations mtpg_fops = {
 	.release = mtpg_release_device,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl =   mtpg_compat_ioctl,
-#endif
+#endif	
 };
 
 static struct miscdevice mtpg_device = {
@@ -1389,7 +1382,7 @@ mtpg_function_unbind(struct usb_configuration *c, struct usb_function *f)
 	struct usb_request *req;
 
 	printk(KERN_DEBUG "[%s]\tline = [%d]\n", __func__, __LINE__);
-
+	
 	strings_dev_mtp[F_MTP_IDX].id = 0;
 	while ((req = mtpg_req_get(dev, &dev->rx_idle)))
 		mtpg_request_free(req, dev->bulk_out);
@@ -1407,12 +1400,12 @@ static int
 mtpg_function_bind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct usb_composite_dev *cdev	= c->cdev;
-	struct mtpg_dev	*mtpg	= mtpg_func_to_dev(f);
+	struct mtpg_dev	*mtpg	= mtpg_func_to_dev(f);  
 	struct usb_request	*req;
 	struct usb_ep		*ep;
 	int			i, id;
 	int			status = 0;
-
+	
 	/* Allocate string descriptor numbers ... note that string
 	 * contents can be overridden by the composite_dev glue.
 	 */
@@ -1668,11 +1661,12 @@ mtp_complete_get_guid(struct usb_ep *ep, struct usb_request *req)
 
 	if (req->actual >= sizeof(guid_info)) {
 		size = sizeof(guid_info)-1;
-	} else
+	}
+	else
 		size = req->actual;
 	//printk(KERN_DEBUG "mtp: %s guid = %s\n", __func__, guid_info);
 	memset(guid_info, 0, sizeof(guid_info));
-	//printk(KERN_DEBUG "mtp: %s guid after reset = %s\n", __func__, guid_info);
+	//printk(KERN_DEBUG "mtp: %s guid after reset = %s\n", __func__, guid_info);	
 	memcpy(guid_info, req->buf, size);
 }
 
@@ -1725,7 +1719,9 @@ static int mtp_ctrlrequest(struct usb_composite_dev *cdev,
 							__func__, __LINE__);
 			}
 			return value;
-		} else if ((ctrl->bRequest == 0xA3) && (!(ctrl->bRequestType & USB_DIR_IN))) {
+		}
+		else if ((ctrl->bRequest == 0xA3) && ( !(ctrl->bRequestType & USB_DIR_IN)))
+		{
 			printk("mtp: [%s] RECEIVE PC GUID / line[%d]\n",
 						__func__, __LINE__);
 			value = w_length;
@@ -1740,7 +1736,7 @@ static int mtp_ctrlrequest(struct usb_composite_dev *cdev,
 							__func__, __LINE__);
 			} else
 			DEBUG_MTPB("[%s] ep-queue-sucecc line[%d]\n",
-							__func__, __LINE__);
+							__func__, __LINE__);			
 		}
 		printk(KERN_DEBUG "mtp: mtp_ctrlrequest "\
 				"%02x.%02x v%04x i%04x l%u\n",
@@ -1900,7 +1896,8 @@ static int mtp_setup(struct mtp_instance *fi_mtp)
 		printk(KERN_DEBUG "mtp: %s failed to create guid attr\n",
 				__func__);
 		return err;
-	} else
+	}
+	else
 		printk(KERN_DEBUG "mtp: %s success to create guid attr\n",
 				__func__);
 	return 0;
@@ -2018,6 +2015,8 @@ struct usb_function_instance *alloc_inst_mtp_ptp(bool mtp_config)
 
 	config_group_init_type_name(&fi_mtp->func_inst.group,
 					"", &mtp_func_type);
+	usb_os_desc_prepare_interf_dir(&fi_mtp->func_inst.group, 1,
+					descs, names, THIS_MODULE);
 
 	return  &fi_mtp->func_inst;
 }

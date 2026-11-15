@@ -21,26 +21,15 @@
 #include "regs/iva_pmu_reg.h"
 #include "iva_pmu.h"
 
-#undef PMU_CLK_ENABLE_WITH_BIT_SET		/* clock polarity */
+//#define PMU_CLK_ENABLE_WITH_BIT_SET		/* clock polarity */
 
-static const uint32_t iva_pmu_clk_addr[pmu_clk_type_max] = {
-	[pmu_clk_type_core]	= IVA_PMU_CLOCK_CONTROL_ADDR,
-#if defined(CONFIG_SOC_EXYNOS9810)
-	[pmu_clk_type_sfr]	= IVA_PMU_SFR_CLOCK_CONTROL_ADDR
-#endif
-};
-
-static uint32_t __iva_pmu_read_mask(void __iomem *pmu_reg, uint32_t mask)
-{
-	return readl(pmu_reg) & mask;
-}
 
 /* return masked old values */
 static uint32_t __iva_pmu_write_mask(void __iomem *pmu_reg, uint32_t mask, bool set)
 {
 	uint32_t old_val, val;
 
-	old_val = readl(pmu_reg);
+	old_val= readl(pmu_reg);
 	if (set)
 		val = old_val | mask;
 	else
@@ -50,10 +39,10 @@ static uint32_t __iva_pmu_write_mask(void __iomem *pmu_reg, uint32_t mask, bool 
 	return old_val & mask;
 }
 
-uint32_t iva_pmu_ctrl(struct iva_dev_data *iva,
-			enum iva_pmu_ctrl ctrl, bool set)
+uint32_t iva_pmu_ctrl_q_channel(struct iva_dev_data *iva,
+			enum iva_pmu_q_ch_ctrl q_ctrl, bool set)
 {
-	return __iva_pmu_write_mask(iva->pmu_va + IVA_PMU_CTRL_ADDR, ctrl, set);
+	return __iva_pmu_write_mask(iva->pmu_va + IVA_PMU_CTRL_ADDR, q_ctrl, set);
 }
 
 uint32_t iva_pmu_reset_hwa(struct iva_dev_data *iva,
@@ -63,47 +52,13 @@ uint32_t iva_pmu_reset_hwa(struct iva_dev_data *iva,
 			ip, release);
 }
 
-/* return bool per mask bits provided by @ip */
-uint32_t iva_pmu_is_clock_enabled(struct iva_dev_data *iva,
-		enum iva_pmu_clk_type type, enum iva_pmu_ip_id ip)
-{
-	uint32_t mask = (uint32_t) ip;
-	uint32_t masked_val = __iva_pmu_read_mask(
-			iva->pmu_va + iva_pmu_clk_addr[type], mask);
-
-#ifndef PMU_CLK_ENABLE_WITH_BIT_SET
-	masked_val = (~masked_val) & mask;
-#endif
-	return masked_val;
-}
-
-/* return bool per mask bits provided by @ip */
-uint32_t iva_pmu_enable_clock(struct iva_dev_data *iva, enum iva_pmu_clk_type type,
+uint32_t iva_pmu_enable_clk(struct iva_dev_data *iva,
 		enum iva_pmu_ip_id ip, bool enable)
 {
-	uint32_t old_masked_val;
-	uint32_t mask = (uint32_t) ip;
-
-	/* skip input type check */
-	if (type <= pmu_clk_type_none || type >= pmu_clk_type_max)
-		return 0;
-
 #ifndef PMU_CLK_ENABLE_WITH_BIT_SET
 	enable = !enable;
 #endif
-	old_masked_val = __iva_pmu_write_mask(
-			iva->pmu_va + iva_pmu_clk_addr[type], mask, enable);
-
-#ifndef PMU_CLK_ENABLE_WITH_BIT_SET
-	old_masked_val = (~old_masked_val) & mask;
-#endif
-	return old_masked_val;
-}
-
-uint32_t iva_pmu_enable_auto_clock_gating(struct iva_dev_data *iva,
-		enum iva_pmu_ip_id ip, bool enable)
-{
-	return __iva_pmu_write_mask(iva->pmu_va + IVA_PMU_HWACG_EN_ADDR,
+	return __iva_pmu_write_mask(iva->pmu_va + IVA_PMU_CLOCK_CONTROL_ADDR,
 			ip, enable);
 }
 
@@ -116,18 +71,14 @@ uint32_t iva_pmu_ctrl_mcu(struct iva_dev_data *iva,
 
 void iva_pmu_prepare_mcu_sram(struct iva_dev_data *iva)
 {
-#if defined(CONFIG_SOC_EXYNOS8895)
 	/*
 	 * Mark PMU_VMCU as active to prevent any QChannel deadlocks
 	 * that can happen when resetting the MCU
 	 */
-	iva_pmu_ctrl(iva, pmu_q_ch_vmcu_active, true);
+	iva_pmu_ctrl_q_channel(iva, pmu_q_ch_vmcu_active, true);
+
 	/* Put MCU into reset and hold boot*/
 	iva_pmu_ctrl_mcu(iva, pmu_mcu_reset_n | pmu_en_sleep, false);
-#elif defined(CONFIG_SOC_EXYNOS9810)
-	iva_pmu_ctrl(iva, pmu_ctrl_qactive, true);
-	iva_pmu_ctrl_mcu(iva, pmu_mcu_reset_n, false);
-#endif
 	iva_pmu_ctrl_mcu(iva, pmu_boothold, true);
 
 	/* Release MCU reset */
@@ -138,75 +89,19 @@ void iva_pmu_reset_mcu(struct iva_dev_data *iva)
 {
 	iva_pmu_ctrl_mcu(iva, pmu_boothold, false);
 
-#if defined(CONFIG_SOC_EXYNOS8895)
 	/*
 	 * Remove VMCU as active
 	 * so that CMU can put us in low-power if and when appropriate
 	 */
-	iva_pmu_ctrl(iva, pmu_q_ch_vmcu_active, false);
-#elif defined(CONFIG_SOC_EXYNOS9810)
-	iva_pmu_ctrl(iva, pmu_ctrl_qactive, false);
-#endif
+	iva_pmu_ctrl_q_channel(iva, pmu_q_ch_vmcu_active, false);
 }
 
-void iva_pmu_prepare_sfr_dump(struct iva_dev_data *iva)
+uint32_t iva_pmu_enable_auto_clock_gating(struct iva_dev_data *iva,
+		enum iva_pmu_ip_id ip, bool enable)
 {
-	/* ensure all hwas are released and all clocks are on */
-#if defined(CONFIG_SOC_EXYNOS8895)
-	iva_pmu_enable_all_clks(iva);
-#elif defined(CONFIG_SOC_EXYNOS9810)
-	iva_pmu_ctrl(iva, pmu_ctrl_qactive, false);
-
-	/*
-	 * to minimize the effect of hwa status change during dump,
-	 * enable only sfr clocks.
-	 */
-	iva_pmu_enable_sfr_clks(iva);
-	#ifdef ENABLE_CORE_CLK_DURING_DUMP_WORKAROUND
-	iva_pmu_enable_all_clks(iva);
-	#endif
-#endif
-	iva_pmu_release_all(iva);
+	return __iva_pmu_write_mask(iva->pmu_va + IVA_PMU_HWACG_EN_ADDR,
+			ip, enable);
 }
-
-#define IVA_PMU_PRINT(dev, pmu_base, reg, reg_name)	\
-	dev_info(dev, "%12s: %08X\n", reg_name, readl(pmu_base + reg))
-
-void iva_pmu_show_status(struct iva_dev_data *iva)
-{
-	struct iva_pmu_dump_reg {
-		uint32_t	reg_offset;
-		const char	*reg_name;
-	};
-
-	struct device	*dev = iva->dev;
-	void		*pmu_base = iva->pmu_va;
-	uint32_t	i;
-
-	const struct iva_pmu_dump_reg iva_pmu_dump_regs[] = {
-		{ IVA_PMU_CTRL_ADDR,		"PMU_CTRL"	},
-		{ IVA_PMU_STATUS_ADDR,		"PMU_STATUS"	},
-		{ IVA_PMU_IRQ_EN_ADDR,		"IRQ_EN"	},
-		{ IVA_PMU_IRQ_RAW_STATUS_ADDR,	"RAW_STATUS"	},
-		{ IVA_PMU_IRQ_STATUS_ADDR,	"IRQ_STATUS"	},
-		{ IVA_PMU_CLOCK_CONTROL_ADDR,	"CLOCK_CTROL"	},
-		{ IVA_PMU_SOFT_RESET_ADDR,	"SOFT_RESET"	},
-		{ IVA_PMU_VMCU_CTRL_ADDR,	"VMCU_CTRL"	},
-		{ IVA_PMU_HWACG_EN_ADDR,	"HWACG_EN"	},
-		{ IVA_PMU_HWA_ACTIVITY_ADDR,	"HWA_ACTIVITY"	},
-	#if defined(CONFIG_SOC_EXYNOS9810)
-		{ IVA_PMU_SFR_CLOCK_CONTROL_ADDR, "SFR_CLOCK"	},
-	#endif
-	};
-
-	dev_info(dev, "--------------  IVA PMU  -------------\n");
-	for (i = 0; i < (uint32_t) ARRAY_SIZE(iva_pmu_dump_regs); i++) {
-		IVA_PMU_PRINT(dev, pmu_base,
-				iva_pmu_dump_regs[i].reg_offset,
-				iva_pmu_dump_regs[i].reg_name);
-	}
-}
-
 
 int iva_pmu_init(struct iva_dev_data *iva, bool en_hwa)
 {
@@ -224,7 +119,6 @@ int iva_pmu_init(struct iva_dev_data *iva, bool en_hwa)
 
 void iva_pmu_deinit(struct iva_dev_data *iva)
 {
-	iva_pmu_ctrl(iva, pmu_ctrl_qactive, false);
 	iva_pmu_reset_all(iva);
 	iva_pmu_disable_all_clks(iva);
 }
@@ -252,8 +146,9 @@ int iva_pmu_probe(struct iva_dev_data *iva)
 
 void iva_pmu_remove(struct iva_dev_data *iva)
 {
-	if (iva->pmu_va)
+	if (iva->pmu_va) {
 		iva->pmu_va = NULL;
+	}
 
 	dev_dbg(iva->dev, "%s() succeed to release pmu va\n", __func__);
 }

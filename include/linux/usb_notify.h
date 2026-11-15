@@ -6,7 +6,7 @@
  *
 */
 
- /* usb notify layer v3.2 */
+ /* usb notify layer v3.0 */
 
 #ifndef __LINUX_USB_NOTIFY_H__
 #define __LINUX_USB_NOTIFY_H__
@@ -18,7 +18,9 @@
 #if defined(CONFIG_USB_HW_PARAM)
 #include <linux/usb_hw_param.h>
 #endif
+#if defined(CONFIG_USB_OTG_WHITELIST_FOR_MDM)
 #include <linux/usb.h>
+#endif
 
 enum otg_notify_events {
 	NOTIFY_EVENT_NONE,
@@ -37,7 +39,9 @@ enum otg_notify_events {
 	NOTIFY_EVENT_ALL_DISABLE,
 	NOTIFY_EVENT_HOST_DISABLE,
 	NOTIFY_EVENT_CLIENT_DISABLE,
+#if defined(CONFIG_USB_OTG_WHITELIST_FOR_MDM)
 	NOTIFY_EVENT_MDM_ON_OFF,
+#endif
 	NOTIFY_EVENT_OVERCURRENT,
 	NOTIFY_EVENT_SMSC_OVC,
 	NOTIFY_EVENT_SMTD_EXT_CURRENT,
@@ -47,7 +51,6 @@ enum otg_notify_events {
 	NOTIFY_EVENT_LANHUB_CONNECT,
 	NOTIFY_EVENT_POWER_SOURCE,
 	NOTIFY_EVENT_VBUSPOWER,
-	NOTIFY_EVENT_POGO,
 	NOTIFY_EVENT_VIRTUAL,
 };
 
@@ -82,10 +85,12 @@ enum otg_notify_block_type {
 	NOTIFY_BLOCK_TYPE_ALL = (1 << 0 | 1 << 1),
 };
 
+#if defined(CONFIG_USB_OTG_WHITELIST_FOR_MDM)
 enum otg_notify_mdm_type {
 	NOTIFY_MDM_TYPE_OFF,
 	NOTIFY_MDM_TYPE_ON,
 };
+#endif
 
 enum otg_notify_gpio {
 	NOTIFY_VBUS,
@@ -114,10 +119,6 @@ enum otg_notify_data_role {
 	HNOTIFY_DFP,
 };
 
-enum usb_err_type {
-	USB_ERR_ABNORMAL_RESET,
-};
-
 struct otg_notify {
 	int vbus_detect_gpio;
 	int redriver_en_gpio;
@@ -129,7 +130,6 @@ struct otg_notify {
 	int disable_control;
 	int device_check_sec;
 	int pre_peri_delay_us;
-	int sec_whitelist_enable;
 	int speed;
 	const char *muic_name;
 	int (*pre_gpio)(int gpio, int use);
@@ -142,9 +142,12 @@ struct otg_notify {
 	int (*set_lanhubta)(int);
 	int (*set_battcall)(int, int);
 	int (*set_chg_current)(int);
-	void (*set_ldo_onoff)(void *, unsigned int);
+	void (*set_ldo_onoff)(void *,unsigned int);
 	void *o_data;
 	void *u_notify;
+#if defined(CONFIG_USB_OTG_WHITELIST_FOR_MDM)
+	int sec_whitelist_enable;
+#endif
 };
 
 struct otg_booster {
@@ -155,7 +158,6 @@ struct otg_booster {
 #ifdef CONFIG_USB_NOTIFY_LAYER
 extern const char *event_string(enum otg_notify_events event);
 extern const char *status_string(enum otg_notify_event_status status);
-extern void send_usb_err_uevent(int usb_certi, int mode);
 extern void send_otg_notify(struct otg_notify *n,
 					unsigned long event, int enable);
 extern struct otg_booster *find_get_booster(struct otg_notify *n);
@@ -171,9 +173,6 @@ extern struct otg_notify *get_otg_notify(void);
 extern int set_otg_notify(struct otg_notify *n);
 extern void put_otg_notify(struct otg_notify *n);
 extern bool is_blocked(struct otg_notify *n, int type);
-extern int usb_check_whitelist_for_mdm(struct usb_device *dev);
-extern int send_usb_notify_uevent
-		(struct otg_notify *n, char *envp_ext[]);
 #if defined(CONFIG_USB_HW_PARAM)
 extern unsigned long long *get_hw_param(struct otg_notify *n,
 					enum usb_hw_param index);
@@ -182,12 +181,14 @@ extern int inc_hw_param(struct otg_notify *n,
 extern int inc_hw_param_host(struct host_notify_dev *dev,
 					enum usb_hw_param index);
 #endif
+#if defined(CONFIG_USB_OTG_WHITELIST_FOR_MDM)
+extern int usb_check_whitelist_for_mdm(struct usb_device *dev);
+#endif
 #else
 static inline const char *event_string(enum otg_notify_events event)
 			{return NULL; }
 static inline const char *status_string(enum otg_notify_event_status status)
 			{return NULL; }
-static inline void send_usb_err_uevent(int usb_certi, int mode) {}
 static inline void send_otg_notify(struct otg_notify *n,
 					unsigned long event, int enable) { }
 static inline struct otg_booster *find_get_booster(struct otg_notify *n)
@@ -205,10 +206,6 @@ static inline struct otg_notify *get_otg_notify(void) {return NULL; }
 static inline int set_otg_notify(struct otg_notify *n) {return 0; }
 static inline void put_otg_notify(struct otg_notify *n) {}
 static inline bool is_blocked(struct otg_notify *n, int type) {return false; }
-static inline int usb_check_whitelist_for_mdm(struct usb_device *dev)
-			{return 0; }
-static inline int send_usb_notify_uevent
-			(struct otg_notify *n, char *envp_ext[]) {return 0; }
 #if defined(CONFIG_USB_HW_PARAM)
 static unsigned long long *get_hw_param(struct otg_notify *n,
 			enum usb_hw_param index) {return NULL; }
@@ -216,6 +213,10 @@ static int inc_hw_param(struct otg_notify *n,
 			enum usb_hw_param index) {return 0; }
 static int inc_hw_param_host(struct host_notify_dev *dev,
 			enum usb_hw_param index) {return 0; }
+#endif
+#if defined(CONFIG_USB_OTG_WHITELIST_FOR_MDM)
+static inline int usb_check_whitelist_for_mdm(struct usb_device *dev)
+			{return 0; }
 #endif
 #endif
 #endif /* __LINUX_USB_NOTIFY_H__ */

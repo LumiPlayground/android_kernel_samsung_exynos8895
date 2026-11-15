@@ -18,7 +18,6 @@
 #include <linux/interrupt.h>
 #include <linux/slab.h>
 #include <linux/exynos-ss.h>
-#include <linux/soc/samsung/exynos-soc.h>
 
 #include "acpm.h"
 #include "acpm_ipc.h"
@@ -101,6 +100,7 @@ static int plugins_init(void)
 	void __iomem *fw_base_addr;
 	struct device_node *node, *child;
 	const __be32 *prop;
+
 	unsigned int offset;
 
 	plugins = (struct plugin *)(acpm_srambase + acpm_initdata->plugins);
@@ -247,6 +247,15 @@ void *memcpy_align_4(void *dest, const void *src, unsigned int n)
 	return dest;
 }
 
+void exynos_apm_power_down(void)
+{
+	unsigned int reg;
+
+	reg = __raw_readl(exynos_acpm->mcore_base + EXYNOS_PMU_CORTEX_APM_CONFIGURATION);
+	reg &= APM_LOCAL_PWR_CFG_RESET;
+	__raw_writel(reg, exynos_acpm->mcore_base + EXYNOS_PMU_CORTEX_APM_CONFIGURATION);
+}
+
 void acpm_enter_wfi(void)
 {
 	struct ipc_config config;
@@ -273,22 +282,11 @@ void acpm_enter_wfi(void)
 	}
 }
 
-void exynos_acpm_timer_clear(void)
-{
-	writel(exynos_acpm->timer_cnt, exynos_acpm->timer_base + EXYNOS_TIMER_APM_TCVR);
-}
-
 void exynos_acpm_reboot(void)
 {
-	u32 soc_id, revision;
-
 	acpm_ipc_set_waiting_mode(BUSY_WAIT);
-
-	soc_id = exynos_soc_info.product_id;
-	revision = exynos_soc_info.revision;
-
-	if (!(soc_id == EXYNOS9810_SOC_ID && revision < EXYNOS_MAIN_REV_1))
-		acpm_enter_wfi();
+	acpm_enter_wfi();
+	exynos_apm_power_down();
 }
 
 static int acpm_send_data(struct device_node *node, unsigned int check_id,
@@ -362,19 +360,15 @@ static int acpm_probe(struct platform_device *pdev)
 
 	acpm->dev = &pdev->dev;
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "timer_apm");
-	acpm->timer_base = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(acpm->timer_base))
-		dev_info(&pdev->dev, "could not find timer base addr \n");
-
-		if (of_property_read_u32(node, "peritimer-cnt", &acpm->timer_cnt))
-		pr_warn("No matching property: peritiemr_cnt\n");
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	acpm->mcore_base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(acpm->mcore_base))
+		return PTR_ERR(acpm->mcore_base);
 
 	exynos_acpm = acpm;
 
 	acpm_debugfs_init(acpm);
 
-	exynos_acpm_timer_clear();
 	return ret;
 }
 

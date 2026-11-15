@@ -681,7 +681,7 @@ static struct inode *get_inode_from_bio(struct bio *bio)
 		struct inode *inode;
 
 		/* Using direct-io (O_DIRECT) without page cache */
-		inode = bio->fmp_ci.bi_dio_inode;
+		inode = bio->bi_dio_inode;
 		return inode;
 	}
 

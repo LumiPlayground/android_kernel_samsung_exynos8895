@@ -1,6 +1,6 @@
 /* sound/soc/samsung/abox/abox_gic.h
  *
- * ALSA SoC Audio Layer - Samsung Abox GIC driver
+ * ALSA SoC - Samsung Abox driver
  *
  * Copyright (c) 2016 Samsung Electronics Co. Ltd.
  *
@@ -12,10 +12,8 @@
 #ifndef __SND_SOC_ABOX_GIC_H
 #define __SND_SOC_ABOX_GIC_H
 
-#define ABOX_GIC_IRQ_COUNT 16
-
 struct abox_gic_irq_handler_t {
-	irq_handler_t handler;
+	irq_handler_t irq_handler;
 	void *dev_id;
 };
 
@@ -25,54 +23,50 @@ struct abox_gic_data {
 	phys_addr_t gicd_base_phys;
 	phys_addr_t gicc_base_phys;
 	int irq;
-	struct abox_gic_irq_handler_t handler[ABOX_GIC_IRQ_COUNT];
+	struct abox_gic_irq_handler_t abox_gic_irq_handler;
 	bool disabled;
 
 };
 
 /**
  * Generate interrupt
- * @param[in]	dev	pointer to abox_gic device
- * @param[in]	irq	irq number
+ * @param[in]	pdev	pointer to platform_device of abox_gic device
+ * @param[in]	hw_irq	hardware irq number
  */
-extern void abox_gic_generate_interrupt(struct device *dev, unsigned int irq);
+extern void abox_gic_generate_interrupt(struct platform_device *pdev,
+		int hw_irq);
 
 /**
  * Register interrupt handler
- * @param[in]	dev	pointer to abox_gic device
- * @param[in]	irq	irq number
- * @param[in]	handler	function to be called on interrupt
- * @param[in]	dev_id	cookie for interrupt.
- * @return	error code or 0
+ * @param[in]	pdev		pointer to platform_device of abox_gic device
+ * @param[in]	irq_handler	function to be called on interrupt
+ * @param[in]	dev_id		Cookie for interrupt.
  */
-extern int abox_gic_register_irq_handler(struct device *dev,
-		unsigned int irq, irq_handler_t handler, void *dev_id);
+extern void abox_gic_register_irq_handler(struct platform_device *pdev,
+		irq_handler_t irq_handler, void *dev_id);
 
 /**
  * Unregister interrupt handler
- * @param[in]	dev	pointer to abox_gic device
- * @param[in]	irq	irq number
- * @return	error code or 0
+ * @param[in]	pdev	pointer to platform_device of abox_gic device
  */
-extern int abox_gic_unregister_irq_handler(struct device *dev,
-		unsigned int irq);
+extern void abox_gic_unregister_irq_handler(struct platform_device *pdev);
 
 /**
- * Enable abox gic irq
- * @param[in]	dev	pointer to abox_gic device
+ * Enable ABOX GIC irq
+ * @param[in]	dev	pointer to platform_device of abox_gic device
  */
 extern int abox_gic_enable_irq(struct device *dev);
 
 /**
- * Disable abox gic irq
- * @param[in]	dev	pointer to abox_gic device
+ * Disable ABOX GIC irq
+ * @param[in]	dev	pointer to platform_device of abox_gic device
  */
 extern int abox_gic_disable_irq(struct device *dev);
 
 /**
- * Initialize abox gic
- * @param[in]	dev	pointer to abox_gic device
+ * Initialize A-Box GIC
+ * @param[in]	pdev	pointer to platform_device of abox_gic device
  */
-extern void abox_gic_init_gic(struct device *dev);
+extern void abox_gic_init_gic(struct platform_device *pdev);
 
 #endif /* __SND_SOC_ABOX_GIC_H */

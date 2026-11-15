@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2017 Samsung Electronics Co., Ltd.
+ * Copyright (c) 2014 Samsung Electronics Co., Ltd.
  *      http://www.samsung.com
  *
  * Samsung TN debugging code
@@ -19,7 +19,6 @@
 #include <linux/irq.h>
 #include <linux/tick.h>
 #include <linux/file.h>
-#include <linux/sec_sysfs.h>
 #include <linux/sec_ext.h>
 #include <linux/sec_debug.h>
 #include <linux/sec_debug_hard_reset_hook.h>
@@ -28,7 +27,6 @@
 #include <linux/file.h>
 #include <linux/fdtable.h>
 #include <linux/mount.h>
-#include <linux/of_reserved_mem.h>
 
 #include <asm/cacheflush.h>
 #include <asm/stacktrace.h>
@@ -36,27 +34,6 @@
 #include <soc/samsung/exynos-pmu.h>
 #include <soc/samsung/exynos-powermode.h>
 #include <linux/soc/samsung/exynos-soc.h>
-
-#if defined(CONFIG_SEC_DUMP_SUMMARY)
-#include <linux/cpufreq.h>
-
-struct sec_debug_summary *summary_info;
-static char *sec_summary_log_buf;
-static unsigned long sec_summary_log_size;
-static unsigned long reserved_out_buf;
-static unsigned long reserved_out_size;
-static char *last_summary_buffer;
-static size_t last_summary_size;
-
-#ifdef CONFIG_ARM64
-#define ARM_PT_REG_PC pc
-#define ARM_PT_REG_LR regs[30]
-#else
-#define ARM_PT_REG_PC ARM_pc
-#define ARM_PT_REG_LR ARM_lr
-#endif
-
-#endif
 
 #ifdef CONFIG_SEC_DEBUG
 
@@ -77,45 +54,15 @@ module_param_named(enable, sec_debug_level.en.kernel_fault, ushort, 0644);
 module_param_named(enable_user, sec_debug_level.en.user_fault, ushort, 0644);
 module_param_named(level, sec_debug_level.uint_val, uint, 0644);
 
-long __debug_sj_lock;
-
-int sec_debug_check_sj(void)
-{
-	if (__debug_sj_lock == 1)
-		/* Locked */
-		return 1;
-	else if (__debug_sj_lock == 0)
-		/* Unlocked */
-		return 0;
-
-	return -1;
-}
-
-static int __init sec_debug_get_sj_status(char *str)
-{
-	unsigned long val = memparse(str, &str);
-
-	pr_err("%s: start %lx\n", __func__, val);
-
-	if (!val) {
-		pr_err("%s: UNLOCKED (%lx)\n", __func__, val);
-		__debug_sj_lock = 0;
-		/* Unlocked or Disabled */
-		return 0;
-	} else {
-		pr_err("%s: LOCKED (%lx)\n", __func__, val);
-		__debug_sj_lock = 1;
-		/* Locked */
-		return 1;
-	}
-}
-__setup("sec_debug.sjl=", sec_debug_get_sj_status);
-
-static int sec_debug_reserve_ok;
-
 int sec_debug_get_debug_level(void)
 {
 	return sec_debug_level.uint_val;
+}
+
+void sec_debug_set_debug_level(unsigned int val)
+{
+	pr_info("set debug level from %x to %x\n", sec_debug_level.uint_val, val);
+	sec_debug_level.uint_val = val;
 }
 
 static void sec_debug_user_fault_dump(void)
@@ -186,8 +133,6 @@ enum sec_debug_upload_cause_t {
 
 static void sec_debug_set_upload_magic(unsigned magic, char *str)
 {
-	preempt_disable();
-
 	*(unsigned int *)SEC_DEBUG_MAGIC_VA = magic;
 	*(unsigned int *)(SEC_DEBUG_MAGIC_VA + SZ_4K - 4) = magic;
 
@@ -199,10 +144,6 @@ static void sec_debug_set_upload_magic(unsigned magic, char *str)
 		sec_debug_finish_extra_info();
 #endif
 	}
-
-	flush_cache_all();
-	preempt_enable();
-
 	pr_emerg("sec_debug: set magic code (0x%x)\n", magic);
 }
 
@@ -232,115 +173,32 @@ static int sec_debug_reserved(phys_addr_t base, phys_addr_t size)
 #endif
 }
 
-static int __init sec_debug_magic_setup(struct reserved_mem *rmem)
+int __init sec_debug_setup(void)
 {
-	pr_info("%s: Reserved Mem(0x%llx, 0x%llx) - Success\n",
-		__func__, rmem->base, rmem->size);
-	sec_debug_reserve_ok = 1;
+	phys_addr_t size = SZ_4K;
+	phys_addr_t base = 0;
 
-	return 0;
-}
-RESERVEDMEM_OF_DECLARE(sec_debug_magic, "exynos,sec_debug_magic", sec_debug_magic_setup);
-
-#define MAX_RECOVERY_CAUSE_SIZE 256
-char recovery_cause[MAX_RECOVERY_CAUSE_SIZE];
-unsigned long recovery_cause_offset;
-
-static ssize_t show_recovery_cause(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	if (!recovery_cause_offset)
-		return 0;
-
-	sec_get_param_str(recovery_cause_offset, buf);
-	pr_info("%s: %s\n", __func__, buf);
-
-	return strlen(buf);
-}
-
-static ssize_t store_recovery_cause(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
-{
-	if (!recovery_cause_offset)
-		return 0;
-
-	if (strlen(buf) > sizeof(recovery_cause))
-		pr_err("%s: input buffer length is out of range.\n", __func__);
-
-	snprintf(recovery_cause, sizeof(recovery_cause), "%s:%d ", current->comm, task_pid_nr(current));
-	if (strlen(recovery_cause) + strlen(buf) >= sizeof(recovery_cause)) {
-		pr_err("%s: input buffer length is out of range.\n", __func__);
-		return count;
-	}
-	strncat(recovery_cause, buf, strlen(buf));
-
-	sec_set_param_str(recovery_cause_offset, recovery_cause, sizeof(recovery_cause));
-	pr_info("%s: %s, count:%d\n", __func__, recovery_cause, (int)count);
-
-	return count;
-}
-
-static DEVICE_ATTR(recovery_cause, 0660, show_recovery_cause, store_recovery_cause);
-
-void sec_debug_recovery_reboot(void)
-{
-	char *buf;
-
-	if (recovery_cause_offset) {
-		if (!recovery_cause[0] || !strlen(recovery_cause)) {
-			buf = "empty caller";
-			store_recovery_cause(NULL, NULL, buf, strlen(buf));
-		}
-	}
-}
-
-static int __init sec_debug_recovery_cause_setup(char *str)
-{
-	recovery_cause_offset = memparse(str, &str);
-
-	/* If we encounter any problem parsing str ... */
-	if (!recovery_cause_offset) {
-		pr_err("%s: failed to parse address.\n", __func__);
-		goto out;
-	}
-
-	pr_info("%s, recovery_cause_offset :%lx\n", __func__, recovery_cause_offset);
-out:
-	return 0;
-}
-__setup("androidboot.recovery_offset=", sec_debug_recovery_cause_setup);
-
-static int __init sec_debug_recovery_cause_init(void)
-{
-	struct device *dev;
-
-	memset(recovery_cause, 0, MAX_RECOVERY_CAUSE_SIZE);
-
-	dev = sec_device_create(NULL, "sec_debug");
-	WARN_ON(!dev);
-	if (IS_ERR(dev))
-		pr_err("%s:Failed to create devce\n", __func__);
-
-	if (device_create_file(dev, &dev_attr_recovery_cause) < 0)
-		pr_err("%s: Failed to create device file\n", __func__);
-
-	return 0;
-}
-late_initcall(sec_debug_recovery_cause_init);
-
-static int __init sec_debug_init(void)
-{
-	if (!sec_debug_reserve_ok)
-		pr_crit("fatal: %s: memory has not been reserved\n", __func__);
+	base = SEC_DEBUG_MAGIC_PA;
 
 	/* clear traps info */
 	memset((void *)SEC_DEBUG_MAGIC_VA + 4, 0, SZ_1K - 4);
 
-	sec_debug_set_upload_magic(UPLOAD_MAGIC_PANIC, NULL);
+	if (!sec_debug_reserved(base, size)) {
+		pr_info("%s: Reserved Mem(0x%llx, 0x%llx) - Success\n",
+			__FILE__, base, size);
+
+		sec_debug_set_upload_magic(UPLOAD_MAGIC_PANIC, NULL);
+	} else {
+		goto out;
+	}
 
 	kmsg_dump_register(&sec_dumper);
 
 	return 0;
+out:
+	pr_err("%s: Reserved Mem(0x%llx, 0x%llx) - Failed\n", __FILE__, base, size);
+	return -ENOMEM;
 }
-early_initcall(sec_debug_init);
 
 #ifndef arch_irq_stat_cpu
 #define arch_irq_stat_cpu(cpu) 0
@@ -507,14 +365,10 @@ static void sec_debug_dump_cpu_stat(void)
 	pr_info("-------------------------------------------------------------------------------------------------------------\n");
 }
 
-void sec_debug_reboot_handler(void *p)
+void sec_debug_reboot_handler(void)
 {
 	/* Clear magic code in normal reboot */
 	sec_debug_set_upload_magic(UPLOAD_MAGIC_INIT, NULL);
-
-	if (p != NULL)
-		if (!strcmp(p, "recovery"))
-			sec_debug_recovery_reboot();
 }
 
 void sec_debug_panic_handler(void *buf, bool dump)
@@ -547,13 +401,6 @@ void sec_debug_panic_handler(void *buf, bool dump)
 
 void sec_debug_post_panic_handler(void)
 {
-	hard_reset_delay();
-
-	if (sec_debug_check_sj())
-		pr_emerg("%s: secure jtag LOCKED\n", __func__);
-	else
-		pr_emerg("%s: secure jtag UNLOCKED\n", __func__);
-
 	/* reset */
 	pr_emerg("sec_debug: %s\n", linux_banner);
 	pr_emerg("sec_debug: rebooting...\n");
@@ -561,75 +408,97 @@ void sec_debug_post_panic_handler(void)
 	flush_cache_all();
 }
 
-#ifdef CONFIG_SEC_DEBUG_FILE_LEAK
-void sec_debug_print_file_list(void)
+#ifdef CONFIG_SEC_DEBUG_LAST_KMSG
+static char *last_kmsg_buffer;
+static size_t last_kmsg_size;
+void sec_debug_save_last_kmsg(unsigned char *head_ptr, unsigned char *curr_ptr, size_t buf_size)
 {
-	int i = 0;
-	unsigned int count = 0;
-	struct file *file = NULL;
-	struct files_struct *files = current->files;
-	const char *p_rootname = NULL;
-	const char *p_filename = NULL;
+	size_t size;
+	unsigned char *magickey_addr;
 
-	count = files->fdt->max_fds;
+	if (!head_ptr || !curr_ptr || head_ptr == curr_ptr) {
+		pr_err("%s: no data\n", __func__);
+		return;
+	}
 
-	pr_err("[Opened file list of process %s(PID:%d, TGID:%d) :: %d]\n",
-	       current->group_leader->comm, current->pid, current->tgid, count);
+	if ((curr_ptr - head_ptr) <= 0) {
+		pr_err("%s: invalid args\n", __func__);
+		return;
+	}
+	size = (size_t)(curr_ptr - head_ptr);
 
-	for (i = 0; i < count; i++) {
-		rcu_read_lock();
-		file = fcheck_files(files, i);
+	magickey_addr = head_ptr + buf_size - (size_t)0x08;
 
-		p_rootname = NULL;
-		p_filename = NULL;
-
-		if (file) {
-			if (file->f_path.mnt && file->f_path.mnt->mnt_root &&
-			    file->f_path.mnt->mnt_root->d_name.name)
-				p_rootname = file->f_path.mnt->mnt_root->d_name.name;
-
-			if (file->f_path.dentry && file->f_path.dentry->d_name.name)
-				p_filename = file->f_path.dentry->d_name.name;
-
-			pr_err("[%04d]%s%s\n", i, p_rootname ? p_rootname : "null",
-			       p_filename ? p_filename : "null");
+	/* provide previous log as last_kmsg */
+	if (*((unsigned long long *)magickey_addr) == SEC_LKMSG_MAGICKEY) {
+		pr_info("%s: sec_log buffer is full\n", __func__);
+		last_kmsg_size = (size_t)SZ_2M;
+		last_kmsg_buffer = kzalloc(last_kmsg_size, GFP_NOWAIT);
+		if (last_kmsg_size && last_kmsg_buffer) {
+			memcpy(last_kmsg_buffer, curr_ptr, last_kmsg_size - size);
+			memcpy(last_kmsg_buffer + (last_kmsg_size - size), head_ptr, size);
+			pr_info("%s: successed\n", __func__);
+		} else {
+			pr_err("%s: failed\n", __func__);
 		}
-		rcu_read_unlock();
+	} else {
+		pr_info("%s: sec_log buffer is not full\n", __func__);
+		last_kmsg_size = size;
+		last_kmsg_buffer = kzalloc(last_kmsg_size, GFP_NOWAIT);
+		if (last_kmsg_size && last_kmsg_buffer) {
+			memcpy(last_kmsg_buffer, head_ptr, last_kmsg_size);
+			pr_info("%s: successed\n", __func__);
+		} else {
+			pr_err("%s: failed\n", __func__);
+		}
 	}
 }
 
-void sec_debug_EMFILE_error_proc(unsigned long files_addr)
+static ssize_t sec_last_kmsg_read(struct file *file, char __user *buf,
+				  size_t len, loff_t *offset)
 {
-	if (files_addr != (unsigned long)(current->files)) {
-		pr_err("Too many open files Error at %pS\n"
-		       "%s(%d) thread of %s process tried fd allocation by proxy.\n"
-		       "files_addr = 0x%lx, current->files=0x%p\n",
-		       __builtin_return_address(0),
-		       current->comm, current->tgid, current->group_leader->comm,
-		       files_addr, current->files);
-		return;
-	}
+	loff_t pos = *offset;
+	ssize_t count;
 
-	pr_err("Too many open files(%d:%s) at %pS\n",
-	       current->tgid, current->group_leader->comm, __builtin_return_address(0));
+	if (pos >= last_kmsg_size)
+		return 0;
 
-	if (!sec_debug_level.en.kernel_fault)
-		return;
+	count = min(len, (size_t)(last_kmsg_size - pos));
+	if (copy_to_user(buf, last_kmsg_buffer + pos, count))
+		return -EFAULT;
 
-	/* We check EMFILE error in only "system_server","mediaserver" and "surfaceflinger" process.*/
-	if (!strcmp(current->group_leader->comm, "system_server") ||
-	    !strcmp(current->group_leader->comm, "mediaserver") ||
-	    !strcmp(current->group_leader->comm, "surfaceflinger")) {
-		sec_debug_print_file_list();
-		panic("Too many open files");
-	}
+	*offset += count;
+	return count;
 }
-#endif /* CONFIG_SEC_DEBUG_FILE_LEAK */
 
-#if 0
+static const struct file_operations last_kmsg_file_ops = {
+	.owner = THIS_MODULE,
+	.read = sec_last_kmsg_read,
+};
+
+static int __init sec_last_kmsg_late_init(void)
+{
+	struct proc_dir_entry *entry;
+
+	if (!last_kmsg_buffer)
+		return 0;
+
+	entry = proc_create("last_kmsg", S_IFREG | S_IRUGO,
+			    NULL, &last_kmsg_file_ops);
+	if (!entry) {
+		pr_err("%s: failed to create proc entry\n", __func__);
+		return 0;
+	}
+
+	proc_set_size(entry, last_kmsg_size);
+	return 0;
+}
+
+late_initcall(sec_last_kmsg_late_init);
+#endif /* CONFIG_SEC_DEBUG_LAST_KMSG */
+
 /* leave the following definithion of module param call here for the compatibility with other models */
 module_param_call(force_error, sec_debug_force_error, NULL, NULL, 0644);
-#endif
 
 static int sec_debug_check_magic(struct sec_debug_shared_info *sdi)
 {
@@ -677,7 +546,7 @@ static void sec_debug_init_base_buffer(unsigned long base, unsigned long size)
 		sec_debug_info->magic[2] = SEC_DEBUG_SHARED_MAGIC2;
 		sec_debug_info->magic[3] = SEC_DEBUG_SHARED_MAGIC3;
 
-		sec_debug_set_kallsyms_info(&(sec_debug_info->ksyms), SEC_DEBUG_SHARED_MAGIC1);
+		sec_debug_set_kallsyms_info(sec_debug_info);
 
 #ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
 		sec_debug_init_extra_info(sec_debug_info, magic_status);
@@ -686,233 +555,6 @@ static void sec_debug_init_base_buffer(unsigned long base, unsigned long size)
 	}
 	pr_info("%s, base(virt):0x%lx size:0x%lx\n", __func__, (unsigned long)sec_debug_info, size);
 
-}
-
-char *verbose_reg(int cpu_type, int reg_name, unsigned long reg_val)
-{
-	int len;
-	unsigned long v;
-	static char explain[512];
-	char *p = explain;
-
-	if (reg_val == 0) {
-		explain[0] = 0;
-		return explain;
-	}
-
-	memset(explain, 0, ARRAY_SIZE(explain));
-
-	if (cpu_type == ARM_CPU_PART_ANANKE) {
-		switch (reg_name) {
-		case DISR_EL1:
-			v = FIELD_VAL(reg_val, A);
-			if (v == 0b1) {
-				len = sprintf(p, "[Async SError INT]");
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, AET);
-			if (v == 0b001) {
-				len = sprintf(p, "[Unrecoverable Error]");
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, DFSC);
-			if (v == 0b010001)
-				sprintf(p, "[in AArch64 state or at EL2, or in AArch32 state at EL1, EAE=1 in TTBCR]");
-			else if (v == 0b000110)
-				sprintf(p, "[in AArch32 state at EL1, EAE=0 in TTBCR]");
-			break;
-		case ERR0STATUS:
-		case ERR1STATUS:
-			v = FIELD_VAL(reg_val, V);
-			if (v == 0b1) {
-				len = sprintf(p, "[VALID]");
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, UE);
-			if (v == 0b1) {
-				len = sprintf(p, "[Uncorrected Error]");
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, ER);
-			if (v == 0b1) {
-				len = sprintf(p, "[Error Reported]");
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, OF);
-			if (v == 0b1) {
-				len = sprintf(p, "[More than 1 ERR]");
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, MV);
-			if (v == 0b1) {
-				len = sprintf(p, "[More Info on ERRxMISC0]");
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, CE);
-			if (v == 0b10) {
-				len = sprintf(p, "[Corrected Error]");
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, DE);
-			if (v == 0b1) {
-				len = sprintf(p, "[Deferred Error]");
-				p += len;
-			}
-			if (reg_name == ERR0STATUS) {
-				v = FIELD_VAL(reg_val, IERR);
-				if (v == 0x1) {
-					len = sprintf(p, "[Error on L1 dirty RAM]");
-					p += len;
-				}
-				v = FIELD_VAL(reg_val, SERR);
-				if (v == 0x2)
-					sprintf(p, "[ECC error from internal data buffer]");
-				else if (v == 0x6)
-					sprintf(p, "[ECC error on cache data RAM]");
-				else if (v == 0x7)
-					sprintf(p, "[ECC error on cache tag or dirty RAM]");
-				else if (v == 0x8)
-					sprintf(p, "[Parity error on TLB data RAM]");
-				else if (v == 0x9)
-					sprintf(p, "[Parity error on TLB tag RAM]");
-				else if (v == 0x15)
-					sprintf(p, "[Deferred error from slave not supported at the consumer]");
-			} else if (reg_name == ERR1STATUS) {
-				v = FIELD_VAL(reg_val, IERR);
-				if (v == 0x2) {
-					len = sprintf(p, "[Error on L3 snoop filter RAM]");
-					p += len;
-				}
-				v = FIELD_VAL(reg_val, SERR);
-				if (v == 0x2)
-					sprintf(p, "[ECC error from internal data buffer]");
-				else if (v == 0x6)
-					sprintf(p, "[ECC error on cache data RAM]");
-				else if (v == 0x7)
-					sprintf(p, "[ECC error on cache tag or dirty RAM]");
-				else if (v == 0x12)
-					sprintf(p, "[Bus error]");
-			}
-			break;
-		case ERR0MISC0:
-		case ERR1MISC0:
-			v = FIELD_VAL(reg_val, OFO);
-			if (v == 0b1) {
-				len = sprintf(p, "[OverFlow Other]");
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, CECO);
-			if (v != 0) {
-				len = sprintf(p, "[Corrected Error Count Other: %lu]", v);
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, OFR);
-			if (v == 0b1) {
-				len = sprintf(p, "[OverFlow Repeat]");
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, CECR);
-			if (v != 0) {
-				len = sprintf(p, "[Corrected Error Count Repeat: %lu]", v);
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, WAY);
-			len = sprintf(p, "[WAY containing Error: %lu]", v);
-			p += len;
-			v = FIELD_VAL(reg_val, INDX);
-			len = sprintf(p, "[INDEX containing Error: %lu]", v);
-			p += len;
-			if (reg_name == ERR0MISC0) {
-				v = FIELD_VAL(reg_val, LVL);
-				if (v == 0b000) {
-					len = sprintf(p, "[Level 1]");
-					p += len;
-				} else if (v == 0b001) {
-					len = sprintf(p, "[Level 2]");
-					p += len;
-				}
-				v = FIELD_VAL(reg_val, IND);
-				if (v == 0b0)
-					sprintf(p, "[L1 data cache, unified L2 cache, or TLB]");
-				else if (v == 0b1)
-					sprintf(p, "[L1 instruction cache]");
-			} else if (reg_name == ERR1MISC0) {
-				v = FIELD_VAL(reg_val, LVL);
-				if (v == 0b010) {
-					len = sprintf(p, "[Level 3]");
-					p += len;
-				}
-				v = FIELD_VAL(reg_val, IND);
-				if (v == 0b0)
-					sprintf(p, "[L3 cache]");
-			}
-			break;
-		case ERR0ADDR:	// This register is unused in the Cortex-A55 core and marked as RES0
-		case ERR1ADDR:	// There is no description in the TRM
-		default:
-			break;
-		}
-	} else if (cpu_type == ARM_CPU_PART_MEERKAT) {
-		switch (reg_name) {
-		case FEMERR1SR:
-			v = FIELD_VAL(reg_val, ADDRINDEX_FE);
-			sprintf(p, "[INDEX of the array: %lu]", v);
-			break;
-		case LSMERR1SR:
-			v = FIELD_VAL(reg_val, ADDRINDEX_LS);
-			sprintf(p, "[INDEX of the array: %lu]", v);
-			break;
-		case TBWMERR1SR:
-			v = FIELD_VAL(reg_val, ADDRINDEX_TBW);
-			sprintf(p, "[INDEX of the array: %lu]", v);
-			break;
-		case L2MERR1SR:
-			v = FIELD_VAL(reg_val, ADDRINDEX_L2);
-			sprintf(p, "[INDEX of the array: %lu]", v);
-			break;
-		case L3MERR1SR:
-			v = FIELD_VAL(reg_val, ADDRINDEX_L3);
-			sprintf(p, "[INDEX of the array: %lu]", v);
-			break;
-		case FEMERR0SR:
-		case LSMERR0SR:
-		case TBWMERR0SR:
-		case L2MERR0SR:
-		case L3MERR0SR:
-			v = FIELD_VAL(reg_val, ADDRVALID);
-			if (v == 0b1) {
-				len = sprintf(p, "[ADDR is logged]");
-				p += len;
-			} else if (v == 0b0) {
-				len = sprintf(p, "[INDEX is logged]");
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, UNCONTAINED);
-			if (v == 0b1) {
-				len = sprintf(p, "[Uncontained]");
-				p += len;
-			} else if (v == 0b0) {
-				len = sprintf(p, "[Contained]");
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, UC);
-			if (v == 0b1) {
-				len = sprintf(p, "[Uncorrectable]");
-				p += len;
-			} else if (v == 0b0) {
-				len = sprintf(p, "[Correctable]");
-				p += len;
-			}
-			v = FIELD_VAL(reg_val, VALID);
-			if (v == 0b1)
-				sprintf(p, "[VALID]");
-			break;
-		default:
-			break;
-		}
-	}
-
-	return explain;
 }
 
 static int __init sec_debug_base_setup(char *str)
@@ -941,253 +583,4 @@ out:
 }
 __setup("sec_debug.base=", sec_debug_base_setup);
 
-#if defined(CONFIG_SEC_DEBUG_SUPPORT_FORCE_UPLOAD)
-static long __force_upload;
-
-static int sec_debug_get_force_upload(void)
-{
-	if (__force_upload == 1)
-		/* enabled */
-		return 1;
-	else if (__force_upload == 0)
-		/* disabled */
-		return 0;
-
-	return -1;
-}
-
-static int __init sec_debug_force_upload(char *str)
-{
-	unsigned long val = memparse(str, &str);
-
-	pr_err("%s: start %lx\n", __func__, val);
-
-	if (!val) {
-		pr_err("%s: disabled (%lx)\n", __func__, val);
-		__force_upload = 0;
-		/* Unlocked or Disabled */
-		return 1;
-	} else {
-		pr_err("%s: enabled (%lx)\n", __func__, val);
-		__force_upload = 1;
-		/* Locked */
-		return 1;
-	}
-}
-__setup("androidboot.force_upload=", sec_debug_force_upload);
-#endif
-
-int sec_debug_enter_upload(void)
-{
-#if defined(CONFIG_SEC_DEBUG_SUPPORT_FORCE_UPLOAD)
-	return sec_debug_get_force_upload();
-#else
-	return sec_debug_get_debug_level();
-#endif
-}
 #endif /* CONFIG_SEC_DEBUG */
-
-#if defined(CONFIG_SEC_DUMP_SUMMARY)
-
-void __sec_debug_task_sched_log(int cpu, struct task_struct *task, char *msg)
-{
-	unsigned long i;
-
-	if (!summary_info)
-		return;
-
-	if (!task && !msg)
-		return;
-
-	i = atomic_inc_return(&summary_info->sched_log.idx_sched[cpu]) & (SCHED_LOG_MAX - 1);
-	summary_info->sched_log.sched[cpu][i].time = cpu_clock(cpu);
-	if (task) {
-		strlcpy(summary_info->sched_log.sched[cpu][i].comm, task->comm,
-			sizeof(summary_info->sched_log.sched[cpu][i].comm));
-		summary_info->sched_log.sched[cpu][i].pid = task->pid;
-		summary_info->sched_log.sched[cpu][i].pTask = task;
-	} else {
-		strlcpy(summary_info->sched_log.sched[cpu][i].comm, msg,
-			sizeof(summary_info->sched_log.sched[cpu][i].comm));
-		summary_info->sched_log.sched[cpu][i].pid = -1;
-		summary_info->sched_log.sched[cpu][i].pTask = NULL;
-	}
-}
-
-void sec_debug_task_sched_log_short_msg(char *msg)
-{
-	__sec_debug_task_sched_log(raw_smp_processor_id(), NULL, msg);
-}
-
-void sec_debug_task_sched_log(int cpu, struct task_struct *task)
-{
-	__sec_debug_task_sched_log(cpu, task, NULL);
-}
-
-void sec_debug_irq_sched_log(unsigned int irq, void *fn, int en)
-{
-	int cpu = smp_processor_id();
-	unsigned long i;
-
-	if (!summary_info)
-		return;
-
-	i = atomic_inc_return(&summary_info->sched_log.idx_irq[cpu]) & (SCHED_LOG_MAX - 1);
-	summary_info->sched_log.irq[cpu][i].time = cpu_clock(cpu);
-	summary_info->sched_log.irq[cpu][i].irq = irq;
-	summary_info->sched_log.irq[cpu][i].fn = (void *)fn;
-	summary_info->sched_log.irq[cpu][i].en = en;
-	summary_info->sched_log.irq[cpu][i].preempt_count = preempt_count();
-	summary_info->sched_log.irq[cpu][i].context = &cpu;
-}
-
-void sec_debug_irq_enterexit_log(unsigned int irq, unsigned long long start_time)
-{
-	int cpu = smp_processor_id();
-	unsigned long i;
-
-	if (!summary_info)
-		return;
-
-	i = atomic_inc_return(&summary_info->sched_log.idx_irq_exit[cpu]) & (SCHED_LOG_MAX - 1);
-	summary_info->sched_log.irq_exit[cpu][i].time = start_time;
-	summary_info->sched_log.irq_exit[cpu][i].end_time = cpu_clock(cpu);
-	summary_info->sched_log.irq_exit[cpu][i].irq = irq;
-	summary_info->sched_log.irq_exit[cpu][i].elapsed_time =
-		summary_info->sched_log.irq_exit[cpu][i].end_time - start_time;
-}
-
-void sec_debug_summary_set_reserved_out_buf(unsigned long buf, unsigned long size)
-{
-	reserved_out_buf = buf;
-	reserved_out_size = size;
-}
-
-static int __init sec_summary_log_setup(char *str)
-{
-	unsigned long size = memparse(str, &str);
-	unsigned long base = 0;
-
-	/* If we encounter any problem parsing str ... */
-	if (!size || *str != '@' || kstrtoul(str + 1, 0, &base)) {
-		pr_err("%s: failed to parse address.\n", __func__);
-		goto out;
-	}
-
-	last_summary_size = size;
-
-#ifdef CONFIG_NO_BOOTMEM
-	if (memblock_is_region_reserved(base, size) || memblock_reserve(base, size)) {
-#else
-	if (reserve_bootmem(base, size, BOOTMEM_EXCLUSIVE)) {
-#endif
-		pr_err("%s: failed to reserve size:0x%lx at base 0x%lx\n", __func__, size, base);
-		goto out;
-	}
-
-	pr_info("%s, base:0x%lx size:0x%lx\n", __func__, base, size);
-
-	sec_summary_log_buf = phys_to_virt(base);
-	sec_summary_log_size = round_up(sizeof(struct sec_debug_summary), PAGE_SIZE);
-	last_summary_buffer = phys_to_virt(base + sec_summary_log_size);
-	sec_debug_summary_set_reserved_out_buf(base + sec_summary_log_size, (size - sec_summary_log_size));
-out:
-	return 0;
-}
-__setup("sec_summary_log=", sec_summary_log_setup);
-
-int sec_debug_summary_init(void)
-{
-	int offset = 0;
-	int i;
-
-	if (!sec_summary_log_buf) {
-		pr_info("no summary buffer\n");
-		return 0;
-	}
-
-	summary_info = (struct sec_debug_summary *)sec_summary_log_buf;
-	memset(summary_info, 0, DUMP_SUMMARY_MAX_SIZE);
-
-	sec_debug_save_cpu_info();
-
-	summary_info->kernel.nr_cpus = CONFIG_NR_CPUS;
-
-	strcpy(summary_info->summary_cmdline, saved_command_line);
-	strcpy(summary_info->summary_linuxbanner, linux_banner);
-
-	summary_info->reserved_out_buf = reserved_out_buf;
-	summary_info->reserved_out_size = reserved_out_size;
-
-	memset_io(summary_info->sched_log.sched, 0x0, sizeof(summary_info->sched_log.sched));
-	memset_io(summary_info->sched_log.irq, 0x0, sizeof(summary_info->sched_log.irq));
-	memset_io(summary_info->sched_log.irq_exit, 0x0, sizeof(summary_info->sched_log.irq_exit));
-
-	for (i = 0; i < CONFIG_NR_CPUS; i++) {
-		atomic_set(&summary_info->sched_log.idx_sched[i], -1);
-		atomic_set(&summary_info->sched_log.idx_irq[i], -1);
-		atomic_set(&summary_info->sched_log.idx_irq_exit[i], -1);
-	}
-
-	summary_info->magic[0] = SEC_DEBUG_SUMMARY_MAGIC0;
-	summary_info->magic[1] = SEC_DEBUG_SUMMARY_MAGIC1;
-	summary_info->magic[2] = SEC_DEBUG_SUMMARY_MAGIC2;
-	summary_info->magic[3] = SEC_DEBUG_SUMMARY_MAGIC3;
-
-	sec_debug_set_kallsyms_info(&(summary_info->ksyms), SEC_DEBUG_SUMMARY_MAGIC1);
-
-	pr_debug("%s done [%d]\n", __func__, offset);
-
-	return 0;
-}
-late_initcall(sec_debug_summary_init);
-
-int sec_debug_save_cpu_info(void)
-{
-	struct cpufreq_policy *policy;
-	int i;
-
-	for_each_possible_cpu(i) {
-		policy = cpufreq_cpu_get_raw(i);
-		if (policy) {
-			strcpy(summary_info->kernel.cpu_info[i].policy_name, policy->governor->name);
-			summary_info->kernel.cpu_info[i].freq_min = policy->min;
-			summary_info->kernel.cpu_info[i].freq_max = policy->max;
-			summary_info->kernel.cpu_info[i].freq_cur = policy->cur;
-		} else {
-			summary_info->kernel.cpu_info[i].freq_min = -1;
-			summary_info->kernel.cpu_info[i].freq_max = -1;
-			summary_info->kernel.cpu_info[i].freq_cur = -1;
-		}
-	}
-
-	return 0;
-}
-
-int sec_debug_save_die_info(const char *str, struct pt_regs *regs)
-{
-	if (!sec_summary_log_buf || !summary_info || !regs)
-		return 0;
-	snprintf(summary_info->kernel.excp.pc_sym, sizeof(summary_info->kernel.excp.pc_sym),
-			"%pS", (void *)regs->ARM_PT_REG_PC);
-	snprintf(summary_info->kernel.excp.lr_sym, sizeof(summary_info->kernel.excp.lr_sym),
-			"%pS", (void *)regs->ARM_PT_REG_LR);
-
-	return 0;
-}
-
-int sec_debug_save_panic_info(const char *str, unsigned long caller)
-{
-	if (!sec_summary_log_buf || !summary_info)
-		return 0;
-	snprintf(summary_info->kernel.excp.panic_caller, sizeof(summary_info->kernel.excp.panic_caller),
-			"%pS", (void *)caller);
-	snprintf(summary_info->kernel.excp.panic_msg, sizeof(summary_info->kernel.excp.panic_msg),
-			"%s", str);
-	snprintf(summary_info->kernel.excp.thread, sizeof(summary_info->kernel.excp.thread),
-			"%s:%d", current->comm, task_pid_nr(current));
-
-	return 0;
-}
-#endif /* CONFIG_SEC_DUMP_SUMMARY */
-

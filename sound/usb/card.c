@@ -46,7 +46,6 @@
 #include <linux/usb/audio-v2.h>
 #include <linux/module.h>
 
-#include <linux/usb/exynos_usb_audio.h>
 #include <sound/control.h>
 #include <sound/core.h>
 #include <sound/info.h>
@@ -335,8 +334,7 @@ static int snd_usb_audio_free(struct snd_usb_audio *chip)
 		snd_usb_endpoint_free(ep);
 
 	mutex_destroy(&chip->mutex);
-	if (!atomic_read(&chip->shutdown))
-		dev_set_drvdata(&chip->dev->dev, NULL);
+	dev_set_drvdata(&chip->dev->dev, NULL);
 	kfree(chip);
 	return 0;
 }
@@ -549,12 +547,6 @@ static int usb_audio_probe(struct usb_interface *intf,
 	int ifnum;
 	u32 id;
 
-#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
-	exynos_usb_audio_set_device(dev);
-	exynos_usb_audio_hcd(dev);
-	exynos_usb_audio_desc(dev);
-	exynos_usb_audio_map_buf(dev);
-#endif
 	alts = &intf->altsetting[0];
 	ifnum = get_iface_desc(alts)->bInterfaceNumber;
 	id = USB_ID(le16_to_cpu(dev->descriptor.idVendor),
@@ -647,10 +639,6 @@ static int usb_audio_probe(struct usb_interface *intf,
 	usb_set_intfdata(intf, chip);
 	atomic_dec(&chip->active);
 	mutex_unlock(&register_mutex);
-
-	if (dev->do_remote_wakeup)
-		usb_enable_autosuspend(dev);
-
 	return 0;
 
  __error:

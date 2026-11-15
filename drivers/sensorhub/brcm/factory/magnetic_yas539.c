@@ -118,7 +118,7 @@ int set_hw_offset(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_SET_MAGNETIC_HWOFFSET;
 	msg->length = 3;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(3, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(3, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = data->magoffset.x;
@@ -153,7 +153,7 @@ int set_static_matrix(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_SET_MAGNETIC_STATIC_MATRIX;
 	msg->length = 18;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(18, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(18, GFP_KERNEL);
 
 	msg->free_buffer = 1;
 	if (data->static_matrix == NULL)
@@ -495,7 +495,7 @@ static ssize_t matrix_store(struct device *dev,
 	str = (char *)buf;
 
 	for (i = 0; i < 9; i++) {
-		token = strsep(&str, " \n");
+		token = strsep(&str, "\n");
 		if (token == NULL) {
 			pr_err("[SSP] %s : too few arguments (9 needed)", __func__);
 			return -EINVAL;
@@ -576,7 +576,7 @@ int set_magnetic_cal_param_to_ssp(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_MAG_CAL_PARAM;
 	msg->length = MAC_CAL_PARAM_SIZE_YAS;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(MAC_CAL_PARAM_SIZE_YAS, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(MAC_CAL_PARAM_SIZE_YAS, GFP_KERNEL);
 	msg->free_buffer = 1;
 	memcpy(msg->buffer, mag_caldata_yas, MAC_CAL_PARAM_SIZE_YAS);
 	pr_err("[SSP] %s,\n", __func__);

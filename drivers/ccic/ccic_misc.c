@@ -1,5 +1,5 @@
 /*
- * driver/ccic/ccic_misc.c - SEC CCIC MISC driver
+ * driver/ccic/ccic_misc.c - S2MM005 CCIC MISC driver
  *
  * Copyright (C) 2017 Samsung Electronics
  * Author: Wookwang Lee <wookwang.lee@samsung.com>
@@ -18,6 +18,7 @@
  * along with this program; If not, see <http://www.gnu.org/licenses/>.
  *
  */
+//serial_acm.c
 #include <linux/miscdevice.h>
 #include <linux/fs.h>
 #include <linux/kernel.h>
@@ -26,27 +27,20 @@
 #include <linux/spinlock.h>
 #include <linux/device.h>
 #include <linux/poll.h>
-#include <linux/ccic/ccic_core.h>
+#include "ccic_misc.h"
 
 static struct ccic_misc_dev *c_dev;
 
 #define MAX_BUF 255
+#define DEXDOCK_PRODUCT_ID  0xA020
 #define NODE_OF_MISC "ccic_misc"
 #define CCIC_IOCTL_UVDM _IOWR('C', 0, struct uvdm_data)
 
-struct ccic_misc_dev *get_ccic_misc_dev(void)
-{
-	if (!c_dev)
-		return NULL;
-	return c_dev;
-}
-EXPORT_SYMBOL(get_ccic_misc_dev);
-
 static inline int _lock(atomic_t *excl)
 {
-	if (atomic_inc_return(excl) == 1)
+	if (atomic_inc_return(excl) == 1) {
 		return 0;
-	else {
+	} else {
 		atomic_dec(excl);
 		return -1;
 	}
@@ -68,29 +62,24 @@ static int ccic_misc_open(struct inode *inode, struct file *file)
 		goto err;
 	}
 
-	if (pn_flag) {
-		pr_err("%s - error : powernego flag is setting\n", __func__);
-		ret = -EACCES;
-		goto err;
-	}
-
 	if (_lock(&c_dev->open_excl)) {
 		pr_err("%s - error : device busy\n", __func__);
 		ret = -EBUSY;
-		goto err;
+		goto err1;
 	}
 
-	/* check if there is some connection */
-	if (!c_dev->uvdm_ready()) {
+	if (!samsung_uvdm_ready()) {
+		// check if there is some connection
 		_unlock(&c_dev->open_excl);
 		pr_err("%s - error : uvdm is not ready\n", __func__);
 		ret = -EBUSY;
-		goto err;
+		goto err1;
 	}
 
 	pr_info("%s - open success\n", __func__);
 
 	return 0;
+err1:
 err:
 	return ret;
 }
@@ -99,7 +88,7 @@ static int ccic_misc_close(struct inode *inode, struct file *file)
 {
 	if (c_dev)
 		_unlock(&c_dev->open_excl);
-	c_dev->uvdm_close();
+	samsung_uvdm_close();
 	pr_info("%s - close success\n", __func__);
 	return 0;
 }
@@ -108,8 +97,8 @@ static int send_uvdm_message(void *data, int size)
 {
 	int ret;
 
-	ret = c_dev->uvdm_write(data, size);
-	pr_info("%s - size : %d, ret : %d\n", __func__, size, ret);
+	pr_info("%s - size : %d\n", __func__, size);
+	ret = samsung_uvdm_out_request_message(data, size);
 	return ret;
 }
 
@@ -117,8 +106,8 @@ static int receive_uvdm_message(void *data, int size)
 {
 	int ret;
 
-	ret = c_dev->uvdm_read(data);
-	pr_info("%s - size : %d, ret : %d\n", __func__, size, ret);
+	pr_info("%s - size : %d\n", __func__, size);
+	ret = samsung_uvdm_in_request_message(data);
 	return ret;
 }
 
@@ -127,12 +116,6 @@ ccic_misc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
 	void *buf = NULL;
-
-	if (pn_flag) {
-		pr_err("%s - error : powernego flag is setting\n", __func__);
-		ret = -EACCES;
-		goto err2;
-	}
 
 	if (_lock(&c_dev->ioctl_excl)) {
 		pr_err("%s - error : ioctl busy - cmd : %d\n", __func__, cmd);
@@ -164,22 +147,21 @@ ccic_misc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 
 		if (c_dev->u_data.dir == DIR_OUT) {
-			if (copy_from_user(buf, c_dev->u_data.pData, c_dev->u_data.size)) {
+			if (copy_from_user(buf, c_dev->u_data.pData,\
+					   c_dev->u_data.size)) {
 				ret = -EIO;
 				pr_err("%s - copy_from_user error\n", __func__);
 				goto err;
 			}
 			ret = send_uvdm_message(buf, c_dev->u_data.size);
-			if (ret < 0) {
+			if (ret <= 0) {
 				pr_err("%s - send_uvdm_message error\n", __func__);
-				ret = -EINVAL;
 				goto err;
 			}
 		} else {
 			ret = receive_uvdm_message(buf, c_dev->u_data.size);
-			if (ret < 0) {
+			if (ret <= 0) {
 				pr_err("%s - receive_uvdm_message error\n", __func__);
-				ret = -EINVAL;
 				goto err;
 			}
 			if (copy_to_user((void __user *)c_dev->u_data.pData,
@@ -211,7 +193,6 @@ ccic_misc_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	int ret = 0;
 	pr_info("%s - cmd : %d\n", __func__, cmd);
 	ret = ccic_misc_ioctl(file, cmd, (unsigned long)compat_ptr(arg));
-
 	return ret;
 }
 #endif
@@ -233,7 +214,7 @@ static struct miscdevice ccic_misc_device = {
 	.fops	= &ccic_misc_fops,
 };
 
-int ccic_misc_init(pccic_data_t pccic_data)
+int ccic_misc_init(void)
 {
 	int ret = 0;
 
@@ -251,9 +232,6 @@ int ccic_misc_init(pccic_data_t pccic_data)
 	}
 	atomic_set(&c_dev->open_excl, 0);
 	atomic_set(&c_dev->ioctl_excl, 0);
-
-	if (pccic_data)
-		pccic_data->misc_dev = c_dev;
 
 	pr_info("%s - register success\n", __func__);
 	return 0;

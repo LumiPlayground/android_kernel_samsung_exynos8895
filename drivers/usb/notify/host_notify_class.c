@@ -6,7 +6,7 @@
  *
 */
 
- /* usb notify layer v3.2 */
+ /* usb notify layer v3.0 */
 
 #include <linux/module.h>
 #include <linux/types.h>

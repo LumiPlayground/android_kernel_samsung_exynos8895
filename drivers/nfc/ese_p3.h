@@ -8,9 +8,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program;
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
+
+#define DEFAULT_BUFFER_SIZE 260
 
 #define FEATURE_ESE_WAKELOCK
 
@@ -46,9 +49,9 @@
 #ifdef CONFIG_COMPAT
 /*#define P3_RW_SPI_DATA_32 _IOWR(P3_MAGIC, 0x07, unsigned int)*/
 struct spip3_ioc_transfer_32 {
-	unsigned int   rx_buffer;
-	unsigned int   tx_buffer;
-	unsigned short  len;
+    unsigned int   rx_buffer;
+    unsigned int   tx_buffer;
+    unsigned short  len;
 };
 #endif
 
@@ -59,6 +62,6 @@ struct p3_ioctl_transfer {
 };
 
 struct p3_spi_platform_data {
-	unsigned int irq_gpio;
-	unsigned int rst_gpio;
+    unsigned int irq_gpio;
+    unsigned int rst_gpio;
 };

@@ -50,4 +50,4 @@ config CAMERA_FLASH_KTD2692_OBJ
 	depends on CAMERA_FLASH_SELECT
         default n
         help
-          Use to build KTD2692 driver.
+          Use to build I2C driver.

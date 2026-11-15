@@ -1,26 +1,27 @@
-/*
- *	Copyright(c) 2013 FCI Inc. All Rights Reserved
- *
- *	File name : fc8080_bb.c
- *
- *	Description : baseband source file
- *
- *	This program is free software; you can redistribute it and/or modify
- *	it under the terms of the GNU General Public License as published by
- *	the Free Software Foundation; either version 2 of the License, or
- *	(at your option) any later version.
- *
- *	This program is distributed in the hope that it will be useful,
- *	but WITHOUT ANY WARRANTY; without even the implied warranty of
- *	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *	GNU General Public License for more details.
- *
- *	You should have received a copy of the GNU General Public License
- *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- *	History :
- *	----------------------------------------------------------------------
- */
+/*****************************************************************************
+	Copyright(c) 2013 FCI Inc. All Rights Reserved
+
+	File name : fc8080_bb.c
+
+	Description : baseband source file
+
+	This program is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 2 of the License, or
+	(at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program; if not, write to the Free Software
+	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+
+	History :
+	----------------------------------------------------------------------
+*******************************************************************************/
 #include <linux/kernel.h>
 #include "fci_types.h"
 #include "fci_oal.h"
@@ -476,9 +477,8 @@ s32 fc8080_reset(HANDLE handle)
 s32 fc8080_probe(HANDLE handle)
 {
 	u16 ver;
-
 	bbm_word_read(handle, BBM_CHIP_ID, &ver);
-	pr_info("TDMB %s : ver(0x%x)\n", __func__, ver);
+	printk(KERN_DEBUG "TDMB %s : ver(0x%x)\n", __func__, ver);
 	return (ver == 0x8080) ? BBM_OK : BBM_NOK;
 }
 
@@ -724,12 +724,14 @@ s32 fc8080_scan_status(HANDLE handle)
 		}
 
 		if (i == slock_cnt) {
-			pr_info("TDMB :status(0x%x) s(%d)\n", status, slock_cnt);
+			printk(KERN_DEBUG "TDMB :status(0x%x) s(%d)\n",
+				status, slock_cnt);
 			return BBM_NOK;
 		}
 
 		if ((status & 0x02) == 0x00) {
-			pr_info("TDMB %s : status(0x%x)\n", __func__, status);
+			printk(KERN_DEBUG "TDMB %s : status(0x%x)\n",
+				__func__, status);
 			return BBM_NOK;
 		}
 
@@ -744,7 +746,9 @@ s32 fc8080_scan_status(HANDLE handle)
 		}
 
 		if (i == flock_cnt) {
-			pr_info("TDMB %s : flock_cnt(0x%x)\n", __func__, flock_cnt);
+			printk(KERN_DEBUG "TDMB %s : flock_cnt(0x%x)\n"
+						, __func__
+						, flock_cnt);
 			return BBM_NOK;
 		}
 
@@ -755,9 +759,10 @@ s32 fc8080_scan_status(HANDLE handle)
 			bbm_read(handle, BBM_SYNC_STAT, &sync_status);
 
 			if (sync_status & 0x20) {
-				pr_info("TDMB :sync_status(0x%x)\n", sync_status);
+				printk(KERN_DEBUG "TDMB :sync_status(0x%x)\n",
+					sync_status);
 				return BBM_OK;
-			}
+		}
 		}
 	} else {
 		dlock_cnt = DLOCK_MAX_TIME / LOCK_TIME_TICK;
@@ -767,13 +772,15 @@ s32 fc8080_scan_status(HANDLE handle)
 
 			bbm_read(handle, BBM_SYNC_STAT, &sync_status);
 			if (sync_status & 0x20) {
-				pr_info("TDMB :sync_status(0x%x)\n", sync_status);
+				printk(KERN_DEBUG "TDMB :sync_status(0x%x)\n",
+					sync_status);
 				return BBM_OK;
 		}
 	}
 	}
 
-	pr_info("TDMB %s : res(0x%x)\n", __func__, res);
+	printk(KERN_DEBUG "TDMB %s : res(0x%x)\n"
+						, __func__, res);
 
 	return res;
 }

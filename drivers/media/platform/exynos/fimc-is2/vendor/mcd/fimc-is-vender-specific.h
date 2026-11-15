@@ -79,6 +79,9 @@ struct fimc_is_vender_specific {
 	char			*comp_int_pinctrl;
 	u8			standby_state;
 	struct fimc_is_companion_retention	retention_data;
+#ifdef CONFIG_SENSOR_RETENTION_USE
+	bool			need_retention_init;
+#endif
 
 	/* dt */
 	u32			rear_sensor_id;
@@ -87,17 +90,15 @@ struct fimc_is_vender_specific {
 #ifdef CONFIG_SECURE_CAMERA_USE
 	u32			secure_sensor_id;
 #endif
-	u32			ois_sensor_index;
-	u32			aperture_sensor_index;
 	bool			check_sensor_vendor;
 	bool			skip_cal_loading;
 	bool			use_ois_hsi2c;
 	bool			use_ois;
+	u8			use_ois_online_cnt;
 	bool			use_module_check;
 
 	bool			suspend_resume_disable;
 	bool			need_cold_reset;
-	bool			zoom_running;
 	FRomPowersource		f_rom_power;
 };
 

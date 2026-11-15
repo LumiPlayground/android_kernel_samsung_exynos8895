@@ -39,11 +39,6 @@
 #define MS_IDENTIFIER 1000000000U
 #endif
 
-#define VDIS_TIMESTAMP_FORMAT 0xFFFFFFFF
-#define NORMAL_TIMESTAMP_FORMAT 0x0
-#define get_prev_index(a) (a - 1 + SIZE_TIMESTAMP_BUFFER) % SIZE_TIMESTAMP_BUFFER
-#define get_next_index(a) (a + 1) % SIZE_TIMESTAMP_BUFFER
-
 u64 get_delay(u64 kernel_delay)
 {
 	u64 ret = kernel_delay;
@@ -90,47 +85,14 @@ static void get_timestamp(struct ssp_data *data, char *pchRcvDataFrame,
 	u64 time_delta_ns = 0;
 	u64 update_timestamp = 0;
 	u64 current_timestamp = get_current_timestamp();
-	u32 ts_index = 0;
-	u32 ts_flag = 0;
 
-	if (data->IsVDIS_Enabled == true && sensor_type == GYROSCOPE_SENSOR) {
-
-		memcpy(&ts_index, pchRcvDataFrame + *iDataIdx, 4);
-		memcpy(&ts_flag, pchRcvDataFrame + *iDataIdx + 4, 4);
-
-		if (ts_flag == VDIS_TIMESTAMP_FORMAT) {
-			u64 prev_index = get_prev_index(ts_index);
-
-			if (data->ts_index_buffer[ts_index] < data->ts_index_buffer[prev_index]) {
-				int i = 0;
-				ssp_debug_time("[SSP_DEBUG_TIME] ts_index: %u prev_index: %llu stacked_cnt: %d", 
-						ts_index, prev_index, data->ts_stacked_cnt);
-				for (i = data->ts_stacked_cnt; i != ts_index; i = get_next_index(i)) {
-					data->ts_index_buffer[get_next_index(i)] = data->ts_index_buffer[i] 
-						+ data->adDelayBuf[GYROSCOPE_SENSOR];
-				}
-			}
-			time_delta_ns = data->ts_index_buffer[ts_index];
-		} else {
-			pr_err("[SSP_TIME] ts_flag(%x), error\n", ts_flag);
-			goto normal_parse;
-		}
-	} else {
-normal_parse:
-		memset(&time_delta_ns, 0, 8);
-		memcpy(&time_delta_ns, pchRcvDataFrame + *iDataIdx, 8);
-	}
+	memset(&time_delta_ns, 0, 8);
+	memcpy(&time_delta_ns, pchRcvDataFrame + *iDataIdx, 8);
 
 	update_timestamp = time_delta_ns;
-
-	if (ts_flag == VDIS_TIMESTAMP_FORMAT) {
-		ssp_debug_time("[SSP_DEBUG_TIME] ts_index: %u stacked_cnt: %u ts_flag: %x timestamp: %llu ts_buffer: %llu", ts_index,
-				data->ts_stacked_cnt, ts_flag, time_delta_ns, data->ts_index_buffer[ts_index]);
-	} else { 
-		ssp_debug_time("[SSP_DEBUG_TIME] sensor_type: %2d update_ts: %lld current_ts: %lld diff: %lld latency: %lld\n",
+	ssp_debug_time("[SSP_DEBUG_TIME] sensor_type: %2d update_ts: %lld current_ts: %lld diff: %lld latency: %lld\n",
 			sensor_type, update_timestamp, current_timestamp,
 			update_timestamp - data->lastTimestamp[sensor_type], current_timestamp - update_timestamp);
-	}
 
 	data->lastTimestamp[sensor_type] = time_delta_ns;
 
@@ -197,13 +159,8 @@ static void get_light_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
 {
 #ifdef CONFIG_SENSORS_SSP_LIGHT_REPORT_LUX
-#ifdef CONFIG_SENSORS_SSP_LIGHT_MAX_GAIN_2BYTE
-	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 19);
-	*iDataIdx += 19;
-#else
 	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 18);
 	*iDataIdx += 18;
-#endif
 #else
 	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 10);
 	*iDataIdx += 10;
@@ -214,13 +171,8 @@ static void get_light_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 static void get_light_ir_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
 {
-#ifdef CONFIG_SENSORS_SSP_LIGHT_MAX_GAIN_2BYTE
-	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 13);
-	*iDataIdx += 13;
-#else
 	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 12);
 	*iDataIdx += 12;
-#endif
 }
 #endif
 
@@ -230,22 +182,19 @@ static void get_light_flicker_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	memcpy(&sensorsdata->light_flicker, pchRcvDataFrame + *iDataIdx, 2);
 	*iDataIdx += 2;
 }
+#if ANDROID_VERSION >= 80000
 static void get_light_cct_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
 {
 #ifdef CONFIG_SENSORS_SSP_LIGHT_REPORT_LUX
-#ifdef CONFIG_SENSORS_SSP_LIGHT_MAX_GAIN_2BYTE
-	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 19);
-	*iDataIdx += 19;
-#else
 	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 18);
 	*iDataIdx += 18;
-#endif
 #else
 	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 10);
 	*iDataIdx += 10;
 #endif
 }
+#endif
 static void get_pressure_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
 {
@@ -277,18 +226,6 @@ static void get_proximity_alert_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 {
 	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 3);
 	*iDataIdx += 3;
-}
-
-static void get_proximity_pocket_sensordata(char *pchRcvDataFrame, int *iDataIdx,
-	struct sensor_value *sensorsdata)
-{
-#if defined(CONFIG_SENSORS_SSP_TMG399x)
-	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 2);
-	*iDataIdx += 2;
-#else	//CONFIG_SENSORS_SSP_TMD4903, CONFIG_SENSORS_SSP_TMD3782, CONFIG_SENSORS_SSP_TMD4904
-	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 3);
-	*iDataIdx += 3;
-#endif
 }
 
 static void get_proximity_rawdata(char *pchRcvDataFrame, int *iDataIdx,
@@ -354,17 +291,12 @@ static void get_pickup_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 1);
 	*iDataIdx += 1;
 }
+#if ANDROID_VERSION >= 80000
 static void get_wakeup_motion_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
 {
-	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 1);
+	memcpy(&sensorsdata->wakeup_event, pchRcvDataFrame + *iDataIdx, 1);
 	*iDataIdx += 1;
-}
-static void get_thermistor_sensordata(char *pchRcvDataFrame, int *iDataIdx,
-	struct sensor_value *sensorsdata)
-{
-	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 3);
-	*iDataIdx += 3;
 }
 static void get_ucal_accel_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
@@ -372,7 +304,7 @@ static void get_ucal_accel_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 12);
 	*iDataIdx += 12;
 }
-
+#endif
 #ifdef CONFIG_SENSORS_SSP_HIFI_BATCHING // HIFI batch
 
 /*
@@ -401,8 +333,11 @@ bool ssp_check_buffer(struct ssp_data *data)
 			(sensor_type != PRESSURE_SENSOR) &&
 			(sensor_type != GAME_ROTATION_VECTOR) &&
 			(sensor_type != PROXIMITY_SENSOR) &&
-			(sensor_type != META_SENSOR) &&
-			(sensor_type != ACCEL_UNCALIB_SENSOR)) {
+			(sensor_type != META_SENSOR)
+#if ANDROID_VERSION >= 80000
+			&& (sensor_type != ACCEL_UNCALIB_SENSOR)
+#endif
+			) {
 			pr_err("[SSP]: %s - Mcu data frame1 error %d, idx_data %d\n", __func__,
 					sensor_type, idx_data - 1);
 			res = false;
@@ -420,9 +355,11 @@ bool ssp_check_buffer(struct ssp_data *data)
 		idx_data += 20;
 #endif
                         break;
+#if ANDROID_VERSION >= 80000
                 case ACCEL_UNCALIB_SENSOR:
                         idx_data += 20;
 			break;
+#endif
 		case PRESSURE_SENSOR:
 			idx_data += 14;
 			break;
@@ -487,8 +424,11 @@ void ssp_batch_resume_check(struct ssp_data *data)
 				(sensor_type != GEOMAGNETIC_UNCALIB_SENSOR) &&
 				(sensor_type != PRESSURE_SENSOR) &&
 				(sensor_type != GAME_ROTATION_VECTOR) &&
-				(sensor_type != PROXIMITY_SENSOR) &&
-				(sensor_type != ACCEL_UNCALIB_SENSOR)) {
+				(sensor_type != PROXIMITY_SENSOR)
+#if ANDROID_VERSION >= 80000
+			&& (sensor_type != ACCEL_UNCALIB_SENSOR)
+#endif
+			) {
 				pr_err("[SSP]: %s - Mcu data frame1 error %d, idx_data %d\n", __func__,
 						sensor_type, idx_data - 1);
 				data->bIsResumed = false;
@@ -507,7 +447,9 @@ void ssp_batch_resume_check(struct ssp_data *data)
 			case GAME_ROTATION_VECTOR:
 			case PRESSURE_SENSOR:
 			case PROXIMITY_SENSOR:
+#if ANDROID_VERSION >= 80000
                         case ACCEL_UNCALIB_SENSOR:
+#endif
 				data->lastTimestamp[sensor_type] = delta_time_us;
 				break;
 			}
@@ -547,8 +489,11 @@ void ssp_batch_report(struct ssp_data *data)
 			(sensor_type != GEOMAGNETIC_UNCALIB_SENSOR) &&
 			(sensor_type != PRESSURE_SENSOR) &&
 			(sensor_type != GAME_ROTATION_VECTOR) &&
-			(sensor_type != PROXIMITY_SENSOR) &&
-			(sensor_type != ACCEL_UNCALIB_SENSOR)) {
+			(sensor_type != PROXIMITY_SENSOR)
+#if ANDROID_VERSION >= 80000
+			&& (sensor_type != ACCEL_UNCALIB_SENSOR)
+#endif
+			) {
 			pr_err("[SSP]: %s - Mcu data frame1 error %d, idx_data %d\n", __func__,
 					sensor_type, idx_data - 1);
 			return;
@@ -581,7 +526,7 @@ void ssp_batch_data_read_task(struct work_struct *work)
 	u64 ts = 0;
 
 	mutex_lock(&data->batch_events_lock);
-	wake_lock(&data->ssp_batch_wake_lock);
+	wake_lock(&data->ssp_wake_lock);
 
 	residue = big->length;
 	data->batch_event.batch_length = big->length;
@@ -589,7 +534,7 @@ void ssp_batch_data_read_task(struct work_struct *work)
 	if (data->batch_event.batch_data == NULL) {
 		ssp_dbg("[SSP_BAT] batch data alloc fail\n");
 		kfree(big);
-		wake_unlock(&data->ssp_batch_wake_lock);
+		wake_unlock(&data->ssp_wake_lock);
 		mutex_unlock(&data->batch_events_lock);
 		return;
 	}
@@ -615,7 +560,7 @@ void ssp_batch_data_read_task(struct work_struct *work)
 			data->batch_event.batch_data = NULL;
 			data->batch_event.batch_length = 0;
 			kfree(big);
-			wake_unlock(&data->ssp_batch_wake_lock);
+			wake_unlock(&data->ssp_wake_lock);
 			mutex_unlock(&data->batch_events_lock);
 			return;
 		}
@@ -644,7 +589,7 @@ void ssp_batch_data_read_task(struct work_struct *work)
 	data->batch_event.batch_data = NULL;
 	data->batch_event.batch_length = 0;
 	kfree(big);
-	wake_unlock(&data->ssp_batch_wake_lock);
+	wake_unlock(&data->ssp_wake_lock);
 	mutex_unlock(&data->batch_events_lock);
 }
 #endif
@@ -697,7 +642,7 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 {
 	int iDataIdx;
 	int sensor_type;
-	//u16 length = 0;
+	u16 length = 0;
 
 	struct sensor_value sensorsdata;
 	s32 caldata[3] = { 0, };
@@ -763,7 +708,6 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 				return ERROR;
 			}
 			break;
-		/*
 		case MSG2AP_INST_LIBRARY_DATA:
 			memcpy(&length, pchRcvDataFrame + iDataIdx, 2);
 			iDataIdx += 2;
@@ -771,7 +715,6 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 					iDataIdx + length);
 			iDataIdx += length;
 			break;
-		*/
 		case MSG2AP_INST_BIG_DATA:
 			handle_big_data(data, pchRcvDataFrame, &iDataIdx);
 			break;
@@ -795,10 +738,6 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 		case MSG2AP_INST_GYRO_CAL:
 			pr_info("[SSP]: %s - Gyro caldata received from MCU\n",  __func__);
 			memcpy(caldata, pchRcvDataFrame + iDataIdx, sizeof(caldata));
-			if(data->IsAPsuspend) {
-            	iDataIdx += sizeof(caldata);
-			    break;
-            }
 			wake_lock(&data->ssp_wake_lock);
 			save_gyro_caldata(data, caldata);
 			wake_unlock(&data->ssp_wake_lock);
@@ -823,11 +762,13 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 				break;
 			}
 			break;
+#if ANDROID_VERSION >= 80000
 		case MSG2AP_INST_SCONTEXT_DATA:
 			memcpy(sensorsdata.scontext_buf, pchRcvDataFrame + iDataIdx, SCONTEXT_DATA_SIZE);
 			report_scontext_data(data, &sensorsdata);
 			iDataIdx += SCONTEXT_DATA_SIZE;
 				break;
+#endif
 		default:
 			goto error_return;
 		}
@@ -863,7 +804,6 @@ void initialize_function_pointer(struct ssp_data *data)
 	data->get_sensor_data[LIGHT_FLICKER_SENSOR] = get_light_flicker_sensordata;
 
 	data->get_sensor_data[PROXIMITY_RAW] = get_proximity_rawdata;
-	data->get_sensor_data[PROXIMITY_POCKET] = get_proximity_pocket_sensordata;
 #ifdef CONFIG_SENSORS_SSP_SX9306
 	data->get_sensor_data[GRIP_SENSOR] = get_grip_sensordata;
 #endif
@@ -871,8 +811,10 @@ void initialize_function_pointer(struct ssp_data *data)
 #ifdef CONFIG_SENSORS_SSP_IRDATA_FOR_CAMERA
 	data->get_sensor_data[LIGHT_IR_SENSOR] = get_light_ir_sensordata;
 #endif
+#if ANDROID_VERSION >= 80000
 	data->get_sensor_data[LIGHT_CCT_SENSOR] = get_light_cct_sensordata;
-
+	data->get_sensor_data[ACCEL_UNCALIB_SENSOR] = get_ucal_accel_sensordata;
+#endif
 	data->get_sensor_data[TEMPERATURE_HUMIDITY_SENSOR] =
 		get_temp_humidity_sensordata;
 	data->get_sensor_data[ROTATION_VECTOR] = get_rot_sensordata;
@@ -887,10 +829,8 @@ void initialize_function_pointer(struct ssp_data *data)
 #endif
 	data->get_sensor_data[TILT_DETECTOR] = get_tilt_sensordata;
 	data->get_sensor_data[PICKUP_GESTURE] = get_pickup_sensordata;
-	data->get_sensor_data[THERMISTOR_SENSOR] = get_thermistor_sensordata;
-	data->get_sensor_data[ACCEL_UNCALIB_SENSOR] = get_ucal_accel_sensordata;
-	data->get_sensor_data[WAKE_UP_MOTION] = get_wakeup_motion_sensordata;
 
+	data->get_sensor_data[WAKE_UP_MOTION] = get_wakeup_motion_sensordata;
 	data->get_sensor_data[BULK_SENSOR] = NULL;
 	data->get_sensor_data[GPS_SENSOR] = NULL;
 
@@ -905,7 +845,6 @@ void initialize_function_pointer(struct ssp_data *data)
 	data->report_sensor_data[GESTURE_SENSOR] = report_gesture_data;
 	data->report_sensor_data[PROXIMITY_SENSOR] = report_prox_data;
 	data->report_sensor_data[PROXIMITY_ALERT_SENSOR] = report_prox_alert_data;
-	data->report_sensor_data[PROXIMITY_POCKET] = report_proximity_pocket_data;
 	data->report_sensor_data[LIGHT_FLICKER_SENSOR] = report_light_flicker_data;
 
 	data->report_sensor_data[PROXIMITY_RAW] = report_prox_raw_data;
@@ -933,11 +872,11 @@ void initialize_function_pointer(struct ssp_data *data)
 
 	data->report_sensor_data[BULK_SENSOR] = NULL;
 	data->report_sensor_data[GPS_SENSOR] = NULL;
+#if ANDROID_VERSION >= 80000
 	data->report_sensor_data[LIGHT_CCT_SENSOR] = report_light_cct_data;
-	data->report_sensor_data[THERMISTOR_SENSOR] = report_thermistor_data;
 	data->report_sensor_data[ACCEL_UNCALIB_SENSOR] = report_uncalib_accel_data;
 	data->report_sensor_data[WAKE_UP_MOTION] = report_wakeup_motion_data;
-
+#endif
 	data->ssp_big_task[BIG_TYPE_DUMP] = ssp_dump_task;
 	data->ssp_big_task[BIG_TYPE_READ_LIB] = ssp_read_big_library_task;
 #ifdef CONFIG_SENSORS_SSP_HIFI_BATCHING // HIFI batch

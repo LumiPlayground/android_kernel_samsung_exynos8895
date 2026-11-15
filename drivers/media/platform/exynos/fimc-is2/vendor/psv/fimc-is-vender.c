@@ -280,8 +280,7 @@ int fimc_is_vender_preprocessor_gpio_off(struct fimc_is_vender *vender, u32 scen
 	return 0;
 }
 
-int fimc_is_vender_sensor_gpio_off_sel(struct fimc_is_vender *vender, u32 scenario, u32 *gpio_scenario,
-	void *module_data)
+int fimc_is_vender_sensor_gpio_off_sel(struct fimc_is_vender *vender, u32 scenario, u32 *gpio_scenario)
 {
 	return 0;
 }

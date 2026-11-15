@@ -39,6 +39,7 @@ struct fimc_is_fmt {
 	u32				pixelformat;
 	u32				field;
 	u32				num_planes;
+	u32				bitwidth;
 	u32				hw_format;
 	u32				hw_order;
 	u32				hw_bitwidth;
@@ -63,11 +64,7 @@ struct fimc_is_crop {
 #define IS_NULL_CROP(c) !((c)->x + (c)->y + (c)->w + (c)->h)
 #define COMPARE_CROP(c1, c2) (((c1)->x == (c2)->x) && ((c1)->y == (c2)->y) && ((c1->w) == (c2)->w) && ((c1)->h == (c2)->h))
 #define TRANS_CROP(d, s) ((d)[0] = (s)[0], (d)[1] = (s)[1], (d)[2] = (s)[2], (d)[3] = (s)[3])
-#define COMPARE_FORMAT(f1, f2) ((f1) == (f2))
 
 #define TO_WORD_OFFSET(byte_offset) ((byte_offset) >> 2)
-
-#define CONVRES(src, src_max, tar_max) \
-	((src <= 0) ? (0) : ((src * tar_max + (src_max >> 1)) / src_max))
 
 #endif

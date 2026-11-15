@@ -166,7 +166,7 @@ static int __init exynos_seclog_reserved_mem_setup(struct reserved_mem *remem)
 
 	return 0;
 }
-RESERVEDMEM_OF_DECLARE(seclog_mem, "exynos,seclog", exynos_seclog_reserved_mem_setup);
+RESERVEDMEM_OF_DECLARE(seclog_mem, "exynos8895,seclog", exynos_seclog_reserved_mem_setup);
 #endif	/* CONFIG_OF_RESERVED_MEM */
 
 static int exynos_seclog_probe(struct platform_device *pdev)

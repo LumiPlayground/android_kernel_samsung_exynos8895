@@ -12,19 +12,17 @@
  *
  */
 
+#include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/sched.h>
 #include <linux/fs.h>
 #include <linux/poll.h>
-#include <linux/irq.h>
-#include <linux/gpio.h>
 #include <linux/if_arp.h>
 #include <linux/ip.h>
 #include <linux/if_ether.h>
 #include <linux/etherdevice.h>
 #include <linux/device.h>
 #include <linux/module.h>
-#include <linux/skbuff.h>
 
 #include "modem_prj.h"
 #include "modem_utils.h"
@@ -208,45 +206,37 @@ static int rx_loopback(struct sk_buff *skb)
 static int gather_multi_frame(struct exynos_link_header *hdr,
 				struct sk_buff *skb)
 {
-	u16 ctrl = hdr->cfg;
+	struct frag_config ctrl = hdr->cfg;
 	struct io_device *iod = skbpriv(skb)->iod;
 	struct modem_ctl *mc = iod->mc;
-	struct sk_buff_head *multi_q = &iod->sk_multi_q[exynos_multi_packet_index(ctrl)];
+	struct sk_buff_head *multi_q = &iod->sk_multi_q[hdr->ch_id];
 	int len = skb->len;
 
 #ifdef DEBUG_MODEM_IF_LINK_RX
 	/* If there has been no multiple frame with this ID, ... */
 	if (skb_queue_empty(multi_q)) {
 		mif_err("%s<-%s: start of multi-frame (pkt_index:%d fr_index:%d len:%d)\n",
-			iod->name, mc->name, exynos_multi_packet_index(ctrl),
-			exynos_multi_frame_index(ctrl), hdr->len);
+			iod->name, mc->name, ctrl.packet_index,
+			ctrl.frame_index, hdr->len);
 	}
 #endif
 	skb_queue_tail(multi_q, skb);
 
-	if (!exynos_multi_last(ctrl)) {
-		/* It is the last frame because the "more" bit is 0. */
-		mif_err("%s<-%s: recv of multi-frame (CH_ID:%d rcvd:%d)\n",
+	if (!ctrl.frame_last) {
+		/* The last frame has not arrived yet. */
+		mif_err("%s<-%s: recv multi-frame (CH_ID:%d rcvd:%d)\n",
 			iod->name, mc->name, hdr->ch_id, skb->len);
 	} else {
 		struct sk_buff_head *rxq = &iod->sk_rx_q;
-		struct sk_buff *skb_new;
-		struct sk_buff *skb_tmp;
+		unsigned long flags;
 
-		/* The last frame has not arrived yet. */
-		mif_err("%s<-%s: end multi-frame (CH_ID:%d rcvd:%d)\n",
+		/* It is the last frame because the "more" bit is 0. */
+		mif_err("%s<-%s: end of multi-frame (CH_ID:%d rcvd:%d)\n",
 			iod->name, mc->name, hdr->ch_id, skb->len);
 
-		skb_new = dev_alloc_skb(SZ_64K);
-
-		while(!skb_queue_empty(multi_q)) {
-			skb_tmp = skb_dequeue(multi_q);
-			memcpy(skb_put(skb_new, skb_tmp->len), skb_tmp->data, skb_tmp->len);
-		}
-
-		skb_trim(skb_new, skb_new->len);
-		skb_queue_tail(rxq, skb_new);
-		skb_queue_head_init(multi_q);
+		spin_lock_irqsave(&rxq->lock, flags);
+		skb_queue_splice_tail_init(multi_q, rxq);
+		spin_unlock_irqrestore(&rxq->lock, flags);
 
 		wake_up(&iod->wq);
 	}
@@ -257,12 +247,11 @@ static int gather_multi_frame(struct exynos_link_header *hdr,
 static inline int rx_frame_with_link_header(struct sk_buff *skb)
 {
 	struct exynos_link_header *hdr;
-	bool single_frame;
+	bool single_frame = exynos_single_frame(skb->data);
 
 	/* Remove EXYNOS link header */
 	hdr = (struct exynos_link_header *)skb->data;
 	skb_pull(skb, EXYNOS_HEADER_SIZE);
-	single_frame = exynos_single_frame((u8 *)hdr);
 
 	if (single_frame)
 		return queue_skb_to_iod(skb, skbpriv(skb)->iod);
@@ -382,14 +371,14 @@ static int rx_demux(struct link_device *ld, struct sk_buff *skb)
 		return rx_loopback(skb);
 
 	/* Print recieved data from CP */
-	log_ipc_pkt(skb, IODEV, RX);
+	log_ipc_pkt(skb, LINK, RX);
 
 	if (atomic_read(&iod->opened) <= 0) {
 		mif_err("%s: ERR! %s is not opened\n", ld->name, iod->name);
 		return -ENODEV;
 	}
 
-	if (exynos_fmt_ch(ch) || exynos_rcs_ch(ch) || exynos_ppt_ch(ch))
+	if (exynos_fmt_ch(ch))
 		return rx_fmt_ipc(skb);
 	else if (exynos_ps_ch(ch))
 		return rx_multi_pdp(skb);
@@ -763,25 +752,164 @@ static int io_dev_recv_data_from_link_dev(struct io_device *iod,
 	}
 }
 
+static int recv_frame_from_skb(struct io_device *iod, struct link_device *ld,
+		struct sk_buff *skb)
+{
+	struct sk_buff *clone;
+	unsigned int rest;
+	unsigned int rcvd;
+	unsigned int tot;		/* total length including padding */
+	int err = 0;
+
+	/*
+	** If there is only one EXYNOS frame in @skb, receive the EXYNOS frame and
+	** return immediately. In this case, the frame verification must already
+	** have been done at the link device.
+	*/
+	if (skbpriv(skb)->single_frame) {
+		err = rx_frame_done(iod, ld, skb);
+		if (err < 0)
+			goto exit;
+		return 0;
+	}
+
+	/*
+	** The routine from here is used only if there may be multiple EXYNOS
+	** frames in @skb.
+	*/
+
+	/* Check the config field of the first frame in @skb */
+	if (!exynos_start_valid(skb->data)) {
+		mif_err("%s->%s: ERR! INVALID config 0x%02X\n",
+			ld->name, iod->name, skb->data[0]);
+		err = -EINVAL;
+		goto exit;
+	}
+
+	/* Get the total length of the frame with a padding */
+	tot = exynos_get_total_len(skb->data);
+
+	/* Verify the total length of the first frame */
+	rest = skb->len;
+	if (unlikely(tot > rest)) {
+		mif_err("%s->%s: ERR! tot %d > skb->len %d)\n",
+			ld->name, iod->name, tot, rest);
+		err = -EINVAL;
+		goto exit;
+	}
+
+	/* If there is only one EXYNOS frame in @skb, */
+	if (likely(tot == rest)) {
+		/* Receive the EXYNOS frame and return immediately */
+		err = rx_frame_done(iod, ld, skb);
+		if (err < 0)
+			goto exit;
+		return 0;
+	}
+
+	/*
+	** This routine is used only if there are multiple EXYNOS frames in @skb.
+	*/
+	rcvd = 0;
+	while (rest > 0) {
+		clone = skb_clone(skb, GFP_ATOMIC);
+		if (unlikely(!clone)) {
+			mif_err("%s->%s: ERR! skb_clone fail\n",
+				ld->name, iod->name);
+			err = -ENOMEM;
+			goto exit;
+		}
+
+		/* Get the start of an EXYNOS frame */
+		skb_pull(clone, rcvd);
+		if (!exynos_start_valid(clone->data)) {
+			mif_err("%s->%s: ERR! INVALID config 0x%02X\n",
+				ld->name, iod->name, clone->data[0]);
+			dev_kfree_skb_any(clone);
+			err = -EINVAL;
+			goto exit;
+		}
+
+		/* Get the total length of the current frame with a padding */
+		tot = exynos_get_total_len(clone->data);
+		if (unlikely(tot > rest)) {
+			mif_err("%s->%s: ERR! dirty frame (tot %d > rest %d)\n",
+				ld->name, iod->name, tot, rest);
+			dev_kfree_skb_any(clone);
+			err = -EINVAL;
+			goto exit;
+		}
+
+		/* Cut off the padding of the current frame */
+		skb_trim(clone, exynos_get_frame_len(clone->data));
+
+		/* Demux the frame */
+		err = rx_demux(ld, clone);
+		if (err < 0) {
+			mif_err("%s->%s: ERR! rx_demux fail (err %d)\n",
+				ld->name, iod->name, err);
+			dev_kfree_skb_any(clone);
+			goto exit;
+		}
+
+		/* Calculate the start of the next frame */
+		rcvd += tot;
+
+		/* Calculate the rest size of data in @skb */
+		rest -= tot;
+	}
+
+exit:
+	dev_kfree_skb_any(skb);
+	return err;
+}
+
 /* called from link device when a packet arrives for this io device */
 static int io_dev_recv_skb_from_link_dev(struct io_device *iod,
 		struct link_device *ld, struct sk_buff *skb)
 {
+	enum dev_format dev = iod->format;
 	int err;
 
-	if (iod->waketime)
-	    wake_lock_timeout(&iod->wakelock, iod->waketime);
+	switch (dev) {
+	case IPC_FMT:
+	case IPC_RAW:
+	case IPC_RFS:
+	case IPC_MULTI_RAW:
+		if (iod->waketime)
+			wake_lock_timeout(&iod->wakelock, iod->waketime);
 
-	/* Cut off the padding of the current frame */
-	skb_trim(skb, exynos_get_frame_len(skb->data));
-	mif_debug("%s->%s: frame length = %d\n", ld->name, iod->name, skb->len);
+		err = recv_frame_from_skb(iod, ld, skb);
+		if (err < 0) {
+			mif_err("%s->%s: ERR! recv_frame_from_skb fail(err %d)\n",
+					ld->name, iod->name, err);
+		}
 
-	err = rx_demux(ld, skb);
-	if (err < 0)
-	    mif_err("%s->%s: ERR! recv_frame_from_skb fail "
-	        "(err %d)\n", ld->name, iod->name, err);
+		return err;
 
-	return err;
+	case IPC_BOOT:
+	case IPC_DUMP:
+		if (!iod->id) {
+			mif_err("%s->%s: ERR! invalid iod\n",
+				ld->name, iod->name);
+			return -ENODEV;
+		}
+
+		if (iod->waketime)
+			wake_lock_timeout(&iod->wakelock, iod->waketime);
+
+		err = recv_frame_from_skb(iod, ld, skb);
+		if (err < 0) {
+			mif_err("%s->%s: ERR! recv_frame_from_skb fail(err %d)\n",
+					ld->name, iod->name, err);
+		}
+
+		return err;
+
+	default:
+		mif_err("%s->%s: ERR! invalid iod\n", ld->name, iod->name);
+		return -EINVAL;
+	}
 }
 
 /* called from link device when a packet arrives fo this io device */
@@ -818,7 +946,7 @@ static void io_dev_modem_state_changed(struct io_device *iod,
 	}
 
 	if (state == STATE_CRASH_RESET || state == STATE_CRASH_EXIT ||
-	    state == STATE_NV_REBUILDING || state == STATE_CRASH_WATCHDOG)
+	    state == STATE_NV_REBUILDING)
 		wake_up(&iod->wq);
 }
 
@@ -885,8 +1013,7 @@ static int misc_release(struct inode *inode, struct file *filp)
 	struct link_device *ld;
 	int ref_cnt;
 
-	if (iod->id != EXYNOS_CH_ID_BOOT || strcmp(current->comm, "cbd") == 0)
-		skb_queue_purge(&iod->sk_rx_q);
+	skb_queue_purge(&iod->sk_rx_q);
 
 	list_for_each_entry(ld, &msd->link_dev_list, list) {
 		if (IS_CONNECTED(iod, ld) && ld->terminate_comm)
@@ -904,7 +1031,7 @@ static unsigned int misc_poll(struct file *filp, struct poll_table_struct *wait)
 {
 	struct io_device *iod = (struct io_device *)filp->private_data;
 	struct modem_ctl *mc = iod->mc;
-	static int cnt = 0;
+	static int cnt;
 	poll_wait(filp, &iod->wq, wait);
 
 	if (!skb_queue_empty(&iod->sk_rx_q) && mc->phone_state != STATE_OFFLINE)
@@ -913,7 +1040,6 @@ static unsigned int misc_poll(struct file *filp, struct poll_table_struct *wait)
 	if (mc->phone_state == STATE_CRASH_RESET
 	    || mc->phone_state == STATE_CRASH_EXIT
 	    || mc->phone_state == STATE_NV_REBUILDING
-	    || mc->phone_state == STATE_CRASH_WATCHDOG
 	    || mc->sim_state.changed) {
 		if (iod->format == IPC_RAW) {
 			msleep(20);
@@ -922,11 +1048,9 @@ static unsigned int misc_poll(struct file *filp, struct poll_table_struct *wait)
 		if (iod->format == IPC_DUMP)
 			return 0;
 
-		if ((++cnt % 1000) == 0) {
+		if (++cnt % 10000 == 0) {
 			mif_err("Loading CP Dump File...\n");
 			cnt = 0;
-
-			return POLLHUP | POLLERR;
 		}
 
 		return POLLHUP;
@@ -1013,6 +1137,14 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			mc->phone_state = STATE_ONLINE;
 
 		return p_state;
+
+	case IOCTL_MODEM_XMIT_BOOT:
+		if (ld->xmit_boot) {
+			mif_info("%s: IOCTL_MODEM_XMIT_BOOT\n", iod->name);
+			return ld->xmit_boot(ld, iod, arg);
+		}
+		mif_err("%s: !ld->xmit_boot\n", iod->name);
+		return -EINVAL;
 
 	case IOCTL_MODEM_DL_START:
 		if (ld->dload_start) {
@@ -1122,27 +1254,6 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		mif_dump_log(mc->msd, iod);
 		return 0;
 
-	case IOCTL_SHMEM_FULL_DUMP:
-		mif_info("%s: IOCTL_SHMEM_FULL_DUMP\n", iod->name);
-		if (ld->shmem_dump)
-			return ld->shmem_dump(ld, iod, arg);
-		else
-			return -EINVAL;
-
-	case IOCTL_VSS_FULL_DUMP:
-		mif_info("%s: IOCTL_VSS_FULL_DUMP\n", iod->name);
-		if (ld->vss_dump)
-			return ld->vss_dump(ld, iod, arg);
-		else
-			return -EINVAL;
-
-	case IOCTL_ACPM_FULL_DUMP:
-		mif_info("%s: IOCTL_ACPM_FULL_DUMP\n", iod->name);
-		if (ld->acpm_dump)
-			return ld->acpm_dump(ld, iod, arg);
-		else
-			return -EINVAL;
-
 	case IOCTL_MODEM_GET_SHMEM_INFO:
 		mif_debug("<%s> IOCTL_MODEM_GET_SHMEM_INFO\n", iod->name);
 		return 0;
@@ -1158,6 +1269,9 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		return -EINVAL;
 
 	case IOCTL_CHECK_SECURITY:
+#if !defined(CONFIG_CP_SECURE_BOOT)
+		return 0;
+#endif
 		if (ld->check_security) {
 			mif_info("%s: IOCTL_MODEM_CHECK_SECURITY\n", iod->name);
 			return ld->check_security(ld, iod, arg);
@@ -1168,14 +1282,6 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	case IOCTL_XMIT_BIN:
 		if (ld->xmit_bin)
 			return ld->xmit_bin(ld, iod, arg);
-		return -EINVAL;
-
-	case IOCTL_MODEM_CRASH_REASON:
-		if (ld->crash_reason) {
-			mif_info("%s: IOCTL_MODEM_CRASH_REASON\n", iod->name);
-			return ld->crash_reason(ld, iod, arg);
-		}
-		mif_err("%s: !ld->crash_reason\n", iod->name);
 		return -EINVAL;
 	default:
 		 /* If you need to handle the ioctl for specific link device,
@@ -1200,8 +1306,6 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 	struct sk_buff *skb;
 	u8 *buff;
 	int ret;
-	u32 copied = 0, tot_frame = 0, copied_frm = 0;
-	u32 remains, alloc_size;
 	size_t headroom;
 	size_t tailroom;
 	size_t tx_bytes;
@@ -1219,80 +1323,71 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 	if (iod->link_header) {
 		fr_cfg = exynos_build_fr_config(iod, ld, count);
 		headroom = EXYNOS_HEADER_SIZE;
+		if (ld->aligned)
+			tailroom = exynos_calc_padding_size(EXYNOS_HEADER_SIZE + count);
+		else
+			tailroom = 0;
 	} else {
 		fr_cfg = 0;
 		headroom = 0;
 		tailroom = 0;
 	}
 
-	while (copied < count) {
-		remains = count - copied;
-		tx_bytes = (remains > SZ_2K - headroom) ? SZ_2K - headroom : remains;
+	tx_bytes = headroom + count + tailroom;
 
-		if (iod->format >= IPC_BOOT)
-			tx_bytes = count;
-
-		if (ld->aligned)
-			tailroom = exynos_calc_padding_size(headroom + tx_bytes);
-		else
-			tailroom = 0;
-
-		alloc_size = headroom + tx_bytes + tailroom;
-
-		skb = alloc_skb(alloc_size, GFP_KERNEL);
-		if (!skb) {
-			mif_info("%s: ERR! alloc_skb fail (tx_bytes:%ld)\n",
-				iod->name, tx_bytes);
-			return -ENOMEM;
-		}
-
-		/* Build EXYNOS link header*/
-		if (fr_cfg) {
-			buff = skb_put(skb, headroom);
-			exynos_build_header(iod, ld, buff, fr_cfg, 0, tx_bytes);
-
-			/* modify next link header for multiframe */
-			if (((fr_cfg >> 8) & EXYNOS_SINGLE_MASK) != EXYNOS_SINGLE_MASK)
-				fr_cfg = modify_next_frame(fr_cfg);
-		}
-
-		/* Store IPC message */
-		buff = skb_put(skb, tx_bytes);
-		if (copy_from_user(buff, data + copied, tx_bytes)) {
-			mif_err("%s->%s: ERR! copy_from_user fail (count %ld)\n",
-				iod->name, ld->name, tx_bytes);
-			dev_kfree_skb_any(skb);
-			return -EFAULT;
-		}
-
-		/* Apply padding */
-		if (tailroom)
-			skb_put(skb, tailroom);
-
-		copied += tx_bytes;
-		tot_frame += alloc_size;
-
-		/* Store the IO device, the link device, etc. */
-		skbpriv(skb)->iod = iod;
-		skbpriv(skb)->ld = ld;
-
-		skbpriv(skb)->lnk_hdr = iod->link_header;
-		skbpriv(skb)->exynos_ch = iod->id;
-
-		log_ipc_pkt(skb, IODEV, TX);
-
-		ret = ld->send(ld, iod, skb);
-		if (ret < 0) {
-			mif_info("%s->%s: ERR! ld->send fail (err %d, tx_bytes %ld)\n",
-				iod->name, ld->name, ret, tx_bytes);
-			return ret;
-		}
-		copied_frm += ret;
+	skb = alloc_skb(tx_bytes, GFP_KERNEL);
+	if (!skb) {
+		mif_info("%s: ERR! alloc_skb fail (tx_bytes:%ld)\n",
+			iod->name, tx_bytes);
+		return -ENOMEM;
 	}
 
-	if (copied_frm != tot_frame) {
-		mif_info("%s->%s: WARNING! ret %d != tx_bytes %d (count %d)\n",
-			iod->name, ld->name, ret, copied_frm, tot_frame);
+	/* Store the IO device, the link device, etc. */
+	skbpriv(skb)->iod = iod;
+	skbpriv(skb)->ld = ld;
+
+	skbpriv(skb)->lnk_hdr = iod->link_header;
+	skbpriv(skb)->exynos_ch = iod->id;
+
+	/* Build EXYNOS link header*/
+	if (fr_cfg) {
+		buff = skb_put(skb, headroom);
+		exynos_build_header(iod, ld, buff, fr_cfg, 0, count);
+	}
+
+	/* Store IPC message */
+	buff = skb_put(skb, count);
+	if (copy_from_user(buff, data, count)) {
+		mif_err("%s->%s: ERR! copy_from_user fail (count %ld)\n",
+			iod->name, ld->name, count);
+		dev_kfree_skb_any(skb);
+		return -EFAULT;
+	}
+
+	/* Apply padding */
+	if (tailroom)
+		skb_put(skb, tailroom);
+
+#ifdef DEBUG_MODEM_IF_IODEV
+	log_ipc_pkt(skb, IO, TX);
+#endif
+
+	/* send data with sk_buff, link device will put sk_buff
+	 * into the specific sk_buff_q and run work-q to send data
+	 */
+	skbpriv(skb)->iod = iod;
+	skbpriv(skb)->ld = ld;
+
+	ret = ld->send(ld, iod, skb);
+	if (ret < 0) {
+		mif_info("%s->%s: ERR! ld->send fail (err %d, tx_bytes %ld)\n",
+			iod->name, ld->name, ret, tx_bytes);
+		return ret;
+	}
+
+	if (ret != tx_bytes) {
+		mif_info("%s->%s: WARNING! ret %d != tx_bytes %ld (count %ld)\n",
+			iod->name, ld->name, ret, tx_bytes, count);
 	}
 
 	return count;
@@ -1318,7 +1413,7 @@ static ssize_t misc_read(struct file *filp, char *buf, size_t count,
 	}
 
 #ifdef DEBUG_MODEM_IF_IODEV
-	log_ipc_pkt(skb, IODEV, RX);
+	log_ipc_pkt(skb, IO, RX);
 #endif
 
 	copied = skb->len > count ? count : skb->len;
@@ -1348,7 +1443,6 @@ static const struct file_operations misc_io_fops = {
 	.release = misc_release,
 	.poll = misc_poll,
 	.unlocked_ioctl = misc_ioctl,
-	.compat_ioctl = misc_ioctl,
 	.write = misc_write,
 	.read = misc_read,
 };
@@ -1513,23 +1607,12 @@ static u16 exynos_build_fr_config(struct io_device *iod, struct link_device *ld,
 				unsigned int count)
 {
 	u16 fr_cfg = 0;
-	u8 frames = 0;
-	u8 *packet_index  = &iod->packet_index;
 
 	if (iod->format > IPC_DUMP)
 		return 0;
 
-	if (iod->format >= IPC_BOOT)
-		return fr_cfg |= (EXYNOS_SINGLE_MASK << 8);
-
-	if ((count + EXYNOS_HEADER_SIZE) <= SZ_2K) {
+	if ((count + EXYNOS_HEADER_SIZE) <= 0xFFFF)
 		fr_cfg |= (EXYNOS_SINGLE_MASK << 8);
-	} else {
-		frames = count / (SZ_2K - EXYNOS_HEADER_SIZE);
-		frames = (count % (SZ_2K - EXYNOS_HEADER_SIZE)) ? frames : frames - 1;
-
-		fr_cfg |= ((EXYNOS_MULTI_START_MASK | (0x3f & ++*packet_index)) << 8) | frames;
-	}
 
 	return fr_cfg;
 }
@@ -1558,7 +1641,6 @@ static void exynos_build_header(struct io_device *iod, struct link_device *ld,
 int exynos_init_io_device(struct io_device *iod)
 {
 	int ret = 0;
-	int i;
 	struct vnet *vnet;
 
 	if (iod->attrs & IODEV_ATTR(ATTR_NO_LINK_HEADER))
@@ -1588,7 +1670,7 @@ int exynos_init_io_device(struct io_device *iod)
 
 		ret = misc_register(&iod->miscdev);
 		if (ret)
-			mif_info("%s: ERR! misc_register failed - %d\n", iod->name, ret);
+			mif_info("%s: ERR! misc_register failed\n", iod->name);
 
 		break;
 
@@ -1596,10 +1678,10 @@ int exynos_init_io_device(struct io_device *iod)
 		skb_queue_head_init(&iod->sk_rx_q);
 		if (iod->use_handover)
 			iod->ndev = alloc_netdev(0, iod->name, NET_NAME_UNKNOWN,
-						vnet_setup_ether);
+					vnet_setup_ether);
 		else
 			iod->ndev = alloc_netdev(0, iod->name, NET_NAME_UNKNOWN,
-						vnet_setup);
+					vnet_setup);
 
 		if (!iod->ndev) {
 			mif_info("%s: ERR! alloc_netdev fail\n", iod->name);
@@ -1653,9 +1735,6 @@ int exynos_init_io_device(struct io_device *iod)
 		mif_info("%s: ERR! wrong io_type %d\n", iod->name, iod->io_typ);
 		return -EINVAL;
 	}
-
-	for (i = 0; i < NUM_EXYNOS_MULTI_FRAME_IDS; i++)
-		skb_queue_head_init(&iod->sk_multi_q[i]);
 
 	return ret;
 }

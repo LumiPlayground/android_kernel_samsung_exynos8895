@@ -97,10 +97,6 @@ obj-$(CONFIG_NFT_MASQ)		+= nft_masq.o
 obj-$(CONFIG_NFT_REDIR)		+= nft_redir.o
 obj-$(CONFIG_NFT_HASH)		+= nft_hash.o
 
-# nf_tables netdev
-obj-$(CONFIG_NFT_DUP_NETDEV)	+= nft_dup_netdev.o
-obj-$(CONFIG_NFT_FWD_NETDEV)	+= nft_fwd_netdev.o
-
 # generic X tables
 obj-$(CONFIG_NETFILTER_XTABLES) += x_tables.o xt_tcpudp.o
 
@@ -182,7 +178,6 @@ obj-$(CONFIG_NETFILTER_XT_MATCH_STRING) += xt_string.o
 obj-$(CONFIG_NETFILTER_XT_MATCH_TCPMSS) += xt_tcpmss.o
 obj-$(CONFIG_NETFILTER_XT_MATCH_TIME) += xt_time.o
 obj-$(CONFIG_NETFILTER_XT_MATCH_U32) += xt_u32.o
-obj-$(CONFIG_KNOX_NCM) += xt_domainfilter.o
 
 # ipset
 obj-$(CONFIG_IP_SET) += ipset/

@@ -94,7 +94,6 @@ void __iounmap(volatile void __iomem *io_addr)
 	 */
 	if (VMALLOC_START <= addr && addr < VMALLOC_END) {
 		vunmap((void *)addr);
-		ecd_hook_iounmap((unsigned long)addr);
 	}
 }
 EXPORT_SYMBOL(__iounmap);

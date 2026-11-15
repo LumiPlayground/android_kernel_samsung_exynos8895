@@ -15,13 +15,12 @@
 
 #include "s5p_mfc_common.h"
 
-void s5p_mfc_set_slice_mode(struct s5p_mfc_ctx *ctx);
-void s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx);
-void s5p_mfc_set_enc_params_mpeg4(struct s5p_mfc_ctx *ctx);
-void s5p_mfc_set_enc_params_h263(struct s5p_mfc_ctx *ctx);
-void s5p_mfc_set_enc_params_vp8(struct s5p_mfc_ctx *ctx);
-void s5p_mfc_set_enc_params_vp9(struct s5p_mfc_ctx *ctx);
-void s5p_mfc_set_enc_params_hevc(struct s5p_mfc_ctx *ctx);
-void s5p_mfc_set_enc_params_bpg(struct s5p_mfc_ctx *ctx);
+int s5p_mfc_set_slice_mode(struct s5p_mfc_ctx *ctx);
+int s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx);
+int s5p_mfc_set_enc_params_mpeg4(struct s5p_mfc_ctx *ctx);
+int s5p_mfc_set_enc_params_h263(struct s5p_mfc_ctx *ctx);
+int s5p_mfc_set_enc_params_vp8(struct s5p_mfc_ctx *ctx);
+int s5p_mfc_set_enc_params_vp9(struct s5p_mfc_ctx *ctx);
+int s5p_mfc_set_enc_params_hevc(struct s5p_mfc_ctx *ctx);
 
 #endif /* __S5P_MFC_ENC_PARAM_H */

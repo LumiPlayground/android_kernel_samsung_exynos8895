@@ -22,7 +22,7 @@
 #include <linux/rtc.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 
 #include "iva_ctrl_ioctl.h"
 #include "iva_mbox.h"
@@ -83,7 +83,7 @@ static void iva_mbox_initialize(struct iva_dev_data *iva)
 	/* mcu <-> ap, mcu <-> dsp, dsp <-> ap */
 	val = (MBOX_CMD_VMCU_RESET_M << MBOX_CMD_VMCU_RESET_S);
 	for (reg = MBOX_CMD_M0_VMCU_ADDR; reg <= MBOX_M1_AP_VMCU_ADDR;
-			reg += (uint32_t) sizeof(uint32_t)) {
+			reg += sizeof(uint32_t)){
 		/* reset the write/read pointers */
 		writel(0, mbox_va + reg);
 
@@ -112,7 +112,7 @@ static int iva_mbox_set_mbox_irq_en(struct iva_dev_data *iva,
 			mask |= MBOX_M0_AP_PEND_IRQ_EN_M;
 		if (irq_type & mbox_irq_wrdy)
 			mask |= MBOX_M0_AP_WRDY_IRQ_EN_M;
-	} else if (m_id == mbox_id_dsp) {
+	} else if (m_id == mbox_id_dsp){
 		if (irq_type & mbox_irq_pend)
 			mask |= MBOX_M1_AP_PEND_IRQ_EN_M;
 		if (irq_type & mbox_irq_wrdy)
@@ -189,7 +189,7 @@ struct iva_mbox_cb_head {
 #define IVA_MBOX_CB_HEAD(name)					\
 	struct iva_mbox_cb_head name = {			\
 		.lock = __SPIN_LOCK_UNLOCKED(name.lock),	\
-		.head = NULL					\
+		.head = NULL 					\
 	}
 
 
@@ -393,8 +393,8 @@ int iva_mbox_probe(struct iva_dev_data *iva)
 			/* force to poll */
 			iva->mbox_irq_nr = IVA_MBOX_IRQ_NOT_DEFINED;
 		} else {
-			dev_dbg(dev,
-				"%s() succeed to request irq(%d) and disable\n",
+			dev_dbg(dev, "%s() succeed to request irq(%d)"
+				" and disable\n",
 				__func__, iva->mbox_irq_nr);
 		}
 	}
@@ -417,8 +417,9 @@ void iva_mbox_remove(struct iva_dev_data *iva)
 		dev_dbg(dev, "%s() free mbox irq\n", __func__);
 	}
 
-	if (iva->mbox_va)
+	if (iva->mbox_va) {
 		iva->mbox_va = NULL;
+	}
 
 	dev_dbg(iva->dev, "%s() succeed to release mbox resources\n", __func__);
 }

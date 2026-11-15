@@ -11,7 +11,6 @@
  */
 
 #include <linux/delay.h>
-#include <linux/slab.h>
 
 #include "fimc-is-helper-i2c.h"
 
@@ -24,8 +23,8 @@ int i2c_emulator(struct i2c_adapter *adapter, struct i2c_msg *msg, u32 type)
 	int ret = 0;
 	int addr = 0;
 
-	FIMC_BUG(!adapter);
-	FIMC_BUG(!msg);
+	BUG_ON(!adapter);
+	BUG_ON(!msg);
 
 	if (init_reg == false) {
 		memset(emul_reg, 0x1, sizeof(emul_reg));
@@ -422,13 +421,15 @@ p_err:
 	return ret;
 }
 
+#define MAX_BURST 1100
+u8 wbuf[(MAX_BURST + 1) * 2];
+
 int fimc_is_sensor_write16_burst(struct i2c_client *client,
 	u16 addr, u16 *val, u32 num)
 {
 	int ret = 0;
 	struct i2c_msg msg[1];
 	int i = 0;
-	u8 *wbuf;
 
 	if (val == NULL) {
 		pr_err("val array is null\n");
@@ -436,15 +437,14 @@ int fimc_is_sensor_write16_burst(struct i2c_client *client,
 		goto p_err;
 	}
 
-	if (!client->adapter) {
-		pr_err("Could not find adapter!\n");
+	if (num > MAX_BURST) {
+		pr_err("currently limit max num is %d, need to fix it!\n", MAX_BURST);
 		ret = -ENODEV;
 		goto p_err;
 	}
 
-	wbuf = kmalloc((2 + (num * 2)), GFP_KERNEL);
-	if (!wbuf) {
-		pr_err("failed to alloc buffer for burst i2c\n");
+	if (!client->adapter) {
+		pr_err("Could not find adapter!\n");
 		ret = -ENODEV;
 		goto p_err;
 	}
@@ -463,14 +463,12 @@ int fimc_is_sensor_write16_burst(struct i2c_client *client,
 	ret = fimc_is_i2c_transfer(client->adapter, msg, 1);
 	if (ret < 0) {
 		pr_err("i2c treansfer fail(%d)", ret);
-		goto p_err_free;
+		goto p_err;
 	}
 
 	i2c_info("I2CW16(%d) [0x%04x] : 0x%04x\n", client->addr, addr, *val);
-	kfree(wbuf);
+
 	return 0;
-p_err_free:
-	kfree(wbuf);
 p_err:
 	return ret;
 }

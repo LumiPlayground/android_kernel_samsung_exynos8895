@@ -97,14 +97,6 @@
 	ALIGN((MAX_3DNR_INTERNAL_BUF_WIDTH * MAX_3DNR_INTERNAL_BUF_HEIGHT * 18 / 8), 16)
 #endif
 
-#define MAX_TNR_INTERNAL_BUF_WIDTH	(4032)
-#define MAX_TNR_INTERNAL_BUF_HEIGHT	(3024)
-#define SIZE_TNR_IMAGE_BUF \
-	(MAX_TNR_INTERNAL_BUF_WIDTH * MAX_TNR_INTERNAL_BUF_HEIGHT * 12 / 8) /* 12 bittage */
-#define SIZE_TNR_WEIGHT_BUF \
-	(MAX_TNR_INTERNAL_BUF_WIDTH * MAX_TNR_INTERNAL_BUF_HEIGHT / 2 / 2) /* 8 bittage */
-
-
 #define NUM_LHFD_INTERNAL_BUF		(3)
 #define MAX_LHFD_INTERNEL_BUF_WIDTH	(640)
 #define MAX_LHFD_INTERNEL_BUF_HEIGHT	(480)
@@ -221,15 +213,12 @@ enum fimc_is_dual_mode {
 enum fimc_is_hal_debug_mode {
 	FIMC_IS_HAL_DEBUG_SUDDEN_DEAD_DETECT,
 	FIMC_IS_HAL_DEBUG_PILE_REQ_BUF,
-	FIMC_IS_HAL_DEBUG_NDONE_REPROCESSING,
 };
 
 struct fimc_is_sysfs_debug {
 	unsigned int en_dvfs;
 	unsigned int en_clk_gate;
 	unsigned int clk_gate_mode;
-	unsigned long pattern_en;
-	unsigned long pattern_fps;
 	unsigned long hal_debug_mode;
 	unsigned int hal_debug_delay;
 };
@@ -239,8 +228,6 @@ struct fimc_is_sysfs_actuator {
 	unsigned int init_step;
 	int init_positions[INIT_MAX_SETTING];
 	int init_delays[INIT_MAX_SETTING];
-	bool enable_fixed;
-	int fixed_position;
 };
 #endif
 
@@ -276,7 +263,6 @@ struct fimc_is_core {
 	bool					shutdown;
 	bool					reboot;
 	struct fimc_is_sysfs_debug sysfs_debug;
-	struct work_struct			wq_data_print_clk;
 
 	/* depended on isp */
 	struct exynos_platform_fimc_is		*pdata;
@@ -287,9 +273,10 @@ struct fimc_is_core {
 	struct fimc_is_interface		interface;
 
 	struct fimc_is_device_preproc		preproc;
-	struct mutex				sensor_lock;
 	struct fimc_is_device_sensor		sensor[FIMC_IS_SENSOR_COUNT];
+#if defined(CONFIG_EXYNOS_DEVICE_MIPI_CSIS_VER3)
 	struct fimc_is_device_csi_dma		csi_dma;
+#endif
 	u32					chain_config;
 	struct fimc_is_device_ischain		ischain[FIMC_IS_STREAM_COUNT];
 #ifndef ENABLE_IS_CORE
@@ -316,13 +303,6 @@ struct fimc_is_core {
 	struct fimc_is_video			video_d0c;
 	struct fimc_is_video			video_d1s;
 	struct fimc_is_video			video_d1c;
-	struct fimc_is_video			video_dcp0s;
-	struct fimc_is_video			video_dcp1s;
-	struct fimc_is_video			video_dcp0c;
-	struct fimc_is_video			video_dcp1c;
-	struct fimc_is_video			video_dcp2c;
-	struct fimc_is_video			video_dcp3c;
-	struct fimc_is_video			video_dcp4c;
 	struct fimc_is_video			video_m0s;
 	struct fimc_is_video			video_m1s;
 	struct fimc_is_video			video_m0p;
@@ -330,18 +310,22 @@ struct fimc_is_core {
 	struct fimc_is_video			video_m2p;
 	struct fimc_is_video			video_m3p;
 	struct fimc_is_video			video_m4p;
-	struct fimc_is_video			video_m5p;
 	struct fimc_is_video			video_vra;
 
 	/* spi */
 	struct fimc_is_spi			spi0;
 	struct fimc_is_spi			spi1;
 
+	struct i2c_client			*client0; /* companion */
+	struct i2c_client			*client1; /* wide & tele ois */
+	struct i2c_client			*client2; /* wide af (ak7371) */
+	struct i2c_client			*client3; /* front af (ak7372) */
+	struct i2c_client			*client4; /* tele af (ak7371) */
+
 	struct mutex				i2c_lock[SENSOR_CONTROL_I2C_MAX];
 
 	spinlock_t				shared_rsc_slock[MAX_SENSOR_SHARED_RSC];
 	atomic_t				shared_rsc_count[MAX_SENSOR_SHARED_RSC];
-	atomic_t				i2c_rsccount[SENSOR_CONTROL_I2C_MAX];
 
 	struct fimc_is_vender			vender;
 #if defined(CONFIG_SECURE_CAMERA_USE)
@@ -349,9 +333,8 @@ struct fimc_is_core {
 	unsigned long				secure_state;
 #endif
 
-	unsigned long                           sensor_map;
-	struct fimc_is_dual_info		dual_info;
-	struct mutex				ois_mode_lock;
+	unsigned long				sensor_map;
+	struct fimc_is_dual_info        	dual_info;
 };
 
 #if defined(CONFIG_VIDEOBUF2_CMA_PHYS)
@@ -360,9 +343,14 @@ extern const struct fimc_is_vb2 fimc_is_vb2_cma;
 extern const struct fimc_is_vb2 fimc_is_vb2_ion;
 #endif
 
-struct fimc_is_device_sensor *fimc_is_get_sensor_device(struct fimc_is_core *core);
-int fimc_is_put_sensor_device(struct fimc_is_core *core);
-void fimc_is_print_frame_dva(struct fimc_is_subdev *subdev);
+void fimc_is_mem_suspend(void *alloc_ctxes);
+void fimc_is_mem_resume(void *alloc_ctxes);
+void fimc_is_mem_cache_clean(const void *start_addr, unsigned long size);
+void fimc_is_mem_cache_inv(const void *start_addr, unsigned long size);
+int fimc_is_init_set(struct fimc_is_core *dev , u32 val);
+int fimc_is_load_fw(struct fimc_is_core *dev);
+int fimc_is_load_setfile(struct fimc_is_core *dev);
+int fimc_is_otf_close(struct fimc_is_device_ischain *ischain);
 void fimc_is_cleanup(struct fimc_is_core *core);
 
 #define CALL_POPS(s, op, args...) (((s) && (s)->pdata && (s)->pdata->op) ? ((s)->pdata->op(&(s)->pdev->dev)) : -EPERM)

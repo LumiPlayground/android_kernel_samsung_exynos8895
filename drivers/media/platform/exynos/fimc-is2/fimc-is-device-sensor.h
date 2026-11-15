@@ -21,6 +21,7 @@
 #include "fimc-is-groupmgr.h"
 #include "fimc-is-device-flite.h"
 #include "fimc-is-device-csi.h"
+
 #include "fimc-is-helper-i2c.h"
 
 struct fimc_is_video_ctx;
@@ -30,16 +31,15 @@ struct fimc_is_device_ischain;
 #define EXPECT_FRAME_END	1
 #define LOG_INTERVAL_OF_DROPS 30
 
-#define FLITE_NOTIFY_FSTART		0
-#define FLITE_NOTIFY_FEND		1
-#define FLITE_NOTIFY_DMA_END		2
-#define CSIS_NOTIFY_FSTART		3
-#define CSIS_NOTIFY_FEND		4
-#define CSIS_NOTIFY_DMA_END		5
-#define CSIS_NOTIFY_DMA_END_VC_EMBEDDED	6
-#define CSIS_NOTIFY_LINE		7
+#define FLITE_NOTIFY_FSTART	0
+#define FLITE_NOTIFY_FEND	1
+#define FLITE_NOTIFY_DMA_END	2
+#define CSIS_NOTIFY_FSTART	3
+#define CSIS_NOTIFY_FEND	4
+#define CSIS_NOTIFY_DMA_END	5
+#define CSIS_NOTIFY_LINE	6
 
-#define SENSOR_MAX_ENUM			4 /* 4 modules(2 rear, 2 front) for same csis */
+#define SENSOR_MAX_ENUM			20
 #define ACTUATOR_MAX_ENUM		3
 #define SENSOR_DEFAULT_FRAMERATE	30
 
@@ -84,8 +84,7 @@ struct fimc_is_device_ischain;
 
 #define FIMC_IS_TIMESTAMP_HASH_KEY	20
 
-#define FIMC_IS_SENSOR_CFG(w, h, f, s, m, l, ls, itlv, pd,			\
-	vc0_in, vc0_out, vc1_in, vc1_out, vc2_in, vc2_out, vc3_in, vc3_out) {	\
+#define FIMC_IS_SENSOR_CFG_EXT(w, h, f, s, m, l, ls, vc_1, vc_2, vc_3) {	\
 	.width				= w,					\
 	.height				= h,					\
 	.framerate			= f,					\
@@ -93,74 +92,45 @@ struct fimc_is_device_ischain;
 	.mode				= m,					\
 	.lanes				= l,					\
 	.mipi_speed			= ls,					\
-	.interleave_mode		= itlv,					\
-	.pd_mode			= pd,					\
-	.ex_mode			= EX_NONE,					\
-	.input[CSI_VIRTUAL_CH_0]	= vc0_in,				\
-	.output[CSI_VIRTUAL_CH_0]	= vc0_out,				\
-	.input[CSI_VIRTUAL_CH_1]	= vc1_in,				\
-	.output[CSI_VIRTUAL_CH_1]	= vc1_out,				\
-	.input[CSI_VIRTUAL_CH_2]	= vc2_in,				\
-	.output[CSI_VIRTUAL_CH_2]	= vc2_out,				\
-	.input[CSI_VIRTUAL_CH_3]	= vc3_in,				\
-	.output[CSI_VIRTUAL_CH_3]	= vc3_out,				\
+	.internal_vc[CSI_VIRTUAL_CH_0]	= 0,					\
+	.internal_vc[CSI_VIRTUAL_CH_1]	= vc_1,					\
+	.internal_vc[CSI_VIRTUAL_CH_2]	= vc_2,					\
+	.internal_vc[CSI_VIRTUAL_CH_3]	= vc_3,					\
 }
 
-#define FIMC_IS_SENSOR_CFG_EX(w, h, f, s, m, l, ls, itlv, pd, ex,			\
-	vc0_in, vc0_out, vc1_in, vc1_out, vc2_in, vc2_out, vc3_in, vc3_out) {	\
-	.width				= w,					\
-	.height				= h,					\
-	.framerate			= f,					\
-	.settle				= s,					\
-	.mode				= m,					\
-	.lanes				= l,					\
-	.mipi_speed			= ls,					\
-	.interleave_mode		= itlv,					\
-	.pd_mode			= pd,					\
-	.ex_mode			= ex,					\
-	.input[CSI_VIRTUAL_CH_0]	= vc0_in,				\
-	.output[CSI_VIRTUAL_CH_0]	= vc0_out,				\
-	.input[CSI_VIRTUAL_CH_1]	= vc1_in,				\
-	.output[CSI_VIRTUAL_CH_1]	= vc1_out,				\
-	.input[CSI_VIRTUAL_CH_2]	= vc2_in,				\
-	.output[CSI_VIRTUAL_CH_2]	= vc2_out,				\
-	.input[CSI_VIRTUAL_CH_3]	= vc3_in,				\
-	.output[CSI_VIRTUAL_CH_3]	= vc3_out,				\
+#define FIMC_IS_SENSOR_CFG(w, h, f, s, m, l) {	\
+	.width		= w,			\
+	.height		= h,			\
+	.framerate	= f,			\
+	.settle		= s,			\
+	.mode		= m,			\
+	.lanes		= l,			\
+	.mipi_speed	= 0,			\
+	.internal_vc[CSI_VIRTUAL_CH_0]	= 0,	\
+	.internal_vc[CSI_VIRTUAL_CH_1]	= 0,	\
+	.internal_vc[CSI_VIRTUAL_CH_2]	= 0,	\
+	.internal_vc[CSI_VIRTUAL_CH_3]	= 0,	\
 }
 
-/*
- * @map:	VC parsing info.
- *		This is determined by sensor output format.
- * @hwformat:	DT parsing info.
- *		This is determined by sensor output format.
- * @width:	Real sensor output. For example, 2PD width is twice of DMA ouput width.
- *		If there is not VC output of sensor, set "0".
- * @heith:	Real sensor output.
- *		If there is not VC output of sensor, set "0".
- */
-#define VC_IN(m, hwf, w, h) {			\
-	.map = m,				\
-	.hwformat = hwf,			\
-	.width = w,				\
-	.height = h,				\
-}
+#define VC_TYPE_MASK		0xF0000000
+#define VC_TYPE_SHIFT		28
+#define VC_WIDTH_MASK		0xFFFC000
+#define VC_WIDTH_SHIFT		14
+#define VC_HEIGHT_MASK		0x3FFF
+#define VC_HEIGHT_SHIFT		0
+#define SET_VC(type, width, height)		\
+	(((type) << VC_TYPE_SHIFT)		\
+	| ((width) << VC_WIDTH_SHIFT)		\
+	| ((height) << VC_HEIGHT_SHIFT))	\
 
-/*
- * @hwformat:	It is same value width input hwformat, when input & output is same.
- *		But when the PDP is used, input & ouput is differnet.
- * @type:	It is used only for internal VC. There are VC_TAILPDAF, VC_MIPISTAT.
- *		If the buffer is used by HAL, set VC_NOTHING.
- * @width:	It is used only for internal VC. It is VC data size.
- *		If the buffer is used by HAL, set "0".
- * @height:	It is used only for internal VC. It is VC data size.
- *		If the buffer is used by HAL, set "0".
- */
-#define VC_OUT(hwf, t, w, h) {			\
-	.hwformat = hwf,			\
-	.type = t,				\
-	.width = w,				\
-	.height = h,				\
-}
+#define GET_VC_TYPE(setting)				\
+	((setting) & VC_TYPE_MASK) >> VC_TYPE_SHIFT	\
+
+#define GET_VC_WIDTH(setting)				\
+	((setting) & VC_WIDTH_MASK) >> VC_WIDTH_SHIFT	\
+
+#define GET_VC_HEIGHT(setting)				\
+	((setting) & VC_HEIGHT_MASK) >> VC_HEIGHT_SHIFT	\
 
 enum fimc_is_sensor_subdev_ioctl {
 	SENSOR_IOCTL_DMA_CANCEL,
@@ -197,23 +167,6 @@ enum fimc_is_module_state {
 	FIMC_IS_MODULE_STANDBY_ON
 };
 
-enum fimc_is_pd_mode {
-	PD_MSPD = 0,
-	PD_MOD1 = 1,
-	PD_MOD2 = 2,
-	PD_MOD3 = 3,
-	PD_NONE,
-};
-
-/* refer to EXTEND_SENSOR_MODE on HAL side*/
-enum fimc_is_ex_mode {
-	EX_NONE = 0,
-	EX_DRAMTEST = 1,
-	EX_LIVEFOCUS = 2,
-	EX_DUALFPS_960 = 3,
-	EX_DUALFPS_480 = 4,
-};
-
 struct fimc_is_sensor_cfg {
 	u32 width;
 	u32 height;
@@ -222,11 +175,7 @@ struct fimc_is_sensor_cfg {
 	int mode;
 	u32 lanes;
 	u32 mipi_speed;
-	u32 interleave_mode;
-	enum fimc_is_pd_mode pd_mode;
-	enum fimc_is_ex_mode ex_mode;
-	struct fimc_is_vci_config input[CSI_VIRTUAL_CH_MAX];
-	struct fimc_is_vci_config output[CSI_VIRTUAL_CH_MAX];
+	u32 internal_vc[CSI_VIRTUAL_CH_MAX];
 };
 
 
@@ -276,11 +225,16 @@ struct fimc_is_module_enum {
 	u32                                             margin_bottom;
 	u32						max_framerate;
 	u32						position;
+	u32						mode;
+	u32						lanes;
 	u32						bitwidth;
+	u32						vcis;
+	struct fimc_is_vci				*vci;
 	u32						cfgs;
 	struct fimc_is_sensor_cfg			*cfg;
-	struct fimc_is_sensor_vc_max_size		vc_max_size[VC_BUF_DATA_TYPE_MAX];
+	struct fimc_is_sensor_vc_max_size               vc_max_size[2];
 	u32						vc_max_buf;
+	u32						internal_vc[CSI_VIRTUAL_CH_MAX];
 	u32						vc_buffer_offset[CSI_VIRTUAL_CH_MAX];
 	struct i2c_client				*client;
 	struct sensor_open_extended			ext;
@@ -303,15 +257,13 @@ enum fimc_is_sensor_state {
 	FIMC_IS_SENSOR_GPIO_ON,
 	FIMC_IS_SENSOR_S_INPUT,
 	FIMC_IS_SENSOR_S_CONFIG,
-	FIMC_IS_SENSOR_DRIVING,		/* DEPRECATED: Not used form device-sensor_v3 */
-	FIMC_IS_SENSOR_STAND_ALONE,	/* SOC sensor, Iris sensor, Vision mode without IS chain */
+	FIMC_IS_SENSOR_DRIVING,
 	FIMC_IS_SENSOR_FRONT_START,
 	FIMC_IS_SENSOR_FRONT_DTP_STOP,
 	FIMC_IS_SENSOR_BACK_START,
 	FIMC_IS_SENSOR_BACK_NOWAIT_STOP,
 	FIMC_IS_SENSOR_SUBDEV_MODULE_INIT,
 	FIMC_IS_SENSOR_OTF_OUTPUT,
-	FIMC_IS_SENSOR_ITF_REGISTER,	/* to check whether sensor interfaces are registered */
 	FIMC_IS_SENSOR_WAIT_STREAMING
 };
 
@@ -345,9 +297,10 @@ struct fimc_is_device_sensor {
 	struct camera2_sensor_ctl			sensor_ctl;
 	struct camera2_lens_ctl				lens_ctl;
 	struct camera2_flash_ctl			flash_ctl;
+	struct work_struct				control_work;
+	struct fimc_is_frame				*control_frame;
 	u64						timestamp[FIMC_IS_TIMESTAMP_HASH_KEY];
 	u64						timestampboot[FIMC_IS_TIMESTAMP_HASH_KEY];
-	u32						frame_id[FIMC_IS_TIMESTAMP_HASH_KEY];
 
 	u32						fcount;
 	u32						line_fcount;
@@ -400,7 +353,6 @@ struct fimc_is_device_sensor {
 	struct hrtimer					early_buf_timer;
 
 	struct exynos_platform_fimc_is_sensor		*pdata;
-	atomic_t					module_count;
 #ifdef CONFIG_COMPANION_DIRECT_USE
 	struct fimc_is_preprocessor			*preprocessor;
 	struct v4l2_subdev				*subdev_preprocessor;
@@ -411,8 +363,6 @@ struct fimc_is_device_sensor {
 	struct fimc_is_flash				*flash;
 	struct v4l2_subdev				*subdev_ois;
 	struct fimc_is_ois				*ois;
-	struct v4l2_subdev				*subdev_aperture;
-	struct fimc_is_aperture				*aperture;
 	void						*private_data;
 	struct fimc_is_group				group_sensor;
 	struct fimc_is_path_info			path;
@@ -420,10 +370,15 @@ struct fimc_is_device_sensor {
 	u32						sensor_width;
 	u32						sensor_height;
 
-	bool						dma_abstract;
 	u32						use_standby;
 	u32						sstream;
-	u32						ex_mode;
+#ifdef ENABLE_INIT_AWB
+	/* backup AWB gains for use initial gain */
+	float					init_wb[WB_GAIN_COUNT];
+	float					last_wb[WB_GAIN_COUNT];
+	float					chk_wb[WB_GAIN_COUNT];
+	u32 					init_wb_cnt;
+#endif
 };
 
 int fimc_is_sensor_open(struct fimc_is_device_sensor *device,
@@ -441,8 +396,6 @@ int fimc_is_sensor_s_input(struct fimc_is_device_sensor *device,
 #endif
 int fimc_is_sensor_s_ctrl(struct fimc_is_device_sensor *device,
 	struct v4l2_control *ctrl);
-int fimc_is_sensor_s_ext_ctrls(struct fimc_is_device_sensor *device,
-	struct v4l2_ext_controls *ctrls);
 int fimc_is_sensor_subdev_buffer_queue(struct fimc_is_device_sensor *device,
 	enum fimc_is_subdev_id subdev_id,
 	u32 index);
@@ -482,7 +435,6 @@ void fimc_is_sensor_dump(struct fimc_is_device_sensor *device);
 int fimc_is_sensor_g_ctrl(struct fimc_is_device_sensor *device,
 	struct v4l2_control *ctrl);
 int fimc_is_sensor_g_instance(struct fimc_is_device_sensor *device);
-int fimc_is_sensor_g_ex_mode(struct fimc_is_device_sensor *device);
 int fimc_is_sensor_g_framerate(struct fimc_is_device_sensor *device);
 int fimc_is_sensor_g_fcount(struct fimc_is_device_sensor *device);
 int fimc_is_sensor_g_width(struct fimc_is_device_sensor *device);
@@ -495,10 +447,8 @@ int fimc_is_sensor_g_module(struct fimc_is_device_sensor *device,
 	struct fimc_is_module_enum **module);
 int fimc_is_sensor_deinit_module(struct fimc_is_module_enum *module);
 int fimc_is_sensor_g_position(struct fimc_is_device_sensor *device);
-int fimc_is_search_sensor_module_with_sensorid(struct fimc_is_device_sensor *device,
+int fimc_is_search_sensor_module(struct fimc_is_device_sensor *device,
 	u32 sensor_id, struct fimc_is_module_enum **module);
-int fimc_is_search_sensor_module_with_position(struct fimc_is_device_sensor *device,
-	u32 position, struct fimc_is_module_enum **module);
 int fimc_is_sensor_dm_tag(struct fimc_is_device_sensor *device,
 	struct fimc_is_frame *frame);
 int fimc_is_sensor_buf_tag(struct fimc_is_device_sensor *device,
@@ -506,7 +456,6 @@ int fimc_is_sensor_buf_tag(struct fimc_is_device_sensor *device,
 	struct v4l2_subdev *v_subdev,
 	struct fimc_is_frame *ldr_frame);
 int fimc_is_sensor_g_csis_error(struct fimc_is_device_sensor *device);
-int fimc_is_sensor_register_itf(struct fimc_is_device_sensor *device);
 int fimc_is_sensor_group_tag(struct fimc_is_device_sensor *device,
 	struct fimc_is_frame *frame,
 	struct camera2_node *ldr_node);

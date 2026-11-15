@@ -525,7 +525,7 @@ static int muic_probe(struct platform_device *pdev)
 	pmuic->regmapdesc = pdesc;
 
 #if defined(CONFIG_MUIC_SUPPORT_CCIC)
-	pmuic->pdata->opmode = OPMODE_CCIC;
+	pmuic->opmode = OPMODE_CCIC;
 #endif
 	/* set switch device's driver_data */
 	dev_set_drvdata(switch_device, pmuic);
@@ -584,7 +584,7 @@ static int muic_probe(struct platform_device *pdev)
 #if defined(CONFIG_MUIC_SUPPORT_CCIC)
 	muic_is_ccic_supported_jig(pmuic, pmuic->attached_dev);
 
-	if (pmuic->pdata->opmode & OPMODE_CCIC)
+	if (pmuic->opmode & OPMODE_CCIC)
 		muic_register_ccic_notifier(pmuic);
 	else
 		pr_info("%s: OPMODE_MUIC. CCIC is not used.\n", __func__);

@@ -200,8 +200,10 @@ static int yurex_probe(struct usb_interface *interface, const struct usb_device_
 
 	/* allocate memory for our device state and initialize it */
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
-	if (!dev)
+	if (!dev) {
+		dev_err(&interface->dev, "Out of memory\n");
 		goto error;
+	}
 	kref_init(&dev->kref);
 	mutex_init(&dev->io_mutex);
 	spin_lock_init(&dev->lock);
@@ -229,13 +231,17 @@ static int yurex_probe(struct usb_interface *interface, const struct usb_device_
 
 	/* allocate control URB */
 	dev->cntl_urb = usb_alloc_urb(0, GFP_KERNEL);
-	if (!dev->cntl_urb)
+	if (!dev->cntl_urb) {
+		dev_err(&interface->dev, "Could not allocate control URB\n");
 		goto error;
+	}
 
 	/* allocate buffer for control req */
 	dev->cntl_req = kmalloc(YUREX_BUF_SIZE, GFP_KERNEL);
-	if (!dev->cntl_req)
+	if (!dev->cntl_req) {
+		dev_err(&interface->dev, "Could not allocate cntl_req\n");
 		goto error;
+	}
 
 	/* allocate buffer for control msg */
 	dev->cntl_buffer = usb_alloc_coherent(dev->udev, YUREX_BUF_SIZE,
@@ -263,8 +269,10 @@ static int yurex_probe(struct usb_interface *interface, const struct usb_device_
 
 	/* allocate interrupt URB */
 	dev->urb = usb_alloc_urb(0, GFP_KERNEL);
-	if (!dev->urb)
+	if (!dev->urb) {
+		dev_err(&interface->dev, "Could not allocate URB\n");
 		goto error;
+	}
 
 	/* allocate buffer for interrupt in */
 	dev->int_buffer = usb_alloc_coherent(dev->udev, YUREX_BUF_SIZE,
@@ -406,7 +414,8 @@ static ssize_t yurex_read(struct file *file, char __user *buffer, size_t count,
 			  loff_t *ppos)
 {
 	struct usb_yurex *dev;
-	int len = 0;
+	int retval = 0;
+	int bytes_read = 0;
 	char in_buffer[20];
 	unsigned long flags;
 
@@ -414,16 +423,26 @@ static ssize_t yurex_read(struct file *file, char __user *buffer, size_t count,
 
 	mutex_lock(&dev->io_mutex);
 	if (!dev->interface) {		/* already disconnected */
-		mutex_unlock(&dev->io_mutex);
-		return -ENODEV;
+		retval = -ENODEV;
+		goto exit;
 	}
 
 	spin_lock_irqsave(&dev->lock, flags);
-	len = snprintf(in_buffer, 20, "%lld\n", dev->bbu);
+	bytes_read = snprintf(in_buffer, 20, "%lld\n", dev->bbu);
 	spin_unlock_irqrestore(&dev->lock, flags);
-	mutex_unlock(&dev->io_mutex);
 
-	return simple_read_from_buffer(buffer, count, ppos, in_buffer, len);
+	if (*ppos < bytes_read) {
+		if (copy_to_user(buffer, in_buffer + *ppos, bytes_read - *ppos))
+			retval = -EFAULT;
+		else {
+			retval = bytes_read - *ppos;
+			*ppos += bytes_read;
+		}
+	}
+
+exit:
+	mutex_unlock(&dev->io_mutex);
+	return retval;
 }
 
 static ssize_t yurex_write(struct file *file, const char __user *user_buffer,

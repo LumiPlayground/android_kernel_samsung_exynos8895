@@ -26,14 +26,6 @@
 #include <linux/cpumask.h>
 #include <linux/interrupt.h>
 #include <linux/sec_argos.h>
-#include <linux/ologk.h>
-
-#ifdef CONFIG_SCHED_EHMP
-#include <linux/ehmp.h>
-static struct gb_qos_request gb_req = {
-	.name = "argos_ehmp_boost",
-};
-#endif
 
 #define ARGOS_NAME "argos"
 #define TYPE_SHIFT 4
@@ -386,10 +378,7 @@ int argos_hmpboost_apply(int dev_num, bool enable)
 	if (enable) {
 		/* disable -> enable */
 		if (!*hmpboost_enable) {
-#ifdef CONFIG_SCHED_EHMP
-			/* set global boost */
-			gb_qos_update_request(&gb_req, 100);
-#elif defined(CONFIG_SCHED_HMP)
+#if defined(CONFIG_SCHED_HMP)
 			set_hmp_boost(true);
 #endif
 			*hmpboost_enable = true;
@@ -398,10 +387,7 @@ int argos_hmpboost_apply(int dev_num, bool enable)
 	} else {
 		/* enable -> disable */
 		if (*hmpboost_enable) {
-#ifdef CONFIG_SCHED_EHMP
-			/* unset global boost */
-			gb_qos_update_request(&gb_req, 0);
-#elif defined(CONFIG_SCHED_HMP)
+#if defined(CONFIG_SCHED_HMP)
 			set_hmp_boost(false);
 #endif
 			*hmpboost_enable = false;
@@ -562,9 +548,6 @@ static int argos_pm_qos_notify(struct notifier_block *nfb,
 	prev_level = cnode->prev_level;
 
 	pr_debug("%s name:%s, speed:%ldMbps\n", __func__, cnode->desc, speed);
-	if(speed >= 300) {
-		perflog(PERFLOG_ARGOS, "name:%s, speed:%ldMbps", cnode->desc, speed);
-	}
 
 	argos_blocked = cnode->argos_block;
 

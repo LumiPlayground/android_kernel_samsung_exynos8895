@@ -525,6 +525,7 @@ struct cmucal_clkout {
 	.clk.offset_idx	= _o,				\
 	.clk.status_idx	= _so,				\
 	.clk.enable_idx	= _eo,				\
+	.ignore_idx	= EMPTY_CAL_ID,			\
 }
 #endif
 #define CLK_OPTION(_id, _o, _eo)			\

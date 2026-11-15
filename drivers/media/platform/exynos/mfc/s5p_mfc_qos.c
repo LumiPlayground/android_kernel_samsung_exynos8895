@@ -50,19 +50,17 @@ static void mfc_qos_operate(struct s5p_mfc_ctx *ctx, int opr_type, int idx)
 				qos_table[idx].freq_kfc);
 #endif
 
-		bts_update_scen(BS_MFC_UHD_ENC60, qos_table[idx].mo_uhd_enc60_value);
-		bts_update_scen(BS_MFC_UHD_10BIT, qos_table[idx].mo_10bit_value);
+		if (ctx->type == MFCINST_DECODER)
+			bts_update_scen(BS_MFC_UHD_10BIT, qos_table[idx].mo_10bit_value);
 		bts_update_scen(BS_MFC_UHD, qos_table[idx].mo_value);
 
 		atomic_set(&dev->qos_req_cur, idx + 1);
-		MFC_TRACE_CTX("-- QOS add[%d] (int:%d, mif:%d, mo:%d, mo_10bit:%d, mo_uhd_enc:%d)\n",
+		MFC_TRACE_CTX("-- QOS add[%d] (int:%d, mif:%d, mo:%d, mo_10bit:%d)\n",
 				idx, qos_table[idx].freq_int, qos_table[idx].freq_mif,
-				qos_table[idx].mo_value, qos_table[idx].mo_10bit_value,
-				qos_table[idx].mo_uhd_enc60_value);
-		mfc_debug(2, "QOS add[%d] (int:%d, mif:%d, mo:%d, mo_10bit:%d, mo_uhd_enc:%d)\n",
+				qos_table[idx].mo_value, qos_table[idx].mo_10bit_value);
+		mfc_debug(2, "QOS add[%d] (int:%d, mif:%d, mo:%d, mo_10bit:%d)\n",
 				idx, qos_table[idx].freq_int, qos_table[idx].freq_mif,
-				qos_table[idx].mo_value, qos_table[idx].mo_10bit_value,
-				qos_table[idx].mo_uhd_enc60_value);
+				qos_table[idx].mo_value, qos_table[idx].mo_10bit_value);
 		break;
 	case MFC_QOS_UPDATE:
 		MFC_TRACE_CTX("++ QOS update[%d] (int:%d, mif:%d)\n",
@@ -79,20 +77,17 @@ static void mfc_qos_operate(struct s5p_mfc_ctx *ctx, int opr_type, int idx)
 		pm_qos_update_request(&dev->qos_req_cluster0,
 				qos_table[idx].freq_kfc);
 #endif
-
-		bts_update_scen(BS_MFC_UHD_ENC60, qos_table[idx].mo_uhd_enc60_value);
-		bts_update_scen(BS_MFC_UHD_10BIT, qos_table[idx].mo_10bit_value);
+		if (ctx->type == MFCINST_DECODER)
+			bts_update_scen(BS_MFC_UHD_10BIT, qos_table[idx].mo_10bit_value);
 		bts_update_scen(BS_MFC_UHD, qos_table[idx].mo_value);
 
 		atomic_set(&dev->qos_req_cur, idx + 1);
-		MFC_TRACE_CTX("-- QOS update[%d] (int:%d, mif:%d, mo:%d, mo_10bit:%d, mo_uhd_enc:%d)\n",
+		MFC_TRACE_CTX("-- QOS update[%d] (int:%d, mif:%d, mo:%d, mo_10bit:%d)\n",
 				idx, qos_table[idx].freq_int, qos_table[idx].freq_mif,
-				qos_table[idx].mo_value, qos_table[idx].mo_10bit_value,
-				qos_table[idx].mo_uhd_enc60_value);
-		mfc_debug(2, "QOS update[%d] (int:%d, mif:%d, mo:%d, mo_10bit:%d, mo_uhd_enc:%d)\n",
+				qos_table[idx].mo_value, qos_table[idx].mo_10bit_value);
+		mfc_debug(2, "QOS update[%d] (int:%d, mif:%d, mo:%d, mo_10bit:%d)\n",
 				idx, qos_table[idx].freq_int, qos_table[idx].freq_mif,
-				qos_table[idx].mo_value, qos_table[idx].mo_10bit_value,
-				qos_table[idx].mo_uhd_enc60_value);
+				qos_table[idx].mo_value, qos_table[idx].mo_10bit_value);
 		break;
 	case MFC_QOS_REMOVE:
 		MFC_TRACE_CTX("++ QOS remove\n");
@@ -105,8 +100,8 @@ static void mfc_qos_operate(struct s5p_mfc_ctx *ctx, int opr_type, int idx)
 		pm_qos_remove_request(&dev->qos_req_cluster0);
 #endif
 
-		bts_update_scen(BS_MFC_UHD_ENC60, 0);
-		bts_update_scen(BS_MFC_UHD_10BIT, 0);
+		if (ctx->type == MFCINST_DECODER)
+			bts_update_scen(BS_MFC_UHD_10BIT, 0);
 		bts_update_scen(BS_MFC_UHD, 0);
 
 		dev->mfc_bw.peak = 0;
@@ -154,20 +149,16 @@ static void mfc_qos_set(struct s5p_mfc_ctx *ctx, struct bts_bw *mfc_bw, int i)
 		mfc_qos_operate(ctx, MFC_QOS_BW, i);
 	}
 
-	mutex_lock(&dev->qos_mutex);
 	if (atomic_read(&dev->qos_req_cur) == 0)
 		mfc_qos_operate(ctx, MFC_QOS_ADD, i);
 	else if (atomic_read(&dev->qos_req_cur) != (i + 1))
 		mfc_qos_operate(ctx, MFC_QOS_UPDATE, i);
-	mutex_unlock(&dev->qos_mutex);
 }
 
 static inline unsigned long mfc_qos_get_weighted_mb(struct s5p_mfc_ctx *ctx,
 						unsigned long mb)
 {
-	struct s5p_mfc_enc *enc = ctx->enc_priv;
 	struct s5p_mfc_dec *dec = ctx->dec_priv;
-	struct s5p_mfc_enc_params *p;
 	u32 num_planes = ctx->dst_fmt->num_planes;
 	int weight = 1000;
 	unsigned long weighted_mb;
@@ -177,30 +168,24 @@ static inline unsigned long mfc_qos_get_weighted_mb(struct s5p_mfc_ctx *ctx,
 	case S5P_FIMV_CODEC_H264_MVC_DEC:
 	case S5P_FIMV_CODEC_H264_ENC:
 	case S5P_FIMV_CODEC_H264_MVC_ENC:
-	case S5P_FIMV_CODEC_VP8_DEC:
-	case S5P_FIMV_CODEC_VP8_ENC:
 		if (num_planes == 3)
-			weight = (weight * 100) / MFC_QOS_WEIGHT_3PLANE;
+			weight = 100000 / MFC_QOS_WEIGHT_3PLANE;
 		break;
 
 	case S5P_FIMV_CODEC_HEVC_DEC:
 	case S5P_FIMV_CODEC_HEVC_ENC:
-	case S5P_FIMV_CODEC_VP9_DEC:
-	case S5P_FIMV_CODEC_VP9_ENC:
-	case S5P_FIMV_CODEC_BPG_DEC:
-	case S5P_FIMV_CODEC_BPG_ENC:
 		if (num_planes == 3) {
-			weight = (weight * 100) / MFC_QOS_WEIGHT_3PLANE;
+			weight = 100000 / MFC_QOS_WEIGHT_3PLANE;
 		} else {
 			if (ctx->is_10bit) {
 				if (dec && dec->super64_bframe) {
-					weight = (weight * 100) / MFC_QOS_WEIGHT_10BIT_SUPER64_B;
+					weight = 100000 / MFC_QOS_WEIGHT_10BIT_SUPER64_B;
 					mfc_debug(3, "QoS weight: super64 with B frame\n");
 				} else {
-					weight = (weight * 100) / MFC_QOS_WEIGHT_10BIT;
+					weight = 100000 / MFC_QOS_WEIGHT_10BIT;
 				}
-			} else if (ctx->is_422format) {
-				weight = (weight * 100) / MFC_QOS_WEIGHT_422_10INTRA;
+			} else if (ctx->is_422_10_intra) {
+				weight = 100000 / MFC_QOS_WEIGHT_422_10INTRA;
 			}
 		}
 		break;
@@ -214,39 +199,24 @@ static inline unsigned long mfc_qos_get_weighted_mb(struct s5p_mfc_ctx *ctx,
 	case S5P_FIMV_CODEC_VC1_RCV_DEC:
 	case S5P_FIMV_CODEC_VC1_DEC:
 	case S5P_FIMV_CODEC_MPEG2_DEC:
+	case S5P_FIMV_CODEC_VP8_DEC:
+	case S5P_FIMV_CODEC_VP9_DEC:
 	case S5P_FIMV_CODEC_MPEG4_ENC:
 	case S5P_FIMV_CODEC_H263_ENC:
-		weight = (weight * 100) / MFC_QOS_WEIGHT_OTHER_CODEC;
+	case S5P_FIMV_CODEC_VP8_ENC:
+	case S5P_FIMV_CODEC_VP9_ENC:
+		weight = 100000 / MFC_QOS_WEIGHT_OTHER_CODEC;
 		break;
 
 	default:
 		mfc_err_ctx("wrong codec_mode (%d), no weight\n", ctx->codec_mode);
 	}
 
-	if (enc) {
-		p = &enc->params;
-		if ((IS_H264_ENC(ctx) || IS_HEVC_ENC(ctx)) && p->num_b_frame) {
-			weight = (weight * 100) / MFC_QOS_WEIGHT_BFRAME;
-			mfc_debug(3, "QoS weight: B frame encoding\n");
-		}
-		if ((IS_H264_ENC(ctx) || IS_HEVC_ENC(ctx) || IS_VP8_ENC(ctx) ||
-					IS_VP9_ENC(ctx)) && (p->num_refs_for_p >= 2)) {
-			weight = (weight * 100) / MFC_QOS_WEIGHT_NUM_OF_REF;
-			mfc_debug(3, "QoS weight: num of ref >= 2\n");
-		}
-	}
-	if (dec) {
-		if (dec->num_of_tile_over_4) {
-			weight = (weight * 100) / MFC_QOS_WEIGHT_NUM_OF_TILE;
-			mfc_debug(3, "QoS weight: num of tile >= 4\n");
-		}
-	}
-
 	weighted_mb = (mb * weight) / 1000;
 	mfc_debug(3, "QoS weight: %d.%03d, codec: %d, num planes: %d, "
-			"10bit: %d, 422format: %d (mb: %ld)\n",
+			"10bit: %d, 422 10 intra: %d (mb: %ld)\n",
 			weight / 1000, weight % 1000, ctx->codec_mode,
-			num_planes, ctx->is_10bit, ctx->is_422format,
+			num_planes, ctx->is_10bit, ctx->is_422_10_intra,
 			weighted_mb);
 
 
@@ -311,14 +281,12 @@ static void mfc_qos_get_bw_per_second(struct s5p_mfc_ctx *ctx, struct bts_bw *mf
 		bw_data = mfc_bw_info.h264_enc_uhd_bw;
 		break;
 	case S5P_FIMV_CODEC_HEVC_DEC:
-	case S5P_FIMV_CODEC_BPG_DEC:
 		if (ctx->is_10bit)
 			bw_data = mfc_bw_info.hevc_dec_uhd_10bit_bw;
 		else
 			bw_data = mfc_bw_info.hevc_dec_uhd_bw;
 		break;
 	case S5P_FIMV_CODEC_HEVC_ENC:
-	case S5P_FIMV_CODEC_BPG_ENC:
 		if (ctx->is_10bit)
 			bw_data = mfc_bw_info.hevc_enc_uhd_10bit_bw;
 		else
@@ -392,10 +360,9 @@ void s5p_mfc_qos_on(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_qos *qos_table = pdata->qos_table;
 	struct s5p_mfc_ctx *qos_ctx;
 	struct bts_bw mfc_bw, mfc_bw_ctx;
-	unsigned long hw_mb = 0, total_mb = 0, total_fps = 0;
-	unsigned int fw_time, sw_time;
-	int i, found = 0, enc_found = 0;
-	int start_qos_step;
+	unsigned long hw_mb = 0, total_mb = 0;
+	unsigned int fw_time, sw_time, total_fps = 0;
+	int i, found = 0;
 
 	list_for_each_entry(qos_ctx, &dev->qos_queue, qos_list)
 		if (qos_ctx == ctx)
@@ -409,8 +376,6 @@ void s5p_mfc_qos_on(struct s5p_mfc_ctx *ctx)
 	mfc_bw.write = 0;
 	/* get the hw macroblock */
 	list_for_each_entry(qos_ctx, &dev->qos_queue, qos_list) {
-		if (OVER_UHD_ENC60(qos_ctx))
-			enc_found = 1;
 		hw_mb += mfc_qos_get_mb_per_second(qos_ctx);
 		mfc_qos_get_bw_per_second(qos_ctx, &mfc_bw_ctx);
 		mfc_bw.peak += mfc_bw_ctx.peak;
@@ -419,22 +384,14 @@ void s5p_mfc_qos_on(struct s5p_mfc_ctx *ctx)
 		total_fps += (qos_ctx->framerate / 1000);
 	}
 
-	start_qos_step = pdata->num_qos_steps;
-	if (enc_found)
-		start_qos_step = pdata->max_qos_steps;
-
 	/* search the suitable qos table */
-	for (i = start_qos_step - 1; i >= 0; i--) {
+	for (i = (pdata->num_qos_steps - 1); i >= 0; i--) {
 		fw_time = qos_table[i].time_fw;
 		sw_time = (MFC_DRV_TIME + fw_time);
 
-		if ((total_fps * sw_time) >= 1000000)
-			total_mb = pdata->max_mb;
-		else
-			total_mb = ((1000000 * hw_mb) / (1000000 - (total_fps * sw_time)));
-
+		total_mb = ((1000000 * hw_mb) / (1000000 - (total_fps * sw_time)));
 		mfc_debug(4, "QoS table[%d] fw_time: %dus, hw_mb: %ld, "
-				"sw_time: %d, total_fps: %ld, total_mb: %ld\n",
+				"sw_time: %d, total_fps: %d, total_mb: %ld\n",
 				i, fw_time, hw_mb, sw_time, total_fps, total_mb);
 
 		if ((total_mb > qos_table[i].threshold_mb) || (i == 0))
@@ -454,18 +411,15 @@ void s5p_mfc_qos_off(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_qos *qos_table = pdata->qos_table;
 	struct s5p_mfc_ctx *qos_ctx;
 	struct bts_bw mfc_bw, mfc_bw_ctx;
-	unsigned long hw_mb = 0, total_mb = 0, total_fps = 0;
-	unsigned int fw_time, sw_time;
-	int i, found = 0, enc_found = 0;
-	int start_qos_step;
+	unsigned long hw_mb = 0, total_mb = 0;
+	unsigned int fw_time, sw_time, total_fps = 0;
+	int i, found = 0;
 
 	if (list_empty(&dev->qos_queue)) {
-		mutex_lock(&dev->qos_mutex);
 		if (atomic_read(&dev->qos_req_cur) != 0) {
 			mfc_err_ctx("MFC request count is wrong!\n");
 			mfc_qos_operate(ctx, MFC_QOS_REMOVE, 0);
 		}
-		mutex_unlock(&dev->qos_mutex);
 		return;
 	}
 
@@ -479,8 +433,6 @@ void s5p_mfc_qos_off(struct s5p_mfc_ctx *ctx)
 			continue;
 		}
 
-		if (OVER_UHD_ENC60(qos_ctx))
-			enc_found = 1;
 		hw_mb += mfc_qos_get_mb_per_second(qos_ctx);
 		mfc_qos_get_bw_per_second(qos_ctx, &mfc_bw_ctx);
 		mfc_bw.peak += mfc_bw_ctx.peak;
@@ -489,22 +441,14 @@ void s5p_mfc_qos_off(struct s5p_mfc_ctx *ctx)
 		total_fps += (qos_ctx->framerate / 1000);
 	}
 
-	start_qos_step = pdata->num_qos_steps;
-	if (enc_found)
-		start_qos_step = pdata->max_qos_steps;
-
 	/* search the suitable qos table */
-	for (i = start_qos_step - 1; i >= 0; i--) {
+	for (i = (pdata->num_qos_steps - 1); i >= 0; i--) {
 		fw_time = qos_table[i].time_fw;
 		sw_time = (MFC_DRV_TIME + fw_time);
 
-		if ((total_fps * sw_time) >= 1000000)
-			total_mb = pdata->max_mb;
-		else
-			total_mb = ((1000000 * hw_mb) / (1000000 - (total_fps * sw_time)));
-
+		total_mb = ((1000000 * hw_mb) / (1000000 - (total_fps * sw_time)));
 		mfc_debug(4, "QoS table[%d] fw_time: %dus, hw_mb: %ld, "
-				"sw_time: %d, total_fps: %ld, total_mb: %ld\n",
+				"sw_time: %d, total_fps: %d, total_mb: %ld\n",
 				i, fw_time, hw_mb, sw_time, total_fps, total_mb);
 
 		if ((total_mb > qos_table[i].threshold_mb) || (total_mb == 0) || (i == 0))
@@ -517,13 +461,10 @@ void s5p_mfc_qos_off(struct s5p_mfc_ctx *ctx)
 	if (found)
 		list_del(&ctx->qos_list);
 
-	if (list_empty(&dev->qos_queue) || total_mb == 0) {
-		mutex_lock(&dev->qos_mutex);
+	if (list_empty(&dev->qos_queue) || total_mb == 0)
 		mfc_qos_operate(ctx, MFC_QOS_REMOVE, 0);
-		mutex_unlock(&dev->qos_mutex);
-	} else {
+	else
 		mfc_qos_set(ctx, &mfc_bw, i);
-	}
 }
 #endif
 
@@ -558,7 +499,7 @@ static inline unsigned long mfc_qos_timeval_diff(struct timeval *to,
 		- (from->tv_sec * USEC_PER_SEC + from->tv_usec);
 }
 
-static unsigned long mfc_qos_get_framerate_by_interval(int interval)
+static int mfc_qos_get_framerate_by_interval(int interval)
 {
 	unsigned long i;
 
@@ -596,7 +537,7 @@ static int mfc_qos_get_interval(struct list_head *head, struct list_head *entry)
 }
 
 static int mfc_qos_dec_add_timestamp(struct s5p_mfc_ctx *ctx,
-			struct timeval *time, struct list_head *head)
+			struct vb2_v4l2_buffer *buf, struct list_head *head)
 {
 	int replace_entry = 0;
 	struct mfc_timestamp *curr_ts = &ctx->ts_array[ctx->ts_count];
@@ -609,7 +550,7 @@ static int mfc_qos_dec_add_timestamp(struct s5p_mfc_ctx *ctx,
 			list_del(&curr_ts->list);
 	}
 
-	memcpy(&curr_ts->timestamp, time, sizeof(struct timeval));
+	memcpy(&curr_ts->timestamp, &buf->timestamp, sizeof(struct timeval));
 	if (!replace_entry)
 		list_add(&curr_ts->list, head);
 	curr_ts->interval =
@@ -625,43 +566,45 @@ static int mfc_qos_dec_add_timestamp(struct s5p_mfc_ctx *ctx,
 	return 0;
 }
 
-static unsigned long mfc_qos_get_fps_by_timestamp(struct s5p_mfc_ctx *ctx, struct timeval *time)
+extern int debug_ts;
+
+int mfc_qos_get_fps_by_timestamp(struct s5p_mfc_ctx *ctx, struct vb2_v4l2_buffer *buf)
 {
 	struct mfc_timestamp *temp_ts;
 	int found;
 	int index = 0;
 	int min_interval = MFC_MAX_INTERVAL;
+	int max_framerate;
 	int time_diff;
-	unsigned long max_framerate;
 
 	if (debug_ts == 1) {
 		/* Debug info */
 		mfc_info_ctx("======================================\n");
 		mfc_info_ctx("New timestamp = %ld.%06ld, count = %d \n",
-			time->tv_sec, time->tv_usec, ctx->ts_count);
+			buf->timestamp.tv_sec, buf->timestamp.tv_usec, ctx->ts_count);
 	}
 
 	if (list_empty(&ctx->ts_list)) {
-		mfc_qos_dec_add_timestamp(ctx, time, &ctx->ts_list);
+		mfc_qos_dec_add_timestamp(ctx, buf, &ctx->ts_list);
 		return mfc_qos_get_framerate_by_interval(0);
 	} else {
 		found = 0;
 		list_for_each_entry_reverse(temp_ts, &ctx->ts_list, list) {
-			time_diff = timeval_compare(time, &temp_ts->timestamp);
+			time_diff = timeval_compare(&buf->timestamp, &temp_ts->timestamp);
 			if (time_diff == 0) {
 				/* Do not add if same timestamp already exists */
 				found = 1;
 				break;
 			} else if (time_diff > 0) {
 				/* Add this after temp_ts */
-				mfc_qos_dec_add_timestamp(ctx, time, &temp_ts->list);
+				mfc_qos_dec_add_timestamp(ctx, buf, &temp_ts->list);
 				found = 1;
 				break;
 			}
 		}
 
 		if (!found)	/* Add this at first entry */
-			mfc_qos_dec_add_timestamp(ctx, time, &ctx->ts_list);
+			mfc_qos_dec_add_timestamp(ctx, buf, &ctx->ts_list);
 	}
 
 	list_for_each_entry(temp_ts, &ctx->ts_list, list) {
@@ -681,16 +624,16 @@ static unsigned long mfc_qos_get_fps_by_timestamp(struct s5p_mfc_ctx *ctx, struc
 					temp_ts->timestamp.tv_usec);
 			index++;
 		}
-		mfc_info_ctx("Min interval = %d, It is %ld fps\n",
+		mfc_info_ctx("Min interval = %d, It is %d fps\n",
 				min_interval, max_framerate);
 	} else if (debug_ts == 2) {
-		mfc_info_ctx("Min interval = %d, It is %ld fps\n",
+		mfc_info_ctx("Min interval = %d, It is %d fps\n",
 				min_interval, max_framerate);
 	}
 
 	if (!ctx->ts_is_full) {
 		if (debug_ts == 1)
-			mfc_info_ctx("ts doesn't full, keep %ld fps\n", ctx->framerate);
+			mfc_info_ctx("ts doesn't full, keep %d fps\n", ctx->framerate);
 		return ctx->framerate;
 	}
 
@@ -700,22 +643,15 @@ static unsigned long mfc_qos_get_fps_by_timestamp(struct s5p_mfc_ctx *ctx, struc
 void s5p_mfc_qos_update_framerate(struct s5p_mfc_ctx *ctx)
 {
 	if (ctx->last_framerate != 0 && ctx->last_framerate != ctx->framerate) {
-		mfc_debug(2, "fps changed: %ld -> %ld\n",
+		mfc_debug(2, "fps changed: %d -> %d\n",
 				ctx->framerate, ctx->last_framerate);
 		ctx->framerate = ctx->last_framerate;
 		s5p_mfc_qos_on(ctx);
 	}
 }
 
-void s5p_mfc_qos_update_last_framerate(struct s5p_mfc_ctx *ctx, u64 timestamp)
+void s5p_mfc_qos_update_last_framerate(struct s5p_mfc_ctx *ctx, struct vb2_v4l2_buffer *buf)
 {
-	struct timeval time;
-
-	time.tv_sec = timestamp / NSEC_PER_SEC;
-	time.tv_usec = (timestamp - (time.tv_sec * NSEC_PER_SEC)) / NSEC_PER_USEC;
-
-	ctx->last_framerate = mfc_qos_get_fps_by_timestamp(ctx, &time);
-	if (ctx->last_framerate > MFC_MAX_FPS)
-		ctx->last_framerate = MFC_MAX_FPS;
+	ctx->last_framerate = mfc_qos_get_fps_by_timestamp(ctx, buf);
 	ctx->last_framerate = (ctx->qos_ratio * ctx->last_framerate) / 100;
 }

@@ -155,10 +155,7 @@ struct regulator_ops {
 	int (*set_current_limit) (struct regulator_dev *,
 				 int min_uA, int max_uA);
 	int (*get_current_limit) (struct regulator_dev *);
-#ifdef CONFIG_SEC_PM
-	int (*set_short_detection)(struct regulator_dev *,
-				   bool enable, int lv_uA);
-#endif
+
 	int (*set_input_current_limit) (struct regulator_dev *, int lim_uA);
 	int (*set_over_current_protection) (struct regulator_dev *);
 	int (*set_active_discharge) (struct regulator_dev *, bool enable);
@@ -172,8 +169,9 @@ struct regulator_ops {
 	int (*set_mode) (struct regulator_dev *, unsigned int mode);
 	unsigned int (*get_mode) (struct regulator_dev *);
 
-	/* Time taken to enable or set voltage on the regulator */
+	/* Time taken to set voltage on the regulator */
 	int (*enable_time) (struct regulator_dev *);
+	int (*disable_time) (struct regulator_dev *);
 	int (*set_ramp_delay) (struct regulator_dev *, int ramp_delay);
 	int (*set_voltage_time) (struct regulator_dev *, int old_uV,
 				 int new_uV);
@@ -350,6 +348,7 @@ struct regulator_desc {
 	unsigned int off_on_delay;
 
 	unsigned int (*of_map_mode)(unsigned int mode);
+	unsigned int disable_time;
 };
 
 /**
@@ -397,6 +396,7 @@ struct regulator_config {
  * no other direct access).
  */
 struct regulator_dev {
+	bool is_switch;
 	const struct regulator_desc *desc;
 	int exclusive;
 	u32 use_count;
@@ -427,8 +427,6 @@ struct regulator_dev {
 
 	struct regulator_enable_gpio *ena_pin;
 	unsigned int ena_gpio_state:1;
-
-	unsigned int is_switch:1;
 
 	/* time when this regulator was disabled last time */
 	unsigned long last_off_jiffy;

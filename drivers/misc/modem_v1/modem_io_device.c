@@ -25,13 +25,9 @@
 #include <linux/module.h>
 #include <soc/samsung/pmu-cp.h>
 #include <trace/events/napi.h>
-#include <net/ip.h>
-#include <linux/ip.h>
-#include <linux/tcp.h>
 
 #include "modem_prj.h"
 #include "modem_utils.h"
-#include "modem_klat.h"
 
 static u8 sipc5_build_config(struct io_device *iod, struct link_device *ld,
 			     unsigned int count);
@@ -297,26 +293,6 @@ static int rx_raw_misc(struct sk_buff *skb)
 	return queue_skb_to_iod(skb, iod);
 }
 
-#ifdef CONFIG_MODEM_IF_NET_GRO
-static int check_gro_support(struct sk_buff *skb)
-{
-	switch (skb->data[0] & 0xF0) {
-		case 0x40:
-			return (ip_hdr(skb)->protocol == IPPROTO_TCP);
-
-		case 0x60:
-			return (ipv6_hdr(skb)->nexthdr == IPPROTO_TCP);
-	}
-
-	return 0;
-}
-#else
-static int check_gro_support(struct sk_buff *skb)
-{
-	return 0;
-}
-#endif
-
 static int rx_multi_pdp(struct sk_buff *skb)
 {
 	struct link_device *ld = skbpriv(skb)->ld;
@@ -368,37 +344,20 @@ static int rx_multi_pdp(struct sk_buff *skb)
 	mif_pkt(iod->id, "IOD-RX", skb);
 #endif
 
-	skb_reset_transport_header(skb);
-	skb_reset_network_header(skb);
-	skb_reset_mac_header(skb);
-
-	/* klat */
-	klat_rx(skb, skbpriv(skb)->sipc_ch - SIPC_CH_ID_PDP_0);
-
-	if (check_gro_support(skb)) {
-		ret = napi_gro_receive(napi_get_current(), skb);
-		if (ret == GRO_DROP) {
-			mif_err_limited("%s: %s<-%s: ERR! napi_gro_receive\n",
-					ld->name, iod->name, iod->mc->name);
-		}
-
-		if (ld->gro_flush)
-			ld->gro_flush(ld);
-	} else {
 #ifdef CONFIG_LINK_DEVICE_NAPI
-		ret = netif_receive_skb(skb);
+	ret = netif_receive_skb(skb);
 #else /* !CONFIG_LINK_DEVICE_NAPI */
-		if (in_interrupt())
-			ret = netif_rx(skb);
-		else
-			ret = netif_rx_ni(skb);
+	if (in_interrupt())
+		ret = netif_rx(skb);
+	else
+		ret = netif_rx_ni(skb);
 #endif /* CONFIG_LINK_DEVICE_NAPI */
 
-		if (ret != NET_RX_SUCCESS) {
-			mif_err_limited("%s: %s<-%s: ERR! netif_rx\n",
-					ld->name, iod->name, iod->mc->name);
-		}
+	if (ret != NET_RX_SUCCESS) {
+		mif_err_limited("%s: %s<-%s: ERR! netif_rx fail\n",
+				ld->name, iod->name, iod->mc->name);
 	}
+
 	return len;
 }
 
@@ -765,7 +724,7 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	case IOCTL_MODEM_FORCE_CRASH_EXIT:
 		if (mc->ops.modem_force_crash_exit) {
 			if (arg)
-				ld->crash_type = arg;
+ 				ld->crash_type = arg;
 			mif_err("%s: IOCTL_MODEM_FORCE_CRASH_EXIT (%d)\n",
 				iod->name, ld->crash_type);
 			return mc->ops.modem_force_crash_exit(mc);
@@ -819,7 +778,7 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			if (copy_from_user(buff, user_buff, CP_CRASH_INFO_SIZE))
 				return -EFAULT;
 		}
-		panic("%s", iod->msd->cp_crash_info);
+		panic(iod->msd->cp_crash_info);
 		return 0;
 	}
 
@@ -971,8 +930,7 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 	if (iod->format <= IPC_RFS && iod->id == 0)
 		return -EINVAL;
 
-	if (unlikely(!cp_online(mc)) &&
-			(sipc5_ipc_ch(iod->id) || sipc5_dm_ch(iod->id))) {
+	if (unlikely(!cp_online(mc)) && sipc5_ipc_ch(iod->id)) {
 		mif_debug("%s: ERR! %s->state == %s\n",
 			iod->name, mc->name, mc_state(mc));
 		return -EPERM;
@@ -1376,9 +1334,6 @@ static void vnet_setup(struct net_device *ndev)
 	ndev->tx_queue_len = 1000;
 	ndev->mtu = ETH_DATA_LEN;
 	ndev->watchdog_timeo = 5 * HZ;
-#ifdef CONFIG_MODEM_IF_NET_GRO
-	ndev->features |= NETIF_F_GRO;
-#endif
 }
 
 static void vnet_setup_ether(struct net_device *ndev)
@@ -1392,9 +1347,6 @@ static void vnet_setup_ether(struct net_device *ndev)
 	ndev->tx_queue_len = 1000;
 	ndev->mtu = ETH_DATA_LEN;
 	ndev->watchdog_timeo = 5 * HZ;
-#ifdef CONFIG_MODEM_IF_NET_GRO
-	ndev->features |= NETIF_F_GRO;
-#endif
 }
 
 static inline void sipc5_inc_info_id(struct io_device *iod)
@@ -1519,14 +1471,11 @@ int sipc5_init_io_device(struct io_device *iod)
 		INIT_LIST_HEAD(&iod->node_ndev);
 
 		if (iod->use_handover)
-			iod->ndev = alloc_netdev_mqs(sizeof(struct vnet),
-					iod->name, NET_NAME_UNKNOWN,
-					vnet_setup_ether, MAX_NDEV_TX_Q,
-					MAX_NDEV_RX_Q);
+			iod->ndev = alloc_netdev_mqs(0, iod->name, NET_NAME_UNKNOWN,
+				vnet_setup_ether, MAX_NDEV_TX_Q, MAX_NDEV_RX_Q);
 		else
-			iod->ndev = alloc_netdev_mqs(sizeof(struct vnet),
-					iod->name, NET_NAME_UNKNOWN, vnet_setup,
-					MAX_NDEV_TX_Q, MAX_NDEV_RX_Q);
+			iod->ndev = alloc_netdev_mqs(0, iod->name, NET_NAME_UNKNOWN,
+				vnet_setup, MAX_NDEV_TX_Q, MAX_NDEV_RX_Q);
 
 		if (!iod->ndev) {
 			mif_info("%s: ERR! alloc_netdev fail\n", iod->name);
@@ -1589,9 +1538,9 @@ int sipc5_init_io_device(struct io_device *iod)
 void sipc5_deinit_io_device(struct io_device *iod)
 {
 	mif_err("%s: io_typ=%d\n", iod->name, iod->io_typ);
-
+	
 	wake_lock_destroy(&iod->wakelock);
-
+	
 	/* De-register misc or net device */
 	switch (iod->io_typ) {
 	case IODEV_MISC:
@@ -1602,7 +1551,7 @@ void sipc5_deinit_io_device(struct io_device *iod)
 
 		misc_deregister(&iod->miscdev);
 		break;
-
+		
 	case IODEV_NET:
 		unregister_netdev(iod->ndev);
 		free_netdev(iod->ndev);
@@ -1612,7 +1561,7 @@ void sipc5_deinit_io_device(struct io_device *iod)
 		device_remove_file(iod->miscdev.this_device, &attr_waketime);
 		device_remove_file(iod->miscdev.this_device, &attr_loopback);
 		device_remove_file(iod->miscdev.this_device, &attr_txlink);
-
+		
 		misc_deregister(&iod->miscdev);
 		break;
 	}

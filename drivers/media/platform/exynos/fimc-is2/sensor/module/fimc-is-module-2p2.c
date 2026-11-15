@@ -55,10 +55,17 @@ static struct fimc_is_sensor_cfg config_2p2[] = {
 	FIMC_IS_SENSOR_CFG(3008, 3000, 24, 15, 5, CSI_DATA_LANES_4),
 	/* 2664X1500@60fps */
 	FIMC_IS_SENSOR_CFG(2664, 1500, 60, 15, 6, CSI_DATA_LANES_4),
+#if defined(CONFIG_SOC_EXYNOS8890)
+	/* 1328X748@120fps */
+	FIMC_IS_SENSOR_CFG(1328, 748, 120, 13, 7, CSI_DATA_LANES_4),
+#else
 	/* 1328X748@120fps */
 	FIMC_IS_SENSOR_CFG(1328, 748, 120, 15, 7, CSI_DATA_LANES_4),
+#endif
 	/* 824X496@300fps */
-	FIMC_IS_SENSOR_CFG(824, 496, 300, 13, 8, CSI_DATA_LANES_4),
+	//FIMC_IS_SENSOR_CFG(824, 496, 300, 13, 8, CSI_DATA_LANES_4),
+	/* 5328x3000@30fps */
+	//FIMC_IS_SENSOR_CFG(5328, 3000, 30, 28, 9, CSI_DATA_LANES_4),
 	/* 2664X1500@30fps */
 	FIMC_IS_SENSOR_CFG(2664, 1500, 30, 15, 10, CSI_DATA_LANES_4),
 	/* 824X496@240 */
@@ -83,7 +90,7 @@ static int sensor_2p2_init(struct v4l2_subdev *subdev, u32 val)
 	int ret = 0;
 	struct fimc_is_module_enum *module;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 
@@ -112,7 +119,7 @@ static int sensor_2p2_power_setpin(struct platform_device *pdev,
 	int gpio_mclk = 0;
 	int gpio_none = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -334,7 +341,7 @@ static int sensor_2p2_power_setpin(struct platform_device *pdev,
 	int gpio_reset = 0;
 	int gpio_none;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -407,7 +414,7 @@ int sensor_2p2_probe(struct platform_device *pdev)
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -432,8 +439,8 @@ int sensor_2p2_probe(struct platform_device *pdev)
 		goto p_err;
 	}
 
-	module = &device->module_enum[atomic_read(&device->module_count)];
-	atomic_inc(&device->module_count);
+	module = &device->module_enum[atomic_read(&core->resourcemgr.rsccount_module)];
+	atomic_inc(&core->resourcemgr.rsccount_module);
 	clear_bit(FIMC_IS_MODULE_GPIO_ON, &module->state);
 	module->pdata = pdata;
 	module->dev = dev;

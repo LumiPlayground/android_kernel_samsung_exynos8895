@@ -26,6 +26,11 @@ static struct exynos_ufs_sfr_log ufs_log_sfr[] = {
 	{"INTERRUPT ENABLE"		,	REG_INTERRUPT_ENABLE,		0},
 	{"CONTROLLER STATUS"		,	REG_CONTROLLER_STATUS,		0},
 	{"CONTROLLER ENABLE"		,	REG_CONTROLLER_ENABLE,		0},
+	{"UIC ERR PHY ADAPTER LAYER"	,	REG_UIC_ERROR_CODE_PHY_ADAPTER_LAYER,		0},
+	{"UIC ERR DATA LINK LAYER"	,	REG_UIC_ERROR_CODE_DATA_LINK_LAYER,		0},
+	{"UIC ERR NETWORK LATER"	,	REG_UIC_ERROR_CODE_NETWORK_LAYER,		0},
+	{"UIC ERR TRANSPORT LAYER"	,	REG_UIC_ERROR_CODE_TRANSPORT_LAYER,		0},
+	{"UIC ERR DME"			,	REG_UIC_ERROR_CODE_DME,		0},
 	{"UTP TRANSF REQ INT AGG CNTRL"	,	REG_UTP_TRANSFER_REQ_INT_AGG_CONTROL,		0},
 	{"UTP TRANSF REQ LIST BASE L"	,	REG_UTP_TRANSFER_REQ_LIST_BASE_L,		0},
 	{"UTP TRANSF REQ LIST BASE H"	,	REG_UTP_TRANSFER_REQ_LIST_BASE_H,		0},
@@ -308,8 +313,6 @@ static struct exynos_ufs_sfr_log ufs_show_sfr[] = {
 
 	{"VENDOR SPECIFIC IS"		,	HCI_VENDOR_SPECIFIC_IS,		0},
 	{"RX UPIU MATCH ERROR CODE"	,	HCI_RX_UPIU_MATCH_ERROR_CODE,		0},
-	{"CLKSTOP CTRL",			HCI_CLKSTOP_CTRL,		0},
-	{"FORCE HCS",				HCI_FORCE_HCS,		0},
 	{"DMA0 MONITOR STATE"		,	HCI_DMA0_MONITOR_STATE,		0},
 	{"DMA1 MONITOR STATE"		,	HCI_DMA1_MONITOR_STATE,		0},
 	{"SMU ABORT MATCH INFO"		,	HCI_SMU_ABORT_MATCH_INFO,	0},
@@ -406,6 +409,11 @@ static struct exynos_ufs_sfr_log ufs_log_sfr[] = {
 	{"INTERRUPT ENABLE"		,	REG_INTERRUPT_ENABLE,		0},
 	{"CONTROLLER STATUS"		,	REG_CONTROLLER_STATUS,		0},
 	{"CONTROLLER ENABLE"		,	REG_CONTROLLER_ENABLE,		0},
+	{"UIC ERR PHY ADAPTER LAYER"	,	REG_UIC_ERROR_CODE_PHY_ADAPTER_LAYER,		0},
+	{"UIC ERR DATA LINK LAYER"	,	REG_UIC_ERROR_CODE_DATA_LINK_LAYER,		0},
+	{"UIC ERR NETWORK LATER"	,	REG_UIC_ERROR_CODE_NETWORK_LAYER,		0},
+	{"UIC ERR TRANSPORT LAYER"	,	REG_UIC_ERROR_CODE_TRANSPORT_LAYER,		0},
+	{"UIC ERR DME"			,	REG_UIC_ERROR_CODE_DME,		0},
 	{"UTP TRANSF REQ INT AGG CNTRL"	,	REG_UTP_TRANSFER_REQ_INT_AGG_CONTROL,		0},
 	{"UTP TRANSF REQ LIST BASE L"	,	REG_UTP_TRANSFER_REQ_LIST_BASE_L,		0},
 	{"UTP TRANSF REQ LIST BASE H"	,	REG_UTP_TRANSFER_REQ_LIST_BASE_H,		0},
@@ -944,7 +952,7 @@ static void exynos_ufs_get_sfr(struct ufs_hba *hba,
 			else if (sel_api == LOG_VS_HCI_SFR)
 				cfg->val = hci_readl(ufs, cfg->offset);
 			else if (sel_api == LOG_FMP_SFR)
-				cfg->val = exynos_smc(SMC_CMD_FMP_SMU_DUMP, 0, 0, cfg->offset);
+				cfg->val = exynos_smc(SMC_CMD_FMP_DUMP, 0, 0, cfg->offset);
 			else if (sel_api == LOG_UNIPRO_SFR)
 				cfg->val = unipro_readl(ufs, cfg->offset);
 			else if (sel_api == LOG_PMA_SFR)
@@ -1017,7 +1025,7 @@ static void exynos_ufs_dump_misc(struct ufs_hba *hba)
 
 	list_for_each_entry(clki, head, list) {
 		if (!IS_ERR_OR_NULL(clki->clk)) {
-			dev_err(hba->dev, "%s: %lu\n",
+			dev_err(hba->dev, "%s: %d\n",
 					clki->name, clki->freq);
 		}
 	}
@@ -1077,8 +1085,8 @@ void exynos_ufs_get_uic_info(struct ufs_hba *hba)
 	if (!(ufs->misc_flags & EXYNOS_UFS_MISC_TOGGLE_LOG))
 		return;
 
-	exynos_ufs_get_attr(hba, ufs->debug.attr);
 	exynos_ufs_get_sfr(hba, ufs->debug.sfr);
+	exynos_ufs_get_attr(hba, ufs->debug.attr);
 	exynos_ufs_get_misc(hba);
 
 	ufs->misc_flags &= ~(EXYNOS_UFS_MISC_TOGGLE_LOG);
@@ -1087,9 +1095,6 @@ void exynos_ufs_get_uic_info(struct ufs_hba *hba)
 void exynos_ufs_dump_uic_info(struct ufs_hba *hba)
 {
 	struct exynos_ufs *ufs = to_exynos_ufs(hba);
-
-	/* secure log */
-	exynos_smc(SMC_CMD_UFS_LOG, 1, 0, hba->secure_log.paddr);
 
 	exynos_ufs_get_sfr(hba, ufs->debug.sfr);
 	exynos_ufs_get_attr(hba, ufs->debug.attr);
@@ -1108,7 +1113,6 @@ void exynos_ufs_show_uic_info(struct ufs_hba *hba)
 	exynos_ufs_dump_sfr(hba, ufs_show_sfr);
 	exynos_ufs_dump_attr(hba, ufs_show_attr);
 }
-
 
 int exynos_ufs_init_dbg(struct ufs_hba *hba)
 {
@@ -1157,8 +1161,6 @@ static void exynos_ufs_putItem_start(struct ufs_cmd_info *cmdQueue, struct ufs_c
 	cmdQueue->last = (cmdQueue->last + 1) % MAX_CMD_LOGS;
 }
 
-
-
 void exynos_ufs_cmd_log_start(struct ufs_hba *hba, struct scsi_cmnd *cmd)
 {
 	int cpu = raw_smp_processor_id();
@@ -1183,7 +1185,6 @@ void exynos_ufs_cmd_log_start(struct ufs_hba *hba, struct scsi_cmnd *cmd)
 
 	exynos_ufs_putItem_start(&ufs_cmd_queue, &ufs_cmd_log);
 }
-
 
 void exynos_ufs_cmd_log_end(struct ufs_hba *hba, int tag)
 {

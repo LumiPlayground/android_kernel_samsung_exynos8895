@@ -828,7 +828,6 @@ int fts_fw_update_on_probe(struct fts_ts_info *info)
 				}
 */
 	/* for Valley Devices */
-/*
 	if((strncmp(info->board->project_name, "valley", 6) == 0)){
 		if (info->board->firmware_name){
 			tsp_debug_err(true, info->dev,"%s: V model, firmware name in dts\n", __func__);
@@ -837,29 +836,14 @@ int fts_fw_update_on_probe(struct fts_ts_info *info)
 			tsp_debug_err(true, info->dev,"%s: V model, firmware name is not in dts & skip!\n", __func__);
 			goto exit_fwload;
 		}
-	} else*/ if (strncmp(info->board->project_name, "PS-LTE", 6) == 0) {
+	} else if (strncmp(info->board->project_name, "PS-LTE", 6) == 0) {
 		tsp_debug_err(true, info->dev,"%s:FTS7: PS-LTE\n", __func__);
 		info->firmware_name = info->board->firmware_name;
-	} /*else if((lcdtype & LCD_ID2_MODEL_MASK) == MODEL_HEROPLUS){
-		tsp_debug_err(true, info->dev,"%s:FTS7AD56 - HEROPLUS\n", __func__);
-		tspid2 = gpio_get_value(info->board->tspid2);
-		if (tspid2)
-			info->firmware_name = FW_IMAGE_NAME_HERO2ALPS;
-		else
-			info->firmware_name = FW_IMAGE_NAME_HERO2ALPS;
-
-		if (info->board->firmware_name){
-			tsp_debug_err(true, info->dev,"%s:firmware name exgist in dts\n", __func__);
-			info->firmware_name = info->board->firmware_name;
-		}
-	} else if((lcdtype & LCD_ID2_MODEL_MASK) == MODEL_HEROEDGE){
-		tsp_debug_err(true, info->dev,"%s:FTS7AD56 - HEROEDGE\n", __func__);
-		info->firmware_name = FW_IMAGE_NAME_HEROEDGE;
 	} else {
 		tsp_debug_err(true, info->dev,"%s:FTS4 - ZERO\n", __func__);
 		goto exit_fwload;
 		info->firmware_name = FW_IMAGE_NAME_D2_Z2A;
-	}*/
+	}
 	snprintf(fw_path, FTS_MAX_FW_PATH, "%s", info->firmware_name);
 	tsp_debug_info(true, info->dev, "%s: Load firmware : %s, Digital_rev : %d, TSP_ID2 : %d\n", __func__,
 		  fw_path, info->digital_rev, tspid2);
@@ -936,7 +920,7 @@ int fts_fw_update_on_probe(struct fts_ts_info *info)
 done:
 	if (fw_entry)
 		release_firmware(fw_entry);
-//exit_fwload:
+exit_fwload:
 	return retval;
 }
 EXPORT_SYMBOL(fts_fw_update_on_probe);

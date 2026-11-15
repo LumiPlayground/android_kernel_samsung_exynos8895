@@ -313,42 +313,36 @@ static int m88e1111_config_aneg(struct phy_device *phydev)
 {
 	int err;
 
-	/* The Marvell PHY has an errata which requires
+	/* This Marvell PHY has an errata which requires
 	 * that certain registers get written in order
 	 * to restart autonegotiation
 	 */
 	err = phy_write(phydev, MII_BMCR, BMCR_RESET);
 
-	err = marvell_set_polarity(phydev, phydev->mdix);
 	if (err < 0)
 		return err;
 
-	err = phy_write(phydev, MII_M1111_PHY_LED_CONTROL,
-			MII_M1111_PHY_LED_DIRECT);
+	err = phy_write(phydev, 0x1d, 0x1f);
 	if (err < 0)
 		return err;
 
-	err = genphy_config_aneg(phydev);
+	err = phy_write(phydev, 0x1e, 0x200c);
 	if (err < 0)
 		return err;
 
-	if (phydev->autoneg != AUTONEG_ENABLE) {
-		int bmcr;
+	err = phy_write(phydev, 0x1d, 0x5);
+	if (err < 0)
+		return err;
 
-		/* A write to speed/duplex bits (that is performed by
-		 * genphy_config_aneg() call above) must be followed by
-		 * a software reset. Otherwise, the write has no effect.
-		 */
-		bmcr = phy_read(phydev, MII_BMCR);
-		if (bmcr < 0)
-			return bmcr;
+	err = phy_write(phydev, 0x1e, 0);
+	if (err < 0)
+		return err;
 
-		err = phy_write(phydev, MII_BMCR, bmcr | BMCR_RESET);
-		if (err < 0)
-			return err;
-	}
+	err = phy_write(phydev, 0x1e, 0x100);
+	if (err < 0)
+		return err;
 
-	return 0;
+	return marvell_config_aneg(phydev);
 }
 
 #ifdef CONFIG_OF_MDIO

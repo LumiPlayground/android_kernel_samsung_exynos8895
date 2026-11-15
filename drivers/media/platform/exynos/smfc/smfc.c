@@ -94,7 +94,7 @@ static irqreturn_t exynos_smfc_irq_handler(int irq, void *priv)
 							thumb_streamsize);
 			}
 
-			vb->reserved2 =
+			vb->timestamp.tv_usec =
 				(__u32)ktime_us_delta(ktime, ctx->ktime_beg);
 			v4l2_m2m_buf_done(vb, state);
 
@@ -182,8 +182,9 @@ static void smfc_timedout_handler(unsigned long arg)
 
 
 static int smfc_vb2_queue_setup(struct vb2_queue *vq,
-		unsigned int *num_buffers, unsigned int *num_planes,
-		unsigned int sizes[], struct device *alloc_devs[])
+		const void *parg, unsigned int *num_buffers,
+		unsigned int *num_planes, unsigned int sizes[],
+		void *alloc_ctxs[])
 {
 	struct smfc_ctx *ctx = vb2_get_drv_priv(vq);
 
@@ -202,10 +203,10 @@ static int smfc_vb2_queue_setup(struct vb2_queue *vq,
 		 */
 		sizes[0] = PAGE_SIZE;
 		*num_planes = 1;
-		alloc_devs[0] = ctx->smfc->dev;
+		alloc_ctxs[0] = ctx->smfc->vb2_alloc_ctx;
 		if (!!(ctx->flags & SMFC_CTX_B2B_COMPRESS)) {
 			sizes[1] = PAGE_SIZE;
-			alloc_devs[1] = ctx->smfc->dev;
+			alloc_ctxs[1] = ctx->smfc->vb2_alloc_ctx;
 			(*num_planes)++;
 		}
 	} else {
@@ -214,7 +215,7 @@ static int smfc_vb2_queue_setup(struct vb2_queue *vq,
 		for (i = 0; i < *num_planes; i++) {
 			sizes[i] = ctx->width * ctx->height;
 			sizes[i] = (sizes[i] * ctx->img_fmt->bpp_buf[i]) / 8;
-			alloc_devs[i] = ctx->smfc->dev;
+			alloc_ctxs[i] = ctx->smfc->vb2_alloc_ctx;
 		}
 
 		if (!!(ctx->flags & SMFC_CTX_B2B_COMPRESS)) {
@@ -225,7 +226,7 @@ static int smfc_vb2_queue_setup(struct vb2_queue *vq,
 				sizes[idx] *= ctx->thumb_height;
 				sizes[idx] *= ctx->img_fmt->bpp_buf[i];
 				sizes[idx] /= 8;
-				alloc_devs[idx] = ctx->smfc->dev;
+				alloc_ctxs[idx] = ctx->smfc->vb2_alloc_ctx;
 			}
 
 			*num_planes *= 2;
@@ -730,13 +731,6 @@ err_videodev_alloc:
 	return ret;
 }
 
-static void smfc_deinit_v4l2(struct device *dev, struct smfc_dev *smfc)
-{
-	v4l2_m2m_release(smfc->m2mdev);
-	video_device_release(smfc->videodev);
-	v4l2_device_unregister(&smfc->v4l2_dev);
-}
-
 static int smfc_init_clock(struct device *dev, struct smfc_dev *smfc)
 {
 	smfc->clk_gate = devm_clk_get(dev, "gate");
@@ -926,23 +920,30 @@ static int exynos_smfc_probe(struct platform_device *pdev)
 		}
 	}
 
-	platform_set_drvdata(pdev, smfc);
+	ret = smfc_find_hw_version(&pdev->dev, smfc);
+	if (ret < 0)
+		return ret;
 
 	ret = smfc_init_v4l2(&pdev->dev, smfc);
 	if (ret < 0)
-		goto err_v4l2;
+		return ret;
 
 	iovmm_set_fault_handler(&pdev->dev, smfc_iommu_fault_handler, smfc);
 
 	ret = iovmm_activate(&pdev->dev);
 	if (ret < 0)
-		goto err_iommu;
+		return ret;
+
+	smfc->vb2_alloc_ctx = vb2_ion_create_context(&pdev->dev, SZ_4K,
+					VB2ION_CTX_VMCONTIG | VB2ION_CTX_IOMMU);
+	if (!smfc->vb2_alloc_ctx) {
+		dev_err(&pdev->dev, "Failed to allocate vb2-ion context");
+		return -ENOMEM;
+	}
 
 	setup_timer(&smfc->timer, smfc_timedout_handler, (unsigned long)smfc);
 
-	ret = smfc_find_hw_version(&pdev->dev, smfc);
-	if (ret < 0)
-		goto err_hwver;
+	platform_set_drvdata(pdev, smfc);
 
 	spin_lock_init(&smfc->flag_lock);
 
@@ -950,16 +951,6 @@ static int exynos_smfc_probe(struct platform_device *pdev)
 			(smfc->hwver >> 24) & 0xFF, (smfc->hwver >> 16) & 0xFF,
 			smfc->hwver & 0xFFFF);
 	return 0;
-
-err_hwver:
-	iovmm_deactivate(&pdev->dev);
-err_iommu:
-	smfc_deinit_v4l2(&pdev->dev, smfc);
-err_v4l2:
-	if (smfc->qosreq_int_level > 0)
-		pm_qos_remove_request(&smfc->qosreq_int);
-
-	return ret;
 }
 
 static void smfc_deinit_clock(struct smfc_dev *smfc)
@@ -975,6 +966,7 @@ static int exynos_smfc_remove(struct platform_device *pdev)
 	struct smfc_dev *smfc = platform_get_drvdata(pdev);
 
 	pm_qos_remove_request(&smfc->qosreq_int);
+	vb2_ion_destroy_context(smfc->vb2_alloc_ctx);
 	smfc_deinit_clock(smfc);
 
 	return 0;
@@ -1022,21 +1014,11 @@ static int smfc_resume(struct device *dev)
 #ifdef CONFIG_PM
 static int smfc_runtime_resume(struct device *dev)
 {
-	struct smfc_dev *smfc = dev_get_drvdata(dev);
-
-	if (smfc->qosreq_int_level > 0)
-		pm_qos_update_request(&smfc->qosreq_int, smfc->qosreq_int_level);
-
 	return 0;
 }
 
 static int smfc_runtime_suspend(struct device *dev)
 {
-	struct smfc_dev *smfc = dev_get_drvdata(dev);
-
-	if (smfc->qosreq_int_level > 0)
-		pm_qos_update_request(&smfc->qosreq_int, 0);
-
 	return 0;
 }
 #endif

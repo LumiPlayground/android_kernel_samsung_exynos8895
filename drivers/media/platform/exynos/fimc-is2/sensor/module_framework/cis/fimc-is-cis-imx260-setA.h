@@ -1027,7 +1027,7 @@ static const u32 sensor_imx260_setfile_A_sizes_retention[] = {
 	sizeof(sensor_imx260_setfile_A_8064x3024_30fps_retention) / sizeof(sensor_imx260_setfile_A_8064x3024_30fps_retention[0]),
 	sizeof(sensor_imx260_setfile_A_8064x2268_30fps_retention) / sizeof(sensor_imx260_setfile_A_8064x2268_30fps_retention[0]),
 	sizeof(sensor_imx260_setfile_A_1008x756_120fps_retention) / sizeof(sensor_imx260_setfile_A_1008x756_120fps_retention[0]),
-	sizeof(sensor_imx260_setfile_A_4032x2268_60fps_retention) / sizeof(sensor_imx260_setfile_A_4032x2268_60fps_retention[0]),
+	sizeof(sensor_imx260_setfile_A_4032x2268_60fps_retention) / sizeof(sensor_imx260_setfile_A_4032x2268_60fps_retention[0]),		
 };
 #endif
 

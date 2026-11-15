@@ -34,23 +34,6 @@ enum type_of_ddi {
 	TYPE_OF_NORMAL_DDI,
 };
 
-#define MAX_RES_NUMBER		5
-
-struct lcd_res_info {
-	unsigned int width;
-	unsigned int height;
-	unsigned int dsc_en;
-	unsigned int dsc_width;
-	unsigned int dsc_height;
-};
-
-/* multi-resolution */
-struct lcd_mres_info {
-	unsigned int mres_en;
-	unsigned int mres_number;
-	struct lcd_res_info res_info[MAX_RES_NUMBER];
-};
-
 struct stdphy_pms {
 	unsigned int p;
 	unsigned int m;
@@ -89,8 +72,6 @@ struct decon_lcd {
 	unsigned int data_lane;
 	unsigned int cmd_underrun_lp_ref;
 	unsigned int vt_compensation;
-	unsigned int mres_mode;
-	struct lcd_mres_info dt_lcd_mres;
 };
 
 struct decon_dsc {

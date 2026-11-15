@@ -146,8 +146,8 @@ static int sensor_virtual_s_param(struct v4l2_subdev *subdev, struct v4l2_stream
 	struct v4l2_fract *tpf;
 	u64 duration;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!param);
+	BUG_ON(!subdev);
+	BUG_ON(!param);
 
 	pr_info("%s\n", __func__);
 
@@ -346,8 +346,8 @@ int sensor_virtual_probe(struct platform_device *pdev)
 	}
 
 	/*virtual sensor*/
-	module = &device->module_enum[atomic_read(&device->module_count)];
-	atomic_inc(&device->module_count);
+	module = &device->module_enum[atomic_read(&core->resourcemgr.rsccount_module)];
+	atomic_inc(&core->resourcemgr.rsccount_module);
 	module->pdata = pdata;
 	module->dev = dev;
 	module->sensor_id = SENSOR_NAME_VIRTUAL;

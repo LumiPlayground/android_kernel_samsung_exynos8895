@@ -22,9 +22,9 @@
 #include <linux/list.h>
 #include <linux/bug.h>
 #include <linux/slab.h>
+#include <linux/completion.h>
 #include <linux/string.h>
 #include <linux/uaccess.h>
-#include <linux/completion.h>
 
 /*
  * Autoloaded crypto modules should only use a prefixed name to avoid allowing
@@ -51,19 +51,16 @@
 #define CRYPTO_ALG_TYPE_SKCIPHER	0x00000005
 #define CRYPTO_ALG_TYPE_GIVCIPHER	0x00000006
 #define CRYPTO_ALG_TYPE_KPP		0x00000008
-#define CRYPTO_ALG_TYPE_ACOMPRESS	0x0000000a
-#define CRYPTO_ALG_TYPE_SCOMPRESS	0x0000000b
 #define CRYPTO_ALG_TYPE_RNG		0x0000000c
+#define CRYPTO_ALG_TYPE_DIGEST		0x00000008
+#define CRYPTO_ALG_TYPE_HASH		0x00000008
+#define CRYPTO_ALG_TYPE_SHASH		0x00000009
+#define CRYPTO_ALG_TYPE_AHASH		0x0000000a
 #define CRYPTO_ALG_TYPE_AKCIPHER	0x0000000d
-#define CRYPTO_ALG_TYPE_DIGEST		0x0000000e
-#define CRYPTO_ALG_TYPE_HASH		0x0000000e
-#define CRYPTO_ALG_TYPE_SHASH		0x0000000e
-#define CRYPTO_ALG_TYPE_AHASH		0x0000000f
 
 #define CRYPTO_ALG_TYPE_HASH_MASK	0x0000000e
-#define CRYPTO_ALG_TYPE_AHASH_MASK	0x0000000e
+#define CRYPTO_ALG_TYPE_AHASH_MASK	0x0000000c
 #define CRYPTO_ALG_TYPE_BLKCIPHER_MASK	0x0000000c
-#define CRYPTO_ALG_TYPE_ACOMPRESS_MASK	0x0000000e
 
 #define CRYPTO_ALG_LARVAL		0x00000010
 #define CRYPTO_ALG_DEAD			0x00000020

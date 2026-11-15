@@ -54,6 +54,9 @@
 #include "squashfs_fs_i.h"
 #include "squashfs.h"
 
+// Backported from 4.5
+#define lru_to_page(head) (list_entry((head)->prev, struct page, lru))
+
 /*
  * Locate cache slot in range [offset, index] for specified inode.  If
  * there's more than one return the slot closest to index.

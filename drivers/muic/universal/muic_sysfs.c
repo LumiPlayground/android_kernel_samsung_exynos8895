@@ -62,7 +62,7 @@
 static int muic_resolve_attached_dev(muic_data_t *pmuic)
 {
 #if defined(CONFIG_MUIC_SUPPORT_CCIC)
-	if (pmuic->pdata->opmode & OPMODE_CCIC)
+	if (pmuic->opmode & OPMODE_CCIC)
 		return muic_get_current_legacy_dev(pmuic);
 #endif
 	return pmuic->attached_dev;
@@ -322,7 +322,7 @@ static ssize_t muic_show_usb_to_ta(struct device *dev,
 	}
 
 	pr_info("%s:USB TO TA status %s\n", __func__, val?"Enable":"Disable");
-	return sprintf(buf, "USB TO TA status %s\n", val?"Enable":"Disable");
+	return sprintf(buf,"USB TO TA status %s\n", val?"Enable":"Disable");
 }
 
 static ssize_t muic_set_usb_to_ta(struct device *dev,
@@ -566,11 +566,11 @@ static ssize_t muic_store_afc_set_voltage(struct device *dev,
 	muic_data_t *pmuic = dev_get_drvdata(dev);
 
 	if (!strncasecmp(buf, "5V", 2)) {
-		hv_muic_change_afc_voltage(pmuic, MUIC_HV_5V);
+		hv_muic_change_afc_voltage(pmuic, MUIC_HV_5V);			
 	} else if (!strncasecmp(buf, "9V", 2)) {
-		hv_muic_change_afc_voltage(pmuic, MUIC_HV_9V);
+		hv_muic_change_afc_voltage(pmuic, MUIC_HV_9V);			
 	} else if (!strncasecmp(buf, "12V", 3)) {
-		hv_muic_change_afc_voltage(pmuic, MUIC_HV_12V);
+		hv_muic_change_afc_voltage(pmuic, MUIC_HV_12V);			
 	} else {
 		pr_warn("%s:%s invalid value\n", MUIC_DEV_NAME, __func__);
 		return count;

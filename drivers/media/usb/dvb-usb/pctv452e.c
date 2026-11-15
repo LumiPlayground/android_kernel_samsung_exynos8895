@@ -108,10 +108,9 @@ static int tt3650_ci_msg(struct dvb_usb_device *d, u8 cmd, u8 *data,
 	unsigned int rlen;
 	int ret;
 
-	if (!data || (write_len > 64 - 4) || (read_len > 64 - 4)) {
-		err("%s: transfer data invalid", __func__);
-		return -EIO;
-	}
+	BUG_ON(NULL == data && 0 != (write_len | read_len));
+	BUG_ON(write_len > 64 - 4);
+	BUG_ON(read_len > 64 - 4);
 
 	buf = kmalloc(64, GFP_KERNEL);
 	if (!buf)
@@ -458,7 +457,8 @@ static int pctv452e_i2c_msg(struct dvb_usb_device *d, u8 addr,
 	return rcv_len;
 
 failed:
-	err("I2C error %d; %02X %02X  %02X %02X %02X -> %*ph",
+	err("I2C error %d; %02X %02X  %02X %02X %02X -> "
+	     "%02X %02X  %02X %02X %02X.",
 	     ret, SYNC_BYTE_OUT, id, addr << 1, snd_len, rcv_len,
 	     7, buf);
 
@@ -543,14 +543,14 @@ static int pctv452e_power_ctrl(struct dvb_usb_device *d, int i)
 	/* reset board */
 	ret = dvb_usb_generic_rw(d, b0, 5, rx, PCTV_ANSWER_LEN, 0);
 	if (ret)
-		goto ret;
+		return ret;
 
 	b0[1] = state->c++;
 	b0[4] = 1;
 	/* reset board (again?) */
 	ret = dvb_usb_generic_rw(d, b0, 5, rx, PCTV_ANSWER_LEN, 0);
 	if (ret)
-		goto ret;
+		return ret;
 
 	state->initialized = 1;
 
@@ -583,7 +583,7 @@ static int pctv452e_rc_query(struct dvb_usb_device *d)
 	/* send ir request */
 	ret = dvb_usb_generic_rw(d, b, 4, rx, PCTV_ANSWER_LEN, 0);
 	if (ret != 0)
-		goto ret;
+		return ret;
 
 	if (debug > 3) {
 		info("%s: read: %2d: %*ph: ", __func__, ret, 3, rx);
@@ -1026,11 +1026,11 @@ static struct dvb_usb_device_properties tt_connect_s2_3600_properties = {
 			/* parameter for the MPEG2-data transfer */
 			.stream = {
 				.type = USB_ISOC,
-				.count = 4,
+				.count = 7,
 				.endpoint = 0x02,
 				.u = {
 					.isoc = {
-						.framesperurb = 64,
+						.framesperurb = 4,
 						.framesize = 940,
 						.interval = 1
 					}

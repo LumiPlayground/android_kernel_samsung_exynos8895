@@ -872,8 +872,6 @@ static int __net_init ipv4_frags_init_net(struct net *net)
 	 */
 	net->ipv4.frags.timeout = IP_FRAG_TIME;
 
-	net->ipv4.frags.max_dist = 64;
-
 	inet_frags_init_net(&net->ipv4.frags);
 
 	return ip4_frags_ns_ctl_register(net);

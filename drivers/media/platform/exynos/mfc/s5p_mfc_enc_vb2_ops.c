@@ -26,22 +26,18 @@
 #include "s5p_mfc_mem.h"
 
 static int s5p_mfc_enc_queue_setup(struct vb2_queue *vq,
+				const void *parg,
 				unsigned int *buf_count, unsigned int *plane_count,
-				unsigned int psize[], struct device *alloc_devs[])
+				unsigned int psize[], void *allocators[])
 {
-	struct s5p_mfc_dev *dev;
 	struct s5p_mfc_ctx *ctx = vq->drv_priv;
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
 	struct s5p_mfc_raw_info *raw;
 	int i;
+	void *alloc_ctx = ctx->dev->alloc_ctx;
+	void *output_ctx;
 
 	mfc_debug_enter();
-
-	dev = ctx->dev;
-	if (!dev) {
-		mfc_err_dev("no mfc device to run\n");
-		return -EINVAL;
-	}
 
 	if (ctx->state != MFCINST_GOT_INST &&
 	    vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
@@ -66,7 +62,10 @@ static int s5p_mfc_enc_queue_setup(struct vb2_queue *vq,
 			*buf_count = MFC_MAX_BUFFERS;
 
 		psize[0] = enc->dst_buf_size;
-		alloc_devs[0] = dev->device;
+		if (ctx->is_drm)
+			allocators[0] = ctx->dev->alloc_ctx_drm;
+		else
+			allocators[0] = alloc_ctx;
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		raw = &ctx->raw_buf;
 
@@ -80,13 +79,19 @@ static int s5p_mfc_enc_queue_setup(struct vb2_queue *vq,
 		if (*buf_count > MFC_MAX_BUFFERS)
 			*buf_count = MFC_MAX_BUFFERS;
 
+		if (ctx->is_drm) {
+			output_ctx = ctx->dev->alloc_ctx_drm;
+		} else {
+			output_ctx = alloc_ctx;
+		}
+
 		if (*plane_count == 1) {
 			psize[0] = raw->total_plane_size;
-			alloc_devs[0] = dev->device;
+			allocators[0] = output_ctx;
 		} else {
 			for (i = 0; i < *plane_count; i++) {
 				psize[i] = raw->plane_size[i];
-				alloc_devs[i] = dev->device;
+				allocators[i] = output_ctx;
 			}
 		}
 	} else {
@@ -339,8 +344,7 @@ static void s5p_mfc_enc_stop_streaming(struct vb2_queue *q)
 			index++;
 		}
 	} else if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		s5p_mfc_move_all_bufs(&ctx->buf_queue_lock, &ctx->src_buf_queue,
-				&ctx->ref_buf_queue, MFC_QUEUE_ADD_BOTTOM);
+		s5p_mfc_move_all_bufs(&ctx->buf_queue_lock, &ctx->src_buf_queue, &ctx->ref_buf_queue, MFC_QUEUE_ADD_BOTTOM);
 		s5p_mfc_cleanup_enc_src_queue(ctx);
 
 		while (index < MFC_MAX_BUFFERS) {
@@ -389,10 +393,12 @@ static void s5p_mfc_enc_buf_queue(struct vb2_buffer *vb)
 		mfc_err_ctx("unsupported buffer type (%d)\n", vq->type);
 	}
 
-	mfc_debug(7, "timestamp: %lld\n", buf->vb.vb2_buf.timestamp);
+	mfc_debug(7, "timestamp: %ld %ld\n",
+			buf->vb.timestamp.tv_sec,
+			buf->vb.timestamp.tv_usec);
 	mfc_debug(7, "qos ratio: %d\n", ctx->qos_ratio);
 
-	s5p_mfc_qos_update_last_framerate(ctx, buf->vb.vb2_buf.timestamp);
+	s5p_mfc_qos_update_last_framerate(ctx, &buf->vb);
 	s5p_mfc_qos_update_framerate(ctx);
 
 	if (s5p_mfc_enc_ctx_ready(ctx)) {

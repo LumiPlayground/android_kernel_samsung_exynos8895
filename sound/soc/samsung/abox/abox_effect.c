@@ -35,8 +35,8 @@ struct abox_ctl_eq_switch {
 static int abox_ctl_info(struct snd_kcontrol *kcontrol,
 		struct snd_ctl_elem_info *uinfo)
 {
-	struct snd_soc_component *cmpnt = snd_kcontrol_chip(kcontrol);
-	struct device *dev = cmpnt->dev;
+	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
+	struct device *dev = codec->dev;
 	struct abox_ctl_eq_switch *params = (void *)kcontrol->private_value;
 
 	dev_dbg(dev, "%s: %s\n", __func__, kcontrol->id.name);
@@ -51,8 +51,9 @@ static int abox_ctl_info(struct snd_kcontrol *kcontrol,
 static int abox_ctl_get(struct snd_kcontrol *kcontrol,
 		struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_component *cmpnt = snd_soc_kcontrol_component(kcontrol);
-	struct device *dev = cmpnt->dev;
+	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
+	struct device *dev = codec->dev;
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
 	struct abox_ctl_eq_switch *params = (void *)kcontrol->private_value;
 	int i;
 	int ret = 0;
@@ -65,15 +66,14 @@ static int abox_ctl_get(struct snd_kcontrol *kcontrol,
 
 		reg = (unsigned int)(params->base + PARAM_OFFSET +
 				(i * sizeof(u32)));
-		ret = snd_soc_component_read(cmpnt, reg, &val);
-		if (ret < 0) {
+		ret = snd_soc_component_read(component,	reg, &val);
+		if (IS_ERR_VALUE(ret)) {
 			dev_err(dev, "reading fail at 0x%08X\n", reg);
 			break;
 		}
 		ucontrol->value.integer.value[i] = val;
 		dev_dbg(dev, "%s[%d] = %u\n", kcontrol->id.name, i, val);
 	}
-	pm_runtime_mark_last_busy(dev);
 	pm_runtime_put_autosuspend(dev);
 
 	return ret;
@@ -82,12 +82,13 @@ static int abox_ctl_get(struct snd_kcontrol *kcontrol,
 static int abox_ctl_put(struct snd_kcontrol *kcontrol,
 		struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_component *cmpnt = snd_soc_kcontrol_component(kcontrol);
-	struct device *dev = cmpnt->dev;
+	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
+	struct device *dev = codec->dev;
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
 	struct abox_ctl_eq_switch *params = (void *)kcontrol->private_value;
 	int i;
 
-	dev_dbg(dev, "%s: %s\n", __func__, kcontrol->id.name);
+	dev_info(dev, "%s: %s\n", __func__, kcontrol->id.name);
 
 	pm_runtime_get_sync(dev);
 	for (i = 0; i < params->count; i++) {
@@ -96,11 +97,10 @@ static int abox_ctl_put(struct snd_kcontrol *kcontrol,
 		reg = (unsigned int)(params->base + PARAM_OFFSET +
 				(i * sizeof(u32)));
 		val = (unsigned int)ucontrol->value.integer.value[i];
-		snd_soc_component_write(cmpnt, reg, val);
-		dev_dbg(dev, "%s[%d] <= %u\n", kcontrol->id.name, i, val);
+		snd_soc_component_write(component, reg, val);
+		dev_info(dev, "%s[%d] <= %u\n", kcontrol->id.name, i, val);
 	}
-	snd_soc_component_write(cmpnt, params->base, CHANGE_BIT);
-	pm_runtime_mark_last_busy(dev);
+	snd_soc_component_write(component, params->base, CHANGE_BIT);
 	pm_runtime_put_autosuspend(dev);
 
 	return 0;
@@ -131,8 +131,6 @@ static const struct snd_kcontrol_new abox_effect_controls[] = {
 	DECLARE_ABOX_CTL_EQ_SWITCH("NXP BDL data", NXPBDL),
 	DECLARE_ABOX_CTL_EQ_SWITCH("NXP RVB ctx data", NXPRVB_CTX),
 	DECLARE_ABOX_CTL_EQ_SWITCH("NXP RVB param data", NXPRVB_PARAM),
-	DECLARE_ABOX_CTL_EQ_SWITCH("SB rotation", SB),
-	DECLARE_ABOX_CTL_EQ_SWITCH("UPSCALER", UPSCALER),
 };
 
 #define ABOX_EFFECT_ACCESSIABLE_REG(name, reg) \
@@ -151,9 +149,7 @@ static bool abox_effect_accessible_reg(struct device *dev, unsigned int reg)
 			ABOX_EFFECT_ACCESSIABLE_REG(ELPE, reg)		||
 			ABOX_EFFECT_ACCESSIABLE_REG(NXPBDL, reg)	||
 			ABOX_EFFECT_ACCESSIABLE_REG(NXPRVB_CTX, reg)	||
-			ABOX_EFFECT_ACCESSIABLE_REG(NXPRVB_PARAM, reg)	||
-			ABOX_EFFECT_ACCESSIABLE_REG(SB, reg)		||
-			ABOX_EFFECT_ACCESSIABLE_REG(UPSCALER, reg);
+			ABOX_EFFECT_ACCESSIABLE_REG(NXPRVB_PARAM, reg);
 }
 
 #define ABOX_EFFECT_VOLATILE_REG(name, reg) (reg == name##_BASE)
@@ -170,38 +166,35 @@ static bool abox_effect_volatile_reg(struct device *dev, unsigned int reg)
 			ABOX_EFFECT_VOLATILE_REG(ELPE, reg)		||
 			ABOX_EFFECT_VOLATILE_REG(NXPBDL, reg)		||
 			ABOX_EFFECT_VOLATILE_REG(NXPRVB_CTX, reg)	||
-			ABOX_EFFECT_VOLATILE_REG(NXPRVB_PARAM, reg)	||
-			ABOX_EFFECT_VOLATILE_REG(SB, reg)		||
-			ABOX_EFFECT_VOLATILE_REG(UPSCALER, reg);
+			ABOX_EFFECT_VOLATILE_REG(NXPRVB_PARAM, reg);
 }
 
 static const struct regmap_config abox_effect_regmap_config = {
 	.reg_bits		= 32,
 	.val_bits		= 32,
 	.reg_stride		= 4,
-	.max_register		= ABOX_EFFECT_MAX_REGISTERS,
+	.max_register		= ABOX_MAX_REGISTERS,
 	.writeable_reg		= abox_effect_accessible_reg,
 	.readable_reg		= abox_effect_accessible_reg,
 	.volatile_reg		= abox_effect_volatile_reg,
 	.cache_type		= REGCACHE_FLAT,
 };
 
-static const struct snd_soc_component_driver abox_effect = {
+static struct regmap *abox_effect_get_regmap(struct device *dev)
+{
+	struct abox_effect_data *data = dev_get_drvdata(dev);
+
+	return data->regmap;
+}
+
+static const struct snd_soc_codec_driver abox_effect = {
 	.controls		= abox_effect_controls,
 	.num_controls		= ARRAY_SIZE(abox_effect_controls),
+	.get_regmap		= abox_effect_get_regmap,
+	.idle_bias_off		= true,
+	.suspend_bias_off	= true,
+	.ignore_pmdown_time	= true,
 };
-
-static struct abox_effect_data *p_abox_effect_data;
-
-void abox_effect_restore(void)
-{
-	if (p_abox_effect_data && p_abox_effect_data->pdev) {
-		struct device *dev = &p_abox_effect_data->pdev->dev;
-
-		pm_runtime_get(dev);
-		pm_runtime_put_autosuspend(dev);
-	}
-}
 
 static int abox_effect_runtime_suspend(struct device *dev)
 {
@@ -245,7 +238,6 @@ static int samsung_abox_effect_probe(struct platform_device *pdev)
 	if (data == NULL)
 		return -ENOMEM;
 	platform_set_drvdata(pdev, data);
-	p_abox_effect_data = data;
 
 	np_tmp = of_parse_phandle(np, "abox", 0);
 	if (!np_tmp) {
@@ -279,8 +271,7 @@ static int samsung_abox_effect_probe(struct platform_device *pdev)
 	pm_runtime_set_autosuspend_delay(dev, 1000);
 	pm_runtime_use_autosuspend(dev);
 
-	return devm_snd_soc_register_component(&pdev->dev, &abox_effect, NULL,
-			0);
+	return snd_soc_register_codec(&pdev->dev, &abox_effect, NULL, 0);
 }
 
 static int samsung_abox_effect_remove(struct platform_device *pdev)
@@ -290,6 +281,7 @@ static int samsung_abox_effect_remove(struct platform_device *pdev)
 	dev_dbg(dev, "%s\n", __func__);
 
 	pm_runtime_disable(dev);
+	snd_soc_unregister_codec(&pdev->dev);
 
 	return 0;
 }

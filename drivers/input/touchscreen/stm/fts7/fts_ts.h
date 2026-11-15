@@ -441,9 +441,6 @@ struct fts_ts_info {
 	int cmd_buffer_size;
 	struct mutex cmd_lock;
 	bool cmd_is_running;
-	int item_count;
-	char cmd_result_all[CMD_RESULT_STR_LEN];
-	u8 cmd_all_factory_state;
 	int SenseChannelLength;
 	int ForceChannelLength;
 	short *pFrame;

@@ -31,6 +31,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/workqueue.h>
 
+
 #include <linux/io.h>
 #include <linux/usb/otg-fsm.h>
 
@@ -41,6 +42,11 @@
 struct dwc3_exynos_rsw {
 	struct otg_fsm		*fsm;
 	struct work_struct	work;
+};
+
+struct dwc3_exynos_drvdata {
+	int cpu_type;
+	int ip_type;
 };
 
 struct dwc3_exynos {
@@ -56,15 +62,59 @@ struct dwc3_exynos {
 	int			idle_ip_index;
 
 	struct dwc3_exynos_rsw	rsw;
+	const struct dwc3_exynos_drvdata *drv_data;
 };
 
 void dwc3_otg_run_sm(struct otg_fsm *fsm);
-void dwc3_otg_ldo_control(struct otg_fsm *fsm, int on);
-int dwc3_otg_phy_enable(struct otg_fsm *fsm, int owner, bool on);
+
+/* -------------------------------------------------------------------------- */
+
+static struct dwc3_exynos_drvdata dwc3_exynos5250 = {
+	.cpu_type	= TYPE_EXYNOS5250,
+};
+
+static struct dwc3_exynos_drvdata dwc3_exynos7420 = {
+	.cpu_type	= TYPE_EXYNOS7420,
+};
+
+static struct dwc3_exynos_drvdata dwc3_exynos8890 = {
+	.cpu_type	= TYPE_EXYNOS8890,
+	.ip_type	= TYPE_USB3DRD,
+};
+
+static struct dwc3_exynos_drvdata dwc2_exynos8890 = {
+	.cpu_type	= TYPE_EXYNOS8890,
+	.ip_type	= TYPE_USB2HOST,
+};
+
+static struct dwc3_exynos_drvdata dwc3_exynos8895 = {
+	.cpu_type	= TYPE_EXYNOS8895,
+	.ip_type	= TYPE_USB3DRD,
+};
 
 static const struct of_device_id exynos_dwc3_match[] = {
 	{
-		.compatible = "samsung,exynos-dwusb",
+		.compatible = "samsung,exynos5250-dwusb3",
+		.data = &dwc3_exynos5250,
+	},
+	{
+		.compatible = "samsung,exynos7420-dwusb3",
+		.data = &dwc3_exynos7420,
+	},
+	{
+		.compatible = "samsung,exynos8890-dwusb3",
+		.data = &dwc3_exynos8890,
+	}, {
+		.compatible = "samsung,exynos8890-dwusb2",
+		.data = &dwc2_exynos8890,
+	},
+	{
+		.compatible = "samsung,exynos8890-dwusb2",
+		.data = &dwc2_exynos8890,
+	},
+	{
+		.compatible = "samsung,exynos8895-dwusb3",
+		.data = &dwc3_exynos8895,
 	},
 	{},
 };
@@ -72,38 +122,39 @@ MODULE_DEVICE_TABLE(of, exynos_dwc3_match);
 
 /* -------------------------------------------------------------------------- */
 
+static const char *dwc3_exynos8895_clk_names[] = {"aclk", "sclk", NULL};
+static const char *dwc3_exynos8890_clk_names[] = {"aclk", "sclk",
+				"phyclock", "pipe_pclk", NULL};
+static const char *dwc2_exynos8890_clk_names[] = {"aclk", "sclk",
+				"phyclock", "phy_ref", NULL};
+extern struct atomic_notifier_head hardlockup_notifier_list;
+bool lockup_noti;
+
 static int dwc3_exynos_clk_get(struct dwc3_exynos *exynos)
 {
-	struct device *dev = exynos->dev;
 	const char **clk_ids;
 	struct clk *clk;
 	int clk_count;
-	int ret, i;
+	int i;
 
-	clk_count = of_property_count_strings(dev->of_node, "clock-names");
-	if (IS_ERR_VALUE((unsigned long)clk_count)) {
-		dev_err(dev, "invalid clk list in %s node", dev->of_node->name);
+	switch (exynos->drv_data->cpu_type) {
+	case TYPE_EXYNOS8890:
+		if (exynos->drv_data->ip_type == TYPE_USB3DRD) {
+			clk_ids = dwc3_exynos8890_clk_names;
+			clk_count = ARRAY_SIZE(dwc3_exynos8890_clk_names);
+		} else {
+			clk_ids = dwc2_exynos8890_clk_names;
+			clk_count = ARRAY_SIZE(dwc2_exynos8890_clk_names);
+		}
+		break;
+	case TYPE_EXYNOS8895:
+		clk_ids = dwc3_exynos8895_clk_names;
+		clk_count = ARRAY_SIZE(dwc3_exynos8895_clk_names);
+		break;
+	default:
+		dev_err(exynos->dev, "couldn't get clock : unknown cpu type\n");
 		return -EINVAL;
 	}
-
-	clk_ids = (const char **)devm_kmalloc(dev,
-				(clk_count + 1) * sizeof(const char *),
-				GFP_KERNEL);
-	if (!clk_ids) {
-		dev_err(dev, "failed to alloc for clock ids");
-		return -ENOMEM;
-	}
-
-	for (i = 0; i < clk_count; i++) {
-		ret = of_property_read_string_index(dev->of_node, "clock-names",
-								i, &clk_ids[i]);
-		if (ret) {
-			dev_err(dev, "failed to read clocks name %d from %s node\n",
-					i, dev->of_node->name);
-			return ret;
-		}
-	}
-	clk_ids[clk_count] = NULL;
 
 	exynos->clocks = (struct clk **) devm_kmalloc(exynos->dev,
 			clk_count * sizeof(struct clk *), GFP_KERNEL);
@@ -208,6 +259,18 @@ static struct dwc3_exynos *dwc3_exynos_match(struct device *dev)
 	return exynos;
 }
 
+static inline const struct dwc3_exynos_drvdata
+*dwc3_exynos_get_driver_data(struct platform_device *pdev)
+{
+	if (pdev->dev.of_node) {
+		const struct of_device_id *match;
+		match = of_match_node(exynos_dwc3_match, pdev->dev.of_node);
+		return match->data;
+	}
+
+	return NULL;
+}
+
 bool dwc3_exynos_rsw_available(struct device *dev)
 {
 	struct dwc3_exynos *exynos;
@@ -224,7 +287,7 @@ int dwc3_exynos_rsw_start(struct device *dev)
 	struct dwc3_exynos	*exynos = dev_get_drvdata(dev);
 	struct dwc3_exynos_rsw	*rsw = &exynos->rsw;
 
-	dev_info(dev, "%s\n", __func__);
+	dev_dbg(dev, "%s\n", __func__);
 
 	/* B-device by default */
 	rsw->fsm->id = 1;
@@ -235,7 +298,7 @@ int dwc3_exynos_rsw_start(struct device *dev)
 
 void dwc3_exynos_rsw_stop(struct device *dev)
 {
-	dev_info(dev, "%s\n", __func__);
+	dev_dbg(dev, "%s\n", __func__);
 }
 
 static void dwc3_exynos_rsw_work(struct work_struct *w)
@@ -299,6 +362,7 @@ int dwc3_exynos_id_event(struct device *dev, int state)
 		return -ENOENT;
 
 	if (fsm->id != state) {
+		dev_info(dev, "%s fsm->id %d, state %d \n", __func__, fsm->id, state);
 		fsm->id = state;
 		schedule_work(&rsw->work);
 	}
@@ -337,85 +401,6 @@ int dwc3_exynos_vbus_event(struct device *dev, bool vbus_active)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(dwc3_exynos_vbus_event);
-
-/**
- * dwc3_exynos_start_ldo - received ldo control event.
- */
-int dwc3_exynos_start_ldo(struct device *dev, bool on)
-{
-	struct dwc3_exynos	*exynos;
-	struct dwc3_exynos_rsw	*rsw;
-	struct otg_fsm		*fsm;
-
-	dev_dbg(dev, "%s, %s\n", __func__, on ? "on" : "off");
-
-	exynos = dev_get_drvdata(dev);
-	if (!exynos)
-		return -ENOENT;
-
-	rsw = &exynos->rsw;
-
-	fsm = rsw->fsm;
-	if (!fsm)
-		return -ENOENT;
-
-	dwc3_otg_ldo_control(fsm, on);
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(dwc3_exynos_start_ldo);
-
-/**
- * dwc3_exynos_phy_enable - received combo phy control.
- */
-int dwc3_exynos_phy_enable(int owner, bool on)
-{
-	struct dwc3_exynos	*exynos;
-	struct dwc3_exynos_rsw	*rsw;
-	struct otg_fsm		*fsm;
-	struct device_node *np = NULL;
-	struct platform_device *pdev = NULL;
-	int ret = 0;
-
-	pr_info("%s owner=%d (usb:0 dp:1) on=%d +\n", __func__, owner, on);
-
-	np = of_find_compatible_node(NULL, NULL, "samsung,exynos-dwusb");
-	if (np) {
-		pdev = of_find_device_by_node(np);
-		if (!pdev) {
-			pr_err("%s we can't get platform device\n", __func__);
-			ret = -ENODEV;
-			goto err;
-		}
-		of_node_put(np);
-	} else {
-		pr_err("%s we can't get np\n", __func__);
-		ret = -ENODEV;
-		goto err;
-	}
-
-	exynos = platform_get_drvdata(pdev);
-	if (!exynos) {
-		pr_err("%s we can't get drvdata\n", __func__);
-		ret = -ENOENT;
-		goto err;
-	}
-
-	rsw = &exynos->rsw;
-
-	fsm = rsw->fsm;
-	if (!fsm) {
-		pr_err("%s we can't get fsm\n", __func__);
-		ret = -ENOENT;
-		goto err;
-	}
-
-	dwc3_otg_phy_enable(fsm, owner, on);
-err:
-	pr_info("%s -\n", __func__);
-	return ret;
-}
-EXPORT_SYMBOL_GPL(dwc3_exynos_phy_enable);
 
 static int dwc3_exynos_register_phys(struct dwc3_exynos *exynos)
 {
@@ -481,6 +466,18 @@ static int dwc3_exynos_remove_child(struct device *dev, void *unused)
 	return 0;
 }
 
+static int dwc3_usb_hardlockup_handler (struct notifier_block *nb,
+					unsigned long l, void *P)
+{
+	pr_err("%s: occured hardlockup\n", __func__);
+	lockup_noti = true;
+	return 0;
+}
+
+static struct notifier_block nb_hardlockup_block = {
+		    .notifier_call = dwc3_usb_hardlockup_handler,
+};
+
 static int dwc3_exynos_probe(struct platform_device *pdev)
 {
 	struct dwc3_exynos	*exynos;
@@ -488,7 +485,7 @@ static int dwc3_exynos_probe(struct platform_device *pdev)
 	struct device_node	*node = dev->of_node;
 	int			ret;
 
-	pr_info("%s: +++\n", __func__);
+	dev_info(dev, "%s: +\n", __func__);
 	exynos = devm_kzalloc(dev, sizeof(*exynos), GFP_KERNEL);
 	if (!exynos)
 		return -ENOMEM;
@@ -508,7 +505,20 @@ static int dwc3_exynos_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, exynos);
 
+	ret = dwc3_exynos_register_phys(exynos);
+	if (ret) {
+		dev_err(dev, "couldn't register PHYs\n");
+		return ret;
+	}
+
 	exynos->dev = dev;
+
+	exynos->drv_data = dwc3_exynos_get_driver_data(pdev);
+	if (!exynos->drv_data) {
+		dev_info(exynos->dev,
+			"%s fail: drv_data is not available\n", __func__);
+		return -EINVAL;
+	}
 
 	exynos->idle_ip_index = exynos_get_idle_ip_index(dev_name(dev));
 	exynos_update_ip_idle_status(exynos->idle_ip_index, 0);
@@ -532,7 +542,7 @@ static int dwc3_exynos_probe(struct platform_device *pdev)
 
 	exynos->vdd33 = devm_regulator_get(dev, "vdd33");
 	if (IS_ERR(exynos->vdd33)) {
-	        dev_dbg(dev, "couldn't get regulator vdd33\n");
+		dev_dbg(dev, "couldn't get regulator vdd33\n");
 		exynos->vdd33 = NULL;
 	}
 	if (exynos->vdd33) {
@@ -554,7 +564,7 @@ static int dwc3_exynos_probe(struct platform_device *pdev)
 			dev_err(dev, "Failed to enable VDD10 supply\n");
 			goto err3;
 		}
-        }
+	}
 
 	ret = dwc3_exynos_register_phys(exynos);
 	if (ret) {
@@ -574,7 +584,10 @@ static int dwc3_exynos_probe(struct platform_device *pdev)
 		goto err5;
 	}
 
-	pr_info("%s: ---\n", __func__);
+	lockup_noti = false;
+	atomic_notifier_chain_register(&hardlockup_notifier_list, &nb_hardlockup_block);
+
+	dev_info(dev, "%s: -\n", __func__);
 	return 0;
 
 err5:
@@ -618,12 +631,27 @@ static int dwc3_exynos_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void dwc3_exynos_shutdown(struct platform_device *pdev)
+{
+	struct dwc3_exynos	*exynos = platform_get_drvdata(pdev);
+	struct device		*dev = &pdev->dev;
+	struct dwc3_exynos_rsw	*rsw = &exynos->rsw;
+	struct otg_fsm		*fsm = rsw->fsm;
+
+	dev_info(dev, "%s +\n", __func__);
+
+	fsm->reset = 1;
+	dwc3_otg_run_sm(rsw->fsm);
+
+	dev_info(dev, "%s -\n", __func__);
+}
+
 #ifdef CONFIG_PM
 static int dwc3_exynos_runtime_suspend(struct device *dev)
 {
 	struct dwc3_exynos *exynos = dev_get_drvdata(dev);
 
-	dev_dbg(dev, "%s\n", __func__);
+	dev_info(dev, "%s\n", __func__);
 
 	dwc3_exynos_clk_disable(exynos);
 
@@ -638,7 +666,7 @@ static int dwc3_exynos_runtime_resume(struct device *dev)
 	struct dwc3_exynos *exynos = dev_get_drvdata(dev);
 	int ret = 0;
 
-	dev_dbg(dev, "%s\n", __func__);
+	dev_info(dev, "%s\n", __func__);
 
 	/* inform what USB state is not idle to IDLE_IP */
 	exynos_update_ip_idle_status(exynos->idle_ip_index, 0);
@@ -725,6 +753,7 @@ static const struct dev_pm_ops dwc3_exynos_dev_pm_ops = {
 static struct platform_driver dwc3_exynos_driver = {
 	.probe		= dwc3_exynos_probe,
 	.remove		= dwc3_exynos_remove,
+	.shutdown	= dwc3_exynos_shutdown,
 	.driver		= {
 		.name	= "exynos-dwc3",
 		.of_match_table = exynos_dwc3_match,

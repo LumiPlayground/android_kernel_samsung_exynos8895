@@ -61,7 +61,7 @@ int fimc_is_hw_group_cfg(void *group_data)
 	struct fimc_is_group *group;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	device = group->device;
@@ -88,11 +88,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_SCP] = NULL;
 		group->subdev[ENTRY_VRA] = NULL;
 
-		INIT_LIST_HEAD(&group->subdev_list);
-		list_add_tail(&device->group_3aa.leader.list, &group->subdev_list);
-		list_add_tail(&device->txc.list, &group->subdev_list);
-		list_add_tail(&device->txp.list, &group->subdev_list);
-
 		device->txc.param_dma_ot = PARAM_3AA_VDMA4_OUTPUT;
 		device->txp.param_dma_ot = PARAM_3AA_VDMA2_OUTPUT;
 		break;
@@ -111,11 +106,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_SCC] = NULL;
 		group->subdev[ENTRY_SCP] = NULL;
 		group->subdev[ENTRY_VRA] = NULL;
-
-		INIT_LIST_HEAD(&group->subdev_list);
-		list_add_tail(&device->group_isp.leader.list, &group->subdev_list);
-		list_add_tail(&device->ixc.list, &group->subdev_list);
-		list_add_tail(&device->ixp.list, &group->subdev_list);
 		break;
 	case GROUP_SLOT_DIS:
 		group->subdev[ENTRY_3AA] = NULL;
@@ -132,8 +122,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_SCC] = NULL;
 		group->subdev[ENTRY_SCP] = NULL;
 		group->subdev[ENTRY_VRA] = NULL;
-
-		INIT_LIST_HEAD(&group->subdev_list);
 		break;
 	case GROUP_SLOT_MCS:
 		group->subdev[ENTRY_3AA] = NULL;
@@ -157,14 +145,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_M3P] = NULL;
 		group->subdev[ENTRY_M4P] = NULL;
 		group->subdev[ENTRY_VRA] = &device->group_vra.leader;
-
-		INIT_LIST_HEAD(&group->subdev_list);
-
-		list_add_tail(&device->group_mcs.leader.list, &group->subdev_list);
-		list_add_tail(&device->m0p.list, &group->subdev_list);
-		list_add_tail(&device->m1p.list, &group->subdev_list);
-		list_add_tail(&device->m2p.list, &group->subdev_list);
-		list_add_tail(&device->group_vra.leader.list, &group->subdev_list);
 
 		device->m0p.param_dma_ot = PARAM_MCS_OUTPUT0;
 		device->m1p.param_dma_ot = PARAM_MCS_OUTPUT1;
@@ -190,8 +170,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_M3P] = NULL;
 		group->subdev[ENTRY_M4P] = NULL;
 		group->subdev[ENTRY_VRA] = NULL;
-
-		INIT_LIST_HEAD(&group->subdev_list);
 		break;
 	default:
 		probe_err("group slot(%d) is invalid", group->slot);
@@ -210,7 +188,7 @@ int fimc_is_hw_group_open(void *group_data)
 	struct fimc_is_group *group;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	leader = &group->leader;
@@ -252,14 +230,14 @@ int fimc_is_hw_camif_cfg(void *sensor_data)
 	u32 val;
 #endif
 
-	FIMC_BUG(!sensor_data);
+	BUG_ON(!sensor_data);
 
 	sensor = sensor_data;
 	ischain = sensor->ischain;
 	flite = (struct fimc_is_device_flite *)v4l2_get_subdevdata(sensor->subdev_flite);
 	csi = (struct fimc_is_device_csi *)v4l2_get_subdevdata(sensor->subdev_csi);
 	is_otf = (ischain && test_bit(FIMC_IS_GROUP_OTF_INPUT, &ischain->group_3aa.state));
-	isp_mipiphy_con = ioremap(SYSREG_ISP_MIPIPHY_CON, SZ_32);
+	isp_mipiphy_con = ioremap(SYSREG_ISP_MIPIPHY_CON, SZ_4K);
 
 	/* always clear csis dummy */
 	clear_bit(CSIS_DUMMY, &csi->state);
@@ -286,8 +264,6 @@ int fimc_is_hw_camif_cfg(void *sensor_data)
 		break;
 	}
 
-	iounmap(isp_mipiphy_con);
-
 	return ret;
 }
 
@@ -298,7 +274,7 @@ int fimc_is_hw_camif_open(void *sensor_data)
 	struct fimc_is_device_flite *flite;
 	struct fimc_is_device_csi *csi;
 
-	FIMC_BUG(!sensor_data);
+	BUG_ON(!sensor_data);
 
 	sensor = sensor_data;
 	flite = (struct fimc_is_device_flite *)v4l2_get_subdevdata(sensor->subdev_flite);
@@ -327,13 +303,13 @@ int fimc_is_hw_ischain_cfg(void *ischain_data)
 	struct fimc_is_device_ischain *device;
 	u32 val;
 
-	FIMC_BUG(!ischain_data);
+	BUG_ON(!ischain_data);
 
 	device = (struct fimc_is_device_ischain *)ischain_data;
 	if (test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state))
 		return 0;
 
-	isp_user_con = ioremap(SYSREG_ISP_USER_CON, SZ_32);
+	isp_user_con = ioremap(SYSREG_ISP_USER_CON, SZ_4K);
 
 	val = readl(isp_user_con);
 	/* RT setting */
@@ -622,8 +598,8 @@ int fimc_is_hw_get_address(void *itfc_data, void *pdev_data, int hw_id)
 	struct platform_device *pdev = NULL;
 	struct fimc_is_interface_hwip *itf_hwip = NULL;
 
-	FIMC_BUG(!itfc_data);
-	FIMC_BUG(!pdev_data);
+	BUG_ON(!itfc_data);
+	BUG_ON(!pdev_data);
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 	pdev = (struct platform_device *)pdev_data;
@@ -734,7 +710,7 @@ int fimc_is_hw_get_irq(void *itfc_data, void *pdev_data, int hw_id)
 	struct platform_device *pdev = NULL;
 	int ret = 0;
 
-	FIMC_BUG(!itfc_data);
+	BUG_ON(!itfc_data);
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 	pdev = (struct platform_device *)pdev_data;
@@ -804,7 +780,7 @@ int fimc_is_hw_request_irq(void *itfc_data, int hw_id)
 	u32 name_len = 0;
 	int ret = 0;
 
-	FIMC_BUG(!itfc_data);
+	BUG_ON(!itfc_data);
 
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
@@ -950,7 +926,7 @@ int fimc_is_hw_query_cap(void *cap_data, int hw_id)
 {
 	int ret = 0;
 
-	FIMC_BUG(!cap_data);
+	BUG_ON(!cap_data);
 
 	switch (hw_id) {
 	case DEV_HW_MCSC0:
@@ -967,7 +943,7 @@ int fimc_is_hw_query_cap(void *cap_data, int hw_id)
 			cap->out_otf[0] = MCSC_CAP_SUPPORT;
 			cap->out_otf[1] = MCSC_CAP_SUPPORT;
 			cap->out_otf[2] = MCSC_CAP_SUPPORT;
-			cap->enable_shared_output = false;
+			cap->enable_shared_output = true;
 		}
 		break;
 	default:

@@ -14,35 +14,17 @@
 
 #include "s5p_mfc_cmd.h"
 #include "s5p_mfc_enc_param.h"
-#include "s5p_mfc_cal.h"
 #include "s5p_mfc_reg.h"
 
 #include "s5p_mfc_utils.h"
 
+extern int nal_q_parallel_enable;
 void s5p_mfc_open_inst(struct s5p_mfc_ctx *ctx)
 {
-	struct s5p_mfc_dev *dev = ctx->dev;
-	unsigned int reg;
-
 	/* Preparing decoding - getting instance number */
 	mfc_debug(2, "Getting instance number\n");
+
 	s5p_mfc_clean_ctx_int_flags(ctx);
-
-	reg = MFC_READL(S5P_FIMV_CODEC_CONTROL);
-	/* Clear OTF_CONTROL[2:1] & OTF_DEBUG[3] */
-	reg &= ~(0x7 << 1);
-	if (ctx->otf_handle) {
-		/* Set OTF_CONTROL[2:1], 0: Non-OTF, 1: OTF+HWFC, 2: OTF only */
-		reg |= (0x1 << 1);
-		mfc_info_ctx("HWFC + OTF enabled\n");
-		if (otf_dump && !ctx->is_drm) {
-			/* Set OTF_DEBUG[3] for OTF path dump */
-			reg |= (0x1 << 3);
-			mfc_info_ctx("Debugging mode enabled\n");
-		}
-	}
-	MFC_WRITEL(reg, S5P_FIMV_CODEC_CONTROL);
-
 	s5p_mfc_cmd_open_inst(ctx);
 }
 
@@ -57,7 +39,6 @@ int s5p_mfc_close_inst(struct s5p_mfc_ctx *ctx)
 	}
 
 	s5p_mfc_clean_ctx_int_flags(ctx);
-
 	s5p_mfc_cmd_close_inst(ctx);
 
 	return 0;
@@ -91,7 +72,7 @@ int s5p_mfc_init_decode(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev;
 	struct s5p_mfc_dec *dec;
-	unsigned int reg = 0;
+	unsigned int reg = 0, pix_val;
 	int fmo_aso_ctrl = 0;
 
 	mfc_debug_enter();
@@ -138,9 +119,10 @@ int s5p_mfc_init_decode(struct s5p_mfc_ctx *ctx)
 	if (FW_HAS_CONCEAL_CONTROL(dev))
 		reg |= (0x4 << S5P_FIMV_D_DEC_OPT_CONCEAL_CONTROL_SHIFT);
 
-	/* Disable parallel processing if nal_q_parallel_disable was set */
-	if (nal_q_parallel_disable)
-		reg |= (0x2 << S5P_FIMV_D_DEC_OPT_PARALLEL_DISABLE_SHIFT);
+	/* Disable parallel processing in FW when using NAL-Q
+	   It has to be enabled 11.0 */
+	if (!nal_q_parallel_enable)
+		reg |= (0x2 << S5P_FIMV_D_DEC_OPT_PARALLEL_PROCESSING_SHIFT);
 
 	/* Realloc buffer for resolution decrease case in NAL QUEUE mode */
 	reg |= (0x1 << S5P_FIMV_D_DEC_OPT_REALLOC_CONTROL_SHIFT);
@@ -160,7 +142,30 @@ int s5p_mfc_init_decode(struct s5p_mfc_ctx *ctx)
 		MFC_WRITEL(ctx->img_height, S5P_FIMV_D_SET_FRAME_HEIGHT);
 	}
 
-	s5p_mfc_set_pixel_format(dev, ctx->dst_fmt->fourcc);
+	switch (ctx->dst_fmt->fourcc) {
+	case V4L2_PIX_FMT_NV12M:
+	case V4L2_PIX_FMT_NV12N:
+	case V4L2_PIX_FMT_NV12N_10B:
+	case V4L2_PIX_FMT_NV12MT_16X16:
+	case V4L2_PIX_FMT_NV16M:
+		pix_val = 0;
+		break;
+	case V4L2_PIX_FMT_NV21M:
+	case V4L2_PIX_FMT_NV61M:
+		pix_val = 1;
+		break;
+	case V4L2_PIX_FMT_YVU420M:
+		pix_val = 2;
+		break;
+	case V4L2_PIX_FMT_YUV420M:
+	case V4L2_PIX_FMT_YUV420N:
+		pix_val = 3;
+		break;
+	default:
+		pix_val = 0;
+		break;
+	}
+	MFC_WRITEL(pix_val, S5P_FIMV_PIXEL_FORMAT);
 
 	reg = 0;
 	/* Enable realloc interface if SEI is enabled */
@@ -256,8 +261,6 @@ int s5p_mfc_init_encode(struct s5p_mfc_ctx *ctx)
 		s5p_mfc_set_enc_params_vp9(ctx);
 	else if (IS_HEVC_ENC(ctx))
 		s5p_mfc_set_enc_params_hevc(ctx);
-	else if (IS_BPG_ENC(ctx))
-		s5p_mfc_set_enc_params_bpg(ctx);
 	else {
 		mfc_err_ctx("Unknown codec for encoding (%x).\n",
 			ctx->codec_mode);

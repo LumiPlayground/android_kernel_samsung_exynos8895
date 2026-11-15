@@ -1,21 +1,21 @@
 /*
- *
- * drivers/media/tdmb/tdmb.h
- *
- * tdmb driver
- *
- * Copyright (C) (2011, Samsung Electronics)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation version 2.
- *
- * This program is distributed "as is" WITHOUT ANY WARRANTY of any
- * kind, whether express or implied; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- */
+*
+* drivers/media/tdmb/tdmb.h
+*
+* tdmb driver
+*
+* Copyright (C) (2011, Samsung Electronics)
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation version 2.
+*
+* This program is distributed "as is" WITHOUT ANY WARRANTY of any
+* kind, whether express or implied; without even the implied warranty
+* of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+*/
 
 #ifndef _TDMB_H_
 #define _TDMB_H_
@@ -28,12 +28,10 @@
 #define TDMB_DEBUG
 
 #ifdef TDMB_DEBUG
-#define DPRINTK(fmt, arg...) pr_info("TDMB " fmt, ##arg)
+#define DPRINTK(fmt,...) printk(KERN_DEBUG "TDMB " fmt, ##__VA_ARGS__)
 #else
 #define DPRINTK(x...) /* null */
 #endif
-
-#define TDMB_UNIT_TEST
 
 #define TDMB_DEV_NAME	"tdmb"
 #define TDMB_DEV_MAJOR	225
@@ -67,7 +65,7 @@ struct tdmb_dm {
 	unsigned int	ber;
 	unsigned int	per;
 	unsigned int	antenna;
-};
+} ;
 
 #define SUB_CH_NUM_MAX				64
 
@@ -101,7 +99,7 @@ struct sub_ch_info_type {
 	unsigned char scids;	/* 4 bits */
 
 	unsigned char ca_flags;
-};
+} ;
 
 struct ensemble_info_type {
 	unsigned int ensem_freq;	/* 4 bytes */
@@ -110,7 +108,7 @@ struct ensemble_info_type {
 	unsigned short ensem_id;
 	unsigned char ensem_label[ENSEMBLE_LABEL_MAX+1];
 	struct sub_ch_info_type sub_ch[SUB_CH_NUM_MAX];
-};
+} ;
 
 
 #define TDMB_CMD_START_FLAG	0x7F
@@ -129,7 +127,7 @@ bool tdmb_control_irq(bool set);
 void tdmb_control_gpio(bool poweron);
 bool tdmb_create_workqueue(void);
 bool tdmb_destroy_workqueue(void);
-bool tdmb_create_databuffer(int int_size);
+bool tdmb_create_databuffer(unsigned long int_size);
 void tdmb_destroy_databuffer(void);
 void tdmb_init_data(void);
 #if defined(CONFIG_TDMB_ANT_DET)
@@ -138,8 +136,8 @@ bool tdmb_ant_det_irq_set(bool set);
 
 
 struct tdmb_if_gpio_func {
-	void (*gpio_cfg_on)(void);
-	void (*gpio_cfg_off)(void);
+	void (*gpio_cfg_on) (void);
+	void (*gpio_cfg_off) (void);
 };
 
 #if defined(CONFIG_TDMB_EBI)
@@ -175,24 +173,6 @@ struct tdmb_dt_platform_data {
 #endif
 };
 
-#define TDMB_ENUM_STR(x)		#x
-
-#ifdef TDMB_UNIT_TEST
-enum tdmb_unit_test_cmd {
-	TDMB_UTCMD_GET_ID = 0,
-};
-#endif
-
-struct tdmb_drv_data {
-
-
-#ifdef TDMB_UNIT_TEST
-	enum tdmb_unit_test_cmd test_cmd;
-#endif
-
-
-};
-
 unsigned char tdmb_make_result
 (
 	unsigned char cmd,
@@ -202,16 +182,16 @@ unsigned char tdmb_make_result
 bool tdmb_store_data(unsigned char *data, unsigned long len);
 
 struct tdmb_drv_func {
-	bool (*init)(void);
-	bool (*power_on)(int param);
-	void (*power_off)(void);
-	bool (*scan_ch)(struct ensemble_info_type *ensembleInfo,
+	bool (*init) (void);
+	bool (*power_on) (int param);
+	void (*power_off) (void);
+	bool (*scan_ch) (struct ensemble_info_type *ensembleInfo,
 						unsigned long freq);
-	void (*get_dm)(struct tdmb_dm *info);
-	bool (*set_ch)(unsigned long freq, unsigned char subchid,
+	void (*get_dm) (struct tdmb_dm *info);
+	bool (*set_ch) (unsigned long freq, unsigned char subchid,
 						bool factory_test);
-	void (*pull_data)(void);
-	int (*get_int_size)(void);
+	void (*pull_data) (void);
+	unsigned long (*get_int_size) (void);
 };
 
 extern unsigned int *tdmb_ts_head;
@@ -241,4 +221,10 @@ extern int tdmb_tsi_stop(void);
 extern int tdmb_tsi_init(void);
 extern void tdmb_tsi_deinit(void);
 #endif
+
+/*
+#ifdef CONFIG_SAMSUNG_LPM_MODE
+extern int poweroff_charging;
+#endif
+*/
 #endif

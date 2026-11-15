@@ -78,13 +78,6 @@ int ovl_setattr(struct dentry *dentry, struct iattr *attr)
 
 		upperdentry = ovl_dentry_upper(dentry);
 
-		if (attr->ia_valid & ATTR_SIZE) {
-			winode = d_inode(upperdentry);
-			err = get_write_access(winode);
-			if (err)
-				goto out_drop_write;
-		}
-
 		if (attr->ia_valid & (ATTR_KILL_SUID|ATTR_KILL_SGID))
 			attr->ia_valid &= ~ATTR_MODE;
 
@@ -95,9 +88,6 @@ int ovl_setattr(struct dentry *dentry, struct iattr *attr)
 		if (!err)
 			ovl_copyattr(upperdentry->d_inode, dentry->d_inode);
 		inode_unlock(upperdentry->d_inode);
-
-		if (winode)
-			put_write_access(winode);
 	}
 out_drop_write:
 	ovl_drop_write(dentry);
@@ -167,6 +157,26 @@ static const char *ovl_get_link(struct dentry *dentry,
 	revert_creds(old_cred);
 	return p;
 }
+
+static int ovl_readlink(struct dentry *dentry, char __user *buf, int bufsiz)
+{
+	struct path realpath;
+	struct inode *realinode;
+	const struct cred *old_cred;
+	int err;
+
+	ovl_path_real(dentry, &realpath);
+	realinode = realpath.dentry->d_inode;
+
+	if (!realinode->i_op->readlink)
+		return -EINVAL;
+
+	old_cred = ovl_override_creds(dentry->d_sb);
+	err = realinode->i_op->readlink(realpath.dentry, buf, bufsiz);
+	revert_creds(old_cred);
+	return err;
+}
+
 
 bool ovl_is_private_xattr(const char *name)
 {
@@ -243,7 +253,6 @@ ssize_t ovl_listxattr(struct dentry *dentry, char *list, size_t size)
 	ssize_t res;
 	size_t len;
 	char *s;
-	const struct cred *old_cred;
 
 	old_cred = ovl_override_creds(dentry->d_sb);
 	res = vfs_listxattr(realdentry, list, size);

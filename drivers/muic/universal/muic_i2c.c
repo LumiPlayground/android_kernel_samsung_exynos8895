@@ -50,8 +50,9 @@ int muic_i2c_read_byte(const struct i2c_client *client, u8 command)
 
 	ret = i2c_smbus_read_byte_data(client, command);
 
-	while (ret < 0) {
-		if (retry > 3) {
+	while(ret < 0){
+		if(retry > 3)
+		{
 			pr_err("%s: retry count > 3 : failed !!\n", __func__);
 			break;
 		}
@@ -63,7 +64,7 @@ int muic_i2c_read_byte(const struct i2c_client *client, u8 command)
 		retry ++;
 	}
 #ifdef DEBUG_MUIC
-	muic_reg_log(command, ret, retry << 1| MUIC_READ);
+	muic_reg_log(command, ret, retry << 1| READ);
 #endif
 	return ret;
 }
@@ -77,7 +78,8 @@ int muic_i2c_write_byte(const struct i2c_client *client,
 	ret = i2c_smbus_write_byte_data(client, command, value);
 
 	while(ret < 0) {
-		if (retry > 3) {
+		if(retry > 3)
+		{
 			pr_err("%s: retry count > 3 : failed !!\n", __func__);
 			break;
 		}
@@ -89,7 +91,7 @@ int muic_i2c_write_byte(const struct i2c_client *client,
 		retry ++;
 	}
 #ifdef DEBUG_MUIC
-	muic_reg_log(command, value, retry << 1| MUIC_WRITE);
+	muic_reg_log(command, value, retry << 1| WRITE);
 #endif
 	return ret;
 }
@@ -107,7 +109,8 @@ int muic_i2c_guaranteed_wbyte(const struct i2c_client *client,
 	while(written != value){
 		pr_err("%s:reg(0x%x): written(0x%x) != value(0x%x)...\n",
 					__func__, command, written, value);
-		if (retry > 5) {
+		if(retry > 5)
+		{
 			pr_err("%s: retry count > 5 : failed !!\n", __func__);
 			break;
 		}

@@ -1689,19 +1689,27 @@ xfs_swap_extent_rmap(
 	struct xfs_inode		*ip,
 	struct xfs_inode		*tip)
 {
-	struct xfs_bmbt_irec		irec;
-	struct xfs_bmbt_irec		uirec;
-	struct xfs_bmbt_irec		tirec;
-	xfs_fileoff_t			offset_fsb;
-	xfs_fileoff_t			end_fsb;
-	xfs_filblks_t			count_fsb;
-	xfs_fsblock_t			firstfsb;
-	struct xfs_defer_ops		dfops;
-	int				error;
-	xfs_filblks_t			ilen;
-	xfs_filblks_t			rlen;
-	int				nimaps;
-	__uint64_t			tip_flags2;
+	xfs_mount_t	*mp = ip->i_mount;
+	xfs_trans_t	*tp;
+	xfs_bstat_t	*sbp = &sxp->sx_stat;
+	xfs_ifork_t	*tempifp, *ifp, *tifp;
+	xfs_extnum_t	nextents;
+	int		src_log_flags, target_log_flags;
+	int		error = 0;
+	int		aforkblks = 0;
+	int		taforkblks = 0;
+	__uint64_t	tmp;
+	int		lock_flags;
+
+	/* XXX: we can't do this with rmap, will fix later */
+	if (xfs_sb_version_hasrmapbt(&mp->m_sb))
+		return -EOPNOTSUPP;
+
+	tempifp = kmem_alloc(sizeof(xfs_ifork_t), KM_MAYFAIL);
+	if (!tempifp) {
+		error = -ENOMEM;
+		goto out;
+	}
 
 	/*
 	 * If the source file has shared blocks, we must flag the donor

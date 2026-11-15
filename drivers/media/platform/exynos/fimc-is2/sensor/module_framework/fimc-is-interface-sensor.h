@@ -51,17 +51,23 @@
 #define FPS_TO_DURATION_US(x)  ((x == 0) ? (0) : ((1000 * 1000) / x))
 #define DURATION_US_TO_FPS(x)  ((x == 0) ? (0) : ((1000 * 1000) / x))
 
+#define DEBUG_SENSOR_INTERFACE (0)
+#if (DEBUG_SENSOR_INTERFACE == 1)
+#define dbg_sen_itf(fmt, args...) \
+	printk(KERN_DEBUG "[@][SEN_ITF] " fmt, ##args)
+#else
+#define dbg_sen_itf dbg_sensor
+#endif
+
+#define dbg_fls_itf(fmt, args...) \
+	dbg_sen_itf(fmt, ##args)
+
 /* static memory size for DDK/RTA backup data */
-#define STATIC_DATA_SIZE	200
+#define STATIC_DATA_SIZE	100
 
 enum DIFF_BET_SEN_ISP { /* Set to 0: 3AA 3frame delay, 1: 3AA 4frame delay, 3: M2M */
 	DIFF_OTF_DELAY	= 0,
 	DIFF_M2M_DELAY	= 3
-};
-
-enum SENSOR_CONTROL_DELAY {
-	N_PLUS_TWO_FRAME = 0,
-	N_PLUS_ONE_FRAME = 1,
 };
 
 enum {
@@ -90,6 +96,95 @@ typedef struct {
 	void *param;
 	unsigned int return_value;
 } cis_setting_info;
+
+typedef enum _PdafParameter {
+	PDAF_PARAMETERS_API_AFSTAT_NUMWINDOWS,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_0__TOPLEFT_X,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_0__TOPLEFT_Y,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_0__BOTTOMRIGHT_X,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_0__BOTTOMRIGHT_Y,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_1__TOPLEFT_X,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_1__TOPLEFT_Y,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_1__BOTTOMRIGHT_X,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_1__BOTTOMRIGHT_Y,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_2__TOPLEFT_X,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_2__TOPLEFT_Y,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_2__BOTTOMRIGHT_X,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_2__BOTTOMRIGHT_Y,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_3__TOPLEFT_X,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_3__TOPLEFT_Y,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_3__BOTTOMRIGHT_X,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_3__BOTTOMRIGHT_Y,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_4__TOPLEFT_X,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_4__TOPLEFT_Y,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_4__BOTTOMRIGHT_X,
+	PDAF_PARAMETERS_API_AFSTAT_WINDOWS_4__BOTTOMRIGHT_Y,
+	PDAF_PARAMETERS_API_AFSTAT_MULTIWINDOWSENABLE,
+	PDAF_PARAMETERS_API_AFSTAT_MULTIWINDOWS_TOPLEFT_X,
+	PDAF_PARAMETERS_API_AFSTAT_MULTIWINDOWS_TOPLEFT_Y,
+	PDAF_PARAMETERS_API_AFSTAT_MULTIWINDOWS_BOTTOMRIGHT_X,
+	PDAF_PARAMETERS_API_AFSTAT_MULTIWINDOWS_BOTTOMRIGHT_Y,
+	PDAF_PARAMETERS_API_AFSTAT_MULTIWINDOWSREAL_TOPLEFT_X,
+	PDAF_PARAMETERS_API_AFSTAT_MULTIWINDOWSREAL_TOPLEFT_Y,
+	PDAF_PARAMETERS_API_AFSTAT_MULTIWINDOWSREAL_BOTTOMRIGHT_X,
+	PDAF_PARAMETERS_API_AFSTAT_MULTIWINDOWSREAL_BOTTOMRIGHT_Y,
+	PDAF_PARAMETERS_API_AFSTAT_MULTIWINDOWSNUMX,
+	PDAF_PARAMETERS_API_AFSTAT_MULTIWINDOWSNUMY,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_AF_FILTER_DELAY_CONTROL,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_AF_COMPENSATION,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_AF_SHADING_ON,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_AF_MULTI_FRAME_CONTROL,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_BITCUTNO,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_SATURATION_CONTROL,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_CORRELATION_CONTROL0,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_CORRELATION_CONTROL1,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_0__COEF_0_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_0__COEF_1_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_0__COEF_2_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_0__COEF_3_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_0__COEF_4_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_0__COEF_5_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_0__COMP_0_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_0__COMP_1_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_0__SHIFT,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_0__CSHIFT,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_1__COEF_0_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_1__COEF_1_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_1__COEF_2_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_1__COEF_3_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_1__COEF_4_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_1__COEF_5_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_1__COMP_0_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_1__COMP_1_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_1__SHIFT,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_1__CSHIFT,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_2__COEF_0_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_2__COEF_1_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_2__COEF_2_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_2__COEF_3_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_2__COEF_4_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_2__COEF_5_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_2__COMP_0_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_2__COMP_1_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_2__SHIFT,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_2__CSHIFT,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_3__COEF_0_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_3__COEF_1_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_3__COEF_2_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_3__COEF_3_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_3__COEF_4_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_3__COEF_5_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_3__COMP_0_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_3__COMP_1_,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_3__SHIFT,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTERS_3__CSHIFT,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTER1234_MUX,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTER1234_OUTMUX,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTER1234_TYPE,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTER12_CORING,
+	PDAF_PARAMETERS_AFSTATTUNINGPARAMS_FILTER34_CORING,
+	NUM_OF_PDAF_PARAMETERS
+} pdaf_parameter;
 
 typedef struct {
 	unsigned long long exposure;
@@ -122,19 +217,24 @@ typedef struct {
 
 	unsigned int config_idx;
 	bool bypass;
+#ifdef CONFIG_VENDER_MCD
 	bool paf_stat_enable;
 	bool caf_stat_enable;
 	bool wdr_enable;
+#endif
 	bool enable_lsc;
 	bool enable_drc;
 	bool enable_pdaf_bpc;
 	bool enable_xtalk;
 
-	enum camera2_wdr_mode wdr_mode;
-	enum camera2_wdr_mode pre_wdr_mode;
-	enum camera2_disparity_mode disparity_mode;
-	enum camera2_paf_mode paf_mode;
-} is_shared_data;
+#ifdef CONFIG_VENDER_MCD
+	enum companion_wdr_mode wdr_mode;
+	enum companion_wdr_mode pre_wdr_mode;
+	enum companion_disparity_mode disparity_mode;
+	enum companion_paf_mode paf_mode;
+	enum companion_caf_mode caf_mode;
+#endif
+} companion_shared_data;
 
 typedef struct {
 	bool ois_available;
@@ -232,13 +332,14 @@ typedef struct {
 /* #ifdef C1_LSC_CHANGE // [ist.song 2014.08.19] Added to inform videomode to sensor. */
 	bool video_mode;
 #ifdef USE_NEW_PER_FRAME_CONTROL
-	unsigned int num_of_frame;
+        unsigned int num_of_frame;
 #endif
 /* #endif */
 	unsigned int actuator_position;
 
-	is_shared_data is_data;
+	companion_shared_data companion_data;
 	ois_shared_data ois_data;
+
 	ae_setting auto_exposure[2];
 	preprocessor_ae_setting preproc_auto_exposure[2];
 
@@ -248,16 +349,6 @@ typedef struct {
 
 	u32 cis_rev;
 	u32 group_param_hold;
-
-	/* set low noise mode */
-	u32				cur_lownoise_mode;
-	u32				pre_lownoise_mode;
-
-#ifdef CAMERA_REAR2_SENSOR_SHIFT_CROP
-	u32				sensor_shifted_num;
-#endif
-
-	u32 			frame_length_lines_shifter;
 } cis_shared_data;
 
 struct v4l2_subdev;
@@ -297,7 +388,6 @@ struct fimc_is_cis_ops {
 	cis_func_type cis_read_sysreg; /* TBD */
 	cis_func_type cis_read_userreg; /* TBD */
 	int (*cis_wait_streamoff)(struct v4l2_subdev *subdev);
-	int (*cis_wait_streamon)(struct v4l2_subdev *subdev);
 	void (*cis_data_calculation)(struct v4l2_subdev *subdev, u32 mode);
 	int (*cis_set_long_term_exposure)(struct v4l2_subdev *subdev);
 	int (*cis_set_adjust_sync)(struct v4l2_subdev *subdev, u32 adjust_sync);
@@ -306,20 +396,12 @@ struct fimc_is_cis_ops {
 	int (*cis_retention_crc_check)(struct v4l2_subdev *subdev);
 #endif
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
-	int (*cis_update_mipi_info)(struct v4l2_subdev *subdev);
-	int (*cis_get_mipi_clock_string)(struct v4l2_subdev *subdev, char *cur_mipi_str);
+	int (*cis_update_settle_info)(struct v4l2_subdev *subdev);
+	int (*cis_update_mipi_index_info)(struct v4l2_subdev *subdev, u32 rat, u32 channel);
 #endif
-#ifdef USE_CAMERA_EMBEDDED_HEADER
-	int (*cis_get_frame_id)(struct v4l2_subdev *subdev, u8 *embedded_buf, u16 *frame_id);
+#ifdef USE_FACE_UNLOCK_AE_AWB_INIT
+	int (*cis_set_initial_exposure)(struct v4l2_subdev *subdev);
 #endif
-	int (*cis_set_frs_control)(struct v4l2_subdev *subdev, u32 command);
-	int (*cis_set_super_slow_motion_roi)(struct v4l2_subdev *subdev, struct v4l2_rect *ssm_roi);
-#ifdef CAMERA_REAR2_SENSOR_SHIFT_CROP
-	int (*cis_update_pdaf_tail_size)(struct v4l2_subdev *subdev, struct fimc_is_sensor_cfg *select);
-#endif
-	int (*cis_check_rev)(struct v4l2_subdev *subdev);
-	int (*cis_set_super_slow_motion_threshold)(struct v4l2_subdev *subdev, u32 threshold);
-	int (*cis_get_super_slow_motion_threshold)(struct v4l2_subdev *subdev, u32 *threshold);
 };
 
 struct fimc_is_sensor_ctl
@@ -363,6 +445,9 @@ struct fimc_is_sensor_ctl
 	bool is_valid_lens_udctrl;
 	//===================================================================================//
 
+	struct camera2_companion_uctl cur_cam20_companion_udctrl;
+	bool is_valid_companion_udctrl;
+
 	bool alg_reset_flag;
 
 	// Frame number that indicating shot. Currntly, it is not used.
@@ -400,9 +485,7 @@ enum fimc_is_sensor_peri_state {
 	FIMC_IS_SENSOR_ACTUATOR_AVAILABLE,
 	FIMC_IS_SENSOR_FLASH_AVAILABLE,
 	FIMC_IS_SENSOR_PREPROCESSOR_AVAILABLE,
-	FIMC_IS_SENSOR_OIS_AVAILABLE,
-	FIMC_IS_SENSOR_PDP_AVAILABLE,
-	FIMC_IS_SENSOR_APERTURE_AVAILABLE,
+	FIMC_IS_SENSOR_OIS_AVAILABLE
 };
 
 enum fimc_is_actuator_pos_size_bit {
@@ -421,21 +504,6 @@ enum fimc_is_actuator_status {
 	ACTUATOR_STATUS_BUSY
 };
 
-enum fimc_is_cis_lownoise_mode {
-	FIMC_IS_CIS_LNOFF = 0, /* Low Noise Off */
-	FIMC_IS_CIS_LN2, /* Low Noise 2 */
-	FIMC_IS_CIS_LN4, /* Low Noise 4 */
-	FIMC_IS_CIS_LN2_PEDESTAL128, /* Low Noise 2 + pedestal 128 */
-	FIMC_IS_CIS_LN4_PEDESTAL128, /* Low Noise 4 + pedestal 128 */
-	FIMC_IS_CIS_LOWNOISE_MODE_MAX,
-};
-
-enum fimc_is_aperture_control_step {
-	APERTURE_STEP_STATIONARY = 0,
-	APERTURE_STEP_PREPARE,
-	APERTURE_STEP_MOVING,
-};
-
 typedef int (*actuator_func_type)(struct v4l2_subdev *subdev, u32 *info);
 struct fimc_is_actuator_ops {
 	actuator_func_type actuator_init;
@@ -445,14 +513,6 @@ struct fimc_is_actuator_ops {
 #ifdef USE_AF_SLEEP_MODE
 	int (*set_active)(struct v4l2_subdev *subdev, int enable);
 #endif
-};
-
-struct fimc_is_aperture_ops {
-	int (*set_aperture_value)(struct v4l2_subdev *subdev, int value);
-	int (*set_aperture_start_value_step1)(struct v4l2_subdev *subdev, int value);
-	int (*set_aperture_start_value_step2)(struct v4l2_subdev *subdev, int value);
-	int (*prepare_ois_autotest)(struct v4l2_subdev *subdev);
-	int (*aperture_deinit)(struct v4l2_subdev *subdev, int value);
 };
 
 /* for SetAlgResFlag API */
@@ -514,12 +574,11 @@ struct fimc_is_ois_ops {
 	int (*ois_self_test)(struct fimc_is_core *core);
 	bool (*ois_diff_test)(struct fimc_is_core *core, int *x_diff, int *y_diff);
 	bool (*ois_auto_test)(struct fimc_is_core *core,
-	int threshold, bool *x_result, bool *y_result, int *sin_x, int *sin_y);
+				int threshold, bool *x_result, bool *y_result, int *sin_x, int *sin_y);
 #ifdef CAMERA_REAR2_OIS
 	bool (*ois_auto_test_rear2)(struct fimc_is_core *core,
-	int threshold, bool *x_result, bool *y_result, int *sin_x, int *sin_y,
-	bool *x_result_2nd, bool *y_result_2nd, int *sin_x_2nd, int *sin_y_2nd);
-	int (*ois_set_power_mode)(struct v4l2_subdev *subdev);
+				int threshold, bool *x_result, bool *y_result, int *sin_x, int *sin_y,
+				bool *x_result_2nd, bool *y_result_2nd, int *sin_x_2nd, int *sin_y_2nd);
 #endif
 	bool (*ois_check_fw)(struct fimc_is_core *core);
 	void (*ois_enable)(struct fimc_is_core *core);
@@ -531,9 +590,6 @@ struct fimc_is_ois_ops {
 	u8 (*ois_read_cal_checksum)(struct fimc_is_core *core);
 	int (*ois_set_coef)(struct v4l2_subdev *subdev, u8 coef);
 	int (*ois_read_fw_ver)(char *name, char *ver);
-	int (*ois_center_shift)(struct v4l2_subdev *subdev);
-	int (*ois_set_center)(struct v4l2_subdev *subdev);
-	u8 (*ois_read_mode)(struct v4l2_subdev *subdev);
 };
 
 struct fimc_is_sensor_interface;
@@ -628,7 +684,6 @@ struct fimc_is_cis_interface_ops {
 	bool (*is_flash_available)(struct fimc_is_sensor_interface *itf);
 	bool (*is_companion_available)(struct fimc_is_sensor_interface *itf);
 	bool (*is_ois_available)(struct fimc_is_sensor_interface *itf);
-	bool (*is_aperture_available)(struct fimc_is_sensor_interface *itf);
 
 	int (*get_sensor_frame_timing)(struct fimc_is_sensor_interface *itf,
 				u32 *pclk,
@@ -655,8 +710,8 @@ struct fimc_is_cis_interface_ops {
 	int (*set_alg_reset_flag)(struct fimc_is_sensor_interface *itf,
 				bool executed);
 
-	int (*get_sensor_initial_aperture)(struct fimc_is_sensor_interface *itf,
-				u32 *aperture);
+	int (*get_sensor_fnum)(struct fimc_is_sensor_interface *itf,
+				u32 *fnum);
 
 	int (*set_initial_exposure_of_setfile)(struct fimc_is_sensor_interface *itf,
 				u32 expo);
@@ -721,6 +776,16 @@ struct fimc_is_cis_interface_ops {
 	/* Set sensor 3a mode - OTF/M2M */
 	int (*set_sensor_3a_mode)(struct fimc_is_sensor_interface *itf,
 					u32 mode);
+
+#ifdef USE_FACE_UNLOCK_AE_AWB_INIT
+	int (*get_initial_exposure_gain_of_sensor)(struct fimc_is_sensor_interface *itf,
+			u32 *long_expo,
+			u32 *long_again,
+			u32 *long_dgain,
+			u32 *short_expo,
+			u32 *short_again,
+			u32 *short_dgain);
+#endif
 };
 
 struct fimc_is_cis_ext_interface_ops {
@@ -736,22 +801,14 @@ struct fimc_is_cis_ext_interface_ops {
 	u32(*set_adjust_sync)(struct fimc_is_sensor_interface *itf, u32 setsync);
 	u32(*request_frame_length_line)(struct fimc_is_sensor_interface *itf, u32 framelengthline);
 	int (*request_sensitivity)(struct fimc_is_sensor_interface *itf,
-								u32 sensitivity);
+							   u32 sensitivity);
 };
 
 struct fimc_is_cis_ext2_interface_ops {
 	int (*set_long_term_expo_mode)(struct fimc_is_sensor_interface *itf,
 				struct fimc_is_long_term_expo_mode *long_term_expo_mode);
-	int (*set_low_noise_mode)(struct fimc_is_sensor_interface *itf, u32 mode);
-	int (*get_sensor_max_dynamic_fps)(struct fimc_is_sensor_interface *itf,
-				u32 *max_dynamic_fps);
-	/* Get static memory address for DDK/RTA backup data */
 	int (*get_static_mem)(int ctrl_id, void **mem, int *size);
-	int (*get_open_close_hint)(int* opening, int* closing);
-	int (*get_sensor_line_readOut_time)(struct fimc_is_sensor_interface *itf,
-				u32 *line_readOut_time);
-	int(*set_previous_dm)(struct fimc_is_sensor_interface *itf);
-	void *reserved[14];
+	void *reserved[19];
 };
 
 struct fimc_is_cis_event_ops {
@@ -815,16 +872,6 @@ struct fimc_is_actuator_interface_ops {
 					camera2_shot_t *shot);
 };
 
-struct fimc_is_apature_info_t {
-	int	cur_value;
-	bool	zoom_running;
-};
-
-struct fimc_is_aperture_interface_ops {
-	int (*set_aperture_value)(struct fimc_is_sensor_interface *itf, int value);
-	int (*get_aperture_value)(struct fimc_is_sensor_interface *itf, struct fimc_is_apature_info_t *param);
-};
-
 /* Flash interface */
 struct fimc_is_flash_expo_gain {
 	u32 expo[2];
@@ -848,255 +895,6 @@ struct fimc_is_flash_expo_gain {
 	u32 main_fls_strm_on_off_step; /* 0: main/pre-flash exposure and gains, 1: ambient exposure and gains */
 };
 
-/* PDP structure &  PDP Interface */
-enum {
-	FILTER_BAND_0,
-	FILTER_BAND_1,
-	FILTER_BAND_2,
-	FILTER_BAND_L,
-	MAX_FILTER_BAND
-};
-
-struct pdp_main_wininfo {
-	bool		update;
-	u16		center_x;
-	u16		center_y;
-	u16		start_x;
-	u16		start_y;
-	u16		end_x;
-	u16		end_y;
-};
-
-struct pdp_multi_wininfo {
-	bool		update;
-	u8		mode_on;
-	u16		start_x;
-	u16		start_y;
-	u16		size_x;
-	u16		size_y;
-	u16		gap_x;
-	u16		gap_y;
-	u16		no_x;
-	u16		no_y;
-};
-
-struct pdp_single_wininfo {
-	bool				update;
-	u16				sroi;
-	struct pdp_main_wininfo		single_win[4];
-};
-
-struct pdp_knee_setting_t {
-	bool		update;
-	u16		knee_on;
-	u16		kn_inc_0;
-	u16		kn_inc_1;
-	u16		kn_inc_2;
-	u16		kn_inc_3;
-	u16		kn_inc_4;
-	u16		kn_inc_5;
-	u16		kn_inc_6;
-	u16		kn_inc_7;
-	u16		kn_offset_1;
-	u16		kn_offset_2;
-	u16		kn_offset_3;
-	u16		kn_offset_4;
-	u16		kn_offset_5;
-	u16		kn_offset_6;
-	u16		kn_offset_7;
-};
-
-struct pdp_filterBand_setting_t {
-	bool		update;
-	u16		gain0;
-	u16		k01;
-	u16		k02;
-	u16		type0;
-	u16		gain1;
-	u16		k11;
-	u16		k12;
-	u16		c11;
-	u16		c12;
-	u16		gain2;
-	u16		k21;
-	u16		k22;
-	u16		c21;
-	u16		c22;
-	u16		bypass0;
-	u16		bypass1;
-	u16		bypass2;
-	u16		cor_type_b;
-	u16		coring_ty_b;
-	u16		coring_th_b;
-	u16		coring_b;
-	u16		bin_first_b;
-	u16		binning_num_b;
-	u16		bin_skip_b;
-};
-
-struct pdp_filterCor_setting_t {
-	bool		update;
-	u16		coring_ty;
-	u16		coring_th;
-};
-
-struct pdp_filterBin_setting_t {
-	bool		update;
-	u16		bin_first;
-	u16		binning_num_lmv_h;
-	u16		binning_num_lmv_v;
-};
-
-struct pdp_wdr_setting_t {
-	bool		update;
-	u16		wdr_on;
-	u16		wdr_coef_long;
-	u16		wdr_coef_short;
-	u16		wdr_shft_long;
-	u16		wdr_shft_short;
-};
-
-struct pdp_depth_setting_t {
-	bool		update;
-	u16		depth_dmode;
-	u16		depth_dshift;
-	u16		depth_dsize1;
-	u16		depth_dsize2;
-	u16		depth_dsmoothe_on;
-	u16		depth_dscan_on;
-	u16		depth_dmedian_on;
-	u16		depth_dslope_on;
-	u16		depth_darm_edge_h;
-	u16		depth_dmedian_size;
-	u16		depth_dscan_edge;
-	u16		depth_dscan_penalty;
-	u16		depth_dbin_up;
-	u16		depth_dscale_up;
-	u16		depth_dout_stat_mode;
-	u16		depth_dinverse_snr;
-	u16		depth_dcoef_snr;
-	u16		depth_dcoef_edgeh;
-	u16		depth_dcoef_edgev;
-	u16		depth_dshift_filter;
-	u16		depth_dadd_filter;
-	u16		depth_dmask_filter_1;
-	u16		depth_dmask_filter_2;
-	u16		depth_dmask_filter_3;
-	u16		depth_dmask_filter_4;
-	u16		depth_dmask_filter_5;
-};
-
-struct pdp_YextParam_setting_t {
-	bool		update;
-	u16		max_no_skippxg;
-	u16		skip_levelth;
-	u16		px_sat_g;
-	u16		px_sat_r;
-	u16		px_sat_b;
-	u16		sat_no_g;
-	u16		sat_no_r;
-	u16		sat_no_b;
-	u16		sat_g;
-	u16		sat_r;
-	u16		sat_b;
-	u16		clip_val_left;
-	u16		clip_val_right;
-	u16		coef_r_short;
-	u16		coef_g_short;
-	u16		coef_b_short;
-	u16		y_shift;
-	u16		coef_r_long;
-	u16		coef_g_long;
-	u16		coef_b_long;
-};
-
-struct pdp_paf_roi_setting_t {
-	bool		update;
-	u16		roi_start_x;
-	u16		roi_start_y;
-	u16		roi_end_x;
-	u16		roi_end_y;
-};
-
-struct pdp_paf_setting_t {
-	bool		update;
-	u16		xcor_on;
-	u16		af_cross;
-	u16		mpd_on;
-	u16		mpd_hbin;
-	u16		mpd_vbin;
-	u16		mpd_vsft;
-	u16		mpd_dp;
-	u16		mpd_dp_th;
-	u16		phase_range;
-	u16		dpc_on;
-	u16		lmv_on;
-	u16		lmv_shift;
-	u16		alc_on;
-	u16		alc_gap;
-	u16		alc_clip_on;
-	u16		alc_fit_on;
-	u16		b2_en;
-	u16		crop_on;
-	u16		af_debug_mode;
-	u16		lf_shift;
-	u16		pafsat_on;
-	u16		sat_lv;
-	u16		sat_lv1;
-	u16		sat_lv2;
-	u16		sat_lv3;
-	u16		sat_src;
-	u16		cor_type;
-	u16		g_ssd;
-	u16		ob_value;
-	u16		af_layout;
-	u16		af_pattern;
-	u16		roi_zg1;
-	u16		roi_zg2;
-	u16		roi_zg3;
-	u16		roi_zg4;
-};
-
-struct pdp_total_setting_t {
-	struct pdp_paf_setting_t			*paf_setting;
-	struct pdp_paf_roi_setting_t			*paf_roi_setting;
-	struct pdp_main_wininfo				*paf_main_window;
-	struct pdp_single_wininfo			*paf_single_window;
-	struct pdp_multi_wininfo			*paf_multi_window;
-	struct pdp_knee_setting_t			*paf_knee_setting;
-	struct pdp_filterCor_setting_t			*paf_filter_cor;
-	struct pdp_filterBin_setting_t			*paf_filter_bin;
-	struct pdp_filterBand_setting_t			*paf_filter_band[MAX_FILTER_BAND];
-
-	struct pdp_wdr_setting_t			*wdr_setting;
-	struct pdp_depth_setting_t			*depth_setting;
-	struct pdp_YextParam_setting_t			*y_ext_param;
-};
-
-struct pdp_read_reg_setting_t {
-	u32	read_addr_offset;
-	u32 *addr_array;
-	u32 *buf_array;
-	u32 buf_size;
-};
-
-struct fimc_is_pdp_ops {
-	int (*read_pdp_reg)(struct v4l2_subdev *subdev, struct pdp_read_reg_setting_t *reg_param);
-	int (*read_paf_sfr_stat)(struct v4l2_subdev *subdev, u32 *buf);
-	int (*get_irq_state)(struct v4l2_subdev *subdev, int *irq_state);
-	int (*clear_irq_state)(struct v4l2_subdev *subdev, int irq_state);
-	int (*set_pdp_param)(struct v4l2_subdev *subdev, struct pdp_total_setting_t *pdp_param);
-};
-
-struct fimc_is_pdp_interface_ops {
-	int (*read_pdp_reg)(struct fimc_is_sensor_interface *itf, struct pdp_read_reg_setting_t *reg_param);
-	int (*read_paf_sfr_stat)(struct fimc_is_sensor_interface *itf, u32 *buf);
-	int (*get_irq_state)(struct fimc_is_sensor_interface *itf, int *irq_state);
-	int (*clear_irq_state)(struct fimc_is_sensor_interface *itf, int irq_state);
-	int (*set_pdp_param)(struct fimc_is_sensor_interface *itf, struct pdp_total_setting_t *pdp_param);
-	int (*reserved[2])(struct fimc_is_sensor_interface *itf);
-};
-
 struct fimc_is_flash_interface_ops {
 	int (*request_flash)(struct fimc_is_sensor_interface *itf,
 				u32 mode,
@@ -1115,24 +913,30 @@ struct fimc_is_flash_interface_ops {
 					camera2_shot_t *shot);
 };
 
+/* MIPI-CSI interface */
+enum itf_vc_buf_data_type {
+	VC_BUF_DATA_TYPE_INVALID = -1,
+	VC_BUF_DATA_TYPE_PDAF = 0,
+	VC_BUF_DATA_TYPE_MIPI_STAT,
+	VC_BUF_DATA_TYPE_MAX
+};
+
 struct fimc_is_csi_interface_ops {
 	int (*get_vc_dma_buf)(struct fimc_is_sensor_interface *itf,
-				enum itf_vc_buf_data_type request_data_type,
+				enum itf_vc_buf_data_type data_type,
 				u32 *buf_index,
 				u64 *buf_addr,
 				u32 *frame_count);
 	int (*put_vc_dma_buf)(struct fimc_is_sensor_interface *itf,
-				enum itf_vc_buf_data_type request_data_type,
+				enum itf_vc_buf_data_type data_type,
 				u32 index);
-	int (*get_vc_dma_buf_info)(struct fimc_is_sensor_interface *itf,
-				enum itf_vc_buf_data_type request_data_type,
-				enum itf_vc_stat_type *return_stat_type,
+	int (*get_vc_dma_buf_size)(struct fimc_is_sensor_interface *itf,
+				enum itf_vc_buf_data_type data_type,
 				u32 *width,
 				u32 *height,
-				u32 *element_size,
-				u32 *sensor_shifted_num);
+				u32 *element_size);
 	int (*get_vc_dma_buf_max_size)(struct fimc_is_sensor_interface *itf,
-				enum itf_vc_buf_data_type request_data_type,
+				enum itf_vc_buf_data_type data_type,
 				u32 *width,
 				u32 *height,
 				u32 *element_size);
@@ -1140,12 +944,12 @@ struct fimc_is_csi_interface_ops {
 };
 
 struct fimc_is_dual_interface_ops {
-	int (*get_sensor_state)(struct fimc_is_sensor_interface *itf);
-	int (*get_reuse_3a_state)(struct fimc_is_sensor_interface *itf,
-				u32 *position, u32 *ae_exposure, u32 *ae_deltaev, bool is_clear);
-	int (*set_reuse_ae_exposure)(struct fimc_is_sensor_interface *itf,
-				u32 ae_exposure, u32 ae_deltaev);
-	int (*reserved[2])(struct fimc_is_sensor_interface *itf);
+        int (*get_sensor_state)(struct fimc_is_sensor_interface *itf);
+        int (*get_reuse_3a_state)(struct fimc_is_sensor_interface *itf,
+                        u32 *position, u32 *ae_exposure, u32 *ae_deltaev, bool is_clear);
+        int (*set_reuse_ae_exposure)(struct fimc_is_sensor_interface *itf,
+                        u32 ae_exposure, u32 ae_deltaev);
+        int (*reserved[2])(struct fimc_is_sensor_interface *itf);
 };
 
 struct fimc_is_sensor_interface {
@@ -1155,8 +959,6 @@ struct fimc_is_sensor_interface {
 	struct fimc_is_actuator_interface	actuator_itf;
 	struct fimc_is_actuator_interface_ops	actuator_itf_ops;
 	struct fimc_is_flash_interface_ops	flash_itf_ops;
-	struct fimc_is_aperture_interface_ops	aperture_itf_ops;
-	struct fimc_is_pdp_interface_ops	pdp_itf_ops;
 
 	bool			vsync_flag;
 	bool			otf_flag_3aa;

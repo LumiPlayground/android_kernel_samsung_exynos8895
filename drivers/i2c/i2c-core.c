@@ -1676,6 +1676,9 @@ static struct i2c_client *of_i2c_register_device(struct i2c_adapter *adap,
 	if (of_get_property(node, "wakeup-source", NULL))
 		info.flags |= I2C_CLIENT_WAKE;
 
+	if (of_get_property(node, "ten-bit-address", NULL))
+		        info.flags |= I2C_CLIENT_TEN;
+
 	result = i2c_new_device(adap, &info);
 	if (result == NULL) {
 		dev_err(&adap->dev, "of_i2c: Failure registering %s\n",
@@ -2586,7 +2589,7 @@ int i2c_transfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
 		exynos_ss_i2c(adap, msgs, num, ESS_FLAG_IN);
 		ret = __i2c_transfer(adap, msgs, num);
 		exynos_ss_i2c(adap, msgs, num, ESS_FLAG_OUT);
-		i2c_unlock_bus(adap, I2C_LOCK_SEGMENT);
+		i2c_unlock_adapter(adap);
 
 		return ret;
 	} else {

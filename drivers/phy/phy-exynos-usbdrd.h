@@ -10,14 +10,8 @@
 #define __PHY_EXYNOS_USBDRD_H__
 
 #include "phy-samsung-usb-cal.h"
-#include "phy-exynos-usb3p1.h"
-#include "phy-exynos-usbdp.h"
+#include "phy-samsung-usb3-cal.h"
 
-#define EXYNOS_USBPHY_VER_02_0_0	0x0200	/* Lhotse - USBDP Combo PHY */
-
-/* 9810 PMU register offset */
-#define EXYNOS_USBDP_PHY_CONTROL	(0x704)
-#define EXYNOS_USB2_PHY_CONTROL	(0x72C)
 /* PMU register offset for USB */
 #define EXYNOS_USBDEV_PHY_CONTROL	(0x704)
 #define EXYNOS_USBDRD_ENABLE		BIT(0)
@@ -43,7 +37,7 @@
 
 #define EXYNOS_DRD_PHYPIPE			0x0c
 
-#define PHYPIPE_PHY_CLOCK_SEL				(0x1 << 4)
+#define PHY_CLOCK_SEL				(0x1 << 4)
 
 #define EXYNOS_DRD_PHYCLKRST			0x10
 
@@ -101,8 +95,6 @@
 #define KHZ	1000
 #define MHZ	(KHZ * KHZ)
 
-#define EXYNOS_DRD_MAX_TUNEPARAM_NUM		32
-
 enum exynos_usbdrd_phy_id {
 	EXYNOS_DRDPHY_UTMI,
 	EXYNOS_DRDPHY_PIPE3,
@@ -118,14 +110,23 @@ struct exynos_usbdrd_phy_config {
 	void (*phy_init)(struct exynos_usbdrd_phy *phy_drd);
 	void (*phy_exit)(struct exynos_usbdrd_phy *phy_drd);
 	void (*phy_tune)(struct exynos_usbdrd_phy *phy_drd, int);
-	int (*phy_vendor_set)(struct exynos_usbdrd_phy *phy_drd, int, int);
-	void (*phy_ilbk)(struct exynos_usbdrd_phy *phy_drd);
 	void (*phy_set)(struct exynos_usbdrd_phy *phy_drd, int, void *);
 	unsigned int (*set_refclk)(struct phy_usb_instance *inst);
 };
 
 struct exynos_usbdrd_phy_drvdata {
 	const struct exynos_usbdrd_phy_config *phy_cfg;
+	u32 pmu_offset_usbdrd0_phy;
+	u32 pmu_offset_usbdrd1_phy;
+	u32 cpu_type;
+	u32 ip_type;
+};
+
+struct exynos_usbdrd_phy_refclk {
+	void __iomem *reg_refclk;
+	u32 offset;
+	u32 mask;
+	u32 value;
 };
 
 /**
@@ -140,38 +141,27 @@ struct exynos_usbdrd_phy_drvdata {
  *	       reference clocks' for SS and HS operations
  * @ref_clk: reference clock to PHY block from which PHY's
  *	     operational clocks are derived
- * @usbphy_info; Phy main control info
- * @usbphy_sub_info; USB3.0 phy control info
+ * @ref_rate: rate of above reference clock
  */
 struct exynos_usbdrd_phy {
 	struct device *dev;
 	void __iomem *reg_phy;
 	void __iomem *reg_phy2;
-	void __iomem *reg_phy3;
 	struct clk **clocks;
-	struct clk **phy_clocks;
 	const struct exynos_usbdrd_phy_drvdata *drv_data;
+	struct exynos_usbdrd_phy_refclk *usbphy_refclk;
 	struct phy_usb_instance {
 		struct phy *phy;
 		u32 index;
 		struct regmap *reg_pmu;
 		u32 pmu_offset;
-		u32 pmu_offset_dp;
-		u32 pmu_mask;
 		const struct exynos_usbdrd_phy_config *phy_cfg;
 	} phys[EXYNOS_DRDPHYS_NUM];
 	u32 extrefclk;
-	bool use_phy_umux;
+	u32 use_additional_tuning;
 	struct clk *ref_clk;
 	struct regulator *vbus;
 	struct exynos_usbphy_info usbphy_info;
-	struct exynos_usbphy_info usbphy_sub_info;
-	struct exynos_usbphy_ss_tune ss_value[2];
-	struct exynos_usbphy_hs_tune hs_value[2];
-	int hs_tune_param_value[EXYNOS_DRD_MAX_TUNEPARAM_NUM][2];
-	int ss_tune_param_value[EXYNOS_DRD_MAX_TUNEPARAM_NUM][2];
-
-	u32 ip_type;
 #if IS_ENABLED(CONFIG_EXYNOS_OTP)
 #define OTP_SUPPORT_USBPHY_NUMBER	2
 #define OTP_USB3PHY_INDEX		0
@@ -180,14 +170,13 @@ struct exynos_usbdrd_phy {
 	u8 otp_index[OTP_SUPPORT_USBPHY_NUMBER];
 	struct tune_bits *otp_data[OTP_SUPPORT_USBPHY_NUMBER];
 #endif
-	int irq_wakeup;
-	int irq_conn;
-	int is_conn;
-	int is_irq_enabled;
+#if defined(CONFIG_USB_TYPEC_MANAGER_NOTIFIER)
+	struct notifier_block	ccic_usbphy_nb;
+	bool reg_nb;
+	u32 phy_revert;
+#endif
+
 	u32 phy_port;
 };
-
-void __iomem *phy_exynos_usbdp_get_address(void);
-extern int xhci_portsc_set(int on);
 
 #endif	/* __PHY_EXYNOS_USBDRD_H__ */

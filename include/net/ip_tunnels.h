@@ -391,6 +391,7 @@ static inline int iptunnel_pull_offloads(struct sk_buff *skb)
 	return 0;
 }
 
+
 static inline void iptunnel_xmit_stats(struct net_device *dev, int pkt_len)
 {
 	if (pkt_len > 0) {

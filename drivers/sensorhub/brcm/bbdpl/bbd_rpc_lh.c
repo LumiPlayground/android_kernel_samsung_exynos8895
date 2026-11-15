@@ -25,7 +25,7 @@
 #include "bbd.h"
 // function to inject sensor data into SHMD
 ssize_t bbd_sensor_write(const char *buf, unsigned int size);
-void bcm_on_packet_received(void *_priv, unsigned char *data, size_t size);
+void bcm_on_packet_recieved(void *_priv, unsigned char *data, size_t size);
 #else
 //self-test with built-in main()
 #include <stdio.h>
@@ -43,7 +43,6 @@ void bcm_on_packet_received(void *_priv, unsigned char *data, size_t size);
 ssize_t bbd_sensor_write(const unsigned char *buf, size_t size)
 {
 	int i = 0;
-
 	printf("Sensor data(%d bytes) ", size);
 	for (i = 0; i < size; i++)
 		printf("%02X ", buf[i]);
@@ -52,11 +51,10 @@ ssize_t bbd_sensor_write(const unsigned char *buf, size_t size)
 }
 #endif
 /*
- * ***************** CUSTOMIZATION FILE ********************
- * This file can be edited for your project,
- * and you can customize your transport layer by changing some of the default value
- * Note that you can also define these value from your makefile directly
- */
+* ***************** CUSTOMIZATION FILE ********************
+* This file can be edited for your project, and you can customize your transport layer by changing some of the default value
+* Note that you can also define these value from your makefile directly
+*/
 /// if defined to 1, the reliable channel will be enabled. If defined to 0, it will be disabled and compiled out
 #ifndef TLCUST_ENABLE_RELIABLE_PL
 	#define TLCUST_ENABLE_RELIABLE_PL 1
@@ -69,7 +67,7 @@ ssize_t bbd_sensor_write(const unsigned char *buf, size_t size)
 #ifndef TLCUST_MAX_INCOMING_PACKET_SIZE
 	#define TLCUST_MAX_INCOMING_PACKET_SIZE 2048
 #endif
-// Defines the number of millisecond before retrying a reliable packet when no acknowledgment is received.
+// Defines the number of millisecond before retrying a reliable packet when no acknowledgement is received.
 #ifndef TLCUST_RELIABLE_RETRY_TIMEOUT_MS
 	#define TLCUST_RELIABLE_RETRY_TIMEOUT_MS 1000
 #endif
@@ -421,7 +419,7 @@ static bool TransportLayer_PacketReceived(void *priv)
 			usFlags	 &= ~usFlagBit;   /* clear the flag */
 			ucFlagDetail = *pucData++;   /* extract flag details */
 			--usLen;
-			/* acknowledgment */
+			/* acknowledgement */
 			if (usFlagBit == FLAG_PACKET_ACK) {
 				/* flag detail contain the acknowledged SeqId */
 				unsigned char ucReceivedAckSeqId = ucFlagDetail;
@@ -508,20 +506,19 @@ static bool TransportLayer_PacketReceived(void *priv)
 				bool bProcessPacket = bReliablePacket || usLen > 0;
 
 				if (bReliablePacket) {
-					pr_debug("TransportLayer_Received Reliable(Size %u, SeqId %u)\n",
-							usLen, ucReliableSeqId);
+					pr_debug("TransportLayer_Received Reliable(Size %u, SeqId %u)\n", usLen, ucReliableSeqId);
 					/* if this is a reliable message, we need to make sure
 					 * we didn't received it before!
 					 * if we did, the Host probably didn't received the Ack,
 					 * so let's just send the ack
 					 * Reliable seqId is not enough, so we also use CRC and
-					 * Length to confirm this was the same message received!
+					 * Lenght to confirm this was the same message received!
 					 */
 					if (ucReliableSeqId == m_ucReliableSeqId
 							&& ucCrc == m_ucReliableCrc
 							&& usLen == m_usReliableLen) {
 						/* already received that packet, remote TransportLayer
-						 * probably lost the Acknowledgment, send it again
+						 * probably lost the Acknowledgement, send it again
 						 */
 						usAckFlags |= FLAG_PACKET_ACK | FLAG_RELIABLE_ACK;
 						bProcessPacket = false; /* we should not process it again */
@@ -531,7 +528,7 @@ static bool TransportLayer_PacketReceived(void *priv)
 						 */
 						usAckFlags |= FLAG_PACKET_ACK | FLAG_RELIABLE_ACK;
 						/* already received that packet, remote TransportLayer
-						 * probably lost the Acknowledgment, send it again
+						 * probably lost the Acknowledgement, send it again
 						 */
 						m_usReliableLen   = usLen;
 						m_ucReliableSeqId = ucReliableSeqId;
@@ -545,17 +542,18 @@ static bool TransportLayer_PacketReceived(void *priv)
 				}
 				if (bProcessPacket) {
 					if (bInternalPacket) {
-						bcm_on_packet_received(priv, m_aucRxEscapedBuf, m_uiEscLen);
-					} else if (!BbdBridge_OnPacketReceived(pucData, usLen)) {
+						bcm_on_packet_recieved(priv, m_aucRxEscapedBuf, m_uiEscLen);
+					} else {
 						/* everything good, notify upper layer that we have
 						 * the payload of a packet available
 						 *  In case of sensor data, we don't want send it to lhd!
 						 */
-						bcm_on_packet_received(priv, m_aucRxEscapedBuf, m_uiEscLen);
+						if (!BbdBridge_OnPacketReceived(pucData, usLen))
+							bcm_on_packet_recieved(priv, m_aucRxEscapedBuf, m_uiEscLen);
 					}
 				} else {
 					//pr_info("[SSPBBD]: %s :%d\n", __func__, __LINE__);
-					bcm_on_packet_received(priv, m_aucRxEscapedBuf, m_uiEscLen);
+					bcm_on_packet_recieved(priv, m_aucRxEscapedBuf, m_uiEscLen);
 				}
 				return true;
 			}
@@ -570,8 +568,7 @@ static bool TransportLayer_PacketReceived(void *priv)
  * bbd_parse_asic_data  - copied from TransportLayer::ParseIncomingData
  *
  */
-void bbd_parse_asic_data(unsigned char *pucData, unsigned short usLen,
-		void (*to_gpsd)(unsigned char *packet, unsigned short len, void *priv), void *priv)
+void bbd_parse_asic_data(unsigned char *pucData, unsigned short usLen, void (*to_gpsd)(unsigned char *packet, unsigned short len, void *priv), void *priv)
 {
 	unsigned short usIdx = 0;
 

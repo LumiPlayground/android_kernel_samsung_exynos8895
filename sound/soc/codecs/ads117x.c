@@ -59,12 +59,10 @@ static struct snd_soc_dai_driver ads117x_dai = {
 };
 
 static struct snd_soc_codec_driver soc_codec_dev_ads117x = {
-	.component_driver = {
-		.dapm_widgets		= ads117x_dapm_widgets,
-		.num_dapm_widgets	= ARRAY_SIZE(ads117x_dapm_widgets),
-		.dapm_routes		= ads117x_dapm_routes,
-		.num_dapm_routes	= ARRAY_SIZE(ads117x_dapm_routes),
-	},
+	.dapm_widgets = ads117x_dapm_widgets,
+	.num_dapm_widgets = ARRAY_SIZE(ads117x_dapm_widgets),
+	.dapm_routes = ads117x_dapm_routes,
+	.num_dapm_routes = ARRAY_SIZE(ads117x_dapm_routes),
 };
 
 static int ads117x_probe(struct platform_device *pdev)

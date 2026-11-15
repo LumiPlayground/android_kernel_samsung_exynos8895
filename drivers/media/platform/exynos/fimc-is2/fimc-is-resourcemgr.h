@@ -49,7 +49,7 @@ enum fimc_is_binary_state {
 
 struct fimc_is_dvfs_ctrl {
 	struct mutex lock;
-#if defined(QOS_INTCAM)
+#if CONFIG_SOC_EXYNOS8895
 	int cur_int_cam_qos;
 #endif
 	int cur_int_qos;
@@ -90,16 +90,10 @@ struct fimc_is_resource {
         u32                                     private_data;
 };
 
-struct fimc_is_global_param {
-	struct mutex				lock;
-	bool					video_mode;
-	ulong					state;
-};
-
 struct fimc_is_resourcemgr {
 	unsigned long				state;
 	atomic_t				rsccount;
-	atomic_t				qos_refcount; /* For multi-instance with SOC sensor */
+	atomic_t				rsccount_module; /* sensor module */
 	struct fimc_is_resource			resource_preproc;
 	struct fimc_is_resource			resource_sensor0;
 	struct fimc_is_resource			resource_sensor1;
@@ -144,25 +138,16 @@ struct fimc_is_resourcemgr {
 	unsigned long long			kernel_log_time;
 	void					*kernel_log_buf;
 #endif
-	struct fimc_is_global_param		global_param;
-
-	/* for critical section at get/put */
-	struct mutex				rsc_lock;
 };
 
-int fimc_is_resourcemgr_probe(struct fimc_is_resourcemgr *resourcemgr, void *private_data, struct platform_device *pdev);
+int fimc_is_resourcemgr_probe(struct fimc_is_resourcemgr *resourcemgr, void *private_data);
 int fimc_is_resource_open(struct fimc_is_resourcemgr *resourcemgr, u32 rsc_type, void **device);
 int fimc_is_resource_get(struct fimc_is_resourcemgr *resourcemgr, u32 rsc_type);
 int fimc_is_resource_put(struct fimc_is_resourcemgr *resourcemgr, u32 rsc_type);
+int fimc_is_resource_count(struct fimc_is_resourcemgr *resourcemgr, u32 rsc_type);
 int fimc_is_resource_ioctl(struct fimc_is_resourcemgr *resourcemgr, struct v4l2_control *ctrl);
 int fimc_is_logsync(struct fimc_is_interface *itf, u32 sync_id, u32 msg_test_id);
-void fimc_is_resource_set_global_param(struct fimc_is_resourcemgr *resourcemgr, void *device);
-void fimc_is_resource_clear_global_param(struct fimc_is_resourcemgr *resourcemgr, void *device);
 int fimc_is_resource_dump(void);
-int fimc_is_kernel_log_dump(bool overwrite);
-#ifdef ENABLE_HWACG_CONTROL
-extern void fimc_is_hw_csi_qchannel_enable_all(bool enable);
-#endif
 
 #define GET_RESOURCE(resourcemgr, type) \
 	((type == RESOURCE_TYPE_SENSOR0) ? &resourcemgr->resource_sensor0 : \

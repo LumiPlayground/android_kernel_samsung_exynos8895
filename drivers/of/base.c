@@ -133,7 +133,7 @@ static const char *safe_name(struct kobject *kobj, const char *orig_name)
 	if (name == orig_name) {
 		name = kstrdup(orig_name, GFP_KERNEL);
 	} else {
-		pr_warn("Duplicate name in %s, renamed to \"%s\"\n",
+		pr_warn("device-tree: Duplicate name in %s, renamed to \"%s\"\n",
 			kobject_name(kobj), name);
 	}
 	return name;
@@ -363,6 +363,12 @@ static bool __of_find_n_match_cpu_property(struct device_node *cpun,
 		cell += ac;
 	}
 	return false;
+}
+
+bool of_find_n_match_cpu_property(struct device_node *cpun,
+			const char *prop_name, int cpu, unsigned int *thread)
+{
+	return __of_find_n_match_cpu_property(cpun, prop_name, cpu, thread);
 }
 
 /*

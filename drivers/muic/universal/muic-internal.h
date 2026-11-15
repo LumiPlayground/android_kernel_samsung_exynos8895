@@ -40,6 +40,11 @@
 		pr_debug(pr_fmt(fmt), ##__VA_ARGS__);		\
 	} while (0)
 
+enum muic_op_mode {
+	OPMODE_MUIC = 0<<0,
+	OPMODE_CCIC = 1<<0,
+};
+
 /* Interrupt type */
 enum {
 	INT_REQ_NONE    = 0,
@@ -224,11 +229,15 @@ typedef struct _muic_data_t {
 
 	struct delayed_work	ccic_work;
 
+	/* Operation Mode */
+	enum muic_op_mode	opmode;
 	bool			afc_water_disable;
+	bool			afc_tsub_disable;
 
 	int			rid;
 	bool			is_ccic_attach;
-	bool			is_ccic_afc_enable;
+	int			is_ccic_afc_enable;
+	bool			is_ccic_rp56_enable;
 #endif
 }muic_data_t;
 

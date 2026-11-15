@@ -63,13 +63,10 @@ struct etf_info {
 #ifdef CONFIG_EXYNOS_CORESIGHT_ETR
 struct etr_info {
 	void __iomem	*base;
-	void __iomem	*sfr_base;
 	u32		enabled;
 	u32		buf_addr;
 	u32		buf_size;
 	u32		buf_pointer;
-	u32		q_offset;
-	bool		hwacg;
 };
 #endif
 struct exynos_trace_info {
@@ -228,9 +225,6 @@ static void exynos_etr_enable(void)
 {
 	struct etr_info *etr = &g_trace_info->etr;
 
-	if (etr->hwacg)
-		writel_relaxed(0x1, etr->sfr_base + etr->q_offset);
-
 	SOFT_UNLOCK(etr->base);
 	etm_writel(etr->base, 0x0, TMCCTL);
 	etm_writel(etr->base, etr->buf_size, TMCRSZ);
@@ -253,9 +247,6 @@ static void exynos_etr_disable(void)
 	etm_writel(etr->base, 0x0, TMCCTL);
 	etr->buf_pointer = etm_readl(etr->base, TMCRWP);
 	SOFT_LOCK(etr->base);
-
-	if (etr->hwacg)
-		writel_relaxed(0x0, etr->sfr_base + etr->q_offset);
 }
 #endif
 
@@ -384,7 +375,6 @@ static int etm_info_init(void)
 	if (!g_trace_info->etr.buf_size)
 		return -ENOMEM;
 	g_trace_info->etr.buf_pointer = 0;
-
 #endif
 	return 0;
 }
@@ -422,6 +412,7 @@ static void etm_enable(unsigned int cpu)
 
 	etm_writel(cinfo->base, 0x1, ETMCTLR);
 	etm_writel(cinfo->base, 0x0, ETMOSLAR);
+	SOFT_LOCK(cinfo->base);
 
 	channel = cinfo->f_port[CHANNEL];
 	port = cinfo->f_port[PORT];
@@ -460,6 +451,7 @@ static void etm_disable(unsigned int cpu)
 	SOFT_UNLOCK(cinfo->base);
 	etm_writel(cinfo->base, 0x0, ETMCTLR);
 	etm_writel(cinfo->base, 0x1, ETMOSLAR);
+	SOFT_LOCK(cinfo->base);
 }
 
 extern void exynos_trace_start(void)
@@ -497,12 +489,29 @@ extern void exynos_trace_stop(void)
 	pr_info("coresight: %s.\n", __func__);
 }
 
-static int exynos_etm_dying_cpu(unsigned int cpu)
+static void exynos_trace_ipi(void *info)
 {
-	etm_disable(cpu);
+	int *hcpu = (int *)info;
 
-	return 0;
+	etm_disable(*hcpu);
 }
+
+static int core_notify(struct notifier_block *self,
+						unsigned long action, void *data)
+{
+	int hcpu = (unsigned long)data;
+
+	switch (action) {
+		case CPU_DYING:
+			smp_call_function_single(hcpu, exynos_trace_ipi, &hcpu, 0);
+			break;
+	};
+	return NOTIFY_OK;
+}
+
+static struct notifier_block core_nb = {
+	.notifier_call = core_notify,
+};
 
 static int exynos_c2_etm_pm_notifier(struct notifier_block *self,
 						unsigned long action, void *v)
@@ -559,11 +568,6 @@ static int exynos_cs_etm_init_dt(void)
 	struct device_node *cs_np, *np = NULL;
 	unsigned int offset, cs_reg_base;
 	int i = 0;
-#ifdef CONFIG_EXYNOS_CORESIGHT_ETR
-	int ret;
-	u32 reg[2];
-#endif
-
 
 	g_trace_info = kzalloc(sizeof(struct exynos_trace_info), GFP_KERNEL);
 	if (!g_trace_info)
@@ -636,16 +640,6 @@ static int exynos_cs_etm_init_dt(void)
 	g_trace_info->etr.base = ioremap(cs_reg_base + offset, SZ_4K);
 	if (!g_trace_info->etr.base)
 		return -ENOMEM;
-
-	ret = of_property_read_u32_array(np, "samsung,cs-sfr", reg, 2);
-	if (!ret) {
-		g_trace_info->etr.sfr_base = ioremap(reg[0], reg[1]);
-		if (!g_trace_info->etr.sfr_base)
-			return -EINVAL;
-		of_property_read_u32(np, "samsung,q-offset", &offset);
-		g_trace_info->etr.q_offset = offset;
-		g_trace_info->etr.hwacg = true;
-	}
 #endif
 #ifdef CONFIG_EXYNOS_CORESIGHT_ETB
 	if (!(np = of_find_node_by_type(np, "etb")))
@@ -703,8 +697,7 @@ static int __init exynos_etm_init(void)
 		goto err;
 
 	register_pm_notifier(&exynos_etm_pm_nb);
-	cpuhp_setup_state(CPUHP_AP_ETM_DYING, "CPUHP_AP_ETM_DYING",
-				NULL, exynos_etm_dying_cpu);
+	register_cpu_notifier(&core_nb);
 	cpu_pm_register_notifier(&exynos_c2_etm_pm_nb);
 
 	g_trace_info->enabled = 1;

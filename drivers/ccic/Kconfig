@@ -28,22 +28,6 @@ config CCIC_S2MM005
 	  If you say yes here you will get support for
 	  s2mm005 ccic full version chipset 
 
-config CCIC_MAX77705
-	bool "CCIC 77705"
-	depends on I2C
-	default n
-	help
-	  If you say yes here you will get support for
-	  max77705 ccic full version chipset
-
-config CCIC_MAX77705_DEBUG
-	bool "CCIC 77705 DEBUG"
-	depends on CCIC_MAX77705
-	default n
-	help
-	  If you say yes here you will get support for
-	  debugging feature with max77705 ccic chipset
-
 config CCIC_ALTERNATE_MODE 
 	bool "support CCIC alternate mode"
 	depends on I2C
@@ -67,3 +51,4 @@ config CCIC_WATER_DETECT
 	help
 	  If you say yes here you will get support for
 	  water detect Enable
+

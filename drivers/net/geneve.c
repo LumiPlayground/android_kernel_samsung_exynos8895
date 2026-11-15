@@ -466,7 +466,6 @@ static struct sk_buff **geneve_gro_receive(struct sock *sk,
 	skb_gro_pull(skb, gh_len);
 	skb_gro_postpull_rcsum(skb, gh, gh_len);
 	pp = call_gro_receive(ptype->callbacks.gro_receive, head, skb);
-	flush = 0;
 
 out_unlock:
 	rcu_read_unlock();
@@ -961,7 +960,6 @@ static netdev_tx_t geneve6_xmit_skb(struct sk_buff *skb, struct net_device *dev,
 {
 	struct geneve_dev *geneve = netdev_priv(dev);
 	struct dst_entry *dst = NULL;
-	struct geneve_sock *gs6;
 	int err = -EINVAL;
 	struct flowi6 fl6;
 	__u8 prio, ttl;
@@ -1019,8 +1017,7 @@ static netdev_tx_t geneve6_xmit_skb(struct sk_buff *skb, struct net_device *dev,
 		if (unlikely(err))
 			goto tx_error;
 
-		prio = ip_tunnel_ecn_encap(ip6_tclass(fl6.flowlabel),
-					   ip_hdr(skb), skb);
+		prio = ip_tunnel_ecn_encap(fl6.flowi6_tos, ip_hdr(skb), skb);
 		ttl = geneve->ttl;
 		if (!ttl && ipv6_addr_is_multicast(&fl6.daddr))
 			ttl = 1;
@@ -1069,37 +1066,15 @@ static netdev_tx_t geneve_xmit(struct sk_buff *skb, struct net_device *dev)
 	return err;
 }
 
-static int __geneve_change_mtu(struct net_device *dev, int new_mtu, bool strict)
-{
-	struct geneve_dev *geneve = netdev_priv(dev);
-	/* The max_mtu calculation does not take account of GENEVE
-	 * options, to avoid excluding potentially valid
-	 * configurations.
-	 */
-	int max_mtu = IP_MAX_MTU - GENEVE_BASE_HLEN - dev->hard_header_len;
-
-	if (geneve->remote.sa.sa_family == AF_INET6)
-		max_mtu -= sizeof(struct ipv6hdr);
-	else
-		max_mtu -= sizeof(struct iphdr);
-
-	if (new_mtu < 68)
-		return -EINVAL;
-
-	if (new_mtu > max_mtu) {
-		if (strict)
-			return -EINVAL;
-
-		new_mtu = max_mtu;
-	}
-
-	dev->mtu = new_mtu;
-	return 0;
-}
-
 static int geneve_change_mtu(struct net_device *dev, int new_mtu)
 {
-	return __geneve_change_mtu(dev, new_mtu, true);
+	/* GENEVE overhead is not fixed, so we can't enforce a more
+	 * precise max MTU.
+	 */
+	if (new_mtu < 68 || new_mtu > IP_MAX_MTU)
+		return -EINVAL;
+	dev->mtu = new_mtu;
+	return 0;
 }
 
 static int geneve_fill_metadata_dst(struct net_device *dev, struct sk_buff *skb)
@@ -1513,17 +1488,14 @@ struct net_device *geneve_dev_create_fb(struct net *net, const char *name,
 		return dev;
 
 	err = geneve_configure(net, dev, &geneve_remote_unspec,
-			       0, 0, 0, 0, htons(dst_port), true,
-			       GENEVE_F_UDP_ZERO_CSUM6_RX);
-	if (err) {
-		free_netdev(dev);
-		return ERR_PTR(err);
-	}
+			       0, 0, 0, htons(dst_port), true);
+	if (err)
+		goto err;
 
 	/* openvswitch users expect packet sizes to be unrestricted,
 	 * so set the largest MTU we can.
 	 */
-	err = __geneve_change_mtu(dev, IP_MAX_MTU, false);
+	err = geneve_change_mtu(dev, IP_MAX_MTU);
 	if (err)
 		goto err;
 

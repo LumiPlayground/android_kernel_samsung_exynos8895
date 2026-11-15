@@ -109,19 +109,11 @@ struct fimc_is_device_flite {
 	struct v4l2_subdev		**subdev;
 };
 
-#if defined(CONFIG_EXYNOS_FIMC_BNS)
 int fimc_is_flite_probe(struct fimc_is_device_sensor *device,
 	u32 instance);
 int fimc_is_flite_open(struct v4l2_subdev *subdev,
 	struct fimc_is_framemgr *framemgr);
 int fimc_is_flite_close(struct v4l2_subdev *subdev);
-#else
-static inline int fimc_is_flite_probe(struct fimc_is_device_sensor *device,
-	u32 instance) {return 0;}
-static inline int fimc_is_flite_open(struct v4l2_subdev *subdev,
-	struct fimc_is_framemgr *framemgr) {return 0;}
-static inline int fimc_is_flite_close(struct v4l2_subdev *subdev) {return 0;}
-#endif
 
 extern u32 __iomem *notify_fcount_sen0;
 extern u32 __iomem *notify_fcount_sen1;

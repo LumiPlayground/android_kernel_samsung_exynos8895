@@ -1540,7 +1540,8 @@ static int ff_layout_commit_done_cb(struct rpc_task *task,
 		return -EAGAIN;
 	}
 
-	ff_layout_set_layoutcommit(data->inode, data->lseg, data->lwb);
+	if (ff_layout_need_layoutcommit(data->lseg))
+		pnfs_set_layoutcommit(data->inode, data->lseg, data->lwb);
 
 	return 0;
 }

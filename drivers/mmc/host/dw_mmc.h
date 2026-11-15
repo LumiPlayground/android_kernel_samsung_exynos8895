@@ -16,11 +16,16 @@
 
 #define DW_MMC_MAX_TRANSFER_SIZE	4096
 #define DW_MMC_SECTOR_SIZE		512
-#define MMC_DW_IDMAC_MULTIPLIER		8
+
+#ifdef CONFIG_FMP_MMC
+#define MMC_DW_IDMAC_MULTIPLIER	\
+	(DW_MMC_MAX_TRANSFER_SIZE / DW_MMC_SECTOR_SIZE)
+#else
+#define MMC_DW_IDMAC_MULTIPLIER	1
+#endif
 
 #define DW_MMC_240A		0x240a
 #define DW_MMC_260A		0x260a
-#define DW_MMC_280A		0x280a
 
 #define SDMMC_CTRL		0x000
 #define SDMMC_PWREN		0x004
@@ -52,7 +57,6 @@
 #define SDMMC_VERID		0x06c
 #define SDMMC_HCON		0x070
 #define SDMMC_UHS_REG		0x074
-#define SDMMC_RST_N		0x078
 #define SDMMC_BMOD		0x080
 #define SDMMC_PLDMND		0x084
 #define SDMMC_DBADDR		0x088
@@ -145,6 +149,7 @@
 #define SDMMC_SET_FIFOTH(m, r, t)	(((m) & 0x7) << 28 | \
 					 ((r) & 0xFFF) << 16 | \
 					 ((t) & 0xFFF))
+
 #define SDMMC_FIFOTH_DMA_MULTI_TRANS_SIZE	28
 #define SDMMC_FIFOTH_RX_WMARK		16
 
@@ -169,15 +174,10 @@
 #define SDMMC_IDMAC_ENABLE		BIT(7)
 #define SDMMC_IDMAC_FB			BIT(1)
 #define SDMMC_IDMAC_SWRESET		BIT(0)
-/* H/W reset */
-#define SDMMC_RST_HWACTIVE		0x1
 /* Version ID register define */
 #define SDMMC_GET_VERID(x)		((x) & 0xFFFF)
 /* Card read threshold */
-#define SDMMC_SET_THLD(v, x)		(((v) & 0xFFF) << 16 | (x))
-#define SDMMC_CARD_WR_THR_EN		BIT(2)
-#define SDMMC_CARD_RD_THR_EN		BIT(0)
-/* UHS-1 register defines */
+#define SDMMC_SET_RD_THLD(v, x)		(((v) & 0xFFF) << 16 | (x))
 #define SDMMC_UHS_18V			BIT(0)
 /* All ctrl reset bits */
 #define SDMMC_CTRL_ALL_RESET_FLAGS \
@@ -278,7 +278,6 @@ enum dw_mci_misc_control {
 	CTRL_RESTORE_CLKSEL = 0,
 	CTRL_REQUEST_EXT_IRQ,
 	CTRL_CHECK_CD,
-	CTRL_ADD_SYSFS,
 };
 
 #define SDMMC_DATA_TMOUT_SHIFT		11
@@ -290,8 +289,8 @@ enum dw_mci_misc_control {
 #define SDMMC_DATA_TMOUT_MAX_EXT_CNT	0xFFFFFF
 #define SDMMC_HTO_TMOUT_SHIFT		8
 
-
 extern u32 dw_mci_calc_timeout(struct dw_mci *host);
+
 extern int dw_mci_probe(struct dw_mci *host);
 extern void dw_mci_remove(struct dw_mci *host);
 #ifdef CONFIG_PM_SLEEP
@@ -321,6 +320,7 @@ struct dw_mci_slot {
 	struct dw_mci		*host;
 
 	int			quirks;
+
 	u32			ctype;
 
 	struct mmc_request	*mrq;
@@ -333,7 +333,6 @@ struct dw_mci_slot {
 #define DW_MMC_CARD_PRESENT	0
 #define DW_MMC_CARD_NEED_INIT	1
 #define DW_MMC_CARD_NO_LOW_PWR	2
-#define DW_MMC_CARD_NO_USE_HOLD 3
 	int			id;
 	int			sdio_id;
 	int			last_detect_state;
@@ -386,8 +385,8 @@ struct dw_mci_req_log {
 	u32				info1;
 	u32				info2;
 	u32				info3;
-	u32				pending_events;
-	u32				completed_events;
+	unsigned long			pending_events;
+	unsigned long			completed_events;
 	enum dw_mci_state		state;
 	enum dw_mci_state		state_cmd;
 	enum dw_mci_state		state_dat;
@@ -429,6 +428,8 @@ struct dw_mci_tuning_data {
  * dw_mci driver data - dw-mshc implementation specific driver data.
  * @caps: mmc subsystem specified capabilities of the controller(s).
  * @init: early implementation specific initialization.
+ * @setup_clock: implementation specific clock configuration.
+ * @prepare_command: handle CMD register extensions.
  * @set_ios: handle bus specific extensions.
  * @parse_dt: parse implementation specific device tree properties.
  * @execute_tuning: implementation specific tuning procedure.
@@ -440,34 +441,23 @@ struct dw_mci_tuning_data {
 struct dw_mci_drv_data {
 	unsigned long	*caps;
 	int		(*init)(struct dw_mci *host);
+	int		(*setup_clock)(struct dw_mci *host);
+	void		(*prepare_command)(struct dw_mci *host, u32 *cmdr);
 	void		(*set_ios)(struct dw_mci *host, struct mmc_ios *ios);
 	int		(*parse_dt)(struct dw_mci *host);
 	int		(*execute_tuning)(struct dw_mci_slot *slot, u32 opcode,
 					struct dw_mci_tuning_data *tuning_data);
 	int		(*prepare_hs400_tuning)(struct dw_mci *host,
-						struct mmc_ios *ios);
+			struct mmc_ios *ios);
 	int		(*switch_voltage)(struct mmc_host *mmc,
 			struct mmc_ios *ios);
-	void            (*hwacg_control)(struct dw_mci *host, u32 flag);
+	void		(*cfg_smu)(struct dw_mci *host);
+	void		(*hwacg_control)(struct dw_mci *host, u32 flag);
 	int		(*misc_control)(struct dw_mci *host,
 	enum		dw_mci_misc_control control, void *priv);
-	int		(*crypto_engine_cfg)(struct dw_mci *host,
-					void *desc,
-					struct mmc_data *data,
-					struct page *page,
-					int sector_offset,
-					bool cmdq_enabled);
-	int		(*crypto_engine_clear)(struct dw_mci *host, void *desc,
-					bool cmdq_enabled);
-	int		(*access_control_get_dev)(struct dw_mci *host);
-	int		(*access_control_sec_cfg)(struct dw_mci *host);
-	int		(*access_control_init)(struct dw_mci *host);
-	int		(*access_control_abort)(struct dw_mci *host);
-	int		(*access_control_resume)(struct dw_mci *host);
-	void		(*ssclk_control)(struct dw_mci *host, int enable);
 };
 
-struct dw_mci_sfr_ram_dump {
+struct dw_mci_sfe_ram_dump {
 	u32			contrl;
 	u32			pwren;
 	u32			clkdiv;

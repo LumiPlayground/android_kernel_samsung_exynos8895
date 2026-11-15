@@ -29,8 +29,6 @@
 #define SCALER_CFG_BURST_WR		(1 << 8)
 #define SCALER_CFG_BURST_RD		(1 << 7)
 #define SCALER_CFG_CSC_Y_OFFSET_DST	(1 << 9)
-#define SCALER_CFG_STOP_REQ		(1 << 3)
-#define SCALER_CFG_RESET_OKAY		(1 << 2)
 #define SCALER_CFG_SOFT_RST		(1 << 1)
 #define SCALER_CFG_START_CMD		(1 << 0)
 
@@ -51,8 +49,6 @@
 #define SCALER_CFG_TILE_EN		(1 << 10)
 #define SCALER_CFG_VHALF_PHASE_EN	(1 << 9)
 #define SCALER_CFG_BIG_ENDIAN		(1 << 8)
-#define SCALER_CFG_10BIT_P010		(1 << 7)
-#define SCALER_CFG_10BIT_S10		(2 << 7)
 #define SCALER_CFG_SWAP_MASK		(3 << 5)
 #define SCALER_CFG_BYTE_SWAP		(1 << 5)
 #define SCALER_CFG_HWORD_SWAP		(2 << 5)
@@ -133,7 +129,7 @@
 #define SCALER_CSC_COEF02		0x238
 #define SCALER_CSC_COEF12		0x23c
 #define SCALER_CSC_COEF22		0x240
-#define SCALER_CSC_COEF_MASK		(0xffff << 0)
+#define SCALER_CSC_COEF_MASK		(0xfff << 0)
 
 #define SCALER_DITH_CFG			0x250
 #define SCALER_DITH_R_MASK		(7 << 6)
@@ -162,23 +158,10 @@
 #define SCALER_OP_SEL_INV_SHIFT		(28)
 #define SCALER_OP_SEL_SHIFT		(24)
 
-#define SCALER_SRC_2BIT_Y_BASE		0x280
-#define SCALER_SRC_2BIT_C_BASE		0x284
-#define SCALER_SRC_2BIT_SPAN		0x288
-#define SCALER_SRC_2BIT_YSPAN_MASK	(0x7fff << 0)
-#define SCALER_SRC_2BIT_CSPAN_MASK	(0x7fff << 16)
-
-#define SCALER_DST_2BIT_Y_BASE		0x2A0
-#define SCALER_DST_2BIT_C_BASE		0x2A4
-#define SCALER_DST_2BIT_SPAN		0x2A8
-#define SCALER_DST_2BIT_YSPAN_MASK	(0x7fff << 0)
-#define SCALER_DST_2BIT_CSPAN_MASK	(0x7fff << 16)
-
 #define SCALER_FILL_COLOR		0x290
 
 #define SCALER_TIMEOUT_CTRL		0x2c0
 #define SCALER_TIMEOUT_CNT		0x2c4
-#define SCALER_CLK_REQ			0x2cc
 
 #define SCALER_SRC_YH_INIT_PHASE	0x2d0
 #define SCALER_SRC_YV_INIT_PHASE	0x2d4
@@ -189,12 +172,6 @@
 #define SCALER_VAL_WH(w, h)	 (((w) & 0x3FFF) << 16) | ((h) & 0x3FFF)
 #define SCALER_VAL_SRC_POS(l, t) (((l) & 0x3FFF) << 18) | (((t) & 0x3FFF) << 2)
 #define SCALER_VAL_DST_POS(l, t) (((l) & 0x3FFF) << 16) | ((t) & 0x3FFF)
-
-static inline void sc_hwset_clk_request(struct sc_dev *sc, bool enable)
-{
-	if (sc->version == SCALER_VERSION(5, 0, 1))
-		__raw_writel(enable ? 1 : 0, sc->regs + SCALER_CLK_REQ);
-}
 
 static inline void sc_hwset_src_pos(struct sc_dev *sc, __s32 left, __s32 top,
 				unsigned int chshift, unsigned int cvshift)
@@ -281,19 +258,6 @@ static inline void sc_clear_aux_power_cfg(struct sc_dev *sc)
 static inline void sc_hwset_init(struct sc_dev *sc)
 {
 	unsigned long cfg;
-
-	if (sc->version == SCALER_VERSION(5, 0, 1)) {
-		int cnt = 1000;
-
-		__raw_writel(SCALER_CFG_STOP_REQ, sc->regs + SCALER_CFG);
-
-		while (cnt-- > 0)
-			if (__raw_readl(sc->regs + SCALER_CFG)
-						& SCALER_CFG_RESET_OKAY)
-				break;
-
-		WARN_ON(cnt <= 0);
-	}
 
 #ifdef SC_NO_SOFTRST
 	cfg = (SCALER_CFG_CSC_Y_OFFSET_SRC | SCALER_CFG_CSC_Y_OFFSET_DST);

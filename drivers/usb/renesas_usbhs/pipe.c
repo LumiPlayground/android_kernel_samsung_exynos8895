@@ -241,7 +241,7 @@ static int usbhsp_pipe_barrier(struct usbhs_pipe *pipe)
 {
 	struct usbhs_priv *priv = usbhs_pipe_to_priv(pipe);
 	int timeout = 1024;
-	u16 mask = usbhs_mod_is_host(priv) ? (CSSTS | PID_MASK) : PID_MASK;
+	u16 val;
 
 	/*
 	 * make sure....
@@ -265,7 +265,9 @@ static int usbhsp_pipe_barrier(struct usbhs_pipe *pipe)
 	usbhs_pipe_disable(pipe);
 
 	do {
-		if (!(usbhsp_pipectrl_get(pipe) & mask))
+		val  = usbhsp_pipectrl_get(pipe);
+		val &= CSSTS | PID_MASK;
+		if (!val)
 			return 0;
 
 		udelay(10);
@@ -391,8 +393,9 @@ void usbhs_pipe_set_trans_count_if_bulk(struct usbhs_pipe *pipe, int len)
 /*
  *		pipe setup
  */
-static int usbhsp_setup_pipecfg(struct usbhs_pipe *pipe, int is_host,
-				int dir_in, u16 *pipecfg)
+static u16 usbhsp_setup_pipecfg(struct usbhs_pipe *pipe,
+				int is_host,
+				int dir_in)
 {
 	u16 type = 0;
 	u16 bfre = 0;
@@ -450,14 +453,14 @@ static int usbhsp_setup_pipecfg(struct usbhs_pipe *pipe, int is_host,
 
 	/* EPNUM */
 	epnum = 0; /* see usbhs_pipe_config_update() */
-	*pipecfg = type		|
-		   bfre		|
-		   dblb		|
-		   cntmd	|
-		   dir		|
-		   shtnak	|
-		   epnum;
-	return 0;
+
+	return	type	|
+		bfre	|
+		dblb	|
+		cntmd	|
+		dir	|
+		shtnak	|
+		epnum;
 }
 
 static u16 usbhsp_setup_pipebuff(struct usbhs_pipe *pipe)
@@ -654,8 +657,7 @@ static void usbhsp_put_pipe(struct usbhs_pipe *pipe)
 }
 
 void usbhs_pipe_init(struct usbhs_priv *priv,
-		     int (*dma_map_ctrl)(struct device *dma_dev,
-					 struct usbhs_pkt *pkt, int map))
+		     int (*dma_map_ctrl)(struct usbhs_pkt *pkt, int map))
 {
 	struct usbhs_pipe_info *info = usbhs_priv_to_pipeinfo(priv);
 	struct usbhs_pipe *pipe;
@@ -702,11 +704,7 @@ struct usbhs_pipe *usbhs_pipe_malloc(struct usbhs_priv *priv,
 		return NULL;
 	}
 
-	if (usbhsp_setup_pipecfg(pipe, is_host, dir_in, &pipecfg)) {
-		dev_err(dev, "can't setup pipe\n");
-		return NULL;
-	}
-
+	pipecfg  = usbhsp_setup_pipecfg(pipe, is_host, dir_in);
 	pipebuf  = usbhsp_setup_pipebuff(pipe);
 
 	usbhsp_pipe_select(pipe);
@@ -804,8 +802,10 @@ int usbhs_pipe_probe(struct usbhs_priv *priv)
 	}
 
 	info->pipe = kzalloc(sizeof(struct usbhs_pipe) * pipe_size, GFP_KERNEL);
-	if (!info->pipe)
+	if (!info->pipe) {
+		dev_err(dev, "Could not allocate pipe\n");
 		return -ENOMEM;
+	}
 
 	info->size = pipe_size;
 

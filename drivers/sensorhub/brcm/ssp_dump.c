@@ -50,27 +50,27 @@ int store_sensor_dump(struct ssp_data *data, int sensor_type, u16 length, u8 *bu
 	int contents_length, ret = SUCCESS;
 	int i = 0;
 	int len = 0;
-	int string_len = sensor_dump_length(length);
+	int tmp_len = sensor_dump_length(length);
 	char tmp_ch;
 
 	pr_info("[SSP] %s - type %d, length %d\n", __func__, sensor_type, length);
 
 	/*make file contents*/
-	contents = kzalloc(sensor_dump_length(length) + 1, GFP_KERNEL);
+	contents = (char *)kzalloc(sensor_dump_length(length), GFP_KERNEL);
 
 	for (i = 0, len = 0; i < length; i++) {
 		tmp_ch = ((i % NUM_LINE_ITEM == NUM_LINE_ITEM - 1) || (i - 1 == length)) ? '\n' : ' ';
-		len += snprintf(contents + len, string_len - len, "%02x%c", buf[i], tmp_ch);
+		len += snprintf(contents + len, tmp_len - len, "%02x%c", buf[i], tmp_ch);
 	}
-	contents[string_len] = '\0';
-	contents_length = string_len + 1;
+
+	contents_length = (int)strlen(contents);
 
 	if (data->sensor_dump[sensor_type] != NULL) {
 		kfree(data->sensor_dump[sensor_type]);
 		data->sensor_dump[sensor_type] = NULL;
 	}
 
-	data->sensor_dump[sensor_type] = kzalloc(contents_length, GFP_KERNEL);
+	data->sensor_dump[sensor_type] =  (char *)kzalloc(contents_length, GFP_KERNEL);
 	memcpy(data->sensor_dump[sensor_type], contents, contents_length);
 	kfree(contents);
 

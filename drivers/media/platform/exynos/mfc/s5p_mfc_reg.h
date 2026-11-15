@@ -25,8 +25,6 @@
 #define MFC_MMU0_READL(offset)		readl(dev->sysmmu0_base + (offset))
 #define MFC_MMU1_READL(offset)		readl(dev->sysmmu1_base + (offset))
 
-#define MFC_WRITEL_HWFC(data, offset)	writel((data), dev->hwfc_base + (offset))
-
 /* version */
 #define s5p_mfc_get_fimv_info()		((MFC_READL(S5P_FIMV_FW_VERSION)		\
 						>> S5P_FIMV_FW_VER_INFO_SHFT)		\
@@ -75,9 +73,6 @@
 #define s5p_mfc_is_interlace_picture()	((MFC_READL(S5P_FIMV_D_DISPLAY_STATUS)		\
 						>> S5P_FIMV_DISP_STATUS_INTERLACE_SHIFT)\
 						& S5P_FIMV_DISP_STATUS_INTERLACE_MASK)
-#define s5p_mfc_is_mbaff_picture()	((MFC_READL(S5P_FIMV_D_H264_INFO)		\
-						>> S5P_FIMV_D_H264_INFO_MBAFF_FRAME_FLAG_SHIFT)\
-						& S5P_FIMV_D_H264_INFO_MBAFF_FRAME_FLAG_MASK)
 #define s5p_mfc_get_img_width()		MFC_READL(S5P_FIMV_D_DISPLAY_FRAME_WIDTH)
 #define s5p_mfc_get_img_height()	MFC_READL(S5P_FIMV_D_DISPLAY_FRAME_HEIGHT)
 #define s5p_mfc_get_disp_y_addr()	MFC_READL(S5P_FIMV_D_DISPLAY_LUMA_ADDR)
@@ -85,6 +80,8 @@
 
 
 /* kind of interrupt */
+#define s5p_mfc_get_int_reason()	(MFC_READL(S5P_FIMV_RISC2HOST_CMD)		\
+						& S5P_FIMV_RISC2HOST_CMD_MASK)
 #define s5p_mfc_get_int_err()		MFC_READL(S5P_FIMV_ERROR_CODE)
 #define s5p_mfc_get_err(x)		(((x) >> S5P_FIMV_ERR_STATUS_SHIFT)		\
 						& S5P_FIMV_ERR_STATUS_MASK)
@@ -142,25 +139,19 @@
 						& S5P_FIMV_D_MVC_VIEW_ID_DISP_MASK)
 #define s5p_mfc_get_profile()			(MFC_READL(S5P_FIMV_D_DECODED_PICTURE_PROFILE)	\
 						& S5P_FIMV_D_DECODED_PIC_PROFILE_MASK)
-#define s5p_mfc_get_luma_bit_depth_minus8()	((MFC_READL(S5P_FIMV_D_DECODED_PICTURE_PROFILE)	\
+#define s5p_mfc_get_bit_depth_minus8()		((MFC_READL(S5P_FIMV_D_DECODED_PICTURE_PROFILE)	\
 						>> S5P_FIMV_D_BIT_DEPTH_LUMA_MINUS8_SHIFT)	\
 						& S5P_FIMV_D_BIT_DEPTH_LUMA_MINUS8_MASK)
-#define s5p_mfc_get_chroma_bit_depth_minus8()	((MFC_READL(S5P_FIMV_D_DECODED_PICTURE_PROFILE)	\
-						>> S5P_FIMV_D_BIT_DEPTH_CHROMA_MINUS8_SHIFT)	\
-						& S5P_FIMV_D_BIT_DEPTH_CHROMA_MINUS8_MASK)
 #define s5p_mfc_get_dec_used_flag()		MFC_READL(S5P_FIMV_D_USED_DPB_FLAG_LOWER)
 #define s5p_mfc_get_enc_nal_done_info()		((MFC_READL(S5P_FIMV_E_NAL_DONE_INFO) & (0x3 << 4)) >> 4)
-#define s5p_mfc_get_chroma_format()		(MFC_READL(S5P_FIMV_D_CHROMA_FORMAT)		\
-						& S5P_FIMV_D_CHROMA_FORMAT_MASK)
-#define s5p_mfc_get_color_range()		((MFC_READL(S5P_FIMV_D_CHROMA_FORMAT)	\
-						>> S5P_FIMV_D_COLOR_RANGE_SHIFT)	\
-						& S5P_FIMV_D_COLOR_RANGE_MASK)
-#define s5p_mfc_get_color_space()		((MFC_READL(S5P_FIMV_D_CHROMA_FORMAT)	\
-						>> S5P_FIMV_D_COLOR_SPACE_SHIFT)	\
-						& S5P_FIMV_D_COLOR_SPACE_MASK)
-#define s5p_mfc_get_num_of_tile()		((MFC_READL(S5P_FIMV_D_DECODED_STATUS)		\
-						>> S5P_FIMV_DEC_STATUS_NUM_OF_TILE_SHIFT)	\
-						& S5P_FIMV_DEC_STATUS_NUM_OF_TILE_MASK)
+#define s5p_mfc_get_hevc_main_12()		(((MFC_READL(S5P_FIMV_D_HEVC_INFO)	\
+						>> S5P_FIMV_D_HEVC_INFO_SHIFT)		\
+						& S5P_FIMV_D_HEVC_INFO_MAIN_12_MASK)	\
+						== S5P_FIMV_D_HEVC_INFO_MAIN_12_VAL)
+#define s5p_mfc_get_hevc_422_10_intra()		(((MFC_READL(S5P_FIMV_D_HEVC_INFO)	\
+						>> S5P_FIMV_D_HEVC_INFO_SHIFT)		\
+						& S5P_FIMV_D_HEVC_INFO_MAIN_422_10_INTRA_MASK)	\
+						== S5P_FIMV_D_HEVC_INFO_MAIN_422_10_INTRA_VAL)
 #define s5p_mfc_get_lcu_size()			(MFC_READL(S5P_FIMV_D_HEVC_INFO)		\
 						& S5P_FIMV_D_HEVC_INFO_LCU_SIZE_MASK)
 
@@ -174,6 +165,12 @@
 #define s5p_mfc_get_nal_q_input_size()		MFC_READL(S5P_FIMV_NAL_QUEUE_INPUT_SIZE)
 #define s5p_mfc_get_nal_q_output_addr()		MFC_READL(S5P_FIMV_NAL_QUEUE_OUTPUT_ADDR)
 #define s5p_mfc_get_nal_q_output_ize()		MFC_READL(S5P_FIMV_NAL_QUEUE_OUTPUT_SIZE)
+
+#define s5p_mfc_clear_int_sfr()				\
+	do {							\
+		MFC_WRITEL(0, S5P_FIMV_RISC2HOST_CMD);	\
+		MFC_WRITEL(0, S5P_FIMV_RISC2HOST_INT);	\
+	} while (0)
 
 static inline void s5p_mfc_reset_nal_queue_registers(struct s5p_mfc_dev *dev)
 {
@@ -222,6 +219,92 @@ static inline void s5p_mfc_dec_store_crop_info(struct s5p_mfc_ctx *ctx)
 	dec->cr_bot = bottom;
 }
 
+static inline int s5p_mfc_check_int_cmd(struct s5p_mfc_dev *dev)
+{
+	if (MFC_READL(S5P_FIMV_RISC2HOST_INT))
+		return MFC_READL(S5P_FIMV_RISC2HOST_CMD);
+	else
+		return 0;
+}
+
+static inline int s5p_mfc_stop_bus(struct s5p_mfc_dev *dev)
+{
+	unsigned int status;
+	unsigned long timeout;
+
+	/* Reset */
+	MFC_WRITEL(0x1, S5P_FIMV_MFC_BUS_RESET_CTRL);
+
+	timeout = jiffies + msecs_to_jiffies(MFC_BW_TIMEOUT);
+	/* Check bus status */
+	do {
+		if (time_after(jiffies, timeout)) {
+			mfc_err_dev("Timeout while resetting MFC.\n");
+			return -EIO;
+		}
+		status = MFC_READL(S5P_FIMV_MFC_BUS_RESET_CTRL);
+	} while ((status & 0x2) == 0);
+
+	return 0;
+}
+
+static inline void s5p_mfc_start_bus(struct s5p_mfc_dev *dev)
+{
+	int val;
+
+	val = MFC_READL(S5P_FIMV_MFC_BUS_RESET_CTRL);
+	val &= ~(0x1);
+	MFC_WRITEL(val, S5P_FIMV_MFC_BUS_RESET_CTRL);
+}
+
+static inline void s5p_mfc_risc_on(struct s5p_mfc_dev *dev)
+{
+	s5p_mfc_clean_dev_int_flags(dev);
+
+	MFC_WRITEL(0x1, S5P_FIMV_RISC_ON);
+	if (FW_HAS_HWACG(dev))
+		MFC_WRITEL(0x0, S5P_FIMV_MFC_OFF);
+	mfc_debug(1, "RISC ON\n");
+	MFC_TRACE_DEV("RISC ON\n");
+}
+
+static inline void s5p_mfc_risc_off(struct s5p_mfc_dev *dev)
+{
+	unsigned int status;
+	unsigned long timeout;
+
+	timeout = jiffies + msecs_to_jiffies(MFC_BW_TIMEOUT);
+	/* Check pending status */
+	do {
+		if (time_after(jiffies, timeout)) {
+			mfc_err_dev("Timeout while pendng clear\n");
+			mfc_err_dev("MFC access pending state: %#x\n", status);
+			mfc_err_dev("MFC access pending R: %#x, W: %#x\n",
+					MFC_READL(S5P_FIMV_MFC_RPEND),
+					MFC_READL(S5P_FIMV_MFC_WPEND));
+			break;
+		}
+		status = MFC_READL(S5P_FIMV_MFC_BUS_STATUS);
+	} while (status != 0);
+
+	MFC_WRITEL(0x0, S5P_FIMV_RISC_ON);
+}
+
+static inline void s5p_mfc_mfc_off(struct s5p_mfc_dev *dev)
+{
+	if (FW_HAS_HWACG(dev)) {
+		mfc_info_dev("MFC h/w state: %d\n",
+				MFC_READL(S5P_FIMV_MFC_STATE) & 0x7);
+		MFC_WRITEL(0x1, S5P_FIMV_MFC_OFF);
+	}
+}
+
+static inline void s5p_mfc_enable_all_clocks(struct s5p_mfc_dev *dev)
+{
+	/* Enable all FW clock gating */
+	MFC_WRITEL(0xFFFFFFFF, S5P_FIMV_MFC_FW_CLOCK);
+}
+
 static inline void s5p_mfc_clear_enc_res_change(struct s5p_mfc_dev *dev)
 {
 	unsigned int reg = 0;
@@ -231,22 +314,11 @@ static inline void s5p_mfc_clear_enc_res_change(struct s5p_mfc_dev *dev)
 	MFC_WRITEL(reg, S5P_FIMV_E_PARAM_CHANGE);
 }
 
-static inline void s5p_mfc_clear_roi_enable(struct s5p_mfc_dev *dev)
-{
-	unsigned int reg = 0;
-
-	reg = MFC_READL(S5P_FIMV_E_RC_ROI_CTRL);
-	reg &= ~(0x1);
-	MFC_WRITEL(reg, S5P_FIMV_E_RC_ROI_CTRL);
-}
+int s5p_mfc_reset_mfc(struct s5p_mfc_dev *dev);
 
 void s5p_mfc_dbg_enable(struct s5p_mfc_dev *dev);
 void s5p_mfc_dbg_disable(struct s5p_mfc_dev *dev);
 void s5p_mfc_dbg_set_addr(struct s5p_mfc_dev *dev);
-
-void s5p_mfc_otf_set_frame_addr(struct s5p_mfc_ctx *ctx, int num_planes);
-void s5p_mfc_otf_set_stream_size(struct s5p_mfc_ctx *ctx, unsigned int size);
-void s5p_mfc_otf_set_hwfc_index(struct s5p_mfc_ctx *ctx, int job_id);
 
 int s5p_mfc_set_dec_codec_buffers(struct s5p_mfc_ctx *ctx);
 int s5p_mfc_set_enc_codec_buffers(struct s5p_mfc_ctx *mfc_ctx);
@@ -257,7 +329,7 @@ int s5p_mfc_set_dec_stream_buffer(struct s5p_mfc_ctx *ctx,
 		unsigned int buf_size);
 
 void s5p_mfc_set_enc_frame_buffer(struct s5p_mfc_ctx *ctx,
-		struct s5p_mfc_buf *mfc_buf, int num_planes);
+		dma_addr_t addr[], int num_planes);
 int s5p_mfc_set_enc_stream_buffer(struct s5p_mfc_ctx *ctx,
 		struct s5p_mfc_buf *mfc_buf);
 
@@ -265,8 +337,9 @@ void s5p_mfc_get_enc_frame_buffer(struct s5p_mfc_ctx *ctx,
 		dma_addr_t addr[], int num_planes);
 void s5p_mfc_set_enc_stride(struct s5p_mfc_ctx *ctx);
 
-int s5p_mfc_set_dynamic_dpb(struct s5p_mfc_ctx *ctx, struct s5p_mfc_buf *dst_vb);
+void s5p_mfc_set_risc_base_addr(struct s5p_mfc_dev *dev,
+				enum mfc_buf_usage_type buf_type);
 
-void s5p_mfc_set_pixel_format(struct s5p_mfc_dev *dev, unsigned int format);
+int s5p_mfc_set_dynamic_dpb(struct s5p_mfc_ctx *ctx, struct s5p_mfc_buf *dst_vb);
 
 #endif /* __S5P_MFC_REG_H */

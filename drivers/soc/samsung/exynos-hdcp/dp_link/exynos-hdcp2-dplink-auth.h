@@ -10,6 +10,7 @@
 #ifndef __EXYNOS_HDCP2_DPLINK_AUTH_H__
 #define __EXYNOS_HDCP2_DPLINK_AUTH_H__
 
+#include "../exynos-hdcp2-tx-session.h"
 #include "exynos-hdcp2-dplink-protocol-msg.h"
 
 int dplink_determine_rx_hdcp_cap(struct hdcp_link_data *lk);

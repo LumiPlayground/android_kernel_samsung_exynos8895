@@ -11,6 +11,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
 #ifndef ECRYPTFS_SDP_CHAMBER_H_
@@ -21,7 +25,7 @@
 int add_chamber_directory(struct ecryptfs_mount_crypt_stat *mount_crypt_stat,
 		int engine_id, const unsigned char *path);
 void del_chamber_directory(struct ecryptfs_mount_crypt_stat *mount_crypt_stat,
-	const unsigned char *path);
+        const unsigned char *path);
 int is_chamber_directory(struct ecryptfs_mount_crypt_stat *mount_crypt_stat,
 		const unsigned char *path, int *engineid);
 

@@ -66,6 +66,10 @@ extern int dual_role_set_prop(struct dual_role_phy_instance *dual_role,
 			      const unsigned int *val);
 extern int dual_role_is_writeable(struct dual_role_phy_instance *drp,
 				  enum dual_role_property prop);
+#elif defined(CONFIG_TYPEC)
+void typec_role_swap_check(struct work_struct *wk);
+int s2mm005_port_type_set(const struct typec_capability *cap, enum typec_port_type port_type);
+int s2mm005_get_pd_support(struct s2mm005_data *usbpd_data);
 #endif
 extern void dp_detach(void *data);
 ////////////////////////////////////////////////////////////////////////////////
@@ -86,7 +90,9 @@ extern void set_host_turn_on_event(int mode);
 ////////////////////////////////////////////////////////////////////////////////
 // external functions in s2mm005_pd.c
 ////////////////////////////////////////////////////////////////////////////////
+extern void select_pdo(int num);
 extern void s2mm005_select_pdo(int num);
+extern void (*fp_select_pdo)(int num);
 extern void vbus_turn_on_ctrl(bool enable);
 extern void process_pd(void *data, u8 plug_attach_done, u8 *pdic_attach, MSG_IRQ_STATUS_Type *MSG_IRQ_State);
 

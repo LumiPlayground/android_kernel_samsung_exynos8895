@@ -652,16 +652,13 @@ static int rndis_set_response(struct rndis_params *params,
 	rndis_set_cmplt_type *resp;
 	rndis_resp_t *r;
 
-	BufLength = le32_to_cpu(buf->InformationBufferLength);
-	BufOffset = le32_to_cpu(buf->InformationBufferOffset);
-	if ((BufLength > RNDIS_MAX_TOTAL_SIZE) ||
-	    (BufOffset + 8 >= RNDIS_MAX_TOTAL_SIZE))
-		    return -EINVAL;
-
 	r = rndis_add_response(params, sizeof(rndis_set_cmplt_type));
 	if (!r)
 		return -ENOMEM;
 	resp = (rndis_set_cmplt_type *)r->buf;
+
+	BufLength = le32_to_cpu(buf->InformationBufferLength);
+	BufOffset = le32_to_cpu(buf->InformationBufferOffset);
 
 #ifdef	VERBOSE_DEBUG
 	pr_debug("%s: Length: %d\n", __func__, BufLength);
@@ -870,10 +867,8 @@ int rndis_msg_parser(struct rndis_params *params, u8 *buf)
 		 */
 		pr_warning("%s: unknown RNDIS message 0x%08X len %d\n",
 			__func__, MsgType, MsgLength);
-/*
 		print_hex_dump_bytes(__func__, DUMP_PREFIX_OFFSET,
 				     buf, MsgLength);
-*/
 		break;
 	}
 
@@ -1040,7 +1035,8 @@ void rndis_free_response(struct rndis_params *params, u8 *buf)
 	rndis_resp_t *r;
 	struct list_head *act, *tmp;
 
-	list_for_each_safe(act, tmp, &(params->resp_queue)) {
+	list_for_each_safe(act, tmp, &(params->resp_queue))
+	{
 		r = list_entry(act, rndis_resp_t, list);
 		if (r && r->buf == buf) {
 			list_del(&r->list);
@@ -1057,7 +1053,8 @@ u8 *rndis_get_next_response(struct rndis_params *params, u32 *length)
 
 	if (!length) return NULL;
 
-	list_for_each_safe(act, tmp, &(params->resp_queue)) {
+	list_for_each_safe(act, tmp, &(params->resp_queue))
+	{
 		r = list_entry(act, rndis_resp_t, list);
 		if (!r->send) {
 			r->send = 1;
@@ -1136,8 +1133,7 @@ int rndis_rm_hdr(struct gether *port,
 
 		skb_pull(skb, data_offset + 8);
 
-		if (data_len == skb->len ||
-				data_len == (skb->len - 1)) {
+		if (msg_len == skb->len) {
 			skb_trim(skb, data_len);
 			break;
 		}

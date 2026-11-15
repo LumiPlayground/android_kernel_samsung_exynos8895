@@ -18,6 +18,10 @@
 #include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <video/videonode.h>
+#include <media/exynos_mc.h>
+#include <asm/cacheflush.h>
+#include <asm/pgtable.h>
 #include <linux/firmware.h>
 #include <linux/dma-mapping.h>
 #include <linux/scatterlist.h>
@@ -30,6 +34,7 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-mem2mem.h>
 #include <media/v4l2-mediabus.h>
+#include <media/exynos_mc.h>
 
 #include "fimc-is-core.h"
 #include "fimc-is-cmd.h"
@@ -48,7 +53,7 @@ int fimc_is_30s_video_probe(void *data)
 	struct fimc_is_core *core;
 	struct fimc_is_video *video;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	core = (struct fimc_is_core *)data;
 	video = &core->video_30s;
@@ -81,7 +86,7 @@ int fimc_is_31s_video_probe(void *data)
 	struct fimc_is_core *core;
 	struct fimc_is_video *video;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	core = (struct fimc_is_core *)data;
 	video = &core->video_31s;
@@ -117,12 +122,10 @@ p_err:
 static int fimc_is_3aa_video_open(struct file *file)
 {
 	int ret = 0;
-	int ret_err = 0;
 	struct fimc_is_video *video;
 	struct fimc_is_video_ctx *vctx;
 	struct fimc_is_device_ischain *device;
 	struct fimc_is_resourcemgr *resourcemgr;
-	char name[FIMC_IS_STR_LEN];
 
 	vctx = NULL;
 	device = NULL;
@@ -131,28 +134,27 @@ static int fimc_is_3aa_video_open(struct file *file)
 	if (!resourcemgr) {
 		err("resourcemgr is NULL");
 		ret = -EINVAL;
-		goto err_resource_null;
+		goto p_err;
 	}
 
 	ret = fimc_is_resource_open(resourcemgr, RESOURCE_TYPE_ISCHAIN, (void **)&device);
 	if (ret) {
 		err("fimc_is_resource_open is fail(%d)", ret);
-		goto err_resource_open;
+		goto p_err;
 	}
 
 	if (!device) {
 		err("device is NULL");
 		ret = -EINVAL;
-		goto err_device_null;
+		goto p_err;
 	}
 
 	minfo("[3%dS:V] %s\n", device, GET_3XS_ID(video), __func__);
 
-	snprintf(name, sizeof(name), "3%dS", GET_3XS_ID(video));
-	ret = open_vctx(file, video, &vctx, device->instance, FRAMEMGR_ID_3XS, name);
+	ret = open_vctx(file, video, &vctx, device->instance, FRAMEMGR_ID_3XS);
 	if (ret) {
 		merr("open_vctx is fail(%d)", device, ret);
-		goto err_vctx_open;
+		goto p_err;
 	}
 
 	ret = fimc_is_video_open(vctx,
@@ -163,29 +165,18 @@ static int fimc_is_3aa_video_open(struct file *file)
 		&fimc_is_ischain_3aa_ops);
 	if (ret) {
 		merr("fimc_is_video_open is fail(%d)", device, ret);
-		goto err_video_open;
+		close_vctx(file, video, vctx);
+		goto p_err;
 	}
 
 	ret = fimc_is_ischain_3aa_open(device, vctx);
 	if (ret) {
 		merr("fimc_is_ischain_3aa_open is fail(%d)", device, ret);
-		goto err_ischain_open;
+		close_vctx(file, video, vctx);
+		goto p_err;
 	}
 
-	return 0;
-
-err_ischain_open:
-	ret_err = fimc_is_video_close(vctx);
-	if (ret_err)
-		merr("fimc_is_video_close is fail(%d)", device, ret_err);
-err_video_open:
-	ret_err = close_vctx(file, video, vctx);
-	if (ret_err < 0)
-		merr("close_vctx is fail(%d)", device, ret_err);
-err_vctx_open:
-err_device_null:
-err_resource_open:
-err_resource_null:
+p_err:
 	return ret;
 }
 
@@ -197,10 +188,10 @@ static int fimc_is_3aa_video_close(struct file *file)
 	struct fimc_is_video *video;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!file);
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!GET_VIDEO(vctx));
-	FIMC_BUG(!GET_DEVICE(vctx));
+	BUG_ON(!file);
+	BUG_ON(!vctx);
+	BUG_ON(!GET_VIDEO(vctx));
+	BUG_ON(!GET_DEVICE(vctx));
 
 	video = GET_VIDEO(vctx);
 	device = GET_DEVICE(vctx);
@@ -266,18 +257,7 @@ const struct v4l2_file_operations fimc_is_3aa_video_fops = {
 static int fimc_is_3aa_video_querycap(struct file *file, void *fh,
 	struct v4l2_capability *cap)
 {
-	struct fimc_is_video *video = video_drvdata(file);
-
-	FIMC_BUG(!cap);
-	FIMC_BUG(!video);
-
-	snprintf(cap->driver, sizeof(cap->driver), "%s", video->vd.name);
-	snprintf(cap->card, sizeof(cap->card), "%s", video->vd.name);
-	cap->capabilities |= V4L2_CAP_STREAMING
-			| V4L2_CAP_VIDEO_OUTPUT
-			| V4L2_CAP_VIDEO_OUTPUT_MPLANE;
-	cap->device_caps |= cap->capabilities;
-
+	/* Todo : add to query capability code */
 	return 0;
 }
 
@@ -301,8 +281,8 @@ static int fimc_is_3aa_video_set_format_mplane(struct file *file, void *fh,
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!format);
+	BUG_ON(!vctx);
+	BUG_ON(!format);
 
 	mdbgv_3aa("%s\n", vctx, __func__);
 
@@ -343,7 +323,7 @@ static int fimc_is_3aa_video_reqbufs(struct file *file, void *priv,
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
 
-	FIMC_BUG(!vctx);
+	BUG_ON(!vctx);
 
 	mdbgv_3aa("%s(buffers : %d)\n", vctx, __func__, buf->count);
 
@@ -375,9 +355,11 @@ static int fimc_is_3aa_video_qbuf(struct file *file, void *priv,
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
 
-	FIMC_BUG(!vctx);
+	BUG_ON(!vctx);
 
-	mvdbgs(3, "%s(%02d:%d)\n", vctx, &vctx->queue, __func__, buf->type, buf->index);
+#ifdef DBG_STREAMING
+	mdbgv_3aa("%s(%02d:%d)\n", vctx, __func__, buf->type, buf->index);
+#endif
 
 	ret = CALL_VOPS(vctx, qbuf, buf);
 	if (ret)
@@ -393,9 +375,11 @@ static int fimc_is_3aa_video_dqbuf(struct file *file, void *priv,
 	struct fimc_is_video_ctx *vctx = file->private_data;
 	bool blocking = file->f_flags & O_NONBLOCK;
 
-	FIMC_BUG(!vctx);
+	BUG_ON(!vctx);
 
-	mvdbgs(3, "%s\n", vctx, &vctx->queue, __func__);
+#ifdef DBG_STREAMING
+	mdbgv_3aa("%s\n", vctx, __func__);
+#endif
 
 	ret = CALL_VOPS(vctx, dqbuf, buf, blocking);
 	if (ret)
@@ -413,11 +397,15 @@ static int fimc_is_3aa_video_prepare(struct file *file, void *priv,
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_frame *frame;
 
-	FIMC_BUG(!buf);
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!GET_FRAMEMGR(vctx));
-	FIMC_BUG(!GET_DEVICE(vctx));
-	FIMC_BUG(!GET_VIDEO(vctx));
+	BUG_ON(!buf);
+	BUG_ON(!vctx);
+	BUG_ON(!GET_FRAMEMGR(vctx));
+	BUG_ON(!GET_DEVICE(vctx));
+	BUG_ON(!GET_VIDEO(vctx));
+
+#ifdef DBG_STREAMING
+	mdbgv_3aa("%s\n", vctx, __func__);
+#endif
 
 	device = GET_DEVICE(vctx);
 	framemgr = GET_FRAMEMGR(vctx);
@@ -487,22 +475,22 @@ static int fimc_is_3aa_video_s_input(struct file *file, void *priv,
 	unsigned int input)
 {
 	int ret = 0;
-	u32 stream, position, vindex, intype, leader;
+	u32 stream, module, vindex, intype, leader;
 	struct fimc_is_video_ctx *vctx = file->private_data;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!vctx->device);
+	BUG_ON(!vctx);
+	BUG_ON(!vctx->device);
 
 	device = GET_DEVICE(vctx);
 	stream = (input & INPUT_STREAM_MASK) >> INPUT_STREAM_SHIFT;
-	position = (input & INPUT_POSITION_MASK) >> INPUT_POSITION_SHIFT;
+	module = (input & INPUT_MODULE_MASK) >> INPUT_MODULE_SHIFT;
 	vindex = (input & INPUT_VINDEX_MASK) >> INPUT_VINDEX_SHIFT;
 	intype = (input & INPUT_INTYPE_MASK) >> INPUT_INTYPE_SHIFT;
 	leader = (input & INPUT_LEADER_MASK) >> INPUT_LEADER_SHIFT;
 
 	mdbgv_3aa("%s(input : %08X)[%d,%d,%d,%d,%d]\n", vctx, __func__, input,
-			stream, position, vindex, intype, leader);
+			stream, module, vindex, intype, leader);
 
 	ret = fimc_is_video_s_input(file, vctx);
 	if (ret) {
@@ -510,7 +498,7 @@ static int fimc_is_3aa_video_s_input(struct file *file, void *priv,
 		goto p_err;
 	}
 
-	ret = fimc_is_ischain_3aa_s_input(device, stream, position, vindex, intype, leader);
+	ret = fimc_is_ischain_3aa_s_input(device, stream, module, vindex, intype, leader);
 	if (ret) {
 		merr("fimc_is_ischain_3aa_s_input is fail(%d)", vctx, ret);
 		goto p_err;
@@ -526,33 +514,16 @@ static int fimc_is_3aa_video_s_ctrl(struct file *file, void *priv,
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
 	struct fimc_is_device_ischain *device;
-	unsigned int value = 0;
-	unsigned int captureIntent = 0;
-	unsigned int captureCount = 0;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!GET_DEVICE(vctx));
-	FIMC_BUG(!ctrl);
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
+	BUG_ON(!ctrl);
 
 	mdbgv_3aa("%s\n", vctx, __func__);
 
 	device = GET_DEVICE(vctx);
 
 	switch (ctrl->id) {
-	case V4L2_CID_IS_INTENT:
-		value = (unsigned int)ctrl->value;
-		captureIntent = (value >> 16) & 0x0000FFFF;
-		if (captureIntent == AA_CAPTURE_INTENT_STILL_CAPTURE_OIS_DYNAMIC_SHOT) {
-			captureCount = value & 0x0000FFFF;
-		} else {
-			captureIntent = ctrl->value;
-			captureCount = 0;
-		}
-		device->group_3aa.intent_ctl.captureIntent = captureIntent;
-		device->group_3aa.intent_ctl.vendor_captureCount = captureCount;
-
-		minfo("[3AA:V] s_ctrl intent(%d) count(%d)\n", vctx, captureIntent, captureCount);
-		break;
 	case V4L2_CID_IS_FORCE_DONE:
 		set_bit(FIMC_IS_GROUP_REQUEST_FSTOP, &device->group_3aa.state);
 		break;
@@ -588,14 +559,14 @@ static int fimc_is_3aa_video_s_ext_ctrl(struct file *file, void *priv,
 	struct v4l2_ext_control *ext_ctrl;
 	struct v4l2_control ctrl;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!GET_DEVICE(vctx));
-	FIMC_BUG(!ctrls);
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
+	BUG_ON(!ctrls);
 
 	mdbgv_3aa("%s\n", vctx, __func__);
 
-	if (ctrls->which != V4L2_CTRL_CLASS_CAMERA) {
-		merr("Invalid control class(%d)", vctx, ctrls->which);
+	if (ctrls->ctrl_class != V4L2_CTRL_CLASS_CAMERA) {
+		merr("Invalid control class(%d)", vctx, ctrls->ctrl_class);
 		ret = -EINVAL;
 		goto p_err;
 	}
@@ -695,18 +666,19 @@ const struct v4l2_ioctl_ops fimc_is_3aa_video_ioctl_ops = {
 };
 
 static int fimc_is_3aa_queue_setup(struct vb2_queue *vbq,
+	const void *parg,
 	unsigned int *num_buffers,
 	unsigned int *num_planes,
 	unsigned int sizes[],
-	struct device *alloc_devs[])
+	void *allocators[])
 {
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = vbq->drv_priv;
 	struct fimc_is_video *video;
 	struct fimc_is_queue *queue;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!vctx->video);
+	BUG_ON(!vctx);
+	BUG_ON(!vctx->video);
 
 	mdbgv_3aa("%s\n", vctx, __func__);
 
@@ -717,7 +689,7 @@ static int fimc_is_3aa_queue_setup(struct vb2_queue *vbq,
 		video->alloc_ctx,
 		num_planes,
 		sizes,
-		alloc_devs);
+		allocators);
 	if (ret)
 		merr("fimc_is_queue_setup is fail(%d)", vctx, ret);
 
@@ -747,8 +719,8 @@ static int fimc_is_3aa_start_streaming(struct vb2_queue *vbq,
 	struct fimc_is_queue *queue;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!GET_DEVICE(vctx));
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
 
 	mdbgv_3aa("%s\n", vctx, __func__);
 
@@ -772,8 +744,8 @@ static void fimc_is_3aa_stop_streaming(struct vb2_queue *vbq)
 	struct fimc_is_queue *queue;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG_VOID(!vctx);
-	FIMC_BUG_VOID(!GET_DEVICE(vctx));
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
 
 	mdbgv_3aa("%s\n", vctx, __func__);
 
@@ -794,10 +766,12 @@ static void fimc_is_3aa_buffer_queue(struct vb2_buffer *vb)
 	struct fimc_is_device_ischain *device;
 	struct fimc_is_queue *queue;
 
-	FIMC_BUG_VOID(!vctx);
-	FIMC_BUG_VOID(!GET_DEVICE(vctx));
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
 
-	mvdbgs(3, "%s(%d)\n", vctx, &vctx->queue, __func__, vb->index);
+#ifdef DBG_STREAMING
+	mdbgv_3aa("%s(%d)\n", vctx, __func__, vb->index);
+#endif
 
 	device = GET_DEVICE(vctx);
 	queue = GET_QUEUE(vctx);
@@ -821,14 +795,14 @@ static void fimc_is_3aa_buffer_finish(struct vb2_buffer *vb)
 	struct fimc_is_video_ctx *vctx = vb->vb2_queue->drv_priv;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG_VOID(!vctx);
-	FIMC_BUG_VOID(!GET_DEVICE(vctx));
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
 
-	mvdbgs(3, "%s(%d)\n", vctx, &vctx->queue, __func__, vb->index);
+#ifdef DBG_STREAMING
+	mdbgv_3aa("%s(%d)\n", vctx, __func__, vb->index);
+#endif
 
 	device = GET_DEVICE(vctx);
-
-	fimc_is_queue_buffer_finish(vb);
 
 	ret = fimc_is_ischain_3aa_buffer_finish(device, vb->index);
 	if (ret) {

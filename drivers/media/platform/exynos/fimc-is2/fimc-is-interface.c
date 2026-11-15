@@ -180,7 +180,7 @@ int fimc_is_set_fwboot(struct fimc_is_interface *this, int val) {
 	int ret = 0;
 	u32 set = 0;
 
-	FIMC_BUG(!this);
+	BUG_ON(!this);
 
 #ifdef FW_SUSPEND_RESUME
 	switch (val) {
@@ -561,7 +561,7 @@ static int waiting_is_ready(struct fimc_is_interface *itf)
 	int ret = 0;
 	u32 try_count, log_count, status;
 
-	FIMC_BUG(!itf);
+	BUG_ON(!itf);
 
 	log_count = 0;
 	try_count = 0;
@@ -633,16 +633,13 @@ static inline void fimc_is_sync_reprocessing_queue(struct fimc_is_groupmgr *grou
 	}
 
 	rframemgr = GET_HEAD_GROUP_FRAMEMGR(rgroup);
-	if (rframemgr) {
-		framemgr_e_barrier_irqs(rframemgr, 0, flags);
-		rframe = peek_frame(rframemgr, FS_REQUEST);
-		framemgr_x_barrier_irqr(rframemgr, 0, flags);
 
-		if (rframe)
-			kthread_queue_work(&gtask->worker, &rframe->work);
-	} else {
-		mgerr("failed to get reprocessing frame manager", group, group);
-	}
+	framemgr_e_barrier_irqs(rframemgr, 0, flags);
+	rframe = peek_frame(rframemgr, FS_REQUEST);
+	framemgr_x_barrier_irqr(rframemgr, 0, flags);
+
+	if (rframe)
+		queue_kthread_work(&gtask->worker, &rframe->work);
 }
 #endif
 
@@ -661,11 +658,11 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 #endif
 #endif
 
-	FIMC_BUG(!itf);
-	FIMC_BUG(!msg);
-	FIMC_BUG(msg->instance >= FIMC_IS_STREAM_COUNT);
-	FIMC_BUG(msg->command >= HIC_COMMAND_END);
-	FIMC_BUG(!reply);
+	BUG_ON(!itf);
+	BUG_ON(!msg);
+	BUG_ON(msg->instance >= FIMC_IS_STREAM_COUNT);
+	BUG_ON(msg->command >= HIC_COMMAND_END);
+	BUG_ON(!reply);
 
 	if (!test_bit(IS_IF_STATE_OPEN, &itf->state)) {
 		warn("interface close, %d cmd is cancel", msg->command);
@@ -839,9 +836,9 @@ static int fimc_is_set_cmd_shot(struct fimc_is_interface *itf,
 	volatile struct is_common_reg __iomem *com_regs;
 	ulong flags;
 
-	FIMC_BUG(!itf);
-	FIMC_BUG(!msg);
-	FIMC_BUG(msg->instance >= FIMC_IS_STREAM_COUNT);
+	BUG_ON(!itf);
+	BUG_ON(!msg);
+	BUG_ON(msg->instance >= FIMC_IS_STREAM_COUNT);
 
 	if (!test_bit(IS_IF_STATE_OPEN, &itf->state)) {
 		warn("interface close, %d cmd is cancel", msg->command);
@@ -1091,80 +1088,80 @@ static void wq_func_general(struct work_struct *data)
 		case ISR_DONE:
 			switch (msg->param1) {
 			case HIC_OPEN_SENSOR:
-				dbg_interface(1, "open done\n");
+				dbg_interface("open done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_CLOSE_SENSOR:
-				dbg_interface(1, "close done\n");
+				dbg_interface("close done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_GET_SET_FILE_ADDR:
-				dbg_interface(1, "saddr(%x) done\n",
+				dbg_interface("saddr(%x) done\n",
 					msg->param2);
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_LOAD_SET_FILE:
-				dbg_interface(1, "setfile done\n");
+				dbg_interface("setfile done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_SET_A5_MAP:
-				dbg_interface(1, "mapping done\n");
+				dbg_interface("mapping done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_SET_A5_UNMAP:
-				dbg_interface(1, "unmapping done\n");
+				dbg_interface("unmapping done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_PROCESS_START:
-				dbg_interface(1, "process_on done\n");
+				dbg_interface("process_on done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_PROCESS_STOP:
-				dbg_interface(1, "process_off done\n");
+				dbg_interface("process_off done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_STREAM_ON:
-				dbg_interface(1, "stream_on done\n");
+				dbg_interface("stream_on done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_STREAM_OFF:
-				dbg_interface(1, "stream_off done\n");
+				dbg_interface("stream_off done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_SET_PARAMETER:
-				dbg_interface(1, "s_param done\n");
+				dbg_interface("s_param done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_GET_STATIC_METADATA:
-				dbg_interface(1, "g_capability done\n");
+				dbg_interface("g_capability done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_PREVIEW_STILL:
-				dbg_interface(1, "a_param(%dx%d) done\n",
+				dbg_interface("a_param(%dx%d) done\n",
 					msg->param2,
 					msg->param3);
 				memcpy(&itf->reply, msg,
@@ -1172,25 +1169,25 @@ static void wq_func_general(struct work_struct *data)
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_POWER_DOWN:
-				dbg_interface(1, "powerdown done\n");
+				dbg_interface("powerdown done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_I2C_CONTROL_LOCK:
-				dbg_interface(1, "i2c lock done\n");
+				dbg_interface("i2c lock done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_SYSTEM_CONTROL:
-				dbg_interface(1, "system control done\n");
+				dbg_interface("system control done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
 				break;
 			case HIC_SENSOR_MODE_CHANGE:
-				dbg_interface(1, "sensor mode change done\n");
+				dbg_interface("sensor mode change done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
 				testnclr_wakeup(itf, msg->param1);
@@ -1202,7 +1199,7 @@ static void wq_func_general(struct work_struct *data)
 			case HIC_SET_CAM_CONTROL:
 				/* this code will be used latter */
 #if 0
-				dbg_interface(1, "camctrl done\n");
+				dbg_interface("camctrl done\n");
 				get_req_work(&itf->nblk_cam_ctrl , &nblk_work);
 				if (nblk_work) {
 					nblk_work->msg.command = ISR_DONE;
@@ -1232,7 +1229,7 @@ static void wq_func_general(struct work_struct *data)
 					msg->instance);
 				break;
 			case HIC_SET_CAM_CONTROL:
-				dbg_interface(1, "camctrl NOT done\n");
+				dbg_interface("camctrl NOT done\n");
 				get_req_work(&itf->nblk_cam_ctrl , &nblk_work);
 				nblk_work->msg.command = ISR_NDONE;
 				set_free_work(&itf->nblk_cam_ctrl, nblk_work);
@@ -1301,7 +1298,7 @@ static void wq_func_subdev(struct fimc_is_subdev *leader,
 	struct fimc_is_frame *ldr_frame;
 	struct camera2_node *capture;
 
-	FIMC_BUG(!sub_frame);
+	BUG_ON(!sub_frame);
 
 	ldr_vctx = leader->vctx;
 	if (unlikely(!ldr_vctx)) {
@@ -1340,7 +1337,9 @@ static void wq_func_subdev(struct fimc_is_subdev *leader,
 		done_state = VB2_BUF_STATE_ERROR;
 		sub_frame->stream->fvalid = 0;
 	} else {
-		mdbgs_sr(" DONE(%d)\n", subdev, subdev, ldr_frame, sub_frame->index);
+#ifdef DBG_STREAMING
+		msrinfo(" DONE(%d)\n", subdev, subdev, ldr_frame, sub_frame->index);
+#endif
 		sub_frame->stream->fvalid = 1;
 	}
 
@@ -1370,7 +1369,7 @@ static void wq_func_subdev(struct fimc_is_subdev *leader,
 
 	/* for debug */
 	DBG_DIGIT_TAG((ldr_frame->group) ? ((struct fimc_is_group *)ldr_frame->group)->slot : 0,
-			0, GET_QUEUE(sub_vctx), sub_frame, fcount - sub_frame->num_buffers + 1, 1);
+			0, GET_QUEUE(sub_vctx), sub_frame, fcount);
 
 complete:
 	sub_frame->stream->fcount = fcount;
@@ -1391,12 +1390,12 @@ static void wq_func_frame(struct fimc_is_subdev *leader,
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_frame *frame;
 
-	FIMC_BUG(!leader);
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!leader->vctx);
-	FIMC_BUG(!subdev->vctx);
-	FIMC_BUG(!leader->vctx->video);
-	FIMC_BUG(!subdev->vctx->video);
+	BUG_ON(!leader);
+	BUG_ON(!subdev);
+	BUG_ON(!leader->vctx);
+	BUG_ON(!subdev->vctx);
+	BUG_ON(!leader->vctx->video);
+	BUG_ON(!subdev->vctx->video);
 
 	framemgr = GET_FRAMEMGR(subdev->vctx);
 
@@ -1432,9 +1431,6 @@ static void wq_func_frame(struct fimc_is_subdev *leader,
 	}
 
 	framemgr_x_barrier_irqr(framemgr, FMGR_IDX_4, flags);
-
-	/* cache invalidate */
-	CALL_CACHE_BUFS_FINISH(subdev->vctx);
 }
 
 static void wq_func_30c(struct work_struct *data)
@@ -2292,67 +2288,6 @@ p_err:
 	}
 }
 
-static void wq_func_m5p(struct work_struct *data)
-{
-	u32 instance, fcount, rcount, status;
-	struct fimc_is_interface *itf;
-	struct fimc_is_device_ischain *device;
-	struct fimc_is_subdev *leader, *subdev;
-	struct fimc_is_work *work;
-	struct fimc_is_msg *msg;
-
-	itf = container_of(data, struct fimc_is_interface, work_wq[WORK_M5P_FDONE]);
-
-	get_req_work(&itf->work_list[WORK_M5P_FDONE], &work);
-	while (work) {
-		msg = &work->msg;
-		instance = msg->instance;
-		fcount = msg->param1;
-		rcount = msg->param2;
-		status = msg->param3;
-
-		if (instance >= FIMC_IS_STREAM_COUNT) {
-			err("instance is invalid(%d)", instance);
-			goto p_err;
-		}
-
-		device = &((struct fimc_is_core *)itf->core)->ischain[instance];
-		if (!device) {
-			err("device is NULL");
-			goto p_err;
-		}
-
-		if (!test_bit(FIMC_IS_ISCHAIN_OPEN, &device->state)) {
-			merr("device is not open", device);
-			goto p_err;
-		}
-
-		subdev = &device->m5p;
-		if (!test_bit(FIMC_IS_SUBDEV_START, &subdev->state)) {
-			merr("subdev is not start", device);
-			goto p_err;
-		}
-
-		leader = subdev->leader;
-		if (!leader) {
-			merr("leader is NULL", device);
-			goto p_err;
-		}
-
-		/* For supporting multi input to single output */
-		if (subdev->vctx->video->try_smp) {
-			subdev->vctx->video->try_smp = false;
-			up(&subdev->vctx->video->smp_multi_input);
-		}
-
-		wq_func_frame(leader, subdev, fcount, rcount, status);
-
-p_err:
-		set_free_work(&itf->work_list[WORK_M5P_FDONE], work);
-		get_req_work(&itf->work_list[WORK_M5P_FDONE], &work);
-	}
-}
-
 static void wq_func_group_xxx(struct fimc_is_groupmgr *groupmgr,
 	struct fimc_is_group *group,
 	struct fimc_is_framemgr *framemgr,
@@ -2362,9 +2297,9 @@ static void wq_func_group_xxx(struct fimc_is_groupmgr *groupmgr,
 {
 	u32 done_state = VB2_BUF_STATE_DONE;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!framemgr);
-	FIMC_BUG(!frame);
+	BUG_ON(!vctx);
+	BUG_ON(!framemgr);
+	BUG_ON(!frame);
 
 	/* perframe error control */
 	if (test_bit(FIMC_IS_SUBDEV_PARAM_ERR, &group->leader.state)) {
@@ -2392,9 +2327,12 @@ static void wq_func_group_xxx(struct fimc_is_groupmgr *groupmgr,
 			fimc_is_resource_dump();
 #endif
 		}
-	} else {
-		mgrdbgs(1, " DONE(%d)\n", group, group, frame, frame->index);
 	}
+
+#ifdef DBG_STREAMING
+	if (!status)
+		mgrinfo(" DONE(%d)\n", group, group, frame, frame->index);
+#endif
 
 #ifdef ENABLE_SYNC_REPROCESSING
 	/* Sync Reprocessing */
@@ -2408,8 +2346,8 @@ static void wq_func_group_xxx(struct fimc_is_groupmgr *groupmgr,
 
 	frame->result = status;
 	clear_bit(group->leader.id, &frame->out_flag);
-	fimc_is_group_done(groupmgr, group, frame, done_state);
 	trans_frame(framemgr, frame, FS_COMPLETE);
+	fimc_is_group_done(groupmgr, group, frame, done_state);
 	CALL_VOPS(vctx, done, frame->index, done_state);
 }
 
@@ -2424,13 +2362,12 @@ void wq_func_group(struct fimc_is_device_ischain *device,
 	u32 lindex = 0;
 	u32 hindex = 0;
 
-	FIMC_BUG(!groupmgr);
-	FIMC_BUG(!group);
-	FIMC_BUG(!framemgr);
-	FIMC_BUG(!frame);
-	FIMC_BUG(!vctx);
+	BUG_ON(!groupmgr);
+	BUG_ON(!group);
+	BUG_ON(!framemgr);
+	BUG_ON(!frame);
+	BUG_ON(!vctx);
 
-	TIME_SHOT(TMS_SDONE);
 	/*
 	 * complete count should be lower than 3 when
 	 * buffer is queued or overflow can be occured
@@ -2493,7 +2430,7 @@ static void wq_func_shot(struct work_struct *data)
 	int group_id;
 	struct fimc_is_core *core;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	itf = container_of(data, struct fimc_is_interface, work_wq[INTR_SHOT_DONE]);
 	work_list = &itf->work_list[INTR_SHOT_DONE];
@@ -2563,6 +2500,7 @@ static void wq_func_shot(struct work_struct *data)
 		frame = peek_frame(framemgr, FS_PROCESS);
 
 		if (frame) {
+			PROGRAM_COUNT(13);
 #ifdef MEASURE_TIME
 #ifdef EXTERNAL_TIME
 			do_gettimeofday(&frame->tzone[TM_SHOT_D]);
@@ -2577,6 +2515,8 @@ static void wq_func_shot(struct work_struct *data)
 #endif
 			wq_func_group(device, groupmgr, group, framemgr, frame,
 				vctx, status, fcount);
+
+			PROGRAM_COUNT(14);
 		} else {
 			mgerr("invalid shot done(%d)", device, group, fcount);
 			frame_manager_print_queues(framemgr);
@@ -2606,7 +2546,7 @@ static inline void print_framemgr_spinlock_usage(struct fimc_is_core *core)
 	for (i = 0; i < FIMC_IS_SENSOR_COUNT; ++i) {
 		sensor = &core->sensor[i];
 		if (test_bit(FIMC_IS_SENSOR_OPEN, &sensor->state) && (framemgr = &sensor->vctx->queue.framemgr))
-			info("[@] framemgr(%s) sindex : 0x%08lX\n", framemgr->name, framemgr->sindex);
+			info("[@] framemgr(0x%08X) sindex : 0x%08lX\n", framemgr->id, framemgr->sindex);
 	}
 
 	for (i = 0; i < FIMC_IS_STREAM_COUNT; ++i) {
@@ -2615,46 +2555,46 @@ static inline void print_framemgr_spinlock_usage(struct fimc_is_core *core)
 			/* 3AA GROUP */
 			subdev = &ischain->group_3aa.leader;
 			if (test_bit(FIMC_IS_SUBDEV_OPEN, &subdev->state) && (framemgr = GET_SUBDEV_FRAMEMGR(subdev)))
-				info("[@] framemgr(%s) sindex : 0x%08lX\n", framemgr->name, framemgr->sindex);
+				info("[@] framemgr(0x%08X) sindex : 0x%08lX\n", framemgr->id, framemgr->sindex);
 
 			subdev = &ischain->txc;
 			if (test_bit(FIMC_IS_SUBDEV_OPEN, &subdev->state) && (framemgr = GET_SUBDEV_FRAMEMGR(subdev)))
-				info("[@] framemgr(%s) sindex : 0x%08lX\n", framemgr->name, framemgr->sindex);
+				info("[@] framemgr(0x%08X) sindex : 0x%08lX\n", framemgr->id, framemgr->sindex);
 
 			subdev = &ischain->txp;
 			if (test_bit(FIMC_IS_SUBDEV_OPEN, &subdev->state) && (framemgr = GET_SUBDEV_FRAMEMGR(subdev)))
-				info("[@] framemgr(%s) sindex : 0x%08lX\n", framemgr->name, framemgr->sindex);
+				info("[@] framemgr(0x%08X) sindex : 0x%08lX\n", framemgr->id, framemgr->sindex);
 
 			/* ISP GROUP */
 			subdev = &ischain->group_isp.leader;
 			if (test_bit(FIMC_IS_SUBDEV_OPEN, &subdev->state) && (framemgr = GET_SUBDEV_FRAMEMGR(subdev)))
-				info("[@] framemgr(%s) sindex : 0x%08lX\n", framemgr->name, framemgr->sindex);
+				info("[@] framemgr(0x%08X) sindex : 0x%08lX\n", framemgr->id, framemgr->sindex);
 
 			subdev = &ischain->ixc;
 			if (test_bit(FIMC_IS_SUBDEV_OPEN, &subdev->state) && (framemgr = GET_SUBDEV_FRAMEMGR(subdev)))
-				info("[@] framemgr(%s) sindex : 0x%08lX\n", framemgr->name, framemgr->sindex);
+				info("[@] framemgr(0x%08X) sindex : 0x%08lX\n", framemgr->id, framemgr->sindex);
 
 			subdev = &ischain->ixp;
 			if (test_bit(FIMC_IS_SUBDEV_OPEN, &subdev->state) && (framemgr = GET_SUBDEV_FRAMEMGR(subdev)))
-				info("[@] framemgr(%s) sindex : 0x%08lX\n", framemgr->name, framemgr->sindex);
+				info("[@] framemgr(0x%08X) sindex : 0x%08lX\n", framemgr->id, framemgr->sindex);
 
 			/* DIS GROUP */
 			subdev = &ischain->group_dis.leader;
 			if (test_bit(FIMC_IS_SUBDEV_OPEN, &subdev->state) && (framemgr = GET_SUBDEV_FRAMEMGR(subdev)))
-				info("[@] framemgr(%s) sindex : 0x%08lX\n", framemgr->name, framemgr->sindex);
+				info("[@] framemgr(0x%08X) sindex : 0x%08lX\n", framemgr->id, framemgr->sindex);
 
 			subdev = &ischain->scc;
 			if (test_bit(FIMC_IS_SUBDEV_OPEN, &subdev->state) && (framemgr = GET_SUBDEV_FRAMEMGR(subdev)))
-				info("[@] framemgr(%s) sindex : 0x%08lX\n", framemgr->name, framemgr->sindex);
+				info("[@] framemgr(0x%08X) sindex : 0x%08lX\n", framemgr->id, framemgr->sindex);
 
 			subdev = &ischain->scp;
 			if (test_bit(FIMC_IS_SUBDEV_OPEN, &subdev->state) && (framemgr = GET_SUBDEV_FRAMEMGR(subdev)))
-				info("[@] framemgr(%s) sindex : 0x%08lX\n", framemgr->name, framemgr->sindex);
+				info("[@] framemgr(0x%08X) sindex : 0x%08lX\n", framemgr->id, framemgr->sindex);
 
 			/* VRA GROUP */
 			subdev = &ischain->group_vra.leader;
 			if (test_bit(FIMC_IS_SUBDEV_OPEN, &subdev->state) && (framemgr = GET_SUBDEV_FRAMEMGR(subdev)))
-				info("[@] framemgr(%s) sindex : 0x%08lX\n", framemgr->name, framemgr->sindex);
+				info("[@] framemgr(0x%08X) sindex : 0x%08lX\n", framemgr->id, framemgr->sindex);
 		}
 	}
 }
@@ -2672,8 +2612,8 @@ static void interface_timer(unsigned long data)
 	struct fimc_is_work_list *work_list;
 	struct work_struct *work_wq;
 
-	FIMC_BUG(!itf);
-	FIMC_BUG(!itf->core);
+	BUG_ON(!itf);
+	BUG_ON(!itf->core);
 
 	if (!test_bit(IS_IF_STATE_OPEN, &itf->state)) {
 		pr_info("shot timer is terminated\n");
@@ -3143,7 +3083,7 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 	int ret = 0;
 	struct fimc_is_core *core = (struct fimc_is_core *)core_data;
 
-	dbg_interface(1, "%s\n", __func__);
+	dbg_interface("%s\n", __func__);
 
 	init_request_barrier(this);
 	init_process_barrier(this);
@@ -3173,7 +3113,6 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 	INIT_WORK(&this->work_wq[WORK_M2P_FDONE], wq_func_m2p);
 	INIT_WORK(&this->work_wq[WORK_M3P_FDONE], wq_func_m3p);
 	INIT_WORK(&this->work_wq[WORK_M4P_FDONE], wq_func_m4p);
-	INIT_WORK(&this->work_wq[WORK_M5P_FDONE], wq_func_m5p);
 
 	this->regs = (void *)regs;
 	this->com_regs = (struct is_common_reg *)(regs + ISSR0);
@@ -3215,7 +3154,6 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 	init_work_list(&this->work_list[WORK_M2P_FDONE], TRACE_WORK_ID_M2P, MAX_WORK_COUNT);
 	init_work_list(&this->work_list[WORK_M3P_FDONE], TRACE_WORK_ID_M3P, MAX_WORK_COUNT);
 	init_work_list(&this->work_list[WORK_M4P_FDONE], TRACE_WORK_ID_M4P, MAX_WORK_COUNT);
-	init_work_list(&this->work_list[WORK_M5P_FDONE], TRACE_WORK_ID_M5P, MAX_WORK_COUNT);
 
 	this->err_report_vendor = NULL;
 
@@ -3243,7 +3181,7 @@ int fimc_is_interface_open(struct fimc_is_interface *this)
 		goto exit;
 	}
 
-	dbg_interface(1, "%s\n", __func__);
+	dbg_interface("%s\n", __func__);
 
 	for (i = 0; i < FIMC_IS_STREAM_COUNT; i++) {
 		this->streaming[i] = IS_IF_STREAMING_INIT;
@@ -3297,7 +3235,7 @@ int fimc_is_interface_close(struct fimc_is_interface *this)
 		err("waiting idle is fail");
 
 	del_timer_sync(&this->timer);
-	dbg_interface(1, "%s\n", __func__);
+	dbg_interface("%s\n", __func__);
 
 	clear_bit(IS_IF_STATE_OPEN, &this->state);
 
@@ -3328,8 +3266,8 @@ int fimc_is_hw_logdump(struct fimc_is_interface *this)
 	struct fimc_is_core *core;
 	struct fimc_is_minfo *minfo;
 
-	FIMC_BUG(!this);
-	FIMC_BUG(!this->core);
+	BUG_ON(!this);
+	BUG_ON(!this->core);
 
 	if (!test_bit(IS_IF_STATE_OPEN, &this->state)) {
 		warn("interface is closed");
@@ -3475,7 +3413,7 @@ int fimc_is_hw_enum(struct fimc_is_interface *this)
 	struct fimc_is_msg msg;
 	volatile struct is_common_reg __iomem *com_regs;
 
-	dbg_interface(1, "enum()\n");
+	dbg_interface("enum()\n");
 
 	/* check if hw_enum is already operated */
 	if (test_bit(IS_IF_STATE_READY, &this->state))
@@ -3528,7 +3466,7 @@ int fimc_is_hw_fault(struct fimc_is_interface *this)
 	int ret = 0;
 	volatile struct is_common_reg __iomem *com_regs;
 
-	dbg_interface(1, "fault\n");
+	dbg_interface("fault\n");
 
 	com_regs = this->com_regs;
 
@@ -3562,7 +3500,7 @@ int fimc_is_hw_saddr(struct fimc_is_interface *this,
 	int ret = 0;
 	struct fimc_is_msg msg, reply;
 
-	dbg_interface(1, "saddr(%d)\n", instance);
+	dbg_interface("saddr(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_GET_SET_FILE_ADDR;
@@ -3585,7 +3523,7 @@ int fimc_is_hw_setfile(struct fimc_is_interface *this,
 	int ret = 0;
 	struct fimc_is_msg msg, reply;
 
-	dbg_interface(1, "setfile(%d)\n", instance);
+	dbg_interface("setfile(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_LOAD_SET_FILE;
@@ -3613,7 +3551,7 @@ int fimc_is_hw_open(struct fimc_is_interface *this,
 	int ret;
 	struct fimc_is_msg msg, reply;
 
-	dbg_interface(1, "open(%d,%08X)\n", module_id, flag);
+	dbg_interface("open(%d,%08X)\n", module_id, flag);
 
 	msg.id = 0;
 	msg.command = HIC_OPEN_SENSOR;
@@ -3638,7 +3576,7 @@ int fimc_is_hw_close(struct fimc_is_interface *this,
 	int ret;
 	struct fimc_is_msg msg, reply;
 
-	dbg_interface(1, "close sensor(instance:%d)\n", instance);
+	dbg_interface("close sensor(instance:%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_CLOSE_SENSOR;
@@ -3660,9 +3598,9 @@ int fimc_is_hw_stream_on(struct fimc_is_interface *this,
 	int ret;
 	struct fimc_is_msg msg, reply;
 
-	FIMC_BUG(!this);
+	BUG_ON(!this);
 
-	dbg_interface(1, "stream_on(%d)\n", instance);
+	dbg_interface("stream_on(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_STREAM_ON;
@@ -3684,7 +3622,7 @@ int fimc_is_hw_stream_off(struct fimc_is_interface *this,
 	int ret;
 	struct fimc_is_msg msg, reply;
 
-	dbg_interface(1, "stream_off(%d)\n", instance);
+	dbg_interface("stream_off(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_STREAM_OFF;
@@ -3706,7 +3644,7 @@ int fimc_is_hw_process_on(struct fimc_is_interface *this,
 	int ret;
 	struct fimc_is_msg msg, reply;
 
-	dbg_interface(1, "process_on(%d)\n", instance);
+	dbg_interface("process_on(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_PROCESS_START;
@@ -3730,7 +3668,7 @@ int fimc_is_hw_process_off(struct fimc_is_interface *this,
 
 	WARN_ON(mode >= 2);
 
-	dbg_interface(1, "process_off(%d)\n", instance);
+	dbg_interface("process_off(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_PROCESS_STOP;
@@ -3752,7 +3690,7 @@ int fimc_is_hw_i2c_lock(struct fimc_is_interface *this,
 	int ret;
 	struct fimc_is_msg msg, reply;
 
-	dbg_interface(1, "i2c_lock(%d)\n", instance);
+	dbg_interface("i2c_lock(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_I2C_CONTROL_LOCK;
@@ -3774,7 +3712,7 @@ int fimc_is_hw_s_param(struct fimc_is_interface *this,
 	int ret;
 	struct fimc_is_msg msg, reply;
 
-	dbg_interface(1, "s_param(%d)\n", instance);
+	dbg_interface("s_param(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_SET_PARAMETER;
@@ -3796,7 +3734,7 @@ int fimc_is_hw_a_param(struct fimc_is_interface *this,
 	int ret = 0;
 	struct fimc_is_msg msg, reply;
 
-	dbg_interface(1, "a_param(%d)\n", instance);
+	dbg_interface("a_param(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_PREVIEW_STILL;
@@ -3818,7 +3756,7 @@ int fimc_is_hw_g_capability(struct fimc_is_interface *this,
 	int ret;
 	struct fimc_is_msg msg, reply;
 
-	dbg_interface(1, "g_capability(%d)\n", instance);
+	dbg_interface("g_capability(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_GET_STATIC_METADATA;
@@ -3840,7 +3778,7 @@ int fimc_is_hw_map(struct fimc_is_interface *this,
 	int ret;
 	struct fimc_is_msg msg, reply;
 
-	dbg_interface(1, "[%d][%d] map(%08X, %X)\n", instance, group, address, size);
+	dbg_interface("[%d][%d] map(%08X, %X)\n", instance, group, address, size);
 
 	msg.id = 0;
 	msg.command = HIC_SET_A5_MAP;
@@ -3862,7 +3800,7 @@ int fimc_is_hw_unmap(struct fimc_is_interface *this,
 	int ret;
 	struct fimc_is_msg msg, reply;
 
-	dbg_interface(1, "[%d][%d] unmap\n", instance, group);
+	dbg_interface("[%d][%d] unmap\n", instance, group);
 
 	msg.id = 0;
 	msg.command = HIC_SET_A5_UNMAP;
@@ -3884,7 +3822,7 @@ int fimc_is_hw_power_down(struct fimc_is_interface *this,
 	int ret = 0;
 	struct fimc_is_msg msg, reply;
 
-	dbg_interface(1, "pwr_down(%d)\n", instance);
+	dbg_interface("pwr_down(%d)\n", instance);
 
 	if (!test_bit(IS_IF_STATE_START, &this->state)) {
 		warn("instance(%d): FW is not initialized, wait\n", instance);
@@ -3914,7 +3852,7 @@ int fimc_is_hw_sys_ctl(struct fimc_is_interface *this,
 	int ret;
 	struct fimc_is_msg msg, reply;
 
-	dbg_interface(1, "sys_ctl(cmd(%d), val(%d))\n", cmd, val);
+	dbg_interface("sys_ctl(cmd(%d), val(%d))\n", cmd, val);
 
 	msg.id = 0;
 	msg.command = HIC_SYSTEM_CONTROL;
@@ -3937,7 +3875,7 @@ int fimc_is_hw_sensor_mode(struct fimc_is_interface *this,
 	struct fimc_is_msg msg, reply;
 	bool deinit_flag = 0;
 
-	dbg_interface(1, "sensor mode(%d): %d\n", instance, cfg);
+	dbg_interface("sensor mode(%d): %d\n", instance, cfg);
 
 	if (SENSOR_MODE_DEINIT == ((cfg & SENSOR_MODE_MASK) >> SENSOR_MODE_SHIFT)) {
 		deinit_flag = true;
@@ -3964,7 +3902,7 @@ int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
 	int ret = 0;
 	struct fimc_is_msg msg;
 
-	/*dbg_interface(1, "shot_nblk(%d, %d)\n", instance, fcount);*/
+	/*dbg_interface("shot_nblk(%d, %d)\n", instance, fcount);*/
 
 	msg.id = 0;
 	msg.command = HIC_SHOT;
@@ -3987,7 +3925,7 @@ int fimc_is_hw_s_camctrl_nblk(struct fimc_is_interface *this,
 	struct fimc_is_work *work;
 	struct fimc_is_msg *msg;
 
-	dbg_interface(1, "cam_ctrl_nblk(%d)\n", instance);
+	dbg_interface("cam_ctrl_nblk(%d)\n", instance);
 
 	get_free_work(&this->nblk_cam_ctrl, &work);
 
@@ -4020,7 +3958,7 @@ int fimc_is_hw_msg_test(struct fimc_is_interface *this, u32 sync_id, u32 msg_tes
 	struct fimc_is_work work;
 	struct fimc_is_msg *msg;
 
-	dbg_interface(1, "msg_test_nblk(%d)\n", msg_test_id);
+	dbg_interface("msg_test_nblk(%d)\n", msg_test_id);
 
 	msg = &work.msg;
 	msg->id = 0;

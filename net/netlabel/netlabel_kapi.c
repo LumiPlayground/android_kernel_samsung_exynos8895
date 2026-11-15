@@ -1053,11 +1053,6 @@ void netlbl_sock_delattr(struct sock *sk)
 	case AF_INET:
 		cipso_v4_sock_delattr(sk);
 		break;
-#if IS_ENABLED(CONFIG_IPV6)
-	case AF_INET6:
-		calipso_sock_delattr(sk);
-		break;
-#endif /* IPv6 */
 	}
 }
 
@@ -1260,11 +1255,6 @@ void netlbl_req_delattr(struct request_sock *req)
 	case AF_INET:
 		cipso_v4_req_delattr(req);
 		break;
-#if IS_ENABLED(CONFIG_IPV6)
-	case AF_INET6:
-		calipso_req_delattr(req);
-		break;
-#endif /* IPv6 */
 	}
 }
 

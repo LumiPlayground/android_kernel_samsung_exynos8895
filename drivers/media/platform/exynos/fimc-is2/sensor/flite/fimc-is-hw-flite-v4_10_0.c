@@ -43,7 +43,7 @@ static void flite_hw_s_coeff_bns(u32 __iomem *base_reg,
 	u32 weight_x[16] = {0, }, weight_y[16] = {0, };
 
 	if (factor_x != factor_y)
-		err("[BNS] x y factor is not the same (%d, %d)", factor_x, factor_y);
+		err("x y factor is not the same (%d, %d)", factor_x, factor_y);
 
 	/* control */
 	cfg = readl(base_reg + TO_WORD_OFFSET(FLITE_REG_BINNINGCTRL));
@@ -90,7 +90,7 @@ static void flite_hw_set_cam_source_size(u32 __iomem *base_reg,
 {
 	u32 cfg = 0;
 
-	FIMC_BUG(!image);
+	BUG_ON(!image);
 
 #ifdef COLORBAR_MODE
 	cfg |= FLITE_REG_CISRCSIZE_SIZE_H(640);
@@ -108,7 +108,7 @@ static void flite_hw_set_dma_offset(u32 __iomem *base_reg,
 {
 	u32 cfg = 0;
 
-	FIMC_BUG(!image);
+	BUG_ON(!image);
 
 	switch (image->format.pixelformat) {
 	case V4L2_PIX_FMT_SBGGR8:
@@ -134,7 +134,7 @@ static void flite_hw_set_dma_offset(u32 __iomem *base_reg,
 		cfg |= FLITE_REG_CH1OCAN_OCAN_H(roundup(image->window.o_width * 2, 16));
 		break;
 	default:
-		warn("[BNS] unsupprted format(%d)", image->format.pixelformat);
+		warn("unsupprted format(%d)", image->format.pixelformat);
 		break;
 	}
 
@@ -171,7 +171,7 @@ static int flite_hw_set_source_format(u32 __iomem *base_reg, struct fimc_is_imag
 	int ret = 0;
 	u32 pixelformat, format, cfg;
 
-	FIMC_BUG(!image);
+	BUG_ON(!image);
 
 	pixelformat = image->format.pixelformat;
 	cfg = readl(base_reg + TO_WORD_OFFSET(FLITE_REG_CIGCTRL));
@@ -208,7 +208,7 @@ static int flite_hw_set_source_format(u32 __iomem *base_reg, struct fimc_is_imag
 		format = HW_FORMAT_USER;
 		break;
 	default:
-		err("[BNS] unsupported format(%X)", pixelformat);
+		err("unsupported format(%X)", pixelformat);
 		format = HW_FORMAT_RAW10;
 		ret = -EINVAL;
 		break;
@@ -271,7 +271,7 @@ static void flite_hw_force_reset(u32 __iomem *base_reg)
 		cfg = readl(base_reg + TO_WORD_OFFSET(FLITE_REG_CIGCTRL));
 
 	if (!(cfg & FLITE_REG_CIGCTRL_SWRST_RDY))
-		warn("[BNS] sw reset is not read but forcelly");
+		warn("[CamIF] sw reset is not read but forcelly");
 
 	/* sw reset */
 	cfg |= FLITE_REG_CIGCTRL_SWRST;
@@ -284,7 +284,7 @@ static void flite_hw_set_window_offset(u32 __iomem *base_reg,
 	u32 cfg = 0;
 	u32 hoff2, voff2;
 
-	FIMC_BUG(!image);
+	BUG_ON(!image);
 
 	cfg = readl(base_reg + TO_WORD_OFFSET(FLITE_REG_CIWDOFST));
 	cfg &= ~(FLITE_REG_CIWDOFST_HOROFF_MASK |
@@ -401,7 +401,7 @@ void flite_hw_s_control(u32 __iomem *base_reg, u32 id, u32 value)
 		flite_hw_set_lineint_ratio(base_reg, value);
 		break;
 	default:
-		err("[BNS] control id is invalid(%d)", id);
+		err("control id is invalid(%d)", id);
 		break;
 	}
 }
@@ -414,7 +414,7 @@ int flite_hw_set_bns(u32 __iomem *base_reg, bool enable, struct fimc_is_image *i
 	u32 factor_x, factor_y;
 	u32 binning_ratio;
 
-	FIMC_BUG(!image);
+	BUG_ON(!image);
 
 	width = image->window.width;
 	height = image->window.height;
@@ -422,12 +422,12 @@ int flite_hw_set_bns(u32 __iomem *base_reg, bool enable, struct fimc_is_image *i
 	otf_height = image->window.otf_height;
 
 	if (otf_width == width && otf_height == height) {
-		info("[BNS] input & output sizes are same(%d, %d)\n", otf_width, otf_height);
+		info("input & output sizes are same(%d, %d)\n", otf_width, otf_height);
 		goto exit;
 	}
 
 	if (otf_width == 0 || otf_height == 0) {
-		warn("[BNS] output bns size is zero. s_ctrl(V4L2_CID_IS_S_BNS) first");
+		warn("bns size is zero. s_ctrl(V4L2_CID_IS_S_BNS) first\n");
 		goto exit;
 	}
 
@@ -456,7 +456,7 @@ int flite_hw_set_bns(u32 __iomem *base_reg, bool enable, struct fimc_is_image *i
 
 	flite_hw_enable_bns(base_reg, true);
 
-	info("[BNS] in(%d, %d), out(%d, %d), ratio(%d, %d)\n",
+	info("BNS in(%d, %d), BNS out(%d, %d), ratio(%d, %d)\n",
 		width, height, otf_width, otf_height, factor_x, factor_y);
 exit:
 	return ret;

@@ -159,9 +159,9 @@ static int journal_submit_commit_record(journal_t *journal,
 #endif
 	if (journal->j_flags & JBD2_BARRIER &&
 	    !jbd2_has_feature_async_commit(journal))
-		ret = submit_bh(REQ_OP_WRITE, WRITE_SYNC | WRITE_FLUSH_FUA, bh);
+		ret = submit_bh(REQ_OP_WRITE, REQ_SYNC | REQ_PREFLUSH | REQ_FUA, bh);
 	else
-		ret = submit_bh(REQ_OP_WRITE, WRITE_SYNC, bh);
+		ret = submit_bh(REQ_OP_WRITE, REQ_SYNC, bh);
 
 	*cbh = bh;
 	return ret;
@@ -223,8 +223,6 @@ static int journal_submit_data_buffers(journal_t *journal,
 
 	spin_lock(&journal->j_list_lock);
 	list_for_each_entry(jinode, &commit_transaction->t_inode_list, i_list) {
-		if (!(jinode->i_flags & JI_WRITE_DATA))
-			continue;
 		mapping = jinode->i_vfs_inode->i_mapping;
 		jinode->i_flags |= JI_COMMIT_RUNNING;
 		spin_unlock(&journal->j_list_lock);
@@ -262,8 +260,6 @@ static int journal_finish_inode_data_buffers(journal_t *journal,
 	/* For locking, see the comment in journal_submit_data_buffers() */
 	spin_lock(&journal->j_list_lock);
 	list_for_each_entry(jinode, &commit_transaction->t_inode_list, i_list) {
-		if (!(jinode->i_flags & JI_WAIT_DATA))
-			continue;
 		jinode->i_flags |= JI_COMMIT_RUNNING;
 		spin_unlock(&journal->j_list_lock);
 		err = filemap_fdatawait(jinode->i_vfs_inode->i_mapping);
@@ -273,7 +269,8 @@ static int journal_finish_inode_data_buffers(journal_t *journal,
 			 * filemap_fdatawait_range(), set it again so
 			 * that user process can get -EIO from fsync().
 			 */
-			mapping_set_error(jinode->i_vfs_inode->i_mapping, -EIO);
+			set_bit(AS_EIO,
+				&jinode->i_vfs_inode->i_mapping->flags);
 
 			if (!ret)
 				ret = err;
@@ -348,6 +345,7 @@ static void jbd2_block_tag_csum_set(journal_t *j, journal_block_tag_t *tag,
 	else
 		tag->t_checksum = cpu_to_be16(csum32);
 }
+
 /*
  * jbd2_journal_commit_transaction
  *
@@ -725,7 +723,7 @@ start_journal_io:
 				if (journal->j_flags & JBD2_JOURNAL_TAG)
 					set_buffer_journal(bh);
 #endif
-				submit_bh(REQ_OP_WRITE, WRITE_SYNC, bh);
+				submit_bh(REQ_OP_WRITE, REQ_SYNC, bh);
 			}
 			cond_resched();
 			stats.run.rs_blocks_logged += bufs;
@@ -771,7 +769,7 @@ start_journal_io:
 	commit_transaction->t_state = T_COMMIT_DFLUSH;
 	write_unlock(&journal->j_state_lock);
 
-	/* 
+	/*
 	 * If the journal is not located on the file system device,
 	 * then we must flush the file system device before we issue
 	 * the commit record

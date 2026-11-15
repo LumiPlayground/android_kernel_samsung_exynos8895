@@ -625,16 +625,15 @@ static int tipc_l2_device_event(struct notifier_block *nb, unsigned long evt,
 		test_and_set_bit_lock(0, &b->up);
 		break;
 	case NETDEV_GOING_DOWN:
-		clear_bit_unlock(0, &b->up);
-		tipc_reset_bearer(net, b);
+		tipc_reset_bearer(net, b_ptr);
 		break;
 	case NETDEV_CHANGEMTU:
 		if (tipc_mtu_bad(dev, 0)) {
-			bearer_disable(net, b);
+			bearer_disable(net, b_ptr);
 			break;
 		}
-		b->mtu = dev->mtu;
-		tipc_reset_bearer(net, b);
+		b_ptr->mtu = dev->mtu;
+		tipc_reset_bearer(net, b_ptr);
 		break;
 	case NETDEV_CHANGEADDR:
 		b->media->raw2addr(b, &b->addr,

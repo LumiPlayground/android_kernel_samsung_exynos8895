@@ -14,8 +14,6 @@
 #include "fimc-is-param.h"
 #include "fimc-is-err.h"
 
-static void fimc_is_hw_srdz_size_dump(struct fimc_is_hw_ip *hw_ip);
-
 static int fimc_is_hw_srdz_handle_interrupt(u32 id, void *context)
 {
 	struct fimc_is_hardware *hardware;
@@ -44,7 +42,7 @@ static int fimc_is_hw_srdz_handle_interrupt(u32 id, void *context)
 		hw_ip->debug_info[index].cpuid[DEBUG_POINT_FRAME_START] = raw_smp_processor_id();
 		hw_ip->debug_info[index].time[DEBUG_POINT_FRAME_START] = local_clock();
 		if (!atomic_read(&hardware->streaming[hardware->sensor_position[instance]]))
-			msinfo_hw("[F:%d]F.S\n", instance, hw_ip, hw_fcount);
+			info_hw("[ID:%d][F:%d]F.S\n", hw_ip->id, hw_fcount);
 
 		fimc_is_hardware_frame_start(hw_ip, instance);
 	}
@@ -55,7 +53,7 @@ static int fimc_is_hw_srdz_handle_interrupt(u32 id, void *context)
 			hw_ip->debug_info[index].cpuid[DEBUG_POINT_FRAME_DMA_END] = raw_smp_processor_id();
 			hw_ip->debug_info[index].time[DEBUG_POINT_FRAME_DMA_END] = local_clock();
 			if (!atomic_read(&hardware->streaming[hardware->sensor_position[instance]]))
-				msinfo_hw("[F:%d]F.E DMA\n", instance, hw_ip, atomic_read(&hw_ip->fcount));
+				info_hw("[ID:%d][F:%d]F.E DMA\n", hw_ip->id, atomic_read(&hw_ip->fcount));
 
 			atomic_inc(&hw_ip->count.dma);
 		} else {
@@ -63,7 +61,7 @@ static int fimc_is_hw_srdz_handle_interrupt(u32 id, void *context)
 			hw_ip->debug_info[index].cpuid[DEBUG_POINT_FRAME_END] = raw_smp_processor_id();
 			hw_ip->debug_info[index].time[DEBUG_POINT_FRAME_END] = local_clock();
 			if (!atomic_read(&hardware->streaming[hardware->sensor_position[instance]]))
-				msinfo_hw("[F:%d]F.E\n", instance, hw_ip, hw_fcount);
+				info_hw("[ID:%d][F:%d]F.E\n", hw_ip->id, hw_fcount);
 
 			fimc_is_hardware_frame_done(hw_ip, NULL, -1, FIMC_IS_HW_CORE_END,
 				IS_SHOT_SUCCESS, true);
@@ -72,7 +70,7 @@ static int fimc_is_hw_srdz_handle_interrupt(u32 id, void *context)
 		atomic_set(&hw_ip->status.Vvalid, V_BLANK);
 		atomic_inc(&hw_ip->count.fe);
 		if (atomic_read(&hw_ip->count.fs) < atomic_read(&hw_ip->count.fe)) {
-			serr_hw("fs(%d), fe(%d), dma(%d)\n", hw_ip,
+			err_hw("[SRDZ] fs(%d), fe(%d), dma(%d)\n",
 				atomic_read(&hw_ip->count.fs),
 				atomic_read(&hw_ip->count.fe),
 				atomic_read(&hw_ip->count.dma));
@@ -82,8 +80,8 @@ static int fimc_is_hw_srdz_handle_interrupt(u32 id, void *context)
 	}
 
 	if (err_intr_flag) {
-		msinfo_hw("[F:%d] Ocurred error interrupt status(0x%x)\n",
-			instance, hw_ip, hw_fcount, status);
+		info_hw("[ID:%d][SRDZ][F:%d] Ocurred error interrupt status(0x%x)\n",
+			hw_ip->id, hw_fcount, status);
 		fimc_is_srdz_dump(hw_ip->regs);
 		fimc_is_hardware_size_dump(hw_ip);
 	}
@@ -94,47 +92,96 @@ static int fimc_is_hw_srdz_handle_interrupt(u32 id, void *context)
 	return 0;
 }
 
-static int fimc_is_hw_srdz_open(struct fimc_is_hw_ip *hw_ip, u32 instance,
-	struct fimc_is_group *group)
+const struct fimc_is_hw_ip_ops fimc_is_hw_srdz_ops = {
+	.open			= fimc_is_hw_srdz_open,
+	.init			= fimc_is_hw_srdz_init,
+	.close			= fimc_is_hw_srdz_close,
+	.enable			= fimc_is_hw_srdz_enable,
+	.disable		= fimc_is_hw_srdz_disable,
+	.shot			= fimc_is_hw_srdz_shot,
+	.set_param		= fimc_is_hw_srdz_set_param,
+	.frame_ndone		= fimc_is_hw_srdz_frame_ndone,
+	.load_setfile		= fimc_is_hw_srdz_load_setfile,
+	.apply_setfile		= fimc_is_hw_srdz_apply_setfile,
+	.delete_setfile		= fimc_is_hw_srdz_delete_setfile,
+	.size_dump		= fimc_is_hw_srdz_size_dump,
+	.clk_gate		= fimc_is_hardware_clk_gate
+};
+
+int fimc_is_hw_srdz_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface *itf,
+	struct fimc_is_interface_ischain *itfc,	int id)
+{
+	int ret = 0;
+	int hw_slot = -1;
+
+	BUG_ON(!hw_ip);
+	BUG_ON(!itf);
+	BUG_ON(!itfc);
+
+	/* initialize device hardware */
+	hw_ip->id   = id;
+	hw_ip->ops  = &fimc_is_hw_srdz_ops;
+	hw_ip->itf  = itf;
+	hw_ip->itfc = itfc;
+	atomic_set(&hw_ip->fcount, 0);
+	hw_ip->internal_fcount = 0;
+	hw_ip->is_leader = true;
+	atomic_set(&hw_ip->status.Vvalid, V_BLANK);
+	atomic_set(&hw_ip->rsccount, 0);
+	init_waitqueue_head(&hw_ip->status.wait_queue);
+
+	/* set srdz sfr base address */
+	hw_slot = fimc_is_hw_slot_id(id);
+	if (!valid_hw_slot_id(hw_slot)) {
+		err_hw("invalid hw_slot (%d, %d)", id, hw_slot);
+		return -EINVAL;
+	}
+
+	/* set srdz interrupt handler */
+	itfc->itf_ip[hw_slot].handler[INTR_HWIP1].handler = &fimc_is_hw_srdz_handle_interrupt;
+
+	clear_bit(HW_OPEN, &hw_ip->state);
+	clear_bit(HW_INIT, &hw_ip->state);
+	clear_bit(HW_CONFIG, &hw_ip->state);
+	clear_bit(HW_RUN, &hw_ip->state);
+	clear_bit(HW_TUNESET, &hw_ip->state);
+
+	info_hw("[ID:%2d] probe done\n", id);
+
+	return ret;
+}
+
+int fimc_is_hw_srdz_open(struct fimc_is_hw_ip *hw_ip, u32 instance, u32 *size)
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (test_bit(HW_OPEN, &hw_ip->state))
 		return 0;
 
-	frame_manager_probe(hw_ip->framemgr, FRAMEMGR_ID_HW | hw_ip->id, "HWSRDZ");
-	frame_manager_open(hw_ip->framemgr, FIMC_IS_MAX_HW_FRAME);
-	frame_manager_probe(hw_ip->framemgr_late, FRAMEMGR_ID_HW | hw_ip->id | 0xF0, "HWSRDZ LATE");
-	frame_manager_open(hw_ip->framemgr_late, FIMC_IS_MAX_HW_FRAME_LATE);
+	*size = sizeof(struct fimc_is_hw_srdz);
 
-	hw_ip->priv_info = vzalloc(sizeof(struct fimc_is_hw_srdz));
-	if(!hw_ip->priv_info) {
-		mserr_hw("hw_ip->priv_info(null)", instance, hw_ip);
-		ret = -ENOMEM;
-		goto err_alloc;
-	}
+	frame_manager_probe(hw_ip->framemgr, FRAMEMGR_ID_HW | hw_ip->id);
+	frame_manager_open(hw_ip->framemgr, FIMC_IS_MAX_HW_FRAME);
+	frame_manager_probe(hw_ip->framemgr_late, FRAMEMGR_ID_HW | hw_ip->id | 0xF0);
+	frame_manager_open(hw_ip->framemgr_late, FIMC_IS_MAX_HW_FRAME_LATE);
 
 	atomic_set(&hw_ip->status.Vvalid, V_BLANK);
 
-	set_bit(HW_OPEN, &hw_ip->state);
-	return 0;
-
-err_alloc:
-	frame_manager_close(hw_ip->framemgr);
-	frame_manager_close(hw_ip->framemgr_late);
 	return ret;
 }
 
-static int fimc_is_hw_srdz_init(struct fimc_is_hw_ip *hw_ip, u32 instance,
-	struct fimc_is_group *group, bool flag, u32 module_id)
+int fimc_is_hw_srdz_init(struct fimc_is_hw_ip *hw_ip, struct fimc_is_group *group,
+	bool flag, u32 module_id)
 {
 	int ret = 0;
+	u32 instance = 0;
 	struct fimc_is_hw_srdz *hw_srdz;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
+	instance = group->instance;
 	hw_srdz = (struct fimc_is_hw_srdz *)hw_ip->priv_info;
 
 	hw_srdz->rep_flag[instance] = flag;
@@ -145,37 +192,34 @@ static int fimc_is_hw_srdz_init(struct fimc_is_hw_ip *hw_ip, u32 instance,
 
 	hw_srdz->instance = FIMC_IS_STREAM_COUNT;
 
-	set_bit(HW_INIT, &hw_ip->state);
 	return ret;
 }
 
-static int fimc_is_hw_srdz_close(struct fimc_is_hw_ip *hw_ip, u32 instance)
+int fimc_is_hw_srdz_close(struct fimc_is_hw_ip *hw_ip, u32 instance)
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit(HW_OPEN, &hw_ip->state))
 		return 0;
 
-	vfree(hw_ip->priv_info);
-
-	clear_bit(HW_OPEN, &hw_ip->state);
+	info_hw("[%d]close (%d)(%d)\n", instance, hw_ip->id, atomic_read(&hw_ip->rsccount));
 
 	return ret;
 }
 
-static int fimc_is_hw_srdz_enable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map)
+int fimc_is_hw_srdz_enable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map)
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
 
 	if (!test_bit(HW_INIT, &hw_ip->state)) {
-		mserr_hw("not initialized!!", instance, hw_ip);
+		err_hw("[%d]not initialized!! (%d)", instance, hw_ip->id);
 		return -EINVAL;
 	}
 
@@ -184,31 +228,31 @@ static int fimc_is_hw_srdz_enable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulo
 
 	ret = fimc_is_hw_srdz_reset(hw_ip);
 	if (ret != 0) {
-		mserr_hw("sw reset fail", instance, hw_ip);
+		err_hw("SRDZ sw reset fail");
 		return -ENODEV;
 	}
 
 	ret = fimc_is_hw_srdz_clear_interrupt(hw_ip);
 	if (ret != 0) {
-		mserr_hw("clear_interrupt fail", instance, hw_ip);
+		err_hw("SRDZ sw reset fail");
 		return -ENODEV;
 	}
 
-	msdbg_hw(2, "enable: done\n", instance, hw_ip);
+	dbg_hw("[%d][ID:%d]srdz_enable: done\n", instance, hw_ip->id);
 
 	set_bit(HW_RUN, &hw_ip->state);
 
 	return ret;
 }
 
-static int fimc_is_hw_srdz_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map)
+int fimc_is_hw_srdz_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map)
 {
 	int ret = 0;
 	u32 timetowait;
 	struct fimc_is_hw_srdz *hw_srdz;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip);
+	BUG_ON(!hw_ip->priv_info);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
@@ -216,7 +260,7 @@ static int fimc_is_hw_srdz_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ul
 	if (atomic_read(&hw_ip->rsccount) > 1)
 		return 0;
 
-	msinfo_hw("disable: Vvalid(%d)\n", instance, hw_ip,
+	info_hw("[%d][ID:%d]srdz_disable: Vvalid(%d)\n", instance, hw_ip->id,
 		atomic_read(&hw_ip->status.Vvalid));
 
 	hw_srdz = (struct fimc_is_hw_srdz *)hw_ip->priv_info;
@@ -227,29 +271,29 @@ static int fimc_is_hw_srdz_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ul
 			FIMC_IS_HW_STOP_TIMEOUT);
 
 		if (!timetowait) {
-			mserr_hw("wait FRAME_END timeout (%u)", instance,
-				hw_ip, timetowait);
+			err_hw("[%d][ID:%d] wait FRAME_END timeout (%u)", instance,
+				hw_ip->id, timetowait);
 			ret = -ETIME;
 		}
 
 		ret = fimc_is_hw_srdz_clear_interrupt(hw_ip);
 		if (ret != 0) {
-			mserr_hw("clear interupt fail", instance, hw_ip);
+			err_hw("SRDZ clear interupt fail");
 			return -ENODEV;
 		}
 
 		clear_bit(HW_RUN, &hw_ip->state);
 		clear_bit(HW_CONFIG, &hw_ip->state);
 	} else {
-		msdbg_hw(2, "already disabled\n", instance, hw_ip);
+		dbg_hw("[%d]already disabled (%d)\n", instance, hw_ip->id);
 	}
 
-	msinfo_hw("disable: done \n", instance, hw_ip);
+	info_hw("[%d][ID:%d]srdz_disable: done \n", instance, hw_ip->id);
 
 	return ret;
 }
 
-static int fimc_is_hw_srdz_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
+int fimc_is_hw_srdz_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
 	ulong hw_map)
 {
 	int ret = 0;
@@ -259,19 +303,19 @@ static int fimc_is_hw_srdz_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_fram
 	struct mcs_param *param;
 	u32 lindex, hindex, instance;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!frame);
+	BUG_ON(!hw_ip);
+	BUG_ON(!frame);
 
 	hardware = hw_ip->hardware;
 	instance = frame->instance;
 
-	msdbgs_hw(2, "[F:%d] shot\n", instance, hw_ip, frame->fcount);
+	dbg_hw("[%d][ID:%d]shot [F:%d]\n", instance, hw_ip->id, frame->fcount);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
 
 	if (!test_bit(HW_INIT, &hw_ip->state)) {
-		msdbg_hw(2, "not initialized\n", instance, hw_ip);
+		dbg_hw("[%d][ID:%d] hw_srdz not initialized\n", instance, hw_ip->id);
 		return -EINVAL;
 	}
 
@@ -288,7 +332,7 @@ static int fimc_is_hw_srdz_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_fram
 	head = hw_ip->group[frame->instance]->head;
 
 	if (frame->type == SHOT_TYPE_INTERNAL) {
-		msdbg_hw(2, "request not exist\n", instance, hw_ip);
+		dbg_hw("[%d][ID:%d] request not exist\n", instance, hw_ip->id);
 		goto config;
 	}
 
@@ -298,7 +342,7 @@ static int fimc_is_hw_srdz_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_fram
 	fimc_is_hw_srdz_update_param(hw_ip, param,
 		lindex, hindex, instance);
 
-	msdbg_hw(2, "[F:%d] shot [T:%d]\n", instance, hw_ip, frame->fcount, frame->type);
+	dbg_hw("[%d]srdz_shot [F:%d][T:%d]\n", instance, frame->fcount, frame->type);
 
 config:
 	if (param->input.dma_cmd == DMA_INPUT_COMMAND_ENABLE) {
@@ -310,21 +354,21 @@ config:
 	return ret;
 }
 
-static int fimc_is_hw_srdz_set_param(struct fimc_is_hw_ip *hw_ip, struct is_region *region,
+int fimc_is_hw_srdz_set_param(struct fimc_is_hw_ip *hw_ip, struct is_region *region,
 	u32 lindex, u32 hindex, u32 instance, ulong hw_map)
 {
 	int ret = 0;
 	struct fimc_is_hw_srdz *hw_srdz;
 	struct mcs_param *param;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!region);
+	BUG_ON(!hw_ip);
+	BUG_ON(!region);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
 
 	if (!test_bit(HW_INIT, &hw_ip->state)) {
-		mserr_hw("not initialized!!", instance, hw_ip);
+		err_hw("[%d]not initialized!!", instance);
 		return -EINVAL;
 	}
 
@@ -337,8 +381,8 @@ static int fimc_is_hw_srdz_set_param(struct fimc_is_hw_ip *hw_ip, struct is_regi
 
 	hw_srdz->instance = FIMC_IS_STREAM_COUNT;
 	if (hw_srdz->rep_flag[instance]) {
-		msdbg_hw(2, "skip set_param(rep_flag(%d))\n",
-			instance, hw_ip, hw_srdz->rep_flag[instance]);
+		dbg_hw("[%d][ID:%d] skip srdz set_param(rep_flag(%d))\n",
+			instance, hw_ip->id, hw_srdz->rep_flag[instance]);
 		return 0;
 	}
 
@@ -355,15 +399,15 @@ int fimc_is_hw_srdz_update_param(struct fimc_is_hw_ip *hw_ip,
 	bool control_cmd = false;
 	struct fimc_is_hw_srdz *hw_srdz;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!param);
+	BUG_ON(!hw_ip);
+	BUG_ON(!param);
 
 	hw_srdz = (struct fimc_is_hw_srdz *)hw_ip->priv_info;
 
 	if (hw_srdz->instance != instance) {
 		control_cmd = true;
-		msinfo_hw("update_param: hw_ip->instance(%d), control_cmd(%d)\n",
-			instance, hw_ip, hw_srdz->instance, control_cmd);
+		info_hw("[%d][ID:%d]hw_srdz_update_param: hw_ip->instance(%d), control_cmd(%d)\n",
+			instance, hw_ip->id, hw_srdz->instance, control_cmd);
 		hw_srdz->instance = instance;
 	}
 
@@ -388,18 +432,18 @@ int fimc_is_hw_srdz_reset(struct fimc_is_hw_ip *hw_ip)
 	int ret = 0;
 	struct fimc_is_hw_srdz *hw_srdz;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (test_bit(HW_RUN, &hw_ip->state))
 		return 0;
 
 	hw_srdz = (struct fimc_is_hw_srdz *)hw_ip->priv_info;
 
-	sinfo_hw("reset:\n", hw_ip);
+	info_hw("[ID:%d]hw_srdz_reset:\n", hw_ip->id);
 
 	ret = fimc_is_srdz_sw_reset(hw_ip->regs, hw_ip->id);
 	if (ret != 0) {
-		serr_hw("SRDZ sw reset fail", hw_ip);
+		err_hw("SRDZ sw reset fail");
 		return -ENODEV;
 	}
 
@@ -410,9 +454,9 @@ int fimc_is_hw_srdz_clear_interrupt(struct fimc_is_hw_ip *hw_ip)
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
-	sinfo_hw("clear_interrupt\n", hw_ip);
+	info_hw("[ID:%d]hw_srdz_clear_interrupt\n", hw_ip->id);
 
 	fimc_is_srdz_clear_intr_all(hw_ip->regs, hw_ip->id);
 	fimc_is_srdz_disable_intr(hw_ip->regs, hw_ip->id);
@@ -421,27 +465,27 @@ int fimc_is_hw_srdz_clear_interrupt(struct fimc_is_hw_ip *hw_ip)
 	return ret;
 }
 
-static int fimc_is_hw_srdz_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 index,
+int fimc_is_hw_srdz_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 index,
 	u32 instance, ulong hw_map)
 {
 	int ret = 0;
 	struct fimc_is_hw_srdz *hw_srdz;
 	struct fimc_is_hw_ip_setfile *info;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map)) {
-		msdbg_hw(2, "%s: hw_map(0x%lx)\n", instance, hw_ip, __func__, hw_map);
+		dbg_hw("[%d]%s: hw_map(0x%lx)\n", instance, __func__, hw_map);
 		return 0;
 	}
 
 	if (!test_bit(HW_INIT, &hw_ip->state)) {
-		mserr_hw("not initialized!!", instance, hw_ip);
+		err_hw("[%d] not initialized!!", instance);
 		return -ESRCH;
 	}
 
 	if (!unlikely(hw_ip->priv_info)) {
-		mserr_hw("priv_info is NULL", instance, hw_ip);
+		err_hw("[%d][ID:%d] priv_info is NULL", instance, hw_ip->id);
 		return -EINVAL;
 	}
 	hw_srdz = (struct fimc_is_hw_srdz *)hw_ip->priv_info;
@@ -453,15 +497,15 @@ static int fimc_is_hw_srdz_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 index,
 	case SETFILE_V3:
 		break;
 	default:
-		mserr_hw("invalid version (%d)", instance, hw_ip,
+		err_hw("[%d][ID:%d] invalid version (%d)", instance, hw_ip->id,
 			info->version);
 		return -EINVAL;
 	}
 
 	hw_srdz->setfile = (struct hw_api_srdz_setfile *)info->table[index].addr;
 	if (hw_srdz->setfile->setfile_version != SRDZ_SETFILE_VERSION) {
-		mserr_hw("setfile version(0x%x) is incorrect",
-			instance, hw_ip, hw_srdz->setfile->setfile_version);
+		err_hw("[%d][ID:%d] setfile version(0x%x) is incorrect",
+			instance, hw_ip->id, hw_srdz->setfile->setfile_version);
 		return -EINVAL;
 	}
 
@@ -470,7 +514,7 @@ static int fimc_is_hw_srdz_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 index,
 	return ret;
 }
 
-static int fimc_is_hw_srdz_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenario,
+int fimc_is_hw_srdz_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenario,
 	u32 instance, ulong hw_map)
 {
 	int ret = 0;
@@ -478,20 +522,20 @@ static int fimc_is_hw_srdz_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenar
 	struct fimc_is_hw_ip_setfile *info;
 	u32 setfile_index = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map)) {
-		msdbg_hw(2, "%s: hw_map(0x%lx)\n", instance, hw_ip, __func__, hw_map);
+		dbg_hw("[%d]%s: hw_map(0x%lx)\n", instance, __func__, hw_map);
 		return 0;
 	}
 
 	if (!test_bit(HW_INIT, &hw_ip->state)) {
-		mserr_hw("not initialized!!", instance, hw_ip);
+		err_hw("[%d] not initialized!!", instance);
 		return -ESRCH;
 	}
 
 	if (!unlikely(hw_ip->priv_info)) {
-		mserr_hw("priv info is NULL", instance, hw_ip);
+		err_hw("SRDZ priv info is NULL");
 		return -EINVAL;
 	}
 
@@ -503,31 +547,31 @@ static int fimc_is_hw_srdz_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenar
 
 	setfile_index = info->index[scenario];
 	if (setfile_index >= hw_ip->setfile.using_count) {
-		mserr_hw("setfile index is out-of-range, [%d:%d]",
-				instance, hw_ip, scenario, setfile_index);
+		err_hw("[%d][ID:%d] setfile index is out-of-range, [%d:%d]",
+				instance, hw_ip->id, scenario, setfile_index);
 		return -EINVAL;
 	}
 
-	msinfo_hw("setfile (%d) scenario (%d)\n", instance, hw_ip,
+	info_hw("[%d][ID:%d] setfile (%d) scenario (%d)\n", instance, hw_ip->id,
 		setfile_index, scenario);
 
 	return ret;
 }
 
-static int fimc_is_hw_srdz_delete_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance,
+int fimc_is_hw_srdz_delete_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance,
 	ulong hw_map)
 {
 	struct fimc_is_hw_srdz *hw_srdz = NULL;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map)) {
-		msdbg_hw(2, "%s: hw_map(0x%lx)\n", instance, hw_ip, __func__, hw_map);
+		dbg_hw("[%d]%s: hw_map(0x%lx)\n", instance, __func__, hw_map);
 		return 0;
 	}
 
 	if (test_bit(HW_TUNESET, &hw_ip->state)) {
-		msdbg_hw(2, "setfile already deleted", instance, hw_ip);
+		dbg_hw("[%d][ID:%d] setfile already deleted", instance, hw_ip->id);
 		return 0;
 	}
 
@@ -545,8 +589,6 @@ bool fimc_is_hw_srdz_frame_done(struct fimc_is_hw_ip *hw_ip, struct fimc_is_fram
 	bool fdone_flag = false;
 	struct fimc_is_frame *done_frame;
 	struct fimc_is_framemgr *framemgr;
-	int instance = atomic_read(&hw_ip->instance);
-	ulong flags = 0;
 
 	switch (done_type) {
 	case IS_SHOT_SUCCESS:
@@ -555,11 +597,8 @@ bool fimc_is_hw_srdz_frame_done(struct fimc_is_hw_ip *hw_ip, struct fimc_is_fram
 		done_frame = peek_frame(framemgr, FS_HW_WAIT_DONE);
 		framemgr_x_barrier(framemgr, 0);
 		if (done_frame == NULL) {
-			mserr_hw("[F:%d] frame(null)!!", instance, hw_ip, atomic_read(&hw_ip->fcount));
-			framemgr_e_barrier_common(framemgr, 0, flags);
-			print_all_hw_frame_count(hw_ip->hardware);
-			framemgr_x_barrier_common(framemgr, 0, flags);
-			return;
+			err_hw("[SRDZ][F:%d] frame(null)!!", atomic_read(&hw_ip->fcount));
+			BUG_ON(1);
 		}
 		break;
 	case IS_SHOT_UNPROCESSED:
@@ -573,7 +612,7 @@ bool fimc_is_hw_srdz_frame_done(struct fimc_is_hw_ip *hw_ip, struct fimc_is_fram
 		done_frame = frame;
 		break;
 	default:
-		mserr_hw("[F:%d] invalid done type(%d)\n", instance, hw_ip,
+		err_hw("[%d][F:%d] invalid done type(%d)\n", atomic_read(&hw_ip->instance),
 			atomic_read(&hw_ip->fcount), done_type);
 		return false;
 	}
@@ -582,13 +621,13 @@ bool fimc_is_hw_srdz_frame_done(struct fimc_is_hw_ip *hw_ip, struct fimc_is_fram
 		ret = fimc_is_hardware_frame_done(hw_ip, frame,
 			WORK_SRDZ_FDONE, ENTRY_SRDZ, done_type, true);
 		fdone_flag = true;
-		msdbgs_hw(2, "[OUT:0] cleared[F:%d]\n", instance, hw_ip, done_frame->fcount);
+		dbg_hw("[OUT:0] cleared[F:%d]\n", done_frame->fcount);
 	}
 
 	return fdone_flag;
 }
 
-static int fimc_is_hw_srdz_frame_ndone(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
+int fimc_is_hw_srdz_frame_ndone(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
 	u32 instance, enum ShotErrorType done_type)
 {
 	int ret = 0;
@@ -613,12 +652,12 @@ int fimc_is_hw_srdz_dma_input(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inpu
 	u32 img_format;
 	struct fimc_is_hw_srdz *hw_srdz;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!input);
+	BUG_ON(!hw_ip);
+	BUG_ON(!input);
 
 	hw_srdz = (struct fimc_is_hw_srdz *)hw_ip->priv_info;
 
-	msdbg_hw(2, "dma_input_setting cmd(%d)\n", instance, hw_ip, input->dma_cmd);
+	dbg_hw("[%d][ID:%d]hw_srdz_dma_input_setting cmd(%d)\n", instance, hw_ip->id, input->dma_cmd);
 	width  = input->dma_crop_width;
 	height = input->dma_crop_height;
 	format = input->dma_format;
@@ -634,8 +673,8 @@ int fimc_is_hw_srdz_dma_input(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inpu
 	ret = fimc_is_hw_srdz_check_format(HW_SRDZ_DMA_INPUT,
 		format, bit_width, width, height);
 	if (ret) {
-		mserr_hw("Invalid DMA Input format: fmt(%d),bit(%d),size(%dx%d)",
-			instance, hw_ip, format, bit_width, width, height);
+		err_hw("[%d]Invalid SRDZ DMA Input format: fmt(%d),bit(%d),size(%dx%d)",
+			instance, format, bit_width, width, height);
 		return ret;
 	}
 
@@ -644,7 +683,7 @@ int fimc_is_hw_srdz_dma_input(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inpu
 
 	ret = fimc_is_hw_srdz_adjust_input_img_fmt(format, plane, order, &img_format);
 	if (ret < 0)
-		mswarn_hw("Invalid rdma image format", instance, hw_ip);
+		warn_hw("[%d][ID:%d] Invalid rdma image format\n", instance, hw_ip->id);
 
 	fimc_is_srdz_set_rdma_size(hw_ip->regs, width, height);
 	fimc_is_srdz_set_rdma_format(hw_ip->regs, img_format);
@@ -660,14 +699,14 @@ int fimc_is_hw_srdz_otf_output(struct fimc_is_hw_ip *hw_ip, struct param_mcs_out
 	u32 out_width, out_height;
 	u32 format, bitwidth;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!output);
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip);
+	BUG_ON(!output);
+	BUG_ON(!hw_ip->priv_info);
 
 	hw_srdz = (struct fimc_is_hw_srdz *)hw_ip->priv_info;
 
-	msdbg_hw(2, "[OUT:%d]otf_output_setting cmd(O:%d,D:%d)\n",
-		instance, hw_ip, output_id, output->otf_cmd, output->dma_cmd);
+	dbg_hw("[%d][OUT:%d]hw_srdz_otf_output_setting cmd(O:%d,D:%d)\n",
+		instance, output_id, output->otf_cmd, output->dma_cmd);
 
 	if (output->otf_cmd == OTF_OUTPUT_COMMAND_DISABLE) {
 		fimc_is_srdz_set_otf_out_enable(hw_ip->regs, output_id, false);
@@ -682,8 +721,8 @@ int fimc_is_hw_srdz_otf_output(struct fimc_is_hw_ip *hw_ip, struct param_mcs_out
 	ret = fimc_is_hw_srdz_check_format(HW_SRDZ_OTF_OUTPUT,
 		format, bitwidth, out_width, out_height);
 	if (ret) {
-		mserr_hw("[OUT:%d]Invalid OTF Output format: fmt(%d),bit(%d),size(%dx%d)",
-			instance, hw_ip, output_id, format, bitwidth, out_width, out_height);
+		err_hw("[%d][OUT:%d]Invalid SRDZ OTF Output format: fmt(%d),bit(%d),size(%dx%d)",
+			instance, output_id, format, bitwidth, out_width, out_height);
 		return ret;
 	}
 
@@ -702,14 +741,14 @@ int fimc_is_hw_srdz_dma_output(struct fimc_is_hw_ip *hw_ip, struct param_mcs_out
 	u32 img_format;
 	struct fimc_is_hw_srdz *hw_srdz;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!output);
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip);
+	BUG_ON(!output);
+	BUG_ON(!hw_ip->priv_info);
 
 	hw_srdz = (struct fimc_is_hw_srdz *)hw_ip->priv_info;
 
-	msdbg_hw(2, "[OUT:%d]dma_output_setting cmd(O:%d,D:%d)\n",
-		instance, hw_ip, output_id, output->otf_cmd, output->dma_cmd);
+	dbg_hw("[%d][OUT:%d]hw_srdz_dma_output_setting cmd(O:%d,D:%d)\n",
+		instance, output_id, output->otf_cmd, output->dma_cmd);
 
 	if (output->dma_cmd == DMA_OUTPUT_COMMAND_DISABLE) {
 		fimc_is_srdz_set_dma_out_enable(hw_ip->regs, output_id, false);
@@ -728,14 +767,14 @@ int fimc_is_hw_srdz_dma_output(struct fimc_is_hw_ip *hw_ip, struct param_mcs_out
 	ret = fimc_is_hw_srdz_check_format(HW_SRDZ_DMA_OUTPUT,
 		format, bitwidth, out_width, out_height);
 	if (ret) {
-		mserr_hw("[OUT:%d]Invalid DMA Output format: fmt(%d),bit(%d),size(%dx%d)",
-			instance, hw_ip, output_id, format, bitwidth, out_width, out_height);
+		err_hw("[%d][OUT:%d]Invalid SRDZ DMA Output format: fmt(%d),bit(%d),size(%dx%d)",
+			instance, output_id, format, bitwidth, out_width, out_height);
 		return ret;
 	}
 
 	ret = fimc_is_hw_srdz_adjust_output_img_fmt(format, plane, order, &img_format);
 	if (ret < 0)
-		mswarn_hw("Invalid dma image format", instance, hw_ip);
+		warn_hw("[%d][ID:%d] Invalid dma image format\n", instance, hw_ip->id);
 
 	fimc_is_srdz_set_wdma_format(hw_ip->regs, output_id, img_format);
 	fimc_is_srdz_set_wdma_size(hw_ip->regs, output_id, out_width, out_height);
@@ -994,67 +1033,8 @@ int fimc_is_hw_srdz_check_format(enum srdz_io_type type, u32 format, u32 bit_wid
 	return ret;
 }
 
-static void fimc_is_hw_srdz_size_dump(struct fimc_is_hw_ip *hw_ip)
+void fimc_is_hw_srdz_size_dump(struct fimc_is_hw_ip *hw_ip)
 {
 	return;
 }
 
-const struct fimc_is_hw_ip_ops fimc_is_hw_srdz_ops = {
-	.open			= fimc_is_hw_srdz_open,
-	.init			= fimc_is_hw_srdz_init,
-	.close			= fimc_is_hw_srdz_close,
-	.enable			= fimc_is_hw_srdz_enable,
-	.disable		= fimc_is_hw_srdz_disable,
-	.shot			= fimc_is_hw_srdz_shot,
-	.set_param		= fimc_is_hw_srdz_set_param,
-	.frame_ndone		= fimc_is_hw_srdz_frame_ndone,
-	.load_setfile		= fimc_is_hw_srdz_load_setfile,
-	.apply_setfile		= fimc_is_hw_srdz_apply_setfile,
-	.delete_setfile		= fimc_is_hw_srdz_delete_setfile,
-	.size_dump		= fimc_is_hw_srdz_size_dump,
-	.clk_gate		= fimc_is_hardware_clk_gate
-};
-
-int fimc_is_hw_srdz_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface *itf,
-	struct fimc_is_interface_ischain *itfc, int id, const char *name)
-{
-	int ret = 0;
-	int hw_slot = -1;
-
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!itf);
-	FIMC_BUG(!itfc);
-
-	/* initialize device hardware */
-	hw_ip->id   = id;
-	snprintf(hw_ip->name, sizeof(hw_ip->name), "%s", name);
-	hw_ip->ops  = &fimc_is_hw_srdz_ops;
-	hw_ip->itf  = itf;
-	hw_ip->itfc = itfc;
-	atomic_set(&hw_ip->fcount, 0);
-	hw_ip->internal_fcount = 0;
-	hw_ip->is_leader = true;
-	atomic_set(&hw_ip->status.Vvalid, V_BLANK);
-	atomic_set(&hw_ip->rsccount, 0);
-	init_waitqueue_head(&hw_ip->status.wait_queue);
-
-	/* set srdz sfr base address */
-	hw_slot = fimc_is_hw_slot_id(id);
-	if (!valid_hw_slot_id(hw_slot)) {
-		serr_hw("invalid hw_slot (%d)", hw_ip, hw_slot);
-		return -EINVAL;
-	}
-
-	/* set srdz interrupt handler */
-	itfc->itf_ip[hw_slot].handler[INTR_HWIP1].handler = &fimc_is_hw_srdz_handle_interrupt;
-
-	clear_bit(HW_OPEN, &hw_ip->state);
-	clear_bit(HW_INIT, &hw_ip->state);
-	clear_bit(HW_CONFIG, &hw_ip->state);
-	clear_bit(HW_RUN, &hw_ip->state);
-	clear_bit(HW_TUNESET, &hw_ip->state);
-
-	sinfo_hw("probe done\n", hw_ip);
-
-	return ret;
-}

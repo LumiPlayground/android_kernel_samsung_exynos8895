@@ -127,25 +127,25 @@ struct s3c_pcm_info {
 	struct clk	*pclk;
 	struct clk	*cclk;
 
-	struct snd_dmaengine_dai_dma_data *dma_playback;
-	struct snd_dmaengine_dai_dma_data *dma_capture;
+	struct s3c_dma_params	*dma_playback;
+	struct s3c_dma_params	*dma_capture;
 };
 
-static struct snd_dmaengine_dai_dma_data s3c_pcm_stereo_out[] = {
+static struct s3c_dma_params s3c_pcm_stereo_out[] = {
 	[0] = {
-		.addr_width	= 4,
+		.dma_size	= 4,
 	},
 	[1] = {
-		.addr_width	= 4,
+		.dma_size	= 4,
 	},
 };
 
-static struct snd_dmaengine_dai_dma_data s3c_pcm_stereo_in[] = {
+static struct s3c_dma_params s3c_pcm_stereo_in[] = {
 	[0] = {
-		.addr_width	= 4,
+		.dma_size	= 4,
 	},
 	[1] = {
-		.addr_width	= 4,
+		.dma_size	= 4,
 	},
 };
 
@@ -552,18 +552,27 @@ static int s3c_pcm_dev_probe(struct platform_device *pdev)
 	}
 	clk_prepare_enable(pcm->pclk);
 
-	s3c_pcm_stereo_in[pdev->id].addr = mem_res->start + S3C_PCM_RXFIFO;
-	s3c_pcm_stereo_out[pdev->id].addr = mem_res->start + S3C_PCM_TXFIFO;
+	s3c_pcm_stereo_in[pdev->id].dma_addr = mem_res->start
+							+ S3C_PCM_RXFIFO;
+	s3c_pcm_stereo_out[pdev->id].dma_addr = mem_res->start
+							+ S3C_PCM_TXFIFO;
 
-	filter = NULL;
 	if (pcm_pdata) {
-		s3c_pcm_stereo_in[pdev->id].filter_data = pcm_pdata->dma_capture;
-		s3c_pcm_stereo_out[pdev->id].filter_data = pcm_pdata->dma_playback;
-		filter = pcm_pdata->dma_filter;
+		s3c_pcm_stereo_in[pdev->id].slave = pcm_pdata->dma_capture;
+		s3c_pcm_stereo_out[pdev->id].slave = pcm_pdata->dma_playback;
 	}
 
 	pcm->dma_capture = &s3c_pcm_stereo_in[pdev->id];
 	pcm->dma_playback = &s3c_pcm_stereo_out[pdev->id];
+
+	pm_runtime_enable(&pdev->dev);
+
+	ret = devm_snd_soc_register_component(&pdev->dev, &s3c_pcm_component,
+					 &s3c_pcm_dai[pdev->id], 1);
+	if (ret != 0) {
+		dev_err(&pdev->dev, "failed to get register DAI: %d\n", ret);
+		goto err5;
+	}
 
 	ret = samsung_asoc_dma_platform_register(&pdev->dev, filter,
 						 NULL, NULL);
@@ -572,18 +581,8 @@ static int s3c_pcm_dev_probe(struct platform_device *pdev)
 		goto err5;
 	}
 
-	pm_runtime_enable(&pdev->dev);
-
-	ret = devm_snd_soc_register_component(&pdev->dev, &s3c_pcm_component,
-					 &s3c_pcm_dai[pdev->id], 1);
-	if (ret != 0) {
-		dev_err(&pdev->dev, "failed to get register DAI: %d\n", ret);
-		goto err6;
-	}
-
 	return 0;
-err6:
-	pm_runtime_disable(&pdev->dev);
+
 err5:
 	clk_disable_unprepare(pcm->pclk);
 err4:

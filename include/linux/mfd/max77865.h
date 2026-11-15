@@ -44,14 +44,13 @@ struct max77865_haptic_pdata {
 	int gpio;
 	char *regulator_name;
 	unsigned int pwm_id;
+	unsigned int model;
 
 	/* for multi-frequency */
 	int multi_frequency;
 	int freq_num;
 	u32 *multi_freq_duty;
 	u32 *multi_freq_period;
-	int normal_ratio;
-	int overdrive_ratio;
 };
 #endif
 

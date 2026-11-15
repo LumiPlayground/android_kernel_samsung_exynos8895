@@ -51,7 +51,7 @@ struct priv_data {
 
 static int i2c_atmel_send(struct tpm_chip *chip, u8 *buf, size_t len)
 {
-	struct priv_data *priv = dev_get_drvdata(&chip->dev);
+	struct priv_data *priv = chip->vendor.priv;
 	struct i2c_client *client = to_i2c_client(chip->dev.parent);
 	s32 status;
 
@@ -70,7 +70,7 @@ static int i2c_atmel_send(struct tpm_chip *chip, u8 *buf, size_t len)
 
 static int i2c_atmel_recv(struct tpm_chip *chip, u8 *buf, size_t count)
 {
-	struct priv_data *priv = dev_get_drvdata(&chip->dev);
+	struct priv_data *priv = chip->vendor.priv;
 	struct i2c_client *client = to_i2c_client(chip->dev.parent);
 	struct tpm_output_header *hdr =
 		(struct tpm_output_header *)priv->buffer;
@@ -111,7 +111,7 @@ static void i2c_atmel_cancel(struct tpm_chip *chip)
 
 static u8 i2c_atmel_read_status(struct tpm_chip *chip)
 {
-	struct priv_data *priv = dev_get_drvdata(&chip->dev);
+	struct priv_data *priv = chip->vendor.priv;
 	struct i2c_client *client = to_i2c_client(chip->dev.parent);
 	int rc;
 

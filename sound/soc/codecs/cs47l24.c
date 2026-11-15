@@ -173,9 +173,6 @@ SOC_ENUM("ISRC2 FSH", arizona_isrc_fsh[1]),
 SOC_ENUM("ISRC3 FSH", arizona_isrc_fsh[2]),
 SOC_ENUM("ASRC RATE 1", arizona_asrc_rate1),
 
-WM_ADSP2_PRELOAD_SWITCH("DSP2", 2),
-WM_ADSP2_PRELOAD_SWITCH("DSP3", 3),
-
 ARIZONA_MIXER_CONTROLS("DSP2L", ARIZONA_DSP2LMIX_INPUT_1_SOURCE),
 ARIZONA_MIXER_CONTROLS("DSP2R", ARIZONA_DSP2RMIX_INPUT_1_SOURCE),
 ARIZONA_MIXER_CONTROLS("DSP3L", ARIZONA_DSP3LMIX_INPUT_1_SOURCE),
@@ -749,16 +746,6 @@ static const struct snd_soc_dapm_route cs47l24_dapm_routes[] = {
 	{ "IN2L", NULL, "SYSCLK" },
 	{ "IN2R", NULL, "SYSCLK" },
 
-	{ "ASRC1L", NULL, "SYSCLK" },
-	{ "ASRC1R", NULL, "SYSCLK" },
-	{ "ASRC2L", NULL, "SYSCLK" },
-	{ "ASRC2R", NULL, "SYSCLK" },
-
-	{ "ASRC1L", NULL, "ASYNCCLK" },
-	{ "ASRC1R", NULL, "ASYNCCLK" },
-	{ "ASRC2L", NULL, "ASYNCCLK" },
-	{ "ASRC2R", NULL, "ASYNCCLK" },
-
 	{ "MICBIAS1", NULL, "MICVDD" },
 	{ "MICBIAS2", NULL, "MICVDD" },
 
@@ -817,6 +804,7 @@ static const struct snd_soc_dapm_route cs47l24_dapm_routes[] = {
 	{ "AIF3 Capture", NULL, "SYSCLK" },
 
 	{ "Voice Control DSP", NULL, "DSP3" },
+	{ "Voice Control DSP", NULL, "SYSCLK" },
 
 	{ "IN1L PGA", NULL, "IN1L" },
 	{ "IN1R PGA", NULL, "IN1R" },
@@ -825,6 +813,7 @@ static const struct snd_soc_dapm_route cs47l24_dapm_routes[] = {
 	{ "IN2R PGA", NULL, "IN2R" },
 
 	{ "Audio Trace DSP", NULL, "DSP2" },
+	{ "Audio Trace DSP", NULL, "SYSCLK" },
 
 	ARIZONA_MIXER_ROUTES("OUT1L", "HPOUT1L"),
 	ARIZONA_MIXER_ROUTES("OUT1R", "HPOUT1R"),
@@ -1201,14 +1190,12 @@ static struct snd_soc_codec_driver soc_codec_dev_cs47l24 = {
 	.set_sysclk = arizona_set_sysclk,
 	.set_pll = cs47l24_set_fll,
 
-	.component_driver = {
-		.controls		= cs47l24_snd_controls,
-		.num_controls		= ARRAY_SIZE(cs47l24_snd_controls),
-		.dapm_widgets		= cs47l24_dapm_widgets,
-		.num_dapm_widgets	= ARRAY_SIZE(cs47l24_dapm_widgets),
-		.dapm_routes		= cs47l24_dapm_routes,
-		.num_dapm_routes	= ARRAY_SIZE(cs47l24_dapm_routes),
-	},
+	.controls = cs47l24_snd_controls,
+	.num_controls = ARRAY_SIZE(cs47l24_snd_controls),
+	.dapm_widgets = cs47l24_dapm_widgets,
+	.num_dapm_widgets = ARRAY_SIZE(cs47l24_dapm_widgets),
+	.dapm_routes = cs47l24_dapm_routes,
+	.num_dapm_routes = ARRAY_SIZE(cs47l24_dapm_routes),
 };
 
 static struct snd_compr_ops cs47l24_compr_ops = {

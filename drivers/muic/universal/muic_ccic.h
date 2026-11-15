@@ -1,6 +1,7 @@
 #ifndef _MUIC_CCIC_
 #define _MUIC_CCIC_
 
+extern int get_ccic_info(void);
 extern int muic_handle_ccic_supported_dev(muic_data_t *pmuic, muic_attached_dev_t new_dev);
 extern int muic_is_ccic_supported_dev(muic_data_t *pmuic, muic_attached_dev_t new_dev);
 extern int muic_is_ccic_supported_jig(muic_data_t *pmuic, muic_attached_dev_t new_dev);

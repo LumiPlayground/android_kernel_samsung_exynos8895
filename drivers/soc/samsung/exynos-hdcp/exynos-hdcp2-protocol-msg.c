@@ -16,7 +16,7 @@
 #include "exynos-hdcp2.h"
 #include "exynos-hdcp2-log.h"
 #include "exynos-hdcp2-misc.h"
-#include "dp_link/exynos-hdcp2-dplink-protocol-msg.h"
+#include "./dp_link/exynos-hdcp2-dplink-protocol-msg.h"
 
 /* HDCP protocol message capulate & decapulate functions for IIA */
 static int cap_ake_init(uint8_t *m, size_t *m_len,
@@ -415,7 +415,7 @@ static int cap_ake_no_stored_km(uint8_t *m, size_t *m_len,
 	/* IIA spec does not define rrx and RxCaps with Cert message */
 	ret = ake_verify_cert(rx_ctx->cert, sizeof(rx_ctx->cert),
 				NULL, 0,
-				&(rx_ctx->repeater), HDCP_RX_CAPS_LEN);
+				NULL, 0);
 	if (ret)
 		/* authentication failure &
 		 * aborts the authentication protocol */
@@ -563,7 +563,7 @@ static int decap_ake_send_h_prime(uint8_t *m, size_t *m_len, struct hdcp_tx_ctx 
 #ifdef HDCP_AKE_DEBUG
 	hdcp_debug("decap_ake_send_h_prime\n");
 	hdcp_debug("given hmac:\n");
-	hdcp_hexdump(&m[1], HDCP_HMAC_SHA256_LEN);
+	hdcp_hexdump(&m[1], HDCP_HMAC_SHA256_LEN); 
 #endif
 	return 0;
 }
@@ -740,7 +740,7 @@ static int cap_ske_send_eks(uint8_t *m, size_t *m_len, struct hdcp_tx_ctx *tx_ct
 }
 
 #ifdef TEST_HDCP_V2_0
-int parse_rcvid_list(uint8_t *msg, struct hdcp_tx_ctx *tx_ctx)
+void parse_rcvid_list(uint8_t *msg, struct hdcp_tx_ctx *tx_ctx)
 {
         /* get PRE META values */
         tx_ctx->rcv_list.devs_exd = (uint8_t)*msg;
@@ -755,8 +755,6 @@ int parse_rcvid_list(uint8_t *msg, struct hdcp_tx_ctx *tx_ctx)
         /* get receiver ID list */
         msg += 34;
         memcpy(tx_ctx->rcv_list.rcv_id, msg, tx_ctx->rcv_list.devs_count * HDCP_RCV_ID_LEN);
-
-	return 0;
 }
 
 void convert_rcvlist2authmsg(struct hdcp_rcvlist *rcv_list, uint8_t *src_msg, size_t *msg_len)
@@ -786,7 +784,7 @@ void convert_rcvlist2authmsg(struct hdcp_rcvlist *rcv_list, uint8_t *src_msg, si
         *msg_len += 1;
 }
 #else
-int parse_rcvid_list(uint8_t *msg, struct hdcp_tx_ctx *tx_ctx)
+void parse_rcvid_list(uint8_t *msg, struct hdcp_tx_ctx *tx_ctx)
 {
         /* get PRE META values */
         tx_ctx->rpauth_info.devs_exd = (uint8_t)*msg;
@@ -803,14 +801,7 @@ int parse_rcvid_list(uint8_t *msg, struct hdcp_tx_ctx *tx_ctx)
 
         /* get receiver ID list */
         msg += HDCP_RP_RCV_LIST_META_LEN;
-	if (tx_ctx->rpauth_info.devs_count > HDCP_RCV_DEVS_COUNT_MAX) {
-		hdcp_err("invalid DEVS count (%d)\n", tx_ctx->rpauth_info.devs_count);
-		return -1;
-	}
-
         memcpy(tx_ctx->rpauth_info.u_rcvid.arr, msg, tx_ctx->rpauth_info.devs_count * HDCP_RCV_ID_LEN);
-
-	return 0;
 }
 
 void convert_rcvlist2authmsg(struct hdcp_rpauth_info *rpauth_info, uint8_t *src_msg, size_t *msg_len)
@@ -854,52 +845,57 @@ void convert_rcvlist2authmsg(struct hdcp_rpauth_info *rpauth_info, uint8_t *src_
 #endif
 
 static int decap_RepeaterAuth_send_ReceiverID_List(uint8_t *m,
-		size_t *m_len, struct hdcp_tx_ctx *tx_ctx,
-		struct hdcp_rx_ctx *rx_ctx)
+                size_t *m_len, struct hdcp_tx_ctx *tx_ctx,
+                struct hdcp_rx_ctx *rx_ctx)
 {
-	size_t hmac_prime_len;
-	size_t msg_len;
-	uint8_t source_msg[256];
-	int ret;
+/* todo: support Repeater for IIA */
+#if 0
+        size_t hmac_prime_len;
+        size_t msg_len;
+        uint8_t source_msg[256];
+        int ret;
 
-	if (rx_ctx->version == HDCP_VERSION_2_0)
-		hmac_prime_len = HDCP_HMAC_SHA256_LEN;
-	else
-		hmac_prime_len = HDCP_HMAC_SHA256_LEN/2;
+        if (rx_ctx->version == HDCP_VERSION_2_0)
+                hmac_prime_len = HDCP_HMAC_SHA256_LEN;
+        else
+                hmac_prime_len = HDCP_HMAC_SHA256_LEN/2;
 
-	ret = check_received_msg(m, *m_len, 0, REPEATERAUTH_SEND_RECEIVERID_LIST);
-	if (ret)
-		return ret;
+        ret = check_received_msg(m, *m_len, 0, REPEATERAUTH_SEND_RECEIVERID_LIST);
+        if (ret)
+                return ret;
 
-	if (parse_rcvid_list(m + 1, tx_ctx))
-		return -1;
+        parse_rcvid_list(m + 1, tx_ctx);
+        convert_rcvlist2authmsg(&tx_ctx->rpauth_info, source_msg, &msg_len);
 
-	convert_rcvlist2authmsg(&tx_ctx->rpauth_info, source_msg, &msg_len);
-
-	ret = teei_set_rcvlist_info(NULL, NULL, tx_ctx->rpauth_info.v_prime,
-			source_msg, tx_ctx->rpauth_info.v, &(tx_ctx->rpauth_info.valid));
+        ret = hdcp_rcvlist_verify(source_msg, msg_len,
+				tx_ctx->rpauth_info.v_prime,
+				HDCP_RP_HMAC_V_LEN / 2,
+                                tx_ctx->rpauth_info.v,
+				hmac_prime_len,
+				tx_ctx->rtx,
+				tx_ctx->wrap_mkey);
 
 	tx_ctx->rpauth_info.valid = 0;
 	if (ret) {
 		tx_ctx->rpauth_info.valid = 1;
-		return ret;
-	}
-
-#ifdef HDCP_TX_REPEATER_DEBUG
-	hdcp_debug("decap_RepeaterAuth_send_ReceiverID_List valid (%u)\n", tx_ctx->rpauth_info.valid);
-	hdcp_hexdump(tx_ctx->rpauth_info.v, HDCP_RP_HMAC_V_LEN / 2);
+                return ret;
+        }
 #endif
+
 	return 0;
 }
 
 static int cap_RepeaterAuth_Send_Ack(uint8_t *m, size_t *m_len, struct hdcp_tx_ctx *tx_ctx,
-		struct hdcp_rx_ctx *rx_ctx)
+                        struct hdcp_rx_ctx *rx_ctx)
 {
-	if ((m == NULL) || (m_len == NULL) || (tx_ctx == NULL))
-		return ERR_WRONG_BUFFER;
+/* todo: support Repeater for IIA */
+#if 0
 
-	/* Make Message */
-	m[0] = REPEATERAUTH_SEND_ACK;
+        if ((m == NULL) || (m_len == NULL) || (tx_ctx == NULL))
+                return ERR_WRONG_BUFFER;
+
+        /* Make Message */
+        m[0] = REPEATERAUTH_SEND_ACK;
 	if(tx_ctx->rpauth_info.valid == 0)
 		memcpy(&m[1], tx_ctx->rpauth_info.v, HDCP_RP_HMAC_V_LEN / 2);
 	else
@@ -908,70 +904,76 @@ static int cap_RepeaterAuth_Send_Ack(uint8_t *m, size_t *m_len, struct hdcp_tx_c
 	*m_len = 1 + (HDCP_RP_HMAC_V_LEN / 2);
 
 #ifdef HDCP_TX_REPEATER_DEBUG
-	hdcp_debug("make_RepeaterAuth_Send_Ack(%u)\n", *m_len);
+        hdcp_debug("make_RepeaterAuth_Send_Ack(%u)\n", *m_len);
 	hdcp_hexdump(m, *m_len);
 #endif
-	return 0;
+#endif
+        return 0;
 }
 
 static int decap_Receiver_AuthStatus(uint8_t *m,
-		size_t *m_len, struct hdcp_tx_ctx *tx_ctx,
-		struct hdcp_rx_ctx *rx_ctx)
+                size_t *m_len, struct hdcp_tx_ctx *tx_ctx,
+                struct hdcp_rx_ctx *rx_ctx)
 {
-	int ret;
+/* todo: support Repeater for IIA */
+#if 0
+        int ret;
 
-	ret = check_received_msg(m, (int)*m_len, 0,  RECEIVER_AUTHSTATUS);
-	if (ret)
-		return ret;
+        ret = check_received_msg(m, *m_len, 0,  RECEIVER_AUTHSTATUS);
+        if (ret)
+                return ret;
 
-	tx_ctx->rp_reauth = m[3];
+        tx_ctx->rp_reauth = m[3];
 #ifdef HDCP_TX_REPEATER_DEBUG
-	hdcp_debug("get_Receiver_AuthStatus(%u)\n", *m_len);
-	hdcp_debug("receiver reauth req: %u\n", tx_ctx->rp_reauth);
+        hdcp_debug("get_Receiver_AuthStatus(%u)\n", *m_len);
+        hdcp_debug("receiver reauth req: %u\n", tx_ctx->rp_reauth);
 #endif
-	return 0;
+#endif
+        return 0;
 }
 
 int cap_RepeaterAuth_Stream_Manage(uint8_t *m, size_t *m_len,
-		struct hdcp_tx_ctx *tx_ctx,
-		struct hdcp_rx_ctx *rx_ctx)
+                                        struct hdcp_tx_ctx *tx_ctx,
+                                        struct hdcp_rx_ctx *rx_ctx)
 {
-	int i;
-	uint8_t *dst;
-	uint16_t stmp;
-	uint32_t itmp;
+/* todo: support Repeater for IIA */
+#if 0
+        int i;
+        uint8_t *dst;
+        uint16_t stmp;
+        uint32_t itmp;
 
-	if ((m == NULL) || (m_len == NULL) || (tx_ctx == NULL))
-		return ERR_WRONG_BUFFER;
+        if ((m == NULL) || (m_len == NULL) || (tx_ctx == NULL))
+                return ERR_WRONG_BUFFER;
 
-	if (tx_ctx->stream_ctrl.str_num > HDCP_TX_REPEATER_MAX_STREAM)
-		return ERR_EXCEED_MAX_STREAM;
+        if (tx_ctx->stream_ctrl.str_num > HDCP_TX_REPEATER_MAX_STREAM)
+                return ERR_EXCEED_MAX_STREAM;
 
-	/* Make Message */
-	m[0] = REPEATERAUTH_STREAM_MANAGE;
-	itmp = htonl(tx_ctx->seq_num_M);
-	memcpy(&m[1], (uint8_t *)&itmp + 1, 3);
-	stmp = htons(tx_ctx->stream_ctrl.str_num);
-	memcpy(&m[4], &stmp, sizeof(stmp));
+        /* Make Message */
+        m[0] = REPEATERAUTH_STREAM_MANAGE;
+        itmp = htonl(tx_ctx->seq_num_M);
+        memcpy(&m[1], (uint8_t*)&itmp + 1, 3);
+        stmp = htons(tx_ctx->stream_ctrl.str_num);
+        memcpy(&m[4], &stmp, sizeof(stmp));
 
-	for (i = 0; i < tx_ctx->stream_ctrl.str_num; i++) {
-		dst = (uint8_t *)(&m[6] + STREAM_INFO_SIZE * i);
-		itmp = htonl(tx_ctx->stream_ctrl.str_info[i].ctr);
-		memcpy(dst, &itmp, sizeof(itmp));
-		stmp = htons(tx_ctx->stream_ctrl.str_info[i].pid);
-		memcpy(dst + sizeof(itmp), &stmp, sizeof(stmp));
-		dst[STREAM_INFO_SIZE - 1] = tx_ctx->stream_ctrl.str_info[i].type;
-	}
+        for (i = 0; i < tx_ctx->stream_ctrl.str_num; i++) {
+                dst = (uint8_t*)(&m[6] + STREAM_INFO_SIZE * i);
+                itmp = htonl(tx_ctx->stream_ctrl.str_info[i].ctr);
+                memcpy(dst, &itmp, sizeof(itmp));
+                stmp = htons(tx_ctx->stream_ctrl.str_info[i].pid);
+                memcpy(dst + sizeof(itmp), &stmp, sizeof(stmp));
+                dst[STREAM_INFO_SIZE - 1] = tx_ctx->stream_ctrl.str_info[i].type;
+        }
 
-	*m_len = HDCP_PROTO_MSG_ID_LEN + STREAM_ELEM_SIZE + STREAM_INFO_SIZE * i;
+        *m_len = 6 + STREAM_INFO_SIZE * i;
 
-	/* seq_num_M++ */
-	tx_ctx->seq_num_M++;
+        /* seq_num_M++ */
+        tx_ctx->seq_num_M++;
 
-	/* save message to make M */
-	memcpy(tx_ctx->strmsg, &m[6], *m_len - 6);
-	memcpy(tx_ctx->strmsg + *m_len - 6, &m[1], 3);
-	tx_ctx->strmsg_len = *m_len - 3;
+        /* save message to make M */
+        memcpy(tx_ctx->strmsg, &m[6], *m_len - 6);
+        memcpy(tx_ctx->strmsg + *m_len - 6, &m[1], 3);
+        tx_ctx->strmsg_len = *m_len - 3;
 
 #ifdef HDCP_TX_REPEATER_DEBUG
 	hdcp_debug("strmsg(len: %d): \n", tx_ctx->strmsg_len);
@@ -982,34 +984,53 @@ int cap_RepeaterAuth_Stream_Manage(uint8_t *m, size_t *m_len,
 
 	hdcp_debug("seq_num_M: %d\n", tx_ctx->seq_num_M);
 #endif
-	return 0;
+#endif
+        return 0;
+}
+
+int hdcp_repeater_validate_M(uint8_t *rxM, uint8_t *input, size_t input_len,
+                                uint8_t *wmkey, uint8_t *rtx)
+{
+/* todo: support Repeater for IIA */
+#if 0
+        int ret;
+
+        ret = teei_validate_M(rxM, input, input_len, wmkey, rtx);
+        if (ret) {
+                hdcp_err("validate_M() is failed with %x\n", ret);
+                return ERR_VALIDATE_M;
+        }
+#endif
+        return 0;
 }
 
 int decap_RepeaterAuth_Stream_Ready(uint8_t *m, size_t *m_len,
-		struct hdcp_tx_ctx *tx_ctx,
-		struct hdcp_rx_ctx *rx_ctx)
+                                        struct hdcp_tx_ctx *tx_ctx,
+                                        struct hdcp_rx_ctx *rx_ctx)
 {
-	int ret = 0;
-	/* Not support yet*/
+/* todo: support Repeater for IIA */
 #if 0
-	ret = check_received_msg(m, *m_len, 1 + HDCP_HMAC_SHA256_LEN, REPEATERAUTH_STREAM_READY);
-	if (ret)
-		return ret;
+        int ret;
 
-	/* compute M and compare M == M' */
-	ret = teei_verify_m_prime(&m[1], tx_ctx->strmsg, tx_ctx->strmsg_len);
-	if (ret)
-		return ret;
+        ret = check_received_msg(m, *m_len, 1 + HDCP_HMAC_SHA256_LEN, REPEATERAUTH_STREAM_READY);
+        if (ret)
+                return ret;
+
+        /* compute M and compare M == M' */
+        ret = hdcp_repeater_validate_M(&m[1], tx_ctx->strmsg, tx_ctx->strmsg_len,
+                                        tx_ctx->wrap_mkey, tx_ctx->rtx);
+        if (ret)
+                return ret;
 #endif
-	return ret;
+        return 0;
 }
 
 int cap_protocol_msg(uint8_t msg_id,
-		uint8_t *msg,
-		size_t *msg_len,
-		uint32_t lk_type,
-		struct hdcp_tx_ctx *tx_ctx,
-		struct hdcp_rx_ctx *rx_ctx)
+	uint8_t *msg,
+	size_t *msg_len,
+	uint32_t lk_type,
+	struct hdcp_tx_ctx *tx_ctx,
+	struct hdcp_rx_ctx *rx_ctx)
 {
 	/* todo: check upper boundary */
 	int ret = 0;
@@ -1019,10 +1040,8 @@ int cap_protocol_msg(uint8_t msg_id,
 
 	if (lk_type == HDCP_LINK_TYPE_IIA)
 		proto_func = proto_iia;
-#if defined(CONFIG_HDCP2_DP_ENABLE)
 	else if(lk_type == HDCP_LINK_TYPE_DP)
 		proto_func = proto_dp;
-#endif
 	else {
 		hdcp_err("invalid link type(%d)\n", lk_type);
 		return -1;
@@ -1037,11 +1056,11 @@ int cap_protocol_msg(uint8_t msg_id,
 }
 
 int decap_protocol_msg(uint8_t msg_id,
-		uint8_t *msg,
-		size_t msg_len,
-		uint32_t lk_type,
-		struct hdcp_tx_ctx *tx_ctx,
-		struct hdcp_rx_ctx *rx_ctx)
+	uint8_t *msg,
+	size_t msg_len,
+	uint32_t lk_type,
+	struct hdcp_tx_ctx *tx_ctx,
+	struct hdcp_rx_ctx *rx_ctx)
 {
 	int ret = 0;
 	int (**proto_func)(uint8_t *, size_t *,
@@ -1051,10 +1070,8 @@ int decap_protocol_msg(uint8_t msg_id,
 	/* todo: check upper boundary */
 	if (lk_type == HDCP_LINK_TYPE_IIA)
 		proto_func = proto_iia;
-#if defined(CONFIG_HDCP2_DP_ENABLE)
 	else if(lk_type == HDCP_LINK_TYPE_DP)
 		proto_func = proto_dp;
-#endif
 	else {
 		hdcp_err("HDCP: invalid link type(%d)\n", lk_type);
 		return -1;

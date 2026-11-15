@@ -19,15 +19,11 @@
 #include <linux/seq_file.h>
 #include <asm/stacktrace.h>
 #include <asm/esr.h>
-#include <asm/cacheflush.h>
-
-#include <soc/samsung/exynos-pmu.h>
-#include <linux/sec_ext.h>
 
 #define SZ_96	0x00000060
 #define SZ_960	0x000003c0
 
-#define EXTRA_VERSION	"RE25"
+#define EXTRA_VERSION	"RA30"
 /******************************************************************************
  * sec_debug_extra_info details
  *
@@ -57,7 +53,6 @@ struct sec_debug_panic_extra_info sec_debug_extra_info_init = {
 		{"BUS",		"", SZ_128},
 		{"DPM",		"", SZ_32},
 		{"SMP",		"", SZ_8},
-		{"RSTCNT",	"", SZ_8},
 		{"ETC",		"", SZ_256},
 		{"ESR",		"", SZ_64},
 		{"MER",		"", SZ_16},
@@ -90,8 +85,6 @@ struct sec_debug_panic_extra_info sec_debug_extra_info_init = {
 		{"PINT2",	"", SZ_8},
 		{"PINT5",	"", SZ_8},
 		{"PINT6",	"", SZ_8},
-		{"PSTS1",	"", SZ_8},
-		{"PSTS2",	"", SZ_8},
 		{"RVD1",	"", SZ_256},
 		{"RVD2",	"", SZ_256},
 		{"RVD3",	"", SZ_256},
@@ -107,18 +100,6 @@ struct sec_debug_panic_extra_info sec_debug_extra_info_init = {
 		{"CPU5",	"", SZ_256},
 		{"CPU6",	"", SZ_256},
 		{"CPU7",	"", SZ_256},
-		{"FRQL0",	"", SZ_8},
-		{"FRQL1",	"", SZ_8},
-		{"FRQL2",	"", SZ_8},
-		{"FRQB0",	"", SZ_8},
-		{"FRQB1",	"", SZ_8},
-		{"FRQB2",	"", SZ_8},
-		{"FRQM0",	"", SZ_8},
-		{"FRQM1",	"", SZ_8},
-		{"FRQM2",	"", SZ_8},
-		{"FRQI0",	"", SZ_8},
-		{"FRQI1",	"", SZ_8},
-		{"FRQI2",	"", SZ_8},
 
 		/* core lockup information */
 		{"MID",		"", SZ_32},
@@ -137,14 +118,11 @@ const char *ftype_items[MAX_EXTRA_INFO_KEY_LEN] = {
 	"PAGE",
 	"AUF",
 	"EUF",
-	"AUOF",
-	"BUG",
-	"PANIC",
+	"AUOF"
 };
 
 struct sec_debug_panic_extra_info *sec_debug_extra_info;
 struct sec_debug_panic_extra_info *sec_debug_extra_info_backup;
-struct sec_debug_pmudbg_extra_info *sec_debug_extra_info_pmudbg;
 
 #define MAX_DRAMINFO	15
 static char dram_info[MAX_DRAMINFO + 1];
@@ -160,7 +138,6 @@ static int __init sec_hw_param_get_dram_info(char *arg)
 }
 
 early_param("androidboot.dram_info", sec_hw_param_get_dram_info);
-
 /******************************************************************************
  * sec_debug_init_extra_info() - function to init extra info
  *
@@ -175,21 +152,18 @@ void sec_debug_init_extra_info(struct sec_debug_shared_info *sec_debug_info, int
 
 		if (magic_status) {
 			pr_crit("%s: init for backup and pmudbg\n", __func__);
-//			sec_debug_extra_info_backup = &sec_debug_info->sec_debug_extra_info_backup;
-//			sec_debug_extra_info_pmudbg = &sec_debug_info->sec_debug_extra_info_pmudbg;
+			sec_debug_extra_info_backup = &sec_debug_info->sec_debug_extra_info_backup;
 
-			if (reset_reason == RR_K || reset_reason == RR_D || 
-				reset_reason == RR_P ||	reset_reason == RR_S) {
-				pr_crit("%s: KDSP : init for backup and pmudbg\n", __func__);
-				sec_debug_extra_info_backup = &sec_debug_info->sec_debug_extra_info_backup;
-				sec_debug_extra_info_pmudbg = &sec_debug_info->sec_debug_extra_info_pmudbg;
+			if (reset_reason == RR_K ||
+				reset_reason == RR_D || 
+				reset_reason == RR_P ||
+				reset_reason == RR_S)
 				memcpy(sec_debug_extra_info_backup, sec_debug_extra_info,
 						sizeof(struct sec_debug_panic_extra_info));
-			}				
 		}
 
 		memcpy(sec_debug_extra_info, &sec_debug_extra_info_init,
-		       sizeof(struct sec_debug_panic_extra_info));
+			sizeof(struct sec_debug_panic_extra_info));
 	}
 }
 
@@ -212,7 +186,7 @@ void sec_debug_clear_extra_info(enum sec_debug_extra_buf_type type)
  ******************************************************************************/
 
 void sec_debug_set_extra_info(enum sec_debug_extra_buf_type type,
-			      const char *fmt, ...)
+				const char *fmt, ...)
 {
 	va_list args;
 
@@ -220,7 +194,7 @@ void sec_debug_set_extra_info(enum sec_debug_extra_buf_type type,
 		if (!strlen(sec_debug_extra_info->item[type].val)) {
 			va_start(args, fmt);
 			vsnprintf(sec_debug_extra_info->item[type].val,
-				  sec_debug_extra_info->item[type].max, fmt, args);
+					sec_debug_extra_info->item[type].max, fmt, args);
 			va_end(args);
 		}
 	}
@@ -297,37 +271,6 @@ void sec_debug_store_extra_info_M(void)
 }
 
 /******************************************************************************
- * sec_debug_store_extra_info_F
- ******************************************************************************/
-
-void sec_debug_store_extra_info_F(void)
-{
-	int i;
-	int maxlen = MAX_EXTRA_INFO_KEY_LEN + MAX_EXTRA_INFO_VAL_LEN + 10;
-	char *ptr = (char *)SEC_DEBUG_EXTRA_INFO_VA;
-
-	/* initialize extra info output buffer */
-	memset((void *)SEC_DEBUG_EXTRA_INFO_VA, 0, SZ_1K);
-
-	if (!sec_debug_extra_info_pmudbg)
-		return;
-
-	ptr += snprintf(ptr, maxlen, "\"FID\":\"%s\"",
-				sec_debug_extra_info_backup->item[INFO_AID].val);
-
-	if (!strcmp(sec_debug_extra_info_pmudbg->item[0].key, "START")) {
-		for (i = 0; i < PMUDBG_MAX; i++) {
-			if (!strcmp(sec_debug_extra_info_pmudbg->item[i].key, "END"))
-				break;
-
-			ptr += snprintf(ptr, maxlen, ",\"%s\":\"%s\"",
-				sec_debug_extra_info_pmudbg->item[i].key,
-				sec_debug_extra_info_pmudbg->item[i].val);
-		}
-	}
-}
-
-/******************************************************************************
  * sec_debug_set_extra_info_id
  ******************************************************************************/
 
@@ -342,10 +285,7 @@ void sec_debug_set_extra_info_id(void)
 	sec_debug_set_extra_info(INFO_CID, "%09lu%s", ts.tv_nsec, EXTRA_VERSION);
 	sec_debug_set_extra_info(INFO_MID, "%09lu%s", ts.tv_nsec, EXTRA_VERSION);
 
-	sec_debug_set_extra_info(INFO_ASB, "%d", id_get_asb_ver());
-	sec_debug_set_extra_info(INFO_PSITE, "%d", id_get_product_line());
 	sec_debug_set_extra_info(INFO_DDRID, "%s", dram_info);
-
 }
 
 /******************************************************************************
@@ -368,8 +308,6 @@ void sec_debug_set_extra_info_ktime(void)
 void sec_debug_set_extra_info_fault(enum sec_debug_extra_fault_type type,
 				    unsigned long addr, struct pt_regs *regs)
 {
-	phys_addr_t paddr = 0;
-
 	if (regs) {
 		pr_crit("%s = %s / 0x%lx\n", __func__, ftype_items[type], addr);
 		sec_debug_set_extra_info(INFO_FTYPE, "%s", ftype_items[type]);
@@ -379,14 +317,6 @@ void sec_debug_set_extra_info_fault(enum sec_debug_extra_fault_type type,
 					 compat_user_mode(regs) ?
 					 regs->compat_lr : regs->regs[30]);
 
-		if (type == UNDEF_FAULT && addr >= kimage_voffset) {
-			paddr = virt_to_phys((void *)addr);
-
-			pr_crit("%s: 0x%x / 0x%x\n", __func__,
-				upper_32_bits(paddr), lower_32_bits(paddr));
-			exynos_pmu_write(EXYNOS_PMU_INFORM8, lower_32_bits(paddr));
-			exynos_pmu_write(EXYNOS_PMU_INFORM9, upper_32_bits(paddr));
-		}
 	}
 }
 
@@ -443,7 +373,7 @@ void sec_debug_set_extra_info_backtrace(struct pt_regs *regs)
 		unsigned long where = frame.pc;
 		int ret;
 
-		ret = unwind_frame(NULL, &frame);
+		ret = unwind_frame(current, &frame);
 		if (ret < 0)
 			break;
 
@@ -496,7 +426,7 @@ void sec_debug_set_extra_info_backtrace_cpu(struct pt_regs *regs, int cpu)
 		unsigned long where = frame.pc;
 		int ret;
 
-		ret = unwind_frame(NULL, &frame);
+		ret = unwind_frame(current, &frame);
 		if (ret < 0)
 			break;
 
@@ -511,21 +441,9 @@ void sec_debug_set_extra_info_backtrace_cpu(struct pt_regs *regs, int cpu)
 		snprintf((char *)sec_debug_extra_info->item[INFO_CPU0 + (cpu % 8)].val + offset,
 				MAX_EXTRA_INFO_VAL_LEN - offset, "%s", buf);
 		offset += sym_name_len;
-
-		break;
 	}
-
-	if(regs) {
-		snprintf((char *)sec_debug_extra_info->item[INFO_CPU0 + (cpu % 8)].val + offset,
-				MAX_EXTRA_INFO_VAL_LEN - offset, ":%08x/%08x/%08x/%08x/%08x/%08x/%08x/%08x,",
-				(unsigned int)regs->regs[0], (unsigned int)regs->regs[1],
-				(unsigned int)regs->regs[2], (unsigned int)regs->regs[3],
-				(unsigned int)regs->regs[4], (unsigned int)regs->regs[5],
-				(unsigned int)regs->regs[6], (unsigned int)regs->regs[7]);
-	}
-
-	flush_cache_all();
 }
+
 
 /******************************************************************************
  * sec_debug_set_extra_info_sysmmu
@@ -558,10 +476,9 @@ void sec_debug_set_extra_info_dpm_timeout(char *devname)
  * sec_debug_set_extra_info_smpl
  ******************************************************************************/
 
-void sec_debug_set_extra_info_smpl(unsigned long count)
+void sec_debug_set_extra_info_smpl(unsigned int count)
 {
-	sec_debug_clear_extra_info(INFO_SMPL);
-	sec_debug_set_extra_info(INFO_SMPL, "%lu", count);
+	sec_debug_set_extra_info(INFO_SMPL, "0x%x", count & 0x3ff);
 }
 
 /******************************************************************************
@@ -589,7 +506,7 @@ void sec_debug_set_extra_info_zswap(char *str)
 void sec_debug_set_extra_info_mfc_error(char *str)
 {
 	sec_debug_clear_extra_info(INFO_STACK); /* erase STACK */
-//	sec_debug_set_extra_info(INFO_STACK, "MFC ERROR");
+	sec_debug_set_extra_info(INFO_STACK, "MFC ERROR");
 	sec_debug_set_extra_info(INFO_MFC, "%s", str);
 }
 
@@ -600,16 +517,7 @@ void sec_debug_set_extra_info_mfc_error(char *str)
 void sec_debug_set_extra_info_esr(unsigned int esr)
 {
 	sec_debug_set_extra_info(INFO_ESR, "%s (0x%08x)",
-				 esr_get_class_string(esr), esr);
-}
-
-/******************************************************************************
- * sec_debug_set_extra_info_merr
- ******************************************************************************/
-
-void sec_debug_set_extra_info_merr(char *merr)
-{
-	sec_debug_set_extra_info(INFO_MERR, "%s", merr);
+				esr_get_class_string(esr), esr);
 }
 
 /******************************************************************************
@@ -620,6 +528,15 @@ void sec_debug_set_extra_info_hint(u64 hint)
 {
 	if (hint)
 		sec_debug_set_extra_info(INFO_HINT, "%llx", hint);
+}
+
+/******************************************************************************
+ * sec_debug_set_extra_info_merr
+ ******************************************************************************/
+
+void sec_debug_set_extra_info_merr(void)
+{
+	sec_debug_set_extra_info(INFO_MERR, "0x%x", merr_symptom);
 }
 
 /******************************************************************************
@@ -641,36 +558,10 @@ void sec_debug_set_extra_info_batt(int cap, int volt, int temp, int curr)
 	sec_debug_set_extra_info(INFO_BATT, "%03d/%04d/%04d/%06d", cap, volt, temp, curr);
 }
 
-/******************************************************************************
- * sec_debug_set_extra_info_rvd1
- ******************************************************************************/
-
-void sec_debug_set_extra_info_rvd1(char *str)
-{
-	sec_debug_set_extra_info(INFO_RVD1, "%s", str);
-}
-
-/******************************************************************************
- * sec_debug_set_extra_info_rvd2
- ******************************************************************************/
-
-void sec_debug_set_extra_info_rvd2(char *str)
-{
-	sec_debug_set_extra_info(INFO_RVD2, "%s", str);
-}
-
-/******************************************************************************
- * sec_debug_set_extra_info_rvd3
- ******************************************************************************/
-
-void sec_debug_set_extra_info_rvd3(char *str)
-{
-	sec_debug_set_extra_info(INFO_RVD3, "%s", str);
-}
-
 void sec_debug_finish_extra_info(void)
 {
 	sec_debug_set_extra_info_ktime();
+	sec_debug_set_extra_info_merr();
 }
 
 static int set_debug_reset_extra_info_proc_show(struct seq_file *m, void *v)
@@ -707,7 +598,7 @@ static int __init sec_debug_reset_extra_info_init(void)
 	struct proc_dir_entry *entry;
 
 	entry = proc_create("reset_reason_extra_info",
-			    0644, NULL, &sec_debug_reset_extra_info_proc_fops);
+			S_IWUGO, NULL, &sec_debug_reset_extra_info_proc_fops);
 	if (!entry)
 		return -ENOMEM;
 	proc_set_size(entry, SZ_1K);

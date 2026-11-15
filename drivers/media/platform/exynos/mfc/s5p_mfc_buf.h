@@ -28,9 +28,6 @@ void s5p_mfc_release_codec_buffers(struct s5p_mfc_ctx *ctx);
 int s5p_mfc_alloc_enc_roi_buffer(struct s5p_mfc_ctx *ctx);
 void s5p_mfc_release_enc_roi_buffer(struct s5p_mfc_ctx *ctx);
 
-int s5p_mfc_otf_alloc_stream_buf(struct s5p_mfc_ctx *ctx);
-void s5p_mfc_otf_release_stream_buf(struct s5p_mfc_ctx *ctx);
-
 int s5p_mfc_alloc_firmware(struct s5p_mfc_dev *dev);
 int s5p_mfc_load_firmware(struct s5p_mfc_dev *dev);
 int s5p_mfc_release_firmware(struct s5p_mfc_dev *dev);

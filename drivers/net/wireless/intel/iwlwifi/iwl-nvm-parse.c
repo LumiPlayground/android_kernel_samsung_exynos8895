@@ -761,8 +761,14 @@ iwl_parse_nvm_data(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 		/* in family 8000 Xtal calibration values moved to OTP */
 		data->xtal_calib[0] = *(nvm_calib + XTAL_CALIB);
 		data->xtal_calib[1] = *(nvm_calib + XTAL_CALIB + 1);
-		lar_enabled = true;
-		ch_section = nvm_sw;
+	}
+
+	if (cfg->device_family != IWL_DEVICE_FAMILY_8000) {
+		iwl_set_hw_address(cfg, data, nvm_hw);
+
+		iwl_init_sbands(dev, cfg, data, nvm_sw,
+				tx_chains, rx_chains, lar_fw_supported,
+				no_wide_in_5ghz);
 	} else {
 		u16 lar_offset = data->nvm_version < 0xE39 ?
 				 NVM_LAR_OFFSET_FAMILY_8000_OLD :
@@ -771,8 +777,15 @@ iwl_parse_nvm_data(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 		lar_config = le16_to_cpup(regulatory + lar_offset);
 		data->lar_enabled = !!(lar_config &
 				       NVM_LAR_ENABLED_FAMILY_8000);
-		lar_enabled = data->lar_enabled;
-		ch_section = regulatory;
+
+		/* MAC address in family 8000 */
+		iwl_set_hw_address_family_8000(dev, cfg, data, mac_override,
+					       nvm_hw, mac_addr0, mac_addr1);
+
+		iwl_init_sbands(dev, cfg, data, regulatory,
+				tx_chains, rx_chains,
+				lar_fw_supported && data->lar_enabled,
+				no_wide_in_5ghz);
 	}
 
 	/* If no valid mac address was found - bail out */

@@ -388,33 +388,11 @@ static struct sk_buff *rndis_add_header(struct gether *port,
 {
 	struct sk_buff *skb2;
 
-	struct rndis_packet_msg_type *header = NULL;
-	struct f_rndis *rndis = func_to_rndis(&port->func);
+	skb2 = skb_realloc_headroom(skb, sizeof(struct rndis_packet_msg_type));
+	rndis_add_hdr(skb2);
 
-	if (rndis->port.multi_pkt_xfer) {
-		if (port->header) {
-			header = port->header;
-			memset(header, 0, sizeof(*header));
-			header->MessageType = cpu_to_le32(RNDIS_MSG_PACKET);
-			header->MessageLength = cpu_to_le32(skb->len +
-							sizeof(*header));
-			header->DataOffset = cpu_to_le32(36);
-			header->DataLength = cpu_to_le32(skb->len);
-			pr_debug("MessageLength:%d DataLength:%d\n",
-						header->MessageLength,
-						header->DataLength);
-			return skb;
-		} else {
-			pr_err("RNDIS header is NULL.\n");
-			return NULL;
-		}
-	} else {
-		skb2 = skb_realloc_headroom(skb, sizeof(struct rndis_packet_msg_type));
-		rndis_add_hdr(skb2);
-
-		dev_kfree_skb(skb);
-		return skb2;
-	}
+	dev_kfree_skb(skb);
+	return skb2;
 }
 
 static void rndis_response_available(void *_rndis)
@@ -803,7 +781,7 @@ rndis_bind(struct usb_configuration *c, struct usb_function *f)
 
 	/* request rndis queue */
 	status = gether_alloc_request(&rndis->port);
-	printk("usb:%s :  rndis queue reqsest ret = %d \n", __func__, status);
+	printk("usb:%s :  rndis queue reqsest ret = %d \n",__func__, status);
 	if (status < 0)
 		goto fail;
 
@@ -842,7 +820,7 @@ rndis_bind(struct usb_configuration *c, struct usb_function *f)
 	ss_notify_desc.bEndpointAddress = fs_notify_desc.bEndpointAddress;
 
 	status = usb_assign_descriptors(f, eth_fs_function, eth_hs_function,
-			eth_ss_function, NULL);
+			eth_ss_function);
 	if (status)
 		goto fail;
 
@@ -904,7 +882,7 @@ EXPORT_SYMBOL_GPL(rndis_borrow_net);
 
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 static int set_rndis_mac_addr(struct usb_function_instance *fi,
-		    u8 *ethaddr)
+		    u8 * ethaddr)
 {
 	struct f_rndis_opts *opts;
 	u8 mac_addr[ETH_ALEN*2+6] = {0,};
@@ -965,7 +943,6 @@ static void rndis_free_inst(struct usb_function_instance *f)
 			free_netdev(opts->net);
 	}
 
-	kfree(opts->rndis_interf_group);	/* single VLA chunk */
 	kfree(opts);
 }
 
@@ -974,7 +951,6 @@ static struct usb_function_instance *rndis_alloc_inst(void)
 	struct f_rndis_opts *opts;
 	struct usb_os_desc *descs[1];
 	char *names[1];
-	struct config_group *rndis_interf_group;
 
 	opts = kzalloc(sizeof(*opts), GFP_KERNEL);
 	if (!opts)
@@ -998,14 +974,8 @@ static struct usb_function_instance *rndis_alloc_inst(void)
 	names[0] = "rndis";
 	config_group_init_type_name(&opts->func_inst.group, "",
 				    &rndis_func_type);
-	rndis_interf_group =
-		usb_os_desc_prepare_interf_dir(&opts->func_inst.group, 1, descs,
-					       names, THIS_MODULE);
-	if (IS_ERR(rndis_interf_group)) {
-		rndis_free_inst(&opts->func_inst);
-		return ERR_CAST(rndis_interf_group);
-	}
-	opts->rndis_interf_group = rndis_interf_group;
+	usb_os_desc_prepare_interf_dir(&opts->func_inst.group, 1, descs,
+				       names, THIS_MODULE);
 
 	return &opts->func_inst;
 }
@@ -1049,9 +1019,7 @@ static void rndis_unbind(struct usb_configuration *c, struct usb_function *f)
 		else
 			free_netdev(opts->net);
 	}
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
-	opts->bound = false;
-#endif
+
 	opts->net = gether_setup_name_default("rndis");
 	if (IS_ERR(opts->net)) {
 		ERROR(cdev, "%s: failed to setup ethernet\n", f->name);
@@ -1063,6 +1031,7 @@ static void rndis_unbind(struct usb_configuration *c, struct usb_function *f)
 	gether_get_host_addr_u8(opts->net, rndis->ethaddr);
 #endif
 	rndis->port.ioport = netdev_priv(opts->net);
+	opts->bound = false;
 #endif
 }
 

@@ -212,36 +212,31 @@ source "drivers/hwtracing/intel_th/Kconfig"
 
 source "drivers/fpga/Kconfig"
 
+source "drivers/tee/Kconfig"
+
+source "drivers/bts/Kconfig"
+
 source "drivers/trace/Kconfig"
+
+source "drivers/gud/Kconfig"
 
 source "drivers/vision/Kconfig"
 
 source "drivers/ccic/Kconfig"
 
-source "drivers/sensorhub/brcm/Kconfig"
+source "drivers/nfc/Kconfig"
+
+source "drivers/sensorhub/Kconfig"
 
 source "drivers/optics/Kconfig"
 
 source "drivers/gps/Kconfig"
 
-source "drivers/bts/Kconfig"
-
-source "drivers/gud/Kconfig"
-
-source "drivers/tee/Kconfig"
-
 source "drivers/motor/Kconfig"
 
 source "drivers/fingerprint/Kconfig"
 
-source "drivers/gator_5.27/Kconfig"
+source "drivers/gator_5.26/Kconfig"
 
-source "drivers/security/samsung/five_tee_driver/Kconfig"
-
-source "drivers/mpsd/Kconfig"
-
-source "drivers/security/samsung/icdrv/Kconfig"
-
-source "drivers/security/samsung/tzic/Kconfig"
-
+source "drivers/redriver/Kconfig"
 endmenu

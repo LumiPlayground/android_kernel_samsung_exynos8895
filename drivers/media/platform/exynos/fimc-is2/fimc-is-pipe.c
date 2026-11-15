@@ -1,4 +1,4 @@
- /*
+/*
  * Samsung Exynos5 SoC series FIMC-IS driver
  *
  * exynos5 fimc-is pipe functions
@@ -9,8 +9,6 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-
-#ifdef ENABLE_BUFFER_HIDING
 
 #include <linux/types.h>
 #include <linux/errno.h>
@@ -116,8 +114,9 @@ static int fimc_is_pipe_dqbuf_proxy(struct fimc_is_video_ctx *vctx,
 	struct fimc_is_video *video;
 	int ret;
 
-	mvdbgs(3, "%s\n", vctx, &vctx->queue, __func__);
-
+#ifdef DBG_STREAMING
+	mvinfo("%s\n", vctx, vctx->video, __func__);
+#endif
 	memset(&v4l2_buf, 0, sizeof(struct v4l2_buffer));
 	memset(planes, 0, sizeof(struct v4l2_plane) * VIDEO_MAX_PLANES);
 
@@ -142,7 +141,9 @@ static int fimc_is_pipe_dqbuf_proxy(struct fimc_is_video_ctx *vctx,
 
 	mutex_unlock(&video->lock);
 
-	mvdbgs(3, "%s done(%d)\n", vctx, &vctx->queue, __func__, v4l2_buf.index);
+#ifdef DBG_STREAMING
+	mvinfo("%s done(%d)\n", vctx, vctx->video, __func__, v4l2_buf.index);
+#endif
 
 	return v4l2_buf.index;
 }
@@ -157,8 +158,9 @@ static int fimc_is_pipe_qbuf_proxy(struct fimc_is_video_ctx *vctx,
 	int ret;
 	struct fimc_is_video *video;
 
-	mvdbgs(3, "%s(%d)\n", vctx, &vctx->queue, __func__, buf->index);
-
+#ifdef DBG_STREAMING
+	mvinfo("%s(%d)\n", vctx, vctx->video, __func__, buf->index);
+#endif
 	video = vctx->video;
 	ret = mutex_lock_interruptible(&video->lock);
 	if (ret) {
@@ -192,15 +194,16 @@ static int fimc_is_pipe_callback(struct fimc_is_device_ischain *device,
 	struct camera2_node *node;
 	struct fimc_is_queue *queue;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!group);
-	FIMC_BUG(!group->leader.vctx);
+	BUG_ON(!device);
+	BUG_ON(!group);
+	BUG_ON(!group->leader.vctx);
 
 	if (!test_bit(FIMC_IS_GROUP_PIPE_OUTPUT, &group->state))
 		goto p_err;
 
-	mvdbgs(3, "%s(%d)\n", group->leader.vctx, &group->leader.vctx->queue, __func__, frame->index);
-
+#ifdef DBG_STREAMING
+	mpinfo("%s(%d)\n", group->leader.vctx, group->leader.vctx->video, __func__, frame->index);
+#endif
 	pipe = &device->pipe;
 
 	/*
@@ -274,7 +277,7 @@ static int fimc_is_pipe_callback(struct fimc_is_device_ischain *device,
 		framemgr_x_barrier_irqr(dst_framemgr, pipe->id, flags);
 
 		if (!junction_frame) {
-			usleep_range(1000, 1000);
+			mdelay(1);
 			timeout--;
 		}
 	} while(!junction_frame && timeout);
@@ -322,11 +325,12 @@ static int fimc_is_pipe_qbuf(struct fimc_is_video_ctx *vctx,
 	struct fimc_is_video_ctx  *src_vctx, *junction_vctx, *dst_vctx;
 	bool qbuf_proxy = false;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!vctx->video);
+	BUG_ON(!vctx);
+	BUG_ON(!vctx->video);
 
-	mvdbgs(3, "%s(%d)\n", vctx, &vctx->queue, __func__, buf->index);
-
+#ifdef DBG_STREAMING
+	mpinfo("%s(%d)\n", vctx, vctx->video, __func__, buf->index);
+#endif
 	device = GET_DEVICE(vctx);
 	pipe = &device->pipe;
 
@@ -389,10 +393,12 @@ static int fimc_is_pipe_dqbuf(struct fimc_is_video_ctx *vctx,
 	struct camera2_node *dst_node, *cap_node;
 	struct fimc_is_queue *queue;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!vctx->video);
+	BUG_ON(!vctx);
+	BUG_ON(!vctx->video);
 
-	mvdbgs(3, "%s\n", vctx, &vctx->queue, __func__);
+#ifdef DBG_STREAMING
+	mpinfo("%s\n", vctx, vctx->video, __func__);
+#endif
 
 	device = GET_DEVICE(vctx);
 	pipe = &device->pipe;
@@ -575,10 +581,12 @@ static int fimc_is_pipe_done(struct fimc_is_video_ctx *vctx,
 	struct fimc_is_frame *dst_frame;
 	struct fimc_is_video_ctx *dst_vctx;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!vctx->video);
+	BUG_ON(!vctx);
+	BUG_ON(!vctx->video);
 
-	mvdbgs(3, "%s(%d)\n", vctx, &vctx->queue, __func__, index);
+#ifdef DBG_STREAMING
+	mpinfo("%s(%d)\n", vctx, vctx->video, __func__, index);
+#endif
 
 	device = GET_DEVICE(vctx);
 	pipe = &device->pipe;
@@ -612,12 +620,12 @@ int fimc_is_pipe_create(struct fimc_is_pipe *pipe,
 	int ret = 0;
 	int i = 0;
 
-	FIMC_BUG(!pipe);
-	FIMC_BUG(!src);
-	FIMC_BUG(!src->leader.vctx);
-	FIMC_BUG(!src->junction->vctx);
-	FIMC_BUG(!dst);
-	FIMC_BUG(!dst->leader.vctx);
+	BUG_ON(!pipe);
+	BUG_ON(!src);
+	BUG_ON(!src->leader.vctx);
+	BUG_ON(!src->junction->vctx);
+	BUG_ON(!dst);
+	BUG_ON(!dst->leader.vctx);
 
 	pipe->id = 0;
 	pipe->src = src;
@@ -639,4 +647,3 @@ int fimc_is_pipe_create(struct fimc_is_pipe *pipe,
 
 	return ret;
 }
-#endif

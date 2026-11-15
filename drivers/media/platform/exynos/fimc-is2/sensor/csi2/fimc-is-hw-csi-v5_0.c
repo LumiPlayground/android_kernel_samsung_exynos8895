@@ -128,7 +128,6 @@ int csi_hw_s_phy_sctrl_n(u32 __iomem *base_reg,
 int csi_hw_s_phy_default_value(u32 __iomem *base_reg, u32 instance)
 {
 #ifdef CONFIG_SOC_EXYNOS8895
-	/* Get a guide and setting for KC(Exynos8895) */
 	csi_hw_s_phy_bctrl_n(base_reg, 0x1F4, 0);
 	csi_hw_s_phy_bctrl_n(base_reg, 0x800, 1);
 	csi_hw_s_phy_bctrl_n(base_reg, 0x10001249, 2);
@@ -146,8 +145,6 @@ int csi_hw_s_phy_default_value(u32 __iomem *base_reg, u32 instance)
 		csi_hw_s_phy_sctrl_n(base_reg, 0xC000, 3);
 	}
 #endif
-	/* other project setting to reset value */
-
 	return 0;
 }
 
@@ -201,12 +198,7 @@ int csi_hw_s_lane(u32 __iomem *base_reg,
 		fimc_is_hw_set_reg(base_reg, &csi_regs[CSIS_R_PHY_CMN_CTRL], phy_val);
 	}
 
-#ifdef CONFIG_SOC_EXYNOS8895
-	/* Exynos8895 always set deskew enable */
 	val = fimc_is_hw_set_field_value(val, &csi_fields[CSIS_F_DESKEW_ENABLE], 1);
-#else
-	val = fimc_is_hw_set_field_value(val, &csi_fields[CSIS_F_DESKEW_ENABLE], deskew);
-#endif
 	fimc_is_hw_set_reg(base_reg, &csi_regs[CSIS_R_CSIS_CMN_CTRL], val);
 
 	switch (lanes) {
@@ -358,12 +350,6 @@ int csi_hw_s_config_dma(u32 __iomem *base_reg, u32 channel, struct fimc_is_image
 	}
 
 #ifdef CONFIG_USE_SENSOR_GROUP
-	if (!cfg->format) {
-		err("cfg->format is null");
-		ret = -EINVAL;
-		goto p_err;
-	}
-
 	if (cfg->format->pixelformat == V4L2_PIX_FMT_SBGGR10 ||
 		cfg->format->pixelformat == V4L2_PIX_FMT_SBGGR12)
 #else
@@ -583,8 +569,8 @@ int csi_hw_g_irq_src(u32 __iomem *base_reg, struct csis_irq_src *src, bool clear
 		fimc_is_hw_set_reg(base_reg, &csi_regs[CSIS_R_DMA_INT_SRC], dma_src);
 	}
 
-	src->dma_start = fimc_is_hw_get_field_value(dma_src, &csi_fields[CSIS_F_DMA_FRM_START]);
-	src->dma_end = fimc_is_hw_get_field_value(dma_src, &csi_fields[CSIS_F_DMA_FRM_END]);
+	src->dma_start = fimc_is_hw_get_field_value(dma_src, &csi_fields[CSIS_F_MSK_DMA_FRM_START]);
+	src->dma_end = fimc_is_hw_get_field_value(dma_src, &csi_fields[CSIS_F_MSK_DMA_FRM_END]);
 #ifdef CONFIG_CSIS_V4_0
 	/* HACK: For dual scanario in EVT0, we should use only DMA interrupt */
 	src->otf_start = src->dma_start;
@@ -593,7 +579,7 @@ int csi_hw_g_irq_src(u32 __iomem *base_reg, struct csis_irq_src *src, bool clear
 	src->otf_start = fimc_is_hw_get_field_value(otf_src0, &csi_fields[CSIS_F_FRAMESTART]);
 	src->otf_end = fimc_is_hw_get_field_value(otf_src0, &csi_fields[CSIS_F_FRAMEEND]);
 #endif
-	src->line_end = fimc_is_hw_get_field_value(otf_src1, &csi_fields[CSIS_F_LINE_END]);
+	src->line_end = fimc_is_hw_get_field_value(otf_src1, &csi_fields[CSIS_F_MSK_LINE_END]);
 	src->err_flag = csi_hw_g_value_of_err(base_reg, otf_src0, otf_src1, dma_src, (u32 *)src->err_id);
 
 	return 0;
@@ -783,7 +769,7 @@ int csi_hw_disable(u32 __iomem *base_reg)
 
 int csi_hw_dump(u32 __iomem *base_reg)
 {
-	info("CSI SFR DUMP (v5.0)\n");
+	info("CSI 5.0 DUMP\n");
 	fimc_is_hw_dump_regs(base_reg, csi_regs, CSIS_REG_CNT);
 
 	return 0;

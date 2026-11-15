@@ -137,12 +137,13 @@ typedef struct _manager_data_t
 	int wVbus_det;
 	int is_UFPS;
 	void *pd;
+
 	int water_count;
 	int dry_count;
-	int usb210_count;
-	int usb310_count;
+	int usb_highspeed_count;
+	int usb_superspeed_count;
 	int waterChg_count;
-	int water_cable_type;
+
 	unsigned long waterDet_duration;
 	unsigned long waterDet_time;
 	unsigned long dryDet_time;
@@ -151,23 +152,14 @@ typedef struct _manager_data_t
 	unsigned long wVbusHigh_time;
 	unsigned long wVbusLow_time;
 
-	int alt_is_support;
-	int dp_is_support;
 	int dp_attach_state;
 	int dp_cable_type;
 	int dp_hpd_state;
 	int dp_is_connect;
 	int dp_hs_connect;
 	int dp_check_done;
-
-	int dp_vid;
-	int dp_pid;
-	struct notifier_block manager_external_notifier_nb;
 }manager_data_t;
 
-#define CCIC_BATTERY	(1<<0)
-#define CCIC_USB	(1<<1)
-#define CCIC_DP		(1<<2)
 
 #define MANAGER_NOTIFIER_BLOCK(name)	\
 	struct notifier_block (name)

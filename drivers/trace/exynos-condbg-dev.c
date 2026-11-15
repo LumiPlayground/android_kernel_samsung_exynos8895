@@ -29,13 +29,12 @@
 #include "exynos-condbg-dev.h"
 
 struct ecd_dev {
-	struct ecd_pdata	pdata;
-	struct platform_device	*pdev;
-	void __iomem 		*debug_port_base;
-	int 			irq;
-	u32 			baud;
-	u32 			frac_baud;
-	u32			usi_v2;
+	struct ecd_pdata pdata;
+	struct platform_device *pdev;
+	void __iomem *debug_port_base;
+	int irq;
+	u32 baud;
+	u32 frac_baud;
 };
 
 static inline struct ecd_dev *get_dbg(struct platform_device *pdev)
@@ -60,11 +59,6 @@ static int debug_port_init(struct platform_device *pdev)
 {
 	struct ecd_dev *dbg = get_dbg(pdev);
 	unsigned long timeout;
-
-	if (dbg->usi_v2) {
-		exynos_write(dbg, USI_RESET, USI_CON);
-		exynos_write(dbg, USI_HWACG_CLKREQ_ON, USI_OPTION);
-	}
 
 	exynos_write(dbg, dbg->baud, S3C2410_UBRDIV);
 	exynos_write(dbg, dbg->frac_baud, S3C2443_DIVSLOT);
@@ -138,16 +132,6 @@ static void debug_flush(struct platform_device *pdev)
 			return;
 }
 
-static void debug_clear_rxfifo(struct platform_device *pdev)
-{
-	struct ecd_dev *dbg = get_dbg(pdev);
-	u32 ufcon;
-
-	ufcon = exynos_read(dbg, S3C2410_UFCON);
-	ufcon |= S3C2410_UFCON_RESETRX;
-	exynos_write(dbg, ufcon, S3C2410_UFCON);
-}
-
 static int debug_suspend(struct platform_device *pdev)
 {
 	struct ecd_dev *dbg = get_dbg(pdev);
@@ -156,15 +140,13 @@ static int debug_suspend(struct platform_device *pdev)
 #endif
 
 	exynos_write(dbg, 0xF, S3C64XX_UINTM);
-	ucon = exynos_read(dbg, S3C2410_UTRSTAT);
-	ucon |= S3C2410_UTRSTAT_TIMEOUT;
-	exynos_write(dbg, ucon, S3C2410_UTRSTAT);
 
 #ifdef CONFIG_SERIAL_SAMSUNG_HWACG
 	ucon = exynos_read(dbg, S3C2410_UCON);
 	ucon &= ~(S3C2410_UCON_RXIRQMODE | S3C2410_UCON_TXIRQMODE);
 	exynos_write(dbg, ucon, S3C2410_UCON);
 #endif
+
 	return 0;
 }
 
@@ -177,16 +159,12 @@ static int debug_resume(struct platform_device *pdev)
 
 static int ecd_dev_probe(struct platform_device *pdev)
 {
-	struct platform_device *ecd_pdev;
 	struct device_node *np;
 	int uart_irq;
 	unsigned int uart_port;
 	int ret = -ENOMEM;
 	struct ecd_dev *dbg = NULL;
 	struct resource *res;
-
-	if (initial_no_firmware)
-		return -EINVAL;
 
 	dbg = devm_kzalloc(&pdev->dev, sizeof(struct ecd_dev), GFP_KERNEL);
 	if (!dbg) {
@@ -223,46 +201,39 @@ static int ecd_dev_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
+	pdev = kzalloc(sizeof(struct platform_device), GFP_KERNEL);
+	if(!pdev) {
+		pr_err("Failed to alloc ecd_dev platform device\n");
+		goto err_pdev;
+	}
+
 	dbg->pdata.uart_init = debug_port_init;
 	dbg->pdata.uart_getc = debug_getc;
 	dbg->pdata.uart_putc = debug_putc;
 	dbg->pdata.uart_flush = debug_flush;
-	dbg->pdata.uart_clear_rxfifo = debug_clear_rxfifo;
 	dbg->pdata.uart_dev_suspend = debug_suspend;
 	dbg->pdata.uart_dev_resume = debug_resume;
+
+	dbg->pdev = pdev;
 	dbg->baud = exynos_read(dbg, S3C2410_UBRDIV);
 	dbg->frac_baud = exynos_read(dbg, S3C2443_DIVSLOT);
-	dbg->pdev = pdev;
+
+	pdev->name = "console_debugger";
+	pdev->id = uart_port;
 	pdev->dev.platform_data = &dbg->pdata;
+	pdev->resource = res;
+	pdev->num_resources = 1;
 
-	if (of_get_property(np, "samsung,usi-serial-v2", NULL))
-		dbg->usi_v2 = 1;
-	else
-		dbg->usi_v2 = 0;
-
-	debug_port_init(pdev);
-	ecd_pdev = kzalloc(sizeof(struct platform_device), GFP_KERNEL);
-	if(!ecd_pdev) {
-		dev_err(&pdev->dev, "Failed to alloc ecd_dev platform device\n");
+	if (platform_device_register(pdev)) {
+		pr_err("Failed to register ecd_dev \n");
 		goto err_free;
-	}
-
-	ecd_pdev->name = "console_debugger";
-	ecd_pdev->id = uart_port;
-	ecd_pdev->dev.platform_data = &dbg->pdata;
-	ecd_pdev->resource = res;
-	ecd_pdev->num_resources = 1;
-
-	if (platform_device_register(ecd_pdev)) {
-		dev_err(&pdev->dev, "Failed to register ecd_dev \n");
-		goto err_pdev;
 	}
 
 	pr_info("Success to register ECD UART\n");
 	return 0;
 
 err_pdev:
-	kfree(ecd_pdev);
+	kfree(pdev);
 err_free:
 	kfree(dbg);
 	return ret;
@@ -286,4 +257,5 @@ static int __init ecd_dev_init(void)
 {
 	return platform_driver_register(&ecd_dev_driver);
 }
+
 postcore_initcall_sync(ecd_dev_init);

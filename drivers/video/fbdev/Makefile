@@ -6,8 +6,6 @@
 
 obj-y				+= core/
 
-obj-y				+= exynos/
-
 obj-$(CONFIG_FB_MACMODES)      += macmodes.o
 obj-$(CONFIG_FB_WMT_GE_ROPS)   += wmt_ge_rops.o
 
@@ -151,3 +149,5 @@ obj-$(CONFIG_FB_SIMPLE)           += simplefb.o
 
 # the test framebuffer is last
 obj-$(CONFIG_FB_VIRTUAL)          += vfb.o
+
+obj-$(CONFIG_EXYNOS_VIDEO) += exynos/

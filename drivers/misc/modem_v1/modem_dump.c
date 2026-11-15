@@ -21,8 +21,8 @@
 static int save_dump_file(struct link_device *ld, struct io_device *iod,
 		unsigned long arg, u8 __iomem *dump_base, size_t dump_size)
 {
-	size_t copied = 0;
 	struct sk_buff *skb;
+	size_t copied = 0;
 	size_t alloc_size = 0xE00;
 	int ret;
 

@@ -3,7 +3,7 @@
  * ALSA SoC Audio Layer - Samsung Abox adaptation driver
  *
  * Copyright (c) 2016 Samsung Electronics Co. Ltd.
- *
+  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -38,7 +38,7 @@ struct maxim_dsm *read_maxdsm;
 bool abox_ipc_irq_read_avail;
 bool abox_ipc_irq_write_avail;
 int dsm_offset;
-int dsm_param_size;
+int dsm_size;
 
 int maxim_dsm_read(int offset, int size, void *dsm_data)
 {
@@ -56,16 +56,12 @@ int maxim_dsm_read(int offset, int size, void *dsm_data)
 
 	dbg_abox_adaptation("");
 	abox_ipc_irq_read_avail = false;
-	if (offset >= 185)
-		dsm_offset = offset % 185;
-	else
-		dsm_offset = offset;
-	dsm_param_size = size;
+	dsm_offset = offset;
+	dsm_size = size;
 
-	ret = abox_request_ipc(&data->pdev_abox->dev, IPC_ERAP,
-					 &msg, sizeof(msg), 0, 0);
-	if (ret) {
-		pr_err("%s: abox_request_ipc is failed: %d\n", __func__, ret);
+	ret = abox_start_ipc_transaction(&data->pdev_abox->dev, IPC_ERAP, &msg, sizeof(msg), 1, 1);
+	if (IS_ERR_VALUE(ret)) {
+		pr_err("%s: abox_start_ipc_transaction is failed\n", __func__);
 		return ret;
 	}
 
@@ -76,7 +72,7 @@ int maxim_dsm_read(int offset, int size, void *dsm_data)
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(maxim_dsm_read);
+EXPORT_SYMBOL_GPL(maxdsm_dsm_read);
 
 int maxim_dsm_write(uint32_t *dsm_data, int offset, int size)
 {
@@ -99,10 +95,9 @@ int maxim_dsm_write(uint32_t *dsm_data, int offset, int size)
 	abox_ipc_irq_write_avail = false;
 	dsm_offset = READ_WRITE_ALL_PARAM;
 
-	ret = abox_request_ipc(&data->pdev_abox->dev, IPC_ERAP,
-					 &msg, sizeof(msg), 0, 0);
-	if (ret) {
-		pr_err("%s: abox_request_ipc is failed: %d\n", __func__, ret);
+	ret = abox_start_ipc_transaction(&data->pdev_abox->dev, IPC_ERAP, &msg, sizeof(msg), 1, 1);
+	if (IS_ERR_VALUE(ret)) {
+		pr_err("%s: abox_start_ipc_transaction is failed\n", __func__);
 		return ret;
 	}
 
@@ -113,7 +108,7 @@ int maxim_dsm_write(uint32_t *dsm_data, int offset, int size)
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(maxim_dsm_write);
+EXPORT_SYMBOL_GPL(maxdsm_dsm_write);
 
 static irqreturn_t abox_adaptation_irq_handler(int irq,
 					void *dev_id, ABOX_IPC_MSG *msg)
@@ -128,15 +123,14 @@ static irqreturn_t abox_adaptation_irq_handler(int irq,
 		switch (erap_msg->msgtype) {
 		case REALTIME_EXTRA:
 			if ((dsm_offset != READ_WRITE_ALL_PARAM) &&
-				(dsm_offset != PARAM_DSM_5_0_ABOX_GET_LOGGING) &&
-				(dsm_offset != PARAM_DSM_5_0_ABOX_GET_LOGGING_R)) {
+				(dsm_offset != PARAM_DSM_5_0_ABOX_GET_LOGGING)) {
 
-				if ((dsm_offset + dsm_param_size) > read_maxdsm->param_size)
-					dsm_param_size = read_maxdsm->param_size - dsm_offset;
+				if((dsm_offset + dsm_size) > read_maxdsm->param_size)
+					dsm_size = read_maxdsm->param_size - dsm_offset;
 
 				memcpy(&read_maxdsm->param[dsm_offset],
 					&erap_msg->param.raw.params[0],
-					sizeof(uint32_t) * dsm_param_size);
+					sizeof(uint32_t) * dsm_size);
 
 				abox_ipc_irq_read_avail = true;
 
@@ -147,10 +141,9 @@ static irqreturn_t abox_adaptation_irq_handler(int irq,
 					wake_up_interruptible(&wq_read);
 
 			} else if ((erap_msg->param.raw.params[0] > 0)
-				&& (erap_msg->param.raw.params[0]
-					<= sizeof(erap_msg->param.raw.params))) {
+				&& (erap_msg->param.raw.params[0] <= sizeof(erap_msg->param.raw.params))) {
 
-				if (erap_msg->param.raw.params[0] > read_maxdsm->param_size)
+				if(erap_msg->param.raw.params[0] > read_maxdsm->param_size)
 					erap_msg->param.raw.params[0] = read_maxdsm->param_size;
 
 				memcpy(&read_maxdsm->param[0],
@@ -165,8 +158,7 @@ static irqreturn_t abox_adaptation_irq_handler(int irq,
 				if (abox_ipc_irq_read_avail && waitqueue_active(&wq_read))
 					wake_up_interruptible(&wq_read);
 
-			} else if (erap_msg->param.raw.params[0]
-				== PARAM_DSM_5_0_ABOX_WRITE_CB) {
+			} else if (erap_msg->param.raw.params[0] == PARAM_DSM_5_0_ABOX_WRITE_CB) {
 
 				abox_ipc_irq_write_avail = true;
 

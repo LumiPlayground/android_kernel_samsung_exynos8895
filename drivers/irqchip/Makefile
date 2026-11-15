@@ -15,7 +15,6 @@ obj-$(CONFIG_ARCH_S3C24XX)		+= irq-s3c24xx.o
 obj-$(CONFIG_DW_APB_ICTL)		+= irq-dw-apb-ictl.o
 obj-$(CONFIG_METAG)			+= irq-metag-ext.o
 obj-$(CONFIG_METAG_PERFCOUNTER_IRQS)	+= irq-metag.o
-obj-$(CONFIG_MADERA_IRQ)		+= irq-madera.o
 obj-$(CONFIG_ARCH_MOXART)		+= irq-moxart.o
 obj-$(CONFIG_CLPS711X_IRQCHIP)		+= irq-clps711x.o
 obj-$(CONFIG_OR1K_PIC)			+= irq-or1k-pic.o
@@ -40,6 +39,22 @@ obj-$(CONFIG_ATMEL_AIC5_IRQ)	+= irq-atmel-aic-common.o irq-atmel-aic5.o
 obj-$(CONFIG_I8259)			+= irq-i8259.o
 obj-$(CONFIG_IMGPDC_IRQ)		+= irq-imgpdc.o
 obj-$(CONFIG_IRQ_MIPS_CPU)		+= irq-mips-cpu.o
+obj-$(CONFIG_MADERA_IRQ)		+= irq-madera.o
+ifeq ($(CONFIG_MADERA_IRQ_CS47L15),y)
+obj-$(CONFIG_MADERA_IRQ)		+= irq-madera-cs47l15.o
+endif
+ifeq ($(CONFIG_MADERA_IRQ_CS47L35),y)
+obj-$(CONFIG_MADERA_IRQ)		+= irq-madera-cs47l35.o
+endif
+ifeq ($(CONFIG_MADERA_IRQ_CS47L85),y)
+obj-$(CONFIG_MADERA_IRQ)		+= irq-madera-cs47l85.o
+endif
+ifeq ($(CONFIG_MADERA_IRQ_CS47L90),y)
+obj-$(CONFIG_MADERA_IRQ)		+= irq-madera-cs47l90.o
+endif
+ifeq ($(CONFIG_MADERA_IRQ_CS47L92),y)
+obj-$(CONFIG_MADERA_IRQ)		+= irq-madera-cs47l92.o
+endif
 obj-$(CONFIG_SIRF_IRQ)			+= irq-sirfsoc.o
 obj-$(CONFIG_JCORE_AIC)			+= irq-jcore-aic.o
 obj-$(CONFIG_RENESAS_INTC_IRQPIN)	+= irq-renesas-intc-irqpin.o

@@ -114,7 +114,7 @@ int fscrypt_zeroout_range(const struct inode *inode, pgoff_t lblk,
 
 	while (len--) {
 #ifdef CONFIG_FS_PRIVATE_ENCRYPTION
-		if (!inode->i_mapping->fmp_ci.private_algo_mode) {
+		if (!inode->i_mapping->private_algo_mode) {
 #endif /* CONFIG FS_PRIVATE_ENCRYPTION */
 		err = fscrypt_do_page_crypto(inode, FS_ENCRYPT, lblk,
 					     ZERO_PAGE(0), ciphertext_page,
@@ -158,7 +158,7 @@ int fscrypt_zeroout_range(const struct inode *inode, pgoff_t lblk,
 	err = 0;
 errout:
 #ifdef CONFIG_FS_PRIVATE_ENCRYPTION
-	if (inode->i_mapping->fmp_ci.private_algo_mode)
+	if (inode->i_mapping->private_algo_mode)
 		ciphertext_page->mapping = NULL;
 #endif /* CONFIG FS_PRIVATE_ENCRYPTION */
 	fscrypt_release_ctx(ctx);

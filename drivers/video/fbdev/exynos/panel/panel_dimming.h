@@ -1,6 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) Samsung Electronics Co., Ltd.
+ * linux/drivers/video/fbdev/exynos/panel/panel_dimming.h
+ *
+ * Header file for Samsung AID Dimming Driver.
+ *
+ * Copyright (c) 2016 Samsung Electronics
  * Gwanghui Lee <gwanghui.lee@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -11,7 +14,6 @@
 #ifndef __PANEL_DIMMING_H__
 #define __PANEL_DIMMING_H__
 #include "dimming.h"
-#include "panel.h"
 
 struct panel_dimming_info {
 	char *name;
@@ -24,17 +26,6 @@ struct panel_dimming_info {
 	s32 target_luminance;
 	s32 nr_luminance;
 	struct brightness_table *brt_tbl;
-	struct maptbl *dimming_maptbl;
-	bool dim_flash_on;
-};
-
-enum {
-	DIMMING_GAMMA_MAPTBL,
-	DIMMING_AOR_MAPTBL,
-	DIMMING_VINT_MAPTBL,
-	DIMMING_ELVSS_MAPTBL,
-	DIMMING_IRC_MAPTBL,
-	MAX_DIMMING_MAPTBL
 };
 
 extern int register_panel_dimming(struct panel_dimming_info *info);

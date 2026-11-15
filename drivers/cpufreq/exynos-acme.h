@@ -67,6 +67,10 @@ struct exynos_cpufreq_domain {
 	/* for sysfs */
 	unsigned int			user_default_qos;
 
+#ifdef CONFIG_SOC_EXYNOS8895
+	unsigned int boot_qos;
+#endif
+
 	/* freq boost */
 	bool				boost_supported;
 	unsigned int			*boost_max_freqs;

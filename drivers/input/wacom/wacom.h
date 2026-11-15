@@ -24,7 +24,7 @@
 #define COM_QUERY			0x2A
 #define COM_SURVEYSCAN			0x2B
 #define COM_SURVEYEXIT			0x2D
-#define COM_SURVEYSYNCSCAN		0x2E
+#define COM_SURVEYREQUESTDATA		0x2E
 
 #define COM_SAMPLERATE_STOP		0x30
 #define COM_SAMPLERATE_133		0x31
@@ -51,25 +51,8 @@
 #define COM_REQUESTSCANMODE		0xE6
 #define COM_LOW_SENSE_MODE2		0xE7
 
-/* pen ble charging */
-#define COM_PEN_CHECK_OUT		0xE8
-#define COM_PEN_CHECK_IN		0xE9
-
-#define COM_RESET_DSP		0xEF
-
-enum epen_ble_charge_mode {
-	EPEN_BLE_C_DIABLE	= 0,
-	EPEN_BLE_C_ENABLE	= 1,
-	EPEN_BLE_C_RESET	= 2,
-	EPEN_BLE_C_FAST		= 3,
-	EPEN_BLE_C_SLOW1	= 4,
-	EPEN_BLE_C_SLOW2	= 5,
-	EPEN_BLE_C_NONE		= 6,
-	EPEN_BLE_C_DSPX		= 7,
-	EPEN_BLE_C_MAX		= 8,
-};
-
 #define COM_FLASH			0xFF
+
 
 /* wacom data offset */
 #define COM_COORD_NUM			13
@@ -127,22 +110,15 @@ enum epen_virtual_event_mode {
 /*--------------------------------------------------
  * function setting by user or default
  * wac_i2c->function_set
- * 7~4. reserved | 3. AOT | 2. ScreenOffMemo | 1. AOD | 0. Depend on AOD
+ * 7~2. reserved | 1. ScreenOffMemo | 0. AOD |
  *
- * 3. AOT - aot_enable sysfs
- * 2. ScreenOffMemo - screen_off_memo_enable sysfs
- * 1. AOD - aod_enable sysfs
- * 0. Depend on AOD - 0 : lcd off status, 1 : lcd on status
+ * 1. ScreenOffMemo - screen_off_memo_enable sysfs
+ * 0. AOD - aod_enable sysfs
  *--------------------------------------------------
  */
-#define EPEN_SETMODE_AOP_OPTION_AOD_LCD_STATUS	(0x1<<0)
-#define EPEN_SETMODE_AOP_OPTION_AOD		(0x1<<1)
-#define EPEN_SETMODE_AOP_OPTION_SCREENOFFMEMO	(0x1<<2)
-#define EPEN_SETMODE_AOP_OPTION_AOT		(0x1<<3)
-#define EPEN_SETMODE_AOP_OPTION_AOD_LCD_ON	(EPEN_SETMODE_AOP_OPTION_AOD | EPEN_SETMODE_AOP_OPTION_AOD_LCD_STATUS)
-#define EPEN_SETMODE_AOP_OPTION_AOD_LCD_OFF	EPEN_SETMODE_AOP_OPTION_AOD
-#define EPEN_SETMODE_AOP			(EPEN_SETMODE_AOP_OPTION_AOD | EPEN_SETMODE_AOP_OPTION_SCREENOFFMEMO | \
-						 EPEN_SETMODE_AOP_OPTION_AOT)
+#define EPEN_SETMODE_AOP_OPTION_AOD		(0x1<<0)
+#define EPEN_SETMODE_AOP_OPTION_SCREENOFFMEMO	(0x1<<1)
+#define EPEN_SETMODE_AOP			(EPEN_SETMODE_AOP_OPTION_AOD | EPEN_SETMODE_AOP_OPTION_SCREENOFFMEMO)
 
 
 #define EPEN_SURVEY_MODE_NONE		0x0
@@ -184,8 +160,7 @@ enum epen_virtual_event_mode {
 
 #define HSYNC_COUNTER_UMAGIC		0x96
 #define HSYNC_COUNTER_LMAGIC		0xCA
-#define FULL_SCAN_UMAGIC		0x3A
-#define FULL_SCAN_LMAGIC		0x8D
+
 #define TABLE_SWAP_DATA			0x05
 
 /*--------------------------------------------------
@@ -220,8 +195,7 @@ enum {
 	FW_IN_SDCARD,
 	FW_EX_SDCARD,
 #ifdef CONFIG_SEC_FACTORY
-	FW_FACTORY_GARAGE,
-	FW_FACTORY_UNIT,
+	FW_FACTORY_PROC,
 #endif
 };
 
@@ -283,7 +257,6 @@ struct wacom_i2c {
 	int pen_pressed;
 	int side_pressed;
 	bool fullscan_mode;
-	bool localscan_mode;
 	int tsp_noise_mode;
 	int wacom_noise_state;
 	int tool;
@@ -293,15 +266,12 @@ struct wacom_i2c {
 	struct wacom_features *wac_feature;
 	struct wacom_g5_platform_data *pdata;
 	struct delayed_work resume_work;
-	struct delayed_work gxscan_work;
-	struct delayed_work fullscan_work;
+	struct delayed_work fullscan_check_work;
 	bool connection_check;
 	int  fail_channel;
 	int  min_adc_val;
-	int  error_cal;
-	int  min_cal_val;
 	bool battery_saving_mode;
-	volatile bool screen_on;
+	bool screen_on;
 	bool power_enable;
 	struct completion resume_done;
 	struct wake_lock wakelock;
@@ -316,7 +286,6 @@ struct wacom_i2c {
 	int wcharging_mode;
 	u32 i2c_fail_count;
 	u32 abnormal_reset_count;
-	u32 pen_out_count;
 #ifdef LCD_FREQ_SYNC
 	int lcd_freq;
 	bool lcd_freq_wait;
@@ -342,10 +311,6 @@ struct wacom_i2c {
 	int virtual_tracking;
 	u8 dex_mode;
 	u32 mcount;
-	bool is_open_test;
-	bool samplerate_state;
-	u8 ble_mode;
-	bool probing_done;
 #ifdef CONFIG_SEC_FACTORY
 	volatile bool fac_garage_mode;
 	u32 garage_gain0;
@@ -365,8 +330,6 @@ int wacom_get_irq_state(struct wacom_i2c *);
 void wacom_wakeup_sequence(struct wacom_i2c *);
 void wacom_sleep_sequence(struct wacom_i2c *);
 
-int wacom_i2c_load_fw(struct wacom_i2c *wac_i2c, u8 fw_path);
-void wacom_i2c_unload_fw(struct wacom_i2c *wac_i2c);
 int wacom_fw_update(struct wacom_i2c *, u8 fw_update_way, bool bforced);
 int wacom_i2c_flash(struct wacom_i2c *);
 
@@ -382,7 +345,6 @@ int wacom_i2c_set_sense_mode(struct wacom_i2c *);
 
 void forced_release(struct wacom_i2c *);
 void forced_release_key(struct wacom_i2c *);
-void forced_release_fullscan(struct wacom_i2c *wac_i2c);
 
 void wacom_select_survey_mode(struct wacom_i2c *, bool enable);
 void wacom_i2c_set_survey_mode(struct wacom_i2c *, int mode);
@@ -391,6 +353,5 @@ int wacom_open_test(struct wacom_i2c *wac_i2c);
 
 int wacom_sec_init(struct wacom_i2c *);
 void wacom_sec_remove(struct wacom_i2c *);
-void wacom_ble_charge_mode(struct wacom_i2c *wac_i2c, char mode);
-extern int set_spen_mode(int mode);
+
 #endif /* _LINUX_WACOM_H_ */

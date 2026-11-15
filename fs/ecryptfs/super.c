@@ -29,6 +29,7 @@
 #include <linux/slab.h>
 #include <linux/seq_file.h>
 #include <linux/file.h>
+#include <linux/crypto.h>
 #include <linux/statfs.h>
 #include <linux/magic.h>
 #include "ecryptfs_kernel.h"
@@ -59,10 +60,7 @@ static struct inode *ecryptfs_alloc_inode(struct super_block *sb)
 	inode_info = kmem_cache_alloc(ecryptfs_inode_info_cache, GFP_KERNEL);
 	if (unlikely(!inode_info))
 		goto out;
-	if (ecryptfs_init_crypt_stat(&inode_info->crypt_stat)) {
-		kmem_cache_free(ecryptfs_inode_info_cache, inode_info);
-		goto out;
-	}
+	ecryptfs_init_crypt_stat(&inode_info->crypt_stat);
 	mutex_init(&inode_info->lower_file_mutex);
 	atomic_set(&inode_info->lower_file_count, 0);
 	inode_info->lower_file = NULL;
@@ -176,36 +174,41 @@ static int ecryptfs_show_options(struct seq_file *m, struct dentry *root)
 #ifdef CONFIG_SDP
 	seq_printf(m, ",userid=%d", mount_crypt_stat->userid);
 
-	if (mount_crypt_stat->flags & ECRYPTFS_MOUNT_SDP_ENABLED) {
+	if (mount_crypt_stat->flags & ECRYPTFS_MOUNT_SDP_ENABLED){
 		seq_printf(m, ",sdp_enabled");
 	}
 
-	if (mount_crypt_stat->partition_id >= 0) {
-		seq_printf(m, ",partition_id=%d", mount_crypt_stat->partition_id);
+	if (mount_crypt_stat->partition_id >= 0){
+	    seq_printf(m, ",partition_id=%d", mount_crypt_stat->partition_id);
 	}
 #endif
 
 #ifdef CONFIG_DLP
-	if (mount_crypt_stat->flags & ECRYPTFS_MOUNT_DLP_ENABLED) {
+	if (mount_crypt_stat->flags & ECRYPTFS_MOUNT_DLP_ENABLED){
 		seq_printf(m, ",dlp_enabled");
 	}
 #endif
 
-	seq_printf(m, ",ecryptfs_cipher=%s",
-		mount_crypt_stat->global_default_cipher_name);
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	if (mount_crypt_stat->cipher_code == RFC2440_CIPHER_AES_XTS_256)
+		seq_printf(m, ",ecryptfs_cipher=%s",
+				"aesxts");
+	else
+#endif
+		seq_printf(m, ",ecryptfs_cipher=%s",
+			mount_crypt_stat->global_default_cipher_name);
 
 	if (mount_crypt_stat->global_default_cipher_key_size)
 		seq_printf(m, ",ecryptfs_key_bytes=%zd",
 			   mount_crypt_stat->global_default_cipher_key_size);
-
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
 	if (mount_crypt_stat->flags & ECRYPTFS_ENABLE_FILTERING)
 		seq_printf(m, ",ecryptfs_enable_filtering");
 #endif
-
+#ifdef CONFIG_CRYPTO_FIPS
 	if (mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC)
 		seq_printf(m, ",ecryptfs_enable_cc");
-
+#endif
 	if (mount_crypt_stat->flags & ECRYPTFS_PLAINTEXT_PASSTHROUGH_ENABLED)
 		seq_printf(m, ",ecryptfs_passthrough");
 	if (mount_crypt_stat->flags & ECRYPTFS_XATTR_METADATA_ENABLED)
@@ -216,6 +219,10 @@ static int ecryptfs_show_options(struct seq_file *m, struct dentry *root)
 		seq_printf(m, ",ecryptfs_unlink_sigs");
 	if (mount_crypt_stat->flags & ECRYPTFS_GLOBAL_MOUNT_AUTH_TOK_ONLY)
 		seq_printf(m, ",ecryptfs_mount_auth_tok_only");
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP)
+		seq_printf(m, ",ecryptfs_use_fmp");
+#endif
 
 	seq_printf(m, ",base=%s", propagate_stat->base_path);
 	if (propagate_stat->propagate_type == TYPE_E_DEFAULT)
@@ -225,12 +232,11 @@ static int ecryptfs_show_options(struct seq_file *m, struct dentry *root)
 	else if (propagate_stat->propagate_type == TYPE_E_WRITE)
 		seq_printf(m, ",type=write");
 	seq_printf(m, ",label=%s", propagate_stat->label);
-
+	
 	return 0;
 }
 
-static long ecryptfs_propagate_lookup(struct super_block *sb, char *pathname)
-{
+static long ecryptfs_propagate_lookup(struct super_block *sb, char *pathname){
 	int ret = 0;
 	char *propagate_path;
 	struct ecryptfs_sb_info *sbi;
@@ -242,7 +248,6 @@ static long ecryptfs_propagate_lookup(struct super_block *sb, char *pathname)
 	stat = &sbi->propagate_stat;
 	ECRYPTFS_OVERRIDE_ROOT_CRED(saved_cred);
 	propagate_path = kmalloc(PATH_MAX, GFP_KERNEL);
-
 	if (!propagate_path) {
 		ECRYPTFS_REVERT_CRED(saved_cred);
 		return -ENOMEM;

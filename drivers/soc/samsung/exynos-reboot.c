@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015 Samsung Electronics Co., Ltd.
+ * Copyright (c) 2015 Samsung Electronics Co., Ltd.
  *	      http://www.samsung.com/
  *
  * Exynos - Support SoC specific Reboot
@@ -23,18 +23,15 @@
 #endif
 #include <soc/samsung/exynos-pmu.h>
 
+#ifdef CONFIG_SEC_DEBUG
+#include <linux/sec_debug.h>
+#endif
+
 extern void (*arm_pm_restart)(enum reboot_mode reboot_mode, const char *cmd);
 static void __iomem *exynos_pmu_base = NULL;
 
-static const char * const little_cores[] = {
-	"arm,ananke",
-	NULL,
-};
-
 static const char * const big_cores[] = {
 	"arm,mongoose",
-	"arm,meerkat",
-	"arm,cortex-a73",
 	NULL,
 };
 
@@ -45,19 +42,6 @@ static bool is_what_cpu(struct device_node *cn, const char * const *cores)
 		if (of_device_is_compatible(cn, *lc))
 			return true;
 	return false;
-}
-
-int soc_has_little(void)
-{
-	struct device_node *cn = NULL;
-	u32 little_cpu_cnt = 0;
-
-	while ((cn = of_find_node_by_type(cn, "cpu"))) {
-		if (is_what_cpu(cn, little_cores))
-			little_cpu_cnt++;
-	}
-	return little_cpu_cnt;
-
 }
 
 int soc_has_big(void)
@@ -74,10 +58,10 @@ int soc_has_big(void)
 }
 
 #define CPU_RESET_DISABLE_FROM_SOFTRESET	(0x041C)
-#define CPU_RESET_DISABLE_FROM_WDTRESET	(0x0414)
-#define BIG_CPU0_RESET			(0x3C0C)
-#define BIG_NONCPU_ETC_RESET		(0x3C8C)
-#define LITTLE_CPU0_ETC_RESET			(0x3C4C)
+#define CPU_RESET_DISABLE_FROM_WDTRESET		(0x0414)
+#define BIG_CPU0_RESET				(0x200C)
+#define BIG_DBG_RESET				(0x244C)
+#define BIG_NONCPU_RESET			(0x240C)
 #define SWRESET					(0x0400)
 #define RESET_SEQUENCER_CONFIGURATION		(0x0500)
 #define PS_HOLD_CONTROL				(0x330C)
@@ -88,43 +72,39 @@ int soc_has_big(void)
 #define PEND_LITTLE				(1 << 0)
 #define DEFAULT_VAL_CPU_RESET_DISABLE		(0xFFFFFFFC)
 #define RESET_DISABLE_GPR_CPUPORESET		(1 << 15)
-#define RESET_DISABLE_WDT_CORERESET		(1 << 13)
 #define RESET_DISABLE_WDT_CPUPORESET		(1 << 12)
 #define RESET_DISABLE_CORERESET			(1 << 9)
 #define RESET_DISABLE_CPUPORESET		(1 << 8)
-#define RESET_DISABLE_WDT_PRESET_DBG		(1 << 26)
+#define RESET_DISABLE_WDT_PRESET_DBG		(1 << 25)
 #define RESET_DISABLE_PRESET_DBG		(1 << 18)
 #define DFD_EDPCSR_DUMP_EN			(1 << 0)
 #define RESET_DISABLE_L2RESET			(1 << 16)
 #define RESET_DISABLE_WDT_L2RESET		(1 << 31)
 
-#define DFD_EDPCSR_DUMP_EN			(1 << 0)
-#define DFD_L2RSTDISABLE_BIG_EN		(1 << 11)
+#define DFD_L2RSTDISABLE_BIG_EN			(1 << 11)
 #define DFD_DBGL1RSTDISABLE_BIG_EN		(1 << 10)
 #define DFD_L2RSTDISABLE_LITTLE_EN		(1 << 9)
-#define DFD_DBGL1RSTDISABLE_LITTLE_EN		(0xF << 24)
+#define DFD_DBGL1RSTDISABLE_LITTLE_EN		(1 << 8)
 #define DFD_CLEAR_L2RSTDISABLE_BIG		(1 << 7)
 #define DFD_CLEAR_DBGL1RSTDISABLE_BIG		(1 << 6)
 #define DFD_CLEAR_L2RSTDISABLE_LITTLE		(1 << 5)
-#define DFD_CLEAR_DBGL1RSTDISABLE_LITTLE	(0xF << 20)
+#define DFD_CLEAR_DBGL1RSTDISABLE_LITTLE	(1 << 4)
 
 #define DFD_L2RSTDISABLE		(DFD_L2RSTDISABLE_BIG_EN	\
 					| DFD_DBGL1RSTDISABLE_BIG_EN	\
 					| DFD_L2RSTDISABLE_LITTLE_EN	\
 					| DFD_DBGL1RSTDISABLE_LITTLE_EN)
-#define DFD_CLEAR_L2RSTDISABLE		(DFD_CLEAR_L2RSTDISABLE_BIG 	\
+#define DFD_CLEAR_L2RSTDISABLE		(DFD_CLEAR_L2RSTDISABLE_BIG	\
 					| DFD_CLEAR_DBGL1RSTDISABLE_BIG	\
 					| DFD_CLEAR_L2RSTDISABLE_LITTLE	\
 					| DFD_CLEAR_DBGL1RSTDISABLE_LITTLE)
 #define DFD_RESET_PEND			(PEND_BIG | PEND_LITTLE)
-#define DFD_DISABLE_RESET		(RESET_DISABLE_WDT_CORERESET	\
-					| RESET_DISABLE_WDT_CPUPORESET	\
+#define DFD_DISABLE_RESET		(RESET_DISABLE_WDT_CPUPORESET	\
 					| RESET_DISABLE_CORERESET	\
 					| RESET_DISABLE_CPUPORESET)
-#define	DFD_BIG_NONCPU_ETC_RESET	(RESET_DISABLE_WDT_PRESET_DBG	\
-					| RESET_DISABLE_PRESET_DBG	\
-					| RESET_DISABLE_WDT_L2RESET)
-#define	PMU_CPU_OFFSET		(0x10)
+#define DFD_BIG_DBG_RESET		(RESET_DISABLE_WDT_PRESET_DBG	\
+					| RESET_DISABLE_PRESET_DBG)
+#define PMU_CPU_OFFSET			(0x80)
 
 void dfd_set_dump_gpr(int en)
 {
@@ -132,51 +112,24 @@ void dfd_set_dump_gpr(int en)
 
 	if (en) {
 		reg_val = DFD_EDPCSR_DUMP_EN | DFD_L2RSTDISABLE;
-		exynos_pmu_write(RESET_SEQUENCER_CONFIGURATION, reg_val);
+		writel(reg_val, exynos_pmu_base + RESET_SEQUENCER_CONFIGURATION);
 	} else {
-		exynos_pmu_read(RESET_SEQUENCER_CONFIGURATION, &reg_val);
+		reg_val = readl(exynos_pmu_base + RESET_SEQUENCER_CONFIGURATION);
 		if (reg_val) {
-			reg_val = DFD_EDPCSR_DUMP_EN | DFD_CLEAR_L2RSTDISABLE;
-			exynos_pmu_write(RESET_SEQUENCER_CONFIGURATION, reg_val);
+			reg_val = DFD_CLEAR_L2RSTDISABLE;
+#ifdef CONFIG_SEC_DEBUG
+			if ((sec_debug_get_debug_level() & 0x1) == 0x1) {
+				pr_info("Enable DumpGPR for reboot lockup\n");
+				reg_val |= DFD_EDPCSR_DUMP_EN;
+			}
+#endif
 		}
+		writel(reg_val, exynos_pmu_base + RESET_SEQUENCER_CONFIGURATION);
 	}
 #ifdef REBOOT_DEBUG
 	exynos_pmu_read(RESET_SEQUENCER_CONFIGURATION, &reg_val);
 	pr_info("RESET_SEQUENCER_CONFIGURATION :%x\n", reg_val);
 #endif
-}
-
-void little_reset_control(int en)
-{
-	u32 val;
-	u32 little_cpu_cnt = soc_has_little();
-	u32 check_dumpGPR;
-	u32 soc_id = exynos_soc_info.product_id;
-	u32 revision = exynos_soc_info.revision;
-
-	if (little_cpu_cnt == 0 || !exynos_pmu_base)
-		return;
-
-	if ((soc_id == EXYNOS9810_SOC_ID && revision < EXYNOS_MAIN_REV_1) ||
-		soc_id != EXYNOS9810_SOC_ID)
-		return;
-
-	exynos_pmu_read(RESET_SEQUENCER_CONFIGURATION, &check_dumpGPR);
-	if (!(check_dumpGPR & DFD_EDPCSR_DUMP_EN))
-		return;
-
-	if (en) {
-		/* reset disable for Little Cores */
-		for (val = 0; val < little_cpu_cnt; val++)
-			exynos_pmu_update(LITTLE_CPU0_ETC_RESET + (val * PMU_CPU_OFFSET),
-					RESET_DISABLE_CPUPORESET | RESET_DISABLE_WDT_CPUPORESET,
-					RESET_DISABLE_CPUPORESET | RESET_DISABLE_WDT_CPUPORESET);
-	} else {
-		/* reset enable for Little Cores */
-		for (val = 0; val < little_cpu_cnt; val++)
-			exynos_pmu_update(LITTLE_CPU0_ETC_RESET + (val * PMU_CPU_OFFSET),
-					RESET_DISABLE_CPUPORESET | RESET_DISABLE_WDT_CPUPORESET, 0);
-	}
 }
 
 void big_reset_control(int en)
@@ -188,35 +141,52 @@ void big_reset_control(int en)
 	if (big_cpu_cnt == 0 || !exynos_pmu_base)
 		return;
 
-	exynos_pmu_read(RESET_SEQUENCER_CONFIGURATION, &check_dumpGPR);
+	check_dumpGPR = readl(exynos_pmu_base + RESET_SEQUENCER_CONFIGURATION);
 	if (!(check_dumpGPR & DFD_EDPCSR_DUMP_EN))
 		return;
 
 	if (en) {
 		/* reset disable for BIG */
-		exynos_pmu_read(CPU_RESET_DISABLE_FROM_SOFTRESET, &reg_val);
-		if (reg_val != DEFAULT_VAL_CPU_RESET_DISABLE)
-			exynos_pmu_update(CPU_RESET_DISABLE_FROM_SOFTRESET,
-					DFD_RESET_PEND, 0);
+		reg_val = readl(exynos_pmu_base + CPU_RESET_DISABLE_FROM_SOFTRESET);
+		if (reg_val & DFD_RESET_PEND) {
+			reg_val &= ~DFD_RESET_PEND;
+			writel(reg_val, exynos_pmu_base + CPU_RESET_DISABLE_FROM_SOFTRESET);
+		}
 
-		exynos_pmu_read(CPU_RESET_DISABLE_FROM_WDTRESET, &reg_val);
-		if (reg_val != DEFAULT_VAL_CPU_RESET_DISABLE)
-			exynos_pmu_update(CPU_RESET_DISABLE_FROM_WDTRESET,
-					DFD_RESET_PEND, 0);
+		reg_val = readl(exynos_pmu_base + CPU_RESET_DISABLE_FROM_WDTRESET);
+		if (reg_val != DEFAULT_VAL_CPU_RESET_DISABLE) {
+			reg_val &= ~DFD_RESET_PEND;
+			writel(reg_val, exynos_pmu_base + CPU_RESET_DISABLE_FROM_WDTRESET);
+		}
 
-		for (val = 0; val < big_cpu_cnt; val++)
-			exynos_pmu_update(BIG_CPU0_RESET + (val * PMU_CPU_OFFSET),
-					DFD_DISABLE_RESET, DFD_DISABLE_RESET);
+		for (val = 0; val < big_cpu_cnt; val++) {
+			reg_val = readl(exynos_pmu_base + BIG_CPU0_RESET + (val * PMU_CPU_OFFSET));
+			reg_val |= DFD_DISABLE_RESET;
+			writel(reg_val, exynos_pmu_base + BIG_CPU0_RESET + (val * PMU_CPU_OFFSET));
+		}
 
-		exynos_pmu_update(BIG_NONCPU_ETC_RESET, DFD_BIG_NONCPU_ETC_RESET,
-					DFD_BIG_NONCPU_ETC_RESET);
+		reg_val = readl(exynos_pmu_base + BIG_DBG_RESET);
+		reg_val |= DFD_BIG_DBG_RESET;
+		writel(reg_val, exynos_pmu_base + BIG_DBG_RESET);
+
+		reg_val = readl(exynos_pmu_base + BIG_NONCPU_RESET);
+		reg_val |= (RESET_DISABLE_L2RESET | RESET_DISABLE_WDT_L2RESET);
+		writel(reg_val, exynos_pmu_base + BIG_NONCPU_RESET);
 	} else {
 		/* reset enable for BIG */
-		for (val = 0; val < big_cpu_cnt; val++)
-			exynos_pmu_update(BIG_CPU0_RESET + (val * PMU_CPU_OFFSET),
-					DFD_DISABLE_RESET, 0);
+		for (val = 0; val < big_cpu_cnt; val++) {
+			reg_val = readl(exynos_pmu_base + BIG_CPU0_RESET + (val * PMU_CPU_OFFSET));
+			reg_val &= ~DFD_DISABLE_RESET;
+			writel(reg_val, exynos_pmu_base + BIG_CPU0_RESET + (val * PMU_CPU_OFFSET));
+		}
 
-		exynos_pmu_update(BIG_NONCPU_ETC_RESET, DFD_BIG_NONCPU_ETC_RESET, 0);
+		reg_val = readl(exynos_pmu_base + BIG_DBG_RESET);
+		reg_val &= ~DFD_BIG_DBG_RESET;
+		writel(reg_val, exynos_pmu_base + BIG_DBG_RESET);
+
+		reg_val = readl(exynos_pmu_base + BIG_NONCPU_RESET);
+		reg_val &= ~(RESET_DISABLE_L2RESET);
+		writel(reg_val, exynos_pmu_base + BIG_NONCPU_RESET);
 	}
 
 #ifdef REBOOT_DEBUG
@@ -224,8 +194,8 @@ void big_reset_control(int en)
 	pr_info("CPU_RESET_DISABLE_FROM_SOFTRESET :%x\n", reg_val);
 	exynos_pmu_read(CPU_RESET_DISABLE_FROM_WDTRESET, &reg_val);
 	pr_info("CPU_RESET_DISABLE_FROM_WDTRESET :%x\n", reg_val);
-	exynos_pmu_read(BIG_NONCPU_ETC_RESET, &reg_val);
-	pr_info("BIG_NONCPU_ETC_RESET :%x\n", reg_val);
+	exynos_pmu_read(BIG_NONCPU_RESET, &reg_val);
+	pr_info("BIG_NONCPU_RESET :%x\n", reg_val);
 
 	for (val = 0; val < big_cpu_cnt; val++) {
 		exynos_pmu_read(BIG_CPU0_RESET + (val * PMU_CPU_OFFSET), &reg_val);
@@ -285,13 +255,13 @@ static void exynos_reboot(enum reboot_mode mode, const char *cmd)
 	}
 
 	/* Check by each SoC */
-	soc_id = exynos_soc_info.product_id;
+	soc_id = exynos_soc_info.product_id & EXYNOS_SOC_MASK;
 	pr_info("SOC ID %X.\n", soc_id);
 	switch(soc_id) {
-	case EXYNOS9810_SOC_ID:
+	case EXYNOS8890_SOC_ID:
+	case EXYNOS8895_SOC_ID:
 		/* Check reset_sequencer_configuration register */
 		if (readl(exynos_pmu_base + RESET_SEQUENCER_CONFIGURATION) & DFD_EDPCSR_DUMP_EN) {
-			little_reset_control(0);
 			big_reset_control(0);
 			dfd_set_dump_gpr(0);
 		}

@@ -11,6 +11,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
 #define pr_fmt(fmt) "SDP_MM: %s: " fmt, __func__
@@ -54,7 +58,6 @@ static struct sdp_mm_control sdp_mm;
 
 static int32_t sdp_mm_query_proc_loaded(void __user *argp)
 {
-#ifdef CONFIG_SDP
 	int32_t ret  = 0;
 	struct task_struct *p = NULL;
 	unsigned long flags = 0;
@@ -67,8 +70,9 @@ static int32_t sdp_mm_query_proc_loaded(void __user *argp)
 			sdp_resp.sensitive_proc_list[sdp_resp.sensitive_proc_list_len] = p->pid;
 			sdp_resp.sensitive_proc_list_len++;
 		}
-		if (sdp_resp.sensitive_proc_list_len >= MAX_SENSITIVE_PROC)
-			break;
+		if (sdp_resp.sensitive_proc_list_len >= MAX_SENSITIVE_PROC) {
+		    break;
+		}
 	}
 	spin_unlock_irqrestore(&sdp_mm.sdp_proc_list_lock, flags);
 	if (copy_to_user(argp, &sdp_resp, sizeof(sdp_resp))) {
@@ -76,23 +80,17 @@ static int32_t sdp_mm_query_proc_loaded(void __user *argp)
 		ret = -EFAULT;
 	}
 	return ret;
-#else
-	return 0;
-#endif
 }
 
 int32_t sdp_mm_set_process_sensitive(unsigned int proc_id)
 {
-#ifdef CONFIG_SDP
 	int32_t ret = 0;
 	struct task_struct *task = NULL;
 	uid_t uid;
 
-	rcu_read_lock();
 	/* current.task.sensitive = 1 */
 	task = pid_task(find_vpid(proc_id), PIDTYPE_PID);
 	if (task) {
-		get_task_struct(task);
 		uid = from_kuid(&init_user_ns, task_uid(task));
 		if (((uid/PER_USER_RANGE) <= 199)  && ((uid/PER_USER_RANGE) >= 100)) {
 			if (dek_is_sdp_uid(uid)) {
@@ -111,13 +109,7 @@ int32_t sdp_mm_set_process_sensitive(unsigned int proc_id)
 	}
 
 task_err:
-	if (task)
-		put_task_struct(task);
-	rcu_read_unlock();
 	return ret;
-#else
-	return 0;
-#endif
 }
 EXPORT_SYMBOL(sdp_mm_set_process_sensitive);
 
@@ -136,7 +128,7 @@ static int32_t sdp_mm_set_proc_sensitive(void __user *argp)
 		sdp_mm.proc_id[sdp_mm.sensitive_proc_list_len] = proc_id;
 		sdp_mm.sensitive_proc_list_len++;
 	}
-
+	
 	return sdp_mm_set_process_sensitive(proc_id);
 }
 

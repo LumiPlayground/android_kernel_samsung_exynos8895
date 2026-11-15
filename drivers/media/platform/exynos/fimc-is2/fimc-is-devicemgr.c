@@ -19,6 +19,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <video/videonode.h>
+#include <media/exynos_mc.h>
 #include <asm/cacheflush.h>
 #include <asm/pgtable.h>
 #include <linux/firmware.h>
@@ -77,7 +78,9 @@ static void tasklet_sensor_tag(unsigned long data)
 	subdev = sensor->subdev_csi;
 	gtask = &sensor->groupmgr->gtask[group->id];
 
-	mgrdbgs(5, " DEVICE TASKLET start\n", group->device, group, tag_data);
+#ifdef DBG_STREAMING
+	mginfo("[F%d] DEVICE TASKLET start\n", group->device, group, tag_data->fcount);
+#endif
 	if (unlikely(test_bit(FIMC_IS_GROUP_FORCE_STOP, &group->state))) {
 		mgwarn(" cancel by fstop", group, group);
 		goto p_err;
@@ -96,16 +99,15 @@ static void tasklet_sensor_tag(unsigned long data)
 
 	framemgr_e_barrier(framemgr, 0);
 	frame = find_frame(framemgr, FS_PROCESS, frame_fcount, (void *)(ulong)tag_data->fcount);
+	framemgr_x_barrier(framemgr, 0);
 
 	if (!frame) {
 		frame_manager_print_queues(framemgr);
 		merr("[F%d] There's no frame in processing." \
 			"Can't sync sensor and ischain buffer anymore..",
 			group, tag_data->fcount);
-		framemgr_x_barrier(framemgr, 0);
 		return;
 	}
-	framemgr_x_barrier(framemgr, 0);
 
 	ldr_node = frame->shot_ext->node_group.leader;
 
@@ -127,7 +129,9 @@ static void tasklet_sensor_tag(unsigned long data)
 		mginfo("[F%d] End CANCEL Other subdev frame\n", group->device, group, frame->fcount);
 	}
 
-	mgrdbgs(5, " DEVICE TASKLET end\n", group->device, group, tag_data);
+#ifdef DBG_STREAMING
+	mginfo("[F%d] DEVICE TASKLET end\n", group->device, group, tag_data->fcount);
+#endif
 
 p_err:
 	return;
@@ -151,8 +155,8 @@ int fimc_is_devicemgr_open(struct fimc_is_devicemgr *devicemgr,
 	struct fimc_is_device_sensor *sensor;
 	struct fimc_is_device_ischain *ischain;
 
-	FIMC_BUG(!devicemgr);
-	FIMC_BUG(!device);
+	BUG_ON(!devicemgr);
+	BUG_ON(!device);
 
 	switch (type) {
 	case FIMC_IS_DEVICE_SENSOR:
@@ -160,28 +164,16 @@ int fimc_is_devicemgr_open(struct fimc_is_devicemgr *devicemgr,
 		group = &sensor->group_sensor;
 		core = sensor->private_data;
 
-		FIMC_BUG(!core);
-		FIMC_BUG(!group);
-		FIMC_BUG(!sensor->vctx);
-		FIMC_BUG(!GET_VIDEO(sensor->vctx));
-
+		BUG_ON(!core);
+		BUG_ON(!group);
 		/* get the stream id */
-		if (sensor->instance == 3) {
-			/*
-			 * HACK: sensor stand alone such as secure camera
-			 * TODO: A ischain should not be used at sensor stand alone scenario.
-			 */
-			ischain = &core->ischain[3];
-			stream = 3;
-		} else {
-			for (stream = 0; stream < FIMC_IS_STREAM_COUNT; ++stream) {
-				ischain = &core->ischain[stream];
-				if (!test_bit(FIMC_IS_ISCHAIN_OPEN, &ischain->state))
-					break;
-			}
+		for (stream = 0; stream < FIMC_IS_STREAM_COUNT; ++stream) {
+			ischain = &core->ischain[stream];
+			if (!test_bit(FIMC_IS_ISCHAIN_OPEN, &ischain->state))
+				break;
 		}
 
-		FIMC_BUG(stream >= FIMC_IS_STREAM_COUNT);
+		BUG_ON(stream >= FIMC_IS_STREAM_COUNT);
 
 		/* init group's device information */
 		devicemgr->sensor[stream] = sensor;
@@ -203,12 +195,12 @@ int fimc_is_devicemgr_open(struct fimc_is_devicemgr *devicemgr,
 		break;
 	case FIMC_IS_DEVICE_ISCHAIN:
 		ischain = (struct fimc_is_device_ischain *)device;
-		stream = ischain->instance;
 
 		devicemgr->ischain[stream] = ischain;
 		break;
 	default:
-		err("device type(%d) is invalid", type);
+		if (group != NULL)
+			mgerr("device type(%d) is invalid", group, group, group->device_type);
 		BUG();
 		break;
 	}
@@ -228,7 +220,7 @@ int fimc_is_devicemgr_binding(struct fimc_is_devicemgr *devicemgr,
 
 	switch (type) {
 	case FIMC_IS_DEVICE_SENSOR:
-		if (test_bit(FIMC_IS_SENSOR_STAND_ALONE, &sensor->state)) {
+		if (test_bit(FIMC_IS_SENSOR_DRIVING, &sensor->state)) {
 			/* in case of sensor driving */
 			ischain->sensor = sensor;
 			sensor->ischain = ischain;
@@ -254,7 +246,7 @@ int fimc_is_devicemgr_binding(struct fimc_is_devicemgr *devicemgr,
 		if (sensor &&
 			!test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &ischain->state)) {
 			group = &sensor->group_sensor;
-			FIMC_BUG(group->instance != ischain->instance);
+			BUG_ON(group->instance != ischain->instance);
 
 			child_group = GET_HEAD_GROUP_IN_DEVICE(FIMC_IS_DEVICE_ISCHAIN, group);
 			if (child_group) {
@@ -265,7 +257,8 @@ int fimc_is_devicemgr_binding(struct fimc_is_devicemgr *devicemgr,
 		}
 		break;
 	default:
-		err("device type(%d) is invalid", type);
+		if (group != NULL)
+			mgerr("device type(%d) is invalid", group, group, group->device_type);
 		BUG();
 		break;
 	}
@@ -279,17 +272,20 @@ int fimc_is_devicemgr_start(struct fimc_is_devicemgr *devicemgr,
 {
 	int ret = 0;
 	struct fimc_is_group *group = NULL;
-	struct fimc_is_device_sensor *sensor;
 	struct fimc_is_group *child_group;
+	struct fimc_is_device_sensor *sensor;
 	struct devicemgr_sensor_tag_data *tag_data;
 	u32 stream;
+	int i;
 
 	switch (type) {
 	case FIMC_IS_DEVICE_SENSOR:
 		sensor = (struct fimc_is_device_sensor *)device;
 		group = &sensor->group_sensor;
+		child_group = GET_HEAD_GROUP_IN_DEVICE(FIMC_IS_DEVICE_ISCHAIN, group);
+		stream = group->instance;
 
-		if (!test_bit(FIMC_IS_SENSOR_STAND_ALONE, &sensor->state) && sensor->ischain) {
+		if (!test_bit(FIMC_IS_SENSOR_DRIVING, &sensor->state) && sensor->ischain) {
 			ret = fimc_is_ischain_start_wrap(sensor->ischain, group);
 			if (ret) {
 				merr("fimc_is_ischain_start_wrap is fail(%d)", sensor->ischain, ret);
@@ -305,22 +301,19 @@ int fimc_is_devicemgr_start(struct fimc_is_devicemgr *devicemgr,
 			}
 		}
 
-		if (IS_ENABLED(CHAIN_USE_VC_TASKLET)) {
-			child_group = GET_HEAD_GROUP_IN_DEVICE(FIMC_IS_DEVICE_ISCHAIN, group);
-			stream = group->instance;
-
-			/* Only in case of OTF case, used tasklet. */
-			if (sensor->ischain && child_group) {
-				tag_data = &devicemgr->sensor_tag_data[stream];
-				tasklet_init(&devicemgr->tasklet_sensor_tag[stream],
-						tasklet_sensor_tag, (unsigned long)tag_data);
+		/* Only in case of OTF case, used tasklet. */
+		if (sensor->ischain && child_group) {
+			for (i = 0; i < TAG_DATA_MAX; i++) {
+				tag_data = &devicemgr->sensor_tag_data[stream][i];
+				tasklet_init(&devicemgr->tasklet_sensor_tag[stream][i], tasklet_sensor_tag, (unsigned long)tag_data);
 			}
 		}
 		break;
 	case FIMC_IS_DEVICE_ISCHAIN:
 		break;
 	default:
-		err("device type(%d) is invalid", type);
+		if (group != NULL)
+			mgerr("device type(%d) is invalid", group, group, group->device_type);
 		BUG();
 		break;
 	}
@@ -334,24 +327,23 @@ int fimc_is_devicemgr_stop(struct fimc_is_devicemgr *devicemgr,
 {
 	int ret = 0;
 	struct fimc_is_group *group = NULL;
-	struct fimc_is_device_sensor *sensor;
 	struct fimc_is_group *child_group;
+	struct fimc_is_device_sensor *sensor;
 	u32 stream;
+	int i;
 
 	switch (type) {
 	case FIMC_IS_DEVICE_SENSOR:
 		sensor = (struct fimc_is_device_sensor *)device;
 		group = &sensor->group_sensor;
+		child_group = GET_HEAD_GROUP_IN_DEVICE(FIMC_IS_DEVICE_ISCHAIN, group);
+		stream = group->instance;
 
-		if (IS_ENABLED(CHAIN_USE_VC_TASKLET)) {
-			child_group = GET_HEAD_GROUP_IN_DEVICE(FIMC_IS_DEVICE_ISCHAIN, group);
-			stream = group->instance;
+		if (sensor->ischain && child_group)
+			for (i = 0; i < TAG_DATA_MAX; i++)
+				tasklet_kill(&devicemgr->tasklet_sensor_tag[stream][i]);
 
-			if (sensor->ischain && child_group)
-				tasklet_kill(&devicemgr->tasklet_sensor_tag[stream]);
-		}
-
-		if (!test_bit(FIMC_IS_SENSOR_STAND_ALONE, &sensor->state) && sensor->ischain) {
+		if (!test_bit(FIMC_IS_SENSOR_DRIVING, &sensor->state) && sensor->ischain) {
 			ret = fimc_is_ischain_stop_wrap(sensor->ischain, group);
 			if (ret) {
 				merr("fimc_is_ischain_stop_wrap is fail(%d)", sensor->ischain, ret);
@@ -370,7 +362,8 @@ int fimc_is_devicemgr_stop(struct fimc_is_devicemgr *devicemgr,
 	case FIMC_IS_DEVICE_ISCHAIN:
 		break;
 	default:
-		err("device type(%d) is invalid", type);
+		if (group != NULL)
+			mgerr("device type(%d) is invalid", group, group, group->device_type);
 		BUG();
 		break;
 	}
@@ -383,32 +376,27 @@ int fimc_is_devicemgr_close(struct fimc_is_devicemgr *devicemgr,
 		void *device, enum fimc_is_device_type type)
 {
 	int ret = 0;
-	struct fimc_is_group *group;
+	struct fimc_is_group *group = NULL;
 	struct fimc_is_device_sensor *sensor;
 
 	switch (type) {
 	case FIMC_IS_DEVICE_SENSOR:
 		sensor = (struct fimc_is_device_sensor *)device;
 
-		FIMC_BUG(!sensor);
-
-		group = &sensor->group_sensor;
-
-		ret = fimc_is_group_close(sensor->groupmgr, group);
-		if (ret)
-			merr("fimc_is_group_close is fail", sensor);
+		BUG_ON(!sensor);
 
 		/*
 		 * Forcely set the ischain's state to "Not Opened"
 		 * Because if it's sensor driving mode, ischain was not opened from HAL.
 		 */
-		if (test_bit(FIMC_IS_SENSOR_STAND_ALONE, &sensor->state) && sensor->ischain)
+		if (test_bit(FIMC_IS_SENSOR_DRIVING, &sensor->state) && sensor->ischain)
 			clear_bit(FIMC_IS_ISCHAIN_OPEN, &sensor->ischain->state);
 		break;
 	case FIMC_IS_DEVICE_ISCHAIN:
 		break;
 	default:
-		err("device type(%d) is invalid", type);
+		if (group != NULL)
+			mgerr("device type(%d) is invalid", group, group, group->device_type);
 		BUG();
 		break;
 	}
@@ -428,6 +416,7 @@ int fimc_is_devicemgr_shot_callback(struct fimc_is_group *group,
 	struct fimc_is_devicemgr *devicemgr;
 	struct devicemgr_sensor_tag_data *tag_data;
 	u32 stream;
+	u32 index;
 
 	switch (type) {
 	case FIMC_IS_DEVICE_SENSOR:
@@ -435,14 +424,19 @@ int fimc_is_devicemgr_shot_callback(struct fimc_is_group *group,
 
 		PROGRAM_COUNT(9);
 
-		mgrdbgs(1, " DEVICE SHOT CALLBACK(%d) %s\n", group->device,
+#ifdef DBG_STREAMING
+		mgrinfo(" DEVICE SHOT CALLBACK(%d) %s\n", group->device,
 			       group, frame, frame->index, child_group ? "OTF" : "M2M");
+#endif
 
 		/* OTF */
 		if (child_group) {
 			child_group->shot_callback(child_group->device, frame);
 		/* M2M */
 		} else {
+#ifdef DBG_STREAMING
+			mginfo("[F%d] DEVICE TASKLET M2M\n", group->device, group, frame->fcount);
+#endif
 			ret = fimc_is_sensor_group_tag(group->device->sensor, frame, &ldr_node);
 			if (ret) {
 				merr("fimc_is_sensor_group_tag is fail(%d)", group, ret);
@@ -461,28 +455,25 @@ int fimc_is_devicemgr_shot_callback(struct fimc_is_group *group,
 
 		break;
 	case FIMC_IS_DEVICE_ISCHAIN:
-		/* Only for sensor group with OTF */
-		if (group->head->device_type != FIMC_IS_DEVICE_SENSOR ||
-			frame->type != SHOT_TYPE_EXTERNAL) {
-			break;
-		}
-
 		devicemgr = group->device->devicemgr;
 		stream = group->instance;
+		index = devicemgr->tasklet_index[stream]++ % TAG_DATA_MAX;
 
-		tag_data = &devicemgr->sensor_tag_data[stream];
+		tag_data = &devicemgr->sensor_tag_data[stream][index];
 		tag_data->fcount = fcount;
 		tag_data->devicemgr = devicemgr;
 		tag_data->group = &devicemgr->sensor[stream]->group_sensor;
 		tag_data->stream = stream;
 
-		if (IS_ENABLED(CHAIN_USE_VC_TASKLET)) {
-			mgrdbgs(1, " DEVICE TASKLET schedule\n", group->device, group, frame);
-			tasklet_schedule(&devicemgr->tasklet_sensor_tag[stream]);
-		} else {
-			tasklet_sensor_tag((unsigned long)tag_data);
+		/* OTF */
+		if (frame->type == SHOT_TYPE_EXTERNAL &&
+			group->head->device_type == FIMC_IS_DEVICE_SENSOR) {
+#ifdef DBG_STREAMING
+			mginfo("[F%d] DEVICE TASKLET(%d) schedule\n", group->device, group,
+								fcount, index);
+#endif
+			tasklet_schedule(&devicemgr->tasklet_sensor_tag[stream][index]);
 		}
-
 		break;
 	default:
 		mgerr("device type(%d) is invalid", group, group, group->device_type);

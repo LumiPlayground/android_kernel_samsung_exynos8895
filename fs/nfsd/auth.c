@@ -58,7 +58,10 @@ int nfsd_setuser(struct svc_rqst *rqstp, struct svc_export *exp)
 			if (gid_eq(GLOBAL_ROOT_GID, rqgi->gid[i]))
 				gi->gid[i] = exp->ex_anon_gid;
 			else
-				gi->gid[i] = rqgi->gid[i];
+				GROUP_AT(gi, i) = GROUP_AT(rqgi, i);
+
+			/* Each thread allocates its own gi, no race */
+			groups_sort(gi);
 		}
 
 		/* Each thread allocates its own gi, no race */

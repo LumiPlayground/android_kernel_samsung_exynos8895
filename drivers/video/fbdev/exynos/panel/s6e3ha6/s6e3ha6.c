@@ -13,7 +13,8 @@
 #include <linux/of_gpio.h>
 #include <video/mipi_display.h>
 /* TODO : remove dsim dependent code */
-#include "../../dpu_9810/decon.h"
+#include "../../dpu/decon.h"
+#include "../../dpu/dsim.h"
 #include "../panel.h"
 #include "s6e3ha6.h"
 #include "s6e3ha6_panel.h"
@@ -63,38 +64,6 @@ static void mtp_ctoi(s32 (*dst)[MAX_COLOR], char *src, int nr_tp)
 	dst[0][RED] = (src[pos] >> 4) & 0xF;
 	dst[0][GREEN] = src[pos] & 0xF;
 	dst[0][BLUE] = src[pos + 1] & 0xF;
-}
-
-static void copy_tpout_center(u8 *output, u32 value, u32 v, u32 color)
-{
-	int index = (S6E3HA6_NR_TP - v - 1);
-
-	if (v == S6E3HA6_NR_TP - 1) {
-		output[color * 2] = ((value & 0x0100) ? 1 : 0);
-		output[color * 2 + 1] = value & 0x00FF;
-		if (value > 511)
-			pr_err("%s, error : exceed output range tp:%d c:%d value:%d!!\n",
-					__func__, index, color, value);
-	} else if (v == 0) {
-		if (color == RED) {
-			output[(index + 1) * MAX_COLOR] &= ~(0xF << 4);
-			output[(index + 1) * MAX_COLOR] |= (value & 0xF) << 4;
-		} else if (color == GREEN) {
-			output[(index + 1) * MAX_COLOR] &= ~0xF;
-			output[(index + 1) * MAX_COLOR] |= value & 0xF;
-		} else if (color == BLUE) {
-			output[(index + 1) * MAX_COLOR + 1] &= ~0xF;
-			output[(index + 1) * MAX_COLOR + 1] |= value & 0xF;
-		}
-		if (value > 15)
-			pr_err("%s, error : exceed output range tp:%d c:%d value:%d!!\n",
-					__func__, index, color, value);
-	} else {
-		output[(index + 1) * MAX_COLOR + color] = value & 0x00FF;
-		if (value > 255)
-			pr_err("%s, error : exceed output range tp:%d c:%d value:%d!!\n",
-					__func__, index, color, value);
-	}
 }
 
 static int init_dimming(struct panel_info *panel_data, int id,
@@ -183,9 +152,8 @@ static int init_dimming(struct panel_info *panel_data, int id,
 			luminance = brt_tbl->lum[nr_luminance + nr_hbm_luminance - 1];
 		else
 			luminance = brt_tbl->lum[i];
-		get_dimming_gamma(dim_info, luminance,
-				(u8 *)&gamma_maptbl->arr[i * gamma_maptbl->ncol],
-				copy_tpout_center);
+		get_dimming_gamma_compact(dim_info, luminance,
+				(u8 *)&gamma_maptbl->arr[i * gamma_maptbl->ncol]);
 	}
 
 	panel_data->dim_info[id] = dim_info;
@@ -364,8 +332,8 @@ int getidx_brt_tbl(struct maptbl *tbl)
 		return -EINVAL;
 	}
 
-	if (index > tbl->nrow - 1)
-		index = tbl->nrow - 1;
+	if (index > S6E3HA6_TOTAL_PAC_STEPS - 1)
+		index = S6E3HA6_TOTAL_PAC_STEPS - 1;
 
 	return sizeof_row(tbl) * index;
 }
@@ -394,6 +362,24 @@ int getidx_poc_onoff_table(struct maptbl *tbl)
 	panel_data = &panel->panel_data;
 
 	idx = sizeof_row(tbl) * (panel_data->props.poc_onoff ? POC_ONOFF_ON : POC_ONOFF_OFF);
+
+	return idx;
+}
+
+int getidx_irc_onoff_table(struct maptbl *tbl)
+{
+	struct panel_info *panel_data;
+	struct panel_device *panel = (struct panel_device *)tbl->pdata;
+	int idx;
+
+	if (panel == NULL) {
+		panel_err("PANEL:ERR:%s:panel is null\n", __func__);
+		return -EINVAL;
+	}
+
+	panel_data = &panel->panel_data;
+
+	idx = sizeof_row(tbl) * (panel_data->props.irc_onoff ? IRC_ONOFF_ON : IRC_ONOFF_OFF);
 
 	return idx;
 }
@@ -504,8 +490,8 @@ int getidx_vgh_table(struct maptbl *tbl)
 
 int getidx_vint_table(struct maptbl *tbl)
 {
-	size_t row;
-	unsigned int nit, vint_index[] = { 5, 6, 7, 8, 9, 10, 11, 12, 13 };
+	int row, nit;
+	int vint_index[] = { 5, 6, 7, 8, 9, 10, 11, 12, 13 };
 	struct panel_device *panel = (struct panel_device *)tbl->pdata;
 	struct panel_bl_device *panel_bl;
 	struct panel_info *panel_data;
@@ -553,8 +539,7 @@ int getidx_hbm_onoff_table(struct maptbl *tbl)
 
 	panel_bl = &panel->panel_bl;
 
-	return maptbl_index(tbl, 0,
-			is_hbm_brightness(panel_bl, panel_bl->props.brightness), 0);
+	return is_hbm_brightness(panel_bl, panel_bl->props.brightness);
 }
 
 int getidx_acl_opr_table(struct maptbl *tbl)
@@ -586,8 +571,8 @@ int getidx_resolution_table(struct maptbl *tbl)
 	struct panel_device *panel = (struct panel_device *)tbl->pdata;
 	struct decon_lcd *lcd_info = &panel->lcd_info;
 
-	panel_info("%s : mres_mode : %d\n", __func__, lcd_info->mres_mode);
-	switch (lcd_info->mres_mode) {
+	panel_info("%s : dsu_mode : %d\n", __func__, lcd_info->dsu_mode);
+	switch (lcd_info->dsu_mode) {
 		case DSU_MODE_1:
 			row = 0;
 			break;
@@ -598,7 +583,7 @@ int getidx_resolution_table(struct maptbl *tbl)
 			row = 2;
 			break;
 		default:
-			panel_err("PANEL:ERR:%s:Invalid dsu mode : %d\n", __func__, lcd_info->mres_mode);
+			panel_err("PANEL:ERR:%s:Invalid dsu mode : %d\n", __func__, lcd_info->dsu_mode);
 			row = 0;
 			break;
 	}
@@ -726,11 +711,11 @@ static void generate_gct_pattern(u8 *dst, int pattern, int size)
 	/* generate gct pattern img */
 	for (i = 0; i < 1480; i++) {
 		if (pattern == GCT_PATTERN_1)
-			memcpy(&dst[i * sizeof(s6e3ha6_gct_pattern_line[i % 2])],
+			memcpy(&dst[i * sizeof(s6e3ha6_gct_pattern_line[i % 2])], 
 					s6e3ha6_gct_pattern_line[i % 2],
 					sizeof(s6e3ha6_gct_pattern_line[i % 2]));
 		else if (pattern == GCT_PATTERN_2)
-			memcpy(&dst[i * sizeof(s6e3ha6_gct_pattern_line[(i + 1) % 2])],
+			memcpy(&dst[i * sizeof(s6e3ha6_gct_pattern_line[(i + 1) % 2])], 
 					s6e3ha6_gct_pattern_line[(i + 1) % 2],
 					sizeof(s6e3ha6_gct_pattern_line[(i + 1) % 2]));
 	}
@@ -1118,6 +1103,41 @@ int init_mdnie_night_mode_table(struct maptbl *tbl)
 	return 0;
 }
 
+int init_mdnie_color_lens_table(struct maptbl *tbl)
+{
+	struct mdnie_info *mdnie;
+	struct maptbl *color_lens_maptbl;
+
+	if (tbl == NULL) {
+		panel_err("PANEL:ERR:%s:maptbl is null\n", __func__);
+		return -EINVAL;
+	}
+
+	if (tbl->pdata == NULL) {
+		panel_err("PANEL:ERR:%s:pdata is null\n", __func__);
+		return -EINVAL;
+	}
+
+	mdnie = tbl->pdata;
+
+	color_lens_maptbl = mdnie_find_etc_maptbl(mdnie, MDNIE_ETC_COLOR_LENS_MAPTBL);
+	if (!color_lens_maptbl) {
+		panel_err("%s, COLOR_LENS_MAPTBL not found\n", __func__);
+		return -EINVAL;
+	}
+
+	if (sizeof_maptbl(tbl) < (S6E3HA6_COLOR_LENS_OFS +
+			sizeof_row(color_lens_maptbl))) {
+		panel_err("%s invalid size (maptbl_size %d, color_lens_maptbl_size %d)\n",
+			__func__, sizeof_maptbl(tbl), sizeof_row(color_lens_maptbl));
+		return -EINVAL;
+	}
+
+	maptbl_copy(color_lens_maptbl, &tbl->arr[S6E3HA6_COLOR_LENS_OFS]);
+
+	return 0;
+}
+
 void update_current_scr_white(struct maptbl *tbl, u8 *dst)
 {
 	struct mdnie_info *mdnie;
@@ -1229,6 +1249,24 @@ int getidx_adjust_ldu_maptbl(struct maptbl *tbl)
 	return maptbl_index(tbl, wcrd_type[mdnie->props.mode], mdnie->props.ldu, 0);
 }
 
+int getidx_color_lens_maptbl(struct maptbl *tbl)
+{
+	struct mdnie_info *mdnie = (struct mdnie_info *)tbl->pdata;
+
+	if (!IS_COLOR_LENS_MODE(mdnie))
+		return -EINVAL;
+
+	if ((mdnie->props.color_lens_color < 0) || (mdnie->props.color_lens_color >= COLOR_LENS_COLOR_MAX)) {
+		pr_err("%s, out of color lens color range %d\n", __func__, mdnie->props.color_lens_color);
+		return -EINVAL;
+	}
+	if ((mdnie->props.color_lens_level < 0) || (mdnie->props.color_lens_level >= COLOR_LENS_LEVEL_MAX)) {
+		pr_err("%s, out of color lens level range %d\n", __func__, mdnie->props.color_lens_level);
+		return -EINVAL;
+	}
+	return maptbl_index(tbl, mdnie->props.color_lens_color, mdnie->props.color_lens_level, 0);
+}
+
 void copy_color_coordinate_maptbl(struct maptbl *tbl, u8 *dst)
 {
 	struct mdnie_info *mdnie;
@@ -1250,13 +1288,13 @@ void copy_color_coordinate_maptbl(struct maptbl *tbl, u8 *dst)
 		return;
 	}
 
-	for (i = 0; i < tbl->ncol; i++) {
+	for (i = 0; i < tbl->ncol; i++, dst += 2) {
 		mdnie->props.def_wrgb[i] = tbl->arr[idx + i];
 		value = mdnie->props.def_wrgb[i] +
 			(char)((mdnie->props.mode == AUTO) ?
 				mdnie->props.def_wrgb_ofs[i] : 0);
 		mdnie->props.cur_wrgb[i] = value;
-		dst[i * 2] = value;
+		*dst = value;
 
 #ifdef DEBUG_PANEL
 		if (mdnie->props.mode == AUTO) {
@@ -1293,9 +1331,9 @@ void copy_scr_white_maptbl(struct maptbl *tbl, u8 *dst)
 		return;
 	}
 
-	for (i = 0; i < tbl->ncol; i++) {
+	for (i = 0; i < tbl->ncol; i++, dst += 2) {
 		mdnie->props.cur_wrgb[i] = tbl->arr[idx + i];
-		dst[i * 2] = tbl->arr[idx + i];
+		*dst = tbl->arr[idx + i];
 #ifdef DEBUG_PANEL
 		panel_info("%s cur_wrgb[%d] %d(%02X)\n",
 				__func__, i, mdnie->props.cur_wrgb[i], mdnie->props.cur_wrgb[i]);
@@ -1324,12 +1362,12 @@ void copy_adjust_ldu_maptbl(struct maptbl *tbl, u8 *dst)
 		return;
 	}
 
-	for (i = 0; i < tbl->ncol; i++) {
+	for (i = 0; i < tbl->ncol; i++, dst += 2) {
 		value = tbl->arr[idx + i] +
 			(((mdnie->props.mode == AUTO) && (mdnie->props.scenario != EBOOK_MODE)) ?
 				mdnie->props.def_wrgb_ofs[i] : 0);
 		mdnie->props.cur_wrgb[i] = value;
-		dst[i * 2] = value;
+		*dst = value;
 
 #ifdef DEBUG_PANEL
 		panel_info("%s cur_wrgb[%d] %d(%02X) (orig:0x%02X offset:%d)\n",
@@ -1603,6 +1641,8 @@ static void show_err_fg(struct dumpinfo *info)
 	}
 
 	panel_info("==================================================\n");
+
+	inc_dpui_u32_field(DPUI_KEY_PNESDE, (err_fg[0] & 0x4D) ? 1 : 0);
 }
 
 static void show_dsi_err(struct dumpinfo *info)

@@ -182,7 +182,23 @@ static int regmap_i2c_read(void *context,
 	struct i2c_msg xfer[2];
 	int ret;
 
-	if (i2c->flags & I2C_CLIENT_SPEEDY) {
+	if (i2c->flags & I2C_CLIENT_TEN) {
+		xfer[0].flags = I2C_M_RD|I2C_CLIENT_TEN;
+		xfer[0].len = val_size;
+		xfer[0].buf = (void *)reg;
+		xfer[0].addr = xfer[0].buf[0] +
+			(((i2c->addr & 0x7f) << 8) & 0xff00);
+		xfer[0].buf = val;
+
+		ret = i2c_transfer(i2c->adapter, xfer, 1);
+
+		if (ret == 1)
+			return 0;
+		else if (ret < 0)
+			return ret;
+		else
+			return -EIO;
+	} else if (i2c->flags & I2C_CLIENT_SPEEDY) {
 		xfer[0].flags = I2C_M_RD|I2C_CLIENT_SPEEDY;
 		xfer[0].len = val_size;
 		xfer[0].buf = (void *)reg;

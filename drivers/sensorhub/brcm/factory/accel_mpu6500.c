@@ -114,7 +114,7 @@ int set_accel_cal(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_MCU_SET_ACCEL_CAL;
 	msg->length = 6;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(6, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(6, GFP_KERNEL);
 
 	msg->free_buffer = 1;
 	memcpy(msg->buffer, accel_cal, 6);
@@ -398,7 +398,12 @@ static ssize_t accel_lowpassfilter_store(struct device *dev,
 	msg->cmd = MSG2SSP_AP_SENSOR_LPF;
 	msg->length = 1;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(1, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(1, GFP_KERNEL);
+	if (msg->buffer == NULL) {
+		pr_err("[SSP] %s, failed to alloc memory\n", __func__);
+		kfree(msg);
+		goto exit;
+	}
 
 	*msg->buffer = new_enable;
 	msg->free_buffer = 1;

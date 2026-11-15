@@ -193,7 +193,7 @@ static int __uhid_report_queue_and_wait(struct uhid_device *uhid,
 
 	ret = wait_event_interruptible_timeout(uhid->report_wait,
 				!uhid->report_running || !uhid->running,
-				5 * HZ);
+				10/*5 * HZ*/);  // from 5000 to 10 due to BT stuck when connecting apple magic mouse during a2dp playing
 	if (!ret || !uhid->running || uhid->report_running)
 		ret = -EIO;
 	else if (ret < 0)
@@ -797,12 +797,11 @@ static struct miscdevice uhid_misc = {
 };
 
 static int fb_state_change(struct notifier_block *nb,
-	unsigned long val, void *data)
+    unsigned long val, void *data)
 {
 	struct fb_event *evdata = data;
 	unsigned int blank;
-
-	dbg_hid("fb_state_change");
+    dbg_hid("fb_state_change");
 	if (val != FB_EVENT_BLANK)
 		return 0;
 
@@ -822,7 +821,7 @@ static int fb_state_change(struct notifier_block *nb,
 	return NOTIFY_OK;
 }
 static struct notifier_block fb_block = {
-	.notifier_call = fb_state_change,
+    .notifier_call = fb_state_change,
 };
 
 static int __init uhid_init(void)

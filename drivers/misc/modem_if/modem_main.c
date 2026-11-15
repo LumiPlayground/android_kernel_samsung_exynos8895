@@ -32,18 +32,22 @@
 #include <linux/gpio.h>
 #include <linux/delay.h>
 #include <linux/wakelock.h>
+#include <linux/mfd/syscon.h>
 #ifdef CONFIG_OF
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #endif
-#include <linux/shm_ipc.h>
+
+#ifdef CONFIG_LINK_DEVICE_SHMEM
+#include <linux/mcu_ipc.h>
+#endif
 
 #include "modem_prj.h"
 #include "modem_variation.h"
 #include "modem_utils.h"
 
-#define FMT_WAKE_TIME	(HZ/2)
-#define RAW_WAKE_TIME	(HZ*6)
+#define FMT_WAKE_TIME   (HZ/2)
+#define RAW_WAKE_TIME   (HZ*6)
 
 struct mif_log log_info;
 
@@ -57,8 +61,6 @@ static int set_log_info(char *str)
 	log_info.log_msg = strstr(str, "log") ? 1 : 0;
 	log_info.ps_msg = strstr(str, "ps") ? 1 : 0;
 	log_info.router_msg = strstr(str, "router") ? 1 : 0;
-	log_info.rcs_msg = strstr(str, "rcs") ? 1 : 0;
-	log_info.ppt_msg = strstr(str, "ppt") ? 1 : 0;
 
 	mif_err("modemIF log info: %s\n", str);
 
@@ -95,7 +97,7 @@ static struct modem_shared *create_modem_shared_data(
 			(MAX_MIF_SEPA_SIZE * 2));
 	memcpy(msd->storage.addr, MIF_SEPARATOR, strlen(MIF_SEPARATOR));
 	msd->storage.addr += MAX_MIF_SEPA_SIZE;
-	memcpy(msd->storage.addr, &size, sizeof(int));
+	memcpy(msd->storage.addr, &size, MAX_MIF_SEPA_SIZE);
 	msd->storage.addr += MAX_MIF_SEPA_SIZE;
 	spin_lock_init(&msd->lock);
 
@@ -125,8 +127,14 @@ static struct modem_ctl *create_modemctl_device(struct platform_device *pdev,
 	modemctl->mdm_data = pdata;
 	modemctl->name = pdata->name;
 
-	/* init modemctl device for getting modemctl operations */
+	modemctl->pmureg = syscon_regmap_lookup_by_phandle(dev->of_node,
+				"samsung,syscon-phandle");
+	if (IS_ERR(modemctl->pmureg)) {
+		mif_err("%s: syscon regmap lookup failed.\n", pdata->name);
+		return NULL;
+	}
 
+	/* init modemctl device for getting modemctl operations */
 	ret = init_modemctl_device(modemctl, pdata);
 	if (ret) {
 		mif_err("%s: init_modemctl_device fail (err %d)\n",
@@ -215,7 +223,6 @@ static int attach_devices(struct io_device *iod, enum modem_link tx_link)
 			 * or, 2+ link devices and this link is tx_link,
 			 * set iod's link device with ld
 			 */
-
 			if ((countbits(iod->link_types) <= 1) ||
 					(tx_link == ld->link_type)) {
 				mif_debug("set %s->%s\n", iod->name, ld->name);
@@ -266,6 +273,7 @@ static int attach_devices(struct io_device *iod, enum modem_link tx_link)
 }
 
 #ifdef CONFIG_OF
+
 static int parse_dt_common_pdata(struct device_node *np,
 					struct modem_data *pdata)
 {
@@ -275,7 +283,11 @@ static int parse_dt_common_pdata(struct device_node *np,
 	mif_dt_read_string(np, "mif,link_name", pdata->link_name);
 	mif_dt_read_u32(np, "mif,num_iodevs", pdata->num_iodevs);
 
+	mif_dt_read_u32(np, "shmem,base", pdata->shmem_base);
+	mif_dt_read_u32(np, "shmem,ipc_offset", pdata->ipcmem_offset);
+	mif_dt_read_u32(np, "shmem,ipc_size", pdata->ipc_size);
 	mif_dt_read_u32(np, "shmem,dump_offset", pdata->dump_offset);
+
 	return 0;
 }
 
@@ -291,58 +303,47 @@ static int parse_dt_mbox_pdata(struct device *dev, struct device_node *np,
 	}
 	pdata->mbx = mbox;
 
-#ifdef CONFIG_PCI_EXYNOS
-	mif_dt_read_u32 (np, "mif,irq_cp2ap_pcie_l1ss_disable",
-		mbox->irq_cp2ap_pcie_l1ss_disable);
-	mif_dt_read_u32 (np, "mbx_cp2ap_pcie_l1ss_disable",
-				mbox->mbx_cp2ap_pcie_l1ss_disable);
-#endif
-
-	mif_dt_read_u32 (np, "mbx_ap2cp_msg", mbox->mbx_ap2cp_msg);
-	mif_dt_read_u32 (np, "mbx_cp2ap_msg", mbox->mbx_cp2ap_msg);
-	mif_dt_read_u32 (np, "mbx_ap2cp_united_status",
-				mbox->mbx_ap2cp_status);
-	mif_dt_read_u32 (np, "mbx_cp2ap_united_status",
-				mbox->mbx_cp2ap_status);
-
 	mif_dt_read_u32 (np, "mif,int_ap2cp_msg", mbox->int_ap2cp_msg);
 	mif_dt_read_u32 (np, "mif,int_ap2cp_wakeup", mbox->int_ap2cp_wakeup);
 	mif_dt_read_u32 (np, "mif,int_ap2cp_status", mbox->int_ap2cp_status);
 	mif_dt_read_u32 (np, "mif,int_ap2cp_active", mbox->int_ap2cp_active);
 
 	mif_dt_read_u32 (np, "mif,irq_cp2ap_msg", mbox->irq_cp2ap_msg);
+	mif_dt_read_u32 (np, "mif,irq_cp2ap_wakeup", mbox->irq_cp2ap_wakeup);
 	mif_dt_read_u32 (np, "mif,irq_cp2ap_status", mbox->irq_cp2ap_status);
-	mif_dt_read_u32 (np, "mif,irq_cp2ap_active", mbox->irq_cp2ap_active);
-	mif_dt_read_u32 (np, "mif,irq_cp2ap_wake_lock",
-				mbox->irq_cp2ap_wake_lock);
-
-	/* Value for Performance Request */
-	mif_dt_read_u32 (np, "mbx_cp2ap_dvfsreq", mbox->mbx_cp2ap_perf_req);
-	mif_dt_read_u32 (np, "mbx_cp2ap_dvfsreq_cpu",
-				mbox->mbx_cp2ap_perf_req_cpu);
-	mif_dt_read_u32 (np, "mbx_cp2ap_dvfsreq_mif",
-				mbox->mbx_cp2ap_perf_req_mif);
-	mif_dt_read_u32 (np, "mbx_cp2ap_dvfsreq_int",
-				mbox->mbx_cp2ap_perf_req_int);
-
+	mif_dt_read_u32 (np, "mif,irq_cp2ap_perf_req",
+			mbox->irq_cp2ap_perf_req);
 	mif_dt_read_u32 (np, "mif,irq_cp2ap_perf_req_cpu",
-				mbox->irq_cp2ap_perf_req_cpu);
+		mbox->irq_cp2ap_perf_req_cpu);
 	mif_dt_read_u32 (np, "mif,irq_cp2ap_perf_req_mif",
-				mbox->irq_cp2ap_perf_req_mif);
+		mbox->irq_cp2ap_perf_req_mif);
 	mif_dt_read_u32 (np, "mif,irq_cp2ap_perf_req_int",
-				mbox->irq_cp2ap_perf_req_int);
+		mbox->irq_cp2ap_perf_req_int);
+	mif_dt_read_u32 (np, "mif,irq_cp2ap_pcie_l1ss_disable",
+		mbox->irq_cp2ap_pcie_l1ss_disable);
+	mif_dt_read_u32 (np, "mif,irq_cp2ap_active", mbox->irq_cp2ap_active);
 
-	/* Status Bit Info */
-	mif_dt_read_u32 (np, "sbi_lte_active_mask", mbox->sbi_lte_active_mask);
-	mif_dt_read_u32 (np, "sbi_lte_active_pos", mbox->sbi_lte_active_pos);
-	mif_dt_read_u32 (np, "sbi_wake_lock_mask", mbox->sbi_wake_lock_mask);
-	mif_dt_read_u32 (np, "sbi_wake_lock_pos", mbox->sbi_wake_lock_pos);
-	mif_dt_read_u32 (np, "sbi_cp_status_mask", mbox->sbi_cp_status_mask);
-	mif_dt_read_u32 (np, "sbi_cp_status_pos", mbox->sbi_cp_status_pos);
-	mif_dt_read_u32 (np, "sbi_pda_active_mask", mbox->sbi_pda_active_mask);
-	mif_dt_read_u32 (np, "sbi_pda_active_pos", mbox->sbi_pda_active_pos);
-	mif_dt_read_u32 (np, "sbi_ap_status_mask", mbox->sbi_ap_status_mask);
-	mif_dt_read_u32 (np, "sbi_ap_status_pos", mbox->sbi_ap_status_pos);
+	mif_dt_read_u32 (np, "mbx_ap2cp_msg", mbox->mbx_ap2cp_msg);
+	mif_dt_read_u32 (np, "mbx_cp2ap_msg", mbox->mbx_cp2ap_msg);
+	mif_dt_read_u32 (np, "mbx_ap2cp_wakeup", mbox->mbx_ap2cp_wakeup);
+	mif_dt_read_u32 (np, "mbx_cp2ap_wakeup", mbox->mbx_cp2ap_wakeup);
+	mif_dt_read_u32 (np, "mbx_ap2cp_status", mbox->mbx_ap2cp_status);
+	mif_dt_read_u32 (np, "mbx_cp2ap_status", mbox->mbx_cp2ap_status);
+	mif_dt_read_u32 (np, "mbx_ap2cp_active", mbox->mbx_ap2cp_active);
+	mif_dt_read_u32 (np, "mbx_cp2ap_dvfsreq", mbox->mbx_cp2ap_perf_req);
+	mif_dt_read_u32 (np, "mbx_cp2ap_dvfsreq_cpu", mbox->mbx_cp2ap_perf_req_cpu);
+	mif_dt_read_u32 (np, "mbx_cp2ap_dvfsreq_mif", mbox->mbx_cp2ap_perf_req_mif);
+	mif_dt_read_u32 (np, "mbx_cp2ap_dvfsreq_int", mbox->mbx_cp2ap_perf_req_int);
+	mif_dt_read_u32 (np, "mbx_cp2ap_pcie_l1ss_disable", mbox->mbx_cp2ap_pcie_l1ss_disable);
+	mif_dt_read_u32 (np, "mbx_cp2ap_active", mbox->mbx_cp2ap_active);
+	mif_dt_read_u32 (np, "mbx_ap2cp_et_dac_cal", mbox->mbx_ap2cp_et_dac_cal);
+	mif_dt_read_u32 (np, "mbx_ap2cp_sys_rev", mbox->mbx_ap2cp_sys_rev);
+	mif_dt_read_u32 (np, "mbx_ap2cp_pmic_rev", mbox->mbx_ap2cp_pmic_rev);
+	mif_dt_read_u32 (np, "mbx_ap2cp_pkg_id", mbox->mbx_ap2cp_pkg_id);
+	mif_dt_read_u32 (np, "mbx_ap2cp_lock_value",
+			mbox->mbx_ap2cp_lock_value);
+	mif_dt_read_u32 (np, "mbx_ap2cp_sec", mbox->mbx_ap2cp_sec);
+	mif_dt_read_u32 (np, "mbx_ap2cp_usec", mbox->mbx_ap2cp_usec);
 
 	return 0;
 }
@@ -363,6 +364,7 @@ static int parse_dt_iodevs_pdata(struct device *dev, struct device_node *np,
 
 	for_each_child_of_node(np, child) {
 		iod = &pdata->iodevs[i];
+
 		mif_dt_read_string(child, "iod,name", iod->name);
 		mif_dt_read_u32(child, "iod,id", iod->id);
 		mif_dt_read_enum(child, "iod,format", iod->format);
@@ -437,46 +439,7 @@ static struct modem_data *modem_if_parse_dt_pdata(struct device *dev)
 }
 #endif
 
-static void modem_get_shmem_base(struct modem_data *pdata)
-{
-	pdata->shmem_base = shm_get_phys_base();
-	pdata->ipcmem_offset = shm_get_ipc_rgn_offset();
-	pdata->ipc_size = shm_get_ipc_rgn_size();
-	mif_err("shmem_base: 0x%x ipcmem_offset: 0x%x, ipc_size: 0x%x\n",
-		pdata->shmem_base, pdata->ipcmem_offset, pdata->ipc_size);
-}
-
 struct io_device *iod_test;
-
-static ssize_t do_cp_crash_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct modem_ctl *mc = dev_get_drvdata(dev);
-	unsigned int val = 0;
-
-	if (kstrtouint(buf, 10, &val))
-		return -EINVAL;
-
-	if (mc->bootd)
-		mc->bootd->modem_state_changed(mc->bootd, val);
-	return count;
-}
-
-static ssize_t modem_state_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct modem_ctl *mc = dev_get_drvdata(dev);
-	return sprintf(buf, "%s\n", cp_state_str[mc->phone_state]);
-}
-static DEVICE_ATTR_WO(do_cp_crash);
-static DEVICE_ATTR_RO(modem_state);
-
-static struct attribute *modem_attrs[] = {
-	&dev_attr_do_cp_crash.attr,
-	&dev_attr_modem_state.attr,
-	NULL,
-};
-ATTRIBUTE_GROUPS(modem);
-
 static int modem_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -497,7 +460,6 @@ static int modem_probe(struct platform_device *pdev)
 			return PTR_ERR(pdata);
 		}
 	}
-	modem_get_shmem_base(pdata);
 
 	msd = create_modem_shared_data(pdev);
 	if (!msd) {
@@ -545,9 +507,6 @@ static int modem_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, modemctl);
 
-	if (sysfs_create_groups(&dev->kobj, modem_groups))
-		mif_err("failed to create modem groups node\n");
-
 	mif_err("%s: ---\n", pdata->name);
 
 	return 0;
@@ -582,6 +541,15 @@ static void modem_shutdown(struct platform_device *pdev)
 static int modem_suspend(struct device *pdev)
 {
 	struct modem_ctl *mc = dev_get_drvdata(pdev);
+	struct modem_mbox *mbox __maybe_unused = mc->mdm_data->mbx;
+	struct utc_time t __maybe_unused;
+
+#ifdef CONFIG_LINK_DEVICE_SHMEM
+	get_utc_time(&t);
+	mif_err("time = %d.%d\n", t.sec + (t.min * 60), t.us);
+	mbox_set_value(mbox->mbx_ap2cp_sec, t.sec + (t.min * 60));
+	mbox_set_value(mbox->mbx_ap2cp_usec, t.us);
+#endif
 
 	if (mc->ops.suspend_modem_ctrl != NULL) {
 		mif_err("%s: pd_active:0\n", mc->name);
@@ -594,6 +562,15 @@ static int modem_suspend(struct device *pdev)
 static int modem_resume(struct device *pdev)
 {
 	struct modem_ctl *mc = dev_get_drvdata(pdev);
+	struct modem_mbox *mbox __maybe_unused = mc->mdm_data->mbx;
+	struct utc_time t __maybe_unused;
+
+#ifdef CONFIG_LINK_DEVICE_SHMEM
+	get_utc_time(&t);
+	mif_err("time = %d.%d\n", t.sec + (t.min * 60), t.us);
+	mbox_set_value(mbox->mbx_ap2cp_sec, t.sec + (t.min * 60));
+	mbox_set_value(mbox->mbx_ap2cp_usec, t.us);
+#endif
 
 	if (mc->ops.suspend_modem_ctrl != NULL) {
 		mif_err("%s: pd_active:1\n", mc->name);

@@ -30,12 +30,12 @@
 #include <linux/usb/ezusb.h>
 
 /* make a simple define to handle if we are compiling keyspan_pda or xircom support */
-#if IS_ENABLED(CONFIG_USB_SERIAL_KEYSPAN_PDA)
+#if defined(CONFIG_USB_SERIAL_KEYSPAN_PDA) || defined(CONFIG_USB_SERIAL_KEYSPAN_PDA_MODULE)
 	#define KEYSPAN
 #else
 	#undef KEYSPAN
 #endif
-#if IS_ENABLED(CONFIG_USB_SERIAL_XIRCOM)
+#if defined(CONFIG_USB_SERIAL_XIRCOM) || defined(CONFIG_USB_SERIAL_XIRCOM_MODULE)
 	#define XIRCOM
 #else
 	#undef XIRCOM
@@ -373,10 +373,8 @@ static int keyspan_pda_get_modem_info(struct usb_serial *serial,
 			     3, /* get pins */
 			     USB_TYPE_VENDOR|USB_RECIP_INTERFACE|USB_DIR_IN,
 			     0, 0, data, 1, 2000);
-	if (rc == 1)
+	if (rc >= 0)
 		*value = *data;
-	else if (rc >= 0)
-		rc = -EIO;
 
 	kfree(data);
 	return rc;

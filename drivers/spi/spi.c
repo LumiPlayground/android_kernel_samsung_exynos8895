@@ -1202,7 +1202,6 @@ static void __spi_pump_messages(struct spi_master *master, bool in_kthread)
 
 			master->cur_msg->status = ret;
 			spi_finalize_current_message(master);
-
 			mutex_unlock(&master->io_mutex);
 			return;
 		}

@@ -1316,7 +1316,7 @@ static void hidinput_led_worker(struct work_struct *work)
 	buf = hid_alloc_report_buf(report, GFP_KERNEL);
 	if (!buf)
 		return;
-	if (!lcd_is_on) {
+	if(!lcd_is_on){
 		dbg_hid("lcd is off, don't report LED event\n");
 		kfree(buf);
 		return;

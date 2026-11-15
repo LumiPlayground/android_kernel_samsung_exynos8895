@@ -39,6 +39,8 @@
 #endif
 #if defined(CONFIG_DUAL_ROLE_USB_INTF)
 #include <linux/usb/class-dual-role.h>
+#elif defined(CONFIG_TYPEC)
+#include <linux/usb/typec.h>
 #endif
 
 #define AVAILABLE_VOLTAGE 12000
@@ -51,6 +53,7 @@
 #define REG_RX_SRC_CAPA_MSG	0x0260
 
 #define CCIC_FW_VERSION_INVALID -1
+#define CCIC_I2C_VALUE_INVALID 274
 
 /******************************************************************************/
 /* definitions & structures                                                   */
@@ -195,7 +198,7 @@ typedef union
                     IS_DFP:1,
                     RP_CurrentLvl:2,
                     VBUS_CC_Short:1,
-                    RSP_BYTE3:1,
+			VBUS_SBU_Short:1,
                     RESET:1;
 	}BITS;
 } FUNC_STATE_Type;
@@ -213,8 +216,9 @@ typedef union
                     RUN_DRY:1,
                     removing_charge_by_sbu_low:1,
                     BOOTING_RUN_DRY:1,
-			Sleep_Cable_Detect:1,
-			RSP_BYTE:23;
+			Sleep_Cable_Detect:1, //b8
+			PDSTATE29_SBU_DONE:1, //b9
+			RSP_BYTE:22;		//b10 ~ b31
 	} BITS;
 } LP_STATE_Type;
 
@@ -773,7 +777,29 @@ typedef enum {
 
 typedef enum
 {
-	Rp_None = 0,
+	TYPE_C_DETACH = 0,
+	TYPE_C_ATTACH_DFP = 1, // Host
+	TYPE_C_ATTACH_UFP = 2, // Device
+	TYPE_C_ATTACH_DRP = 3, // Dual role
+} CCIC_OTP_MODE;
+
+#define DUAL_ROLE_SET_MODE_WAIT_MS 1500
+typedef enum
+{
+	CLIENT_OFF = 0,
+	CLIENT_ON = 1,
+} CCIC_DEVICE_REASON;
+
+typedef enum
+{
+	HOST_OFF = 0,
+	HOST_ON_BY_RD = 1, // Rd detection
+	HOST_ON_BY_RID000K = 2, // RID000K detection
+} CCIC_HOST_REASON;
+
+typedef enum
+{
+	Rp_Sbu_check = 0,
 	Rp_56K = 1,	/* 80uA */
 	Rp_22K = 2,	/* 180uA */
 	Rp_10K = 3,	/* 330uA */
@@ -782,6 +808,16 @@ typedef enum
 
 #define S2MM005_REG_MASK(reg, mask)	((reg & mask##_MASK) >> mask##_SHIFT)
 
+#if defined(CONFIG_CCIC_NOTIFIER)
+struct ccic_state_work {
+	struct work_struct ccic_work;
+	int dest;
+	int id;
+	int attach;
+	int event;
+	int sub;
+};
+#endif
 
 struct s2mm005_data {
 	struct device *dev;
@@ -795,6 +831,7 @@ struct s2mm005_data {
 	int s2mm005_om;
 	int s2mm005_sda;
 	int s2mm005_scl;
+	int s2mm005_i2c_err;
 	u32 hw_rev;
 	struct mutex i2c_mutex;
 	u8 attach;
@@ -805,6 +842,7 @@ struct s2mm005_data {
 	int p_prev_rid;
 	int prev_rid;
 	int cur_rid;
+	int water_detect_support;
 	int water_det;
 	int run_dry;
 	int booting_run_dry;
@@ -842,6 +880,10 @@ struct s2mm005_data {
 	int host_turn_on_event;
 	int host_turn_on_wait_time;
 	int is_samsung_accessory_enter_mode;
+	int is_in_first_sec_uvdm_req;
+	int is_in_sec_uvdm_out;
+	struct completion uvdm_out_wait;
+	struct completion uvdm_longpacket_in_wait;
 #endif
 	int manual_lpm_mode;
 #if defined(CONFIG_DUAL_ROLE_USB_INTF)
@@ -851,8 +893,17 @@ struct s2mm005_data {
 	int power_role;
 	int try_state_change;
 	struct delayed_work role_swap_work;
+#elif defined(CONFIG_TYPEC)
+	struct typec_port *port;
+	struct typec_partner *partner;
+	struct usb_pd_identity partner_identity;
+	struct typec_capability typec_cap;
+	struct completion role_reverse_completion;
+	int typec_power_role;
+	int typec_data_role;
+	int typec_try_state_change;
+	struct delayed_work typec_role_swap_work;
 #endif
-
 	int s2mm005_fw_product_id;
 	u8 fw_product_id;
 

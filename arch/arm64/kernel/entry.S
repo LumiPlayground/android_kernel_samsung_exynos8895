@@ -439,99 +439,7 @@ END(vectors)
 	b	bad_mode
 	.endm
 
-/*
- * wdt reset for i-cache preservation
- * local irq disable is assumed for wdt reset
- */
-	.macro	wdt_reset_for_icache, el
-1:	/* register save */
-	stp	x0, x1, [sp, #-0x20]!
-	stp	x2, x3, [sp,#0x10]
 
-	/* check sj locked */
-	ldr_l	x0, __debug_sj_lock
-	cmp	x0, #0
-	b.ne	3f
-
-	/* check if core is big */
-	mrs	x0, MIDR_EL1
-	lsr	x0, x0, #24
-	cmp	x0, #0x53
-	b.ne	3f
-
-	/* check if it is the case */
-	/* pc alignment            */
-	/* undef from init task    */
-	mrs	x2, esr_el1			// read the syndrome register
-	lsr	x1, x2, #ESR_ELx_EC_SHIFT	// exception class
-
-	/*
-	 * check if exception class is data/instruction abort with tlb conflict
-	 * at any exception level
-	 *
-	 * EC: IABT(10000x) && IFSC: 110000
-	 * EC: DABT(10010x) && DFSC: 110000
-	 */
-	mov	x0, #0x3a
-	and	x3, x1, x0			// bit mask 111010 
-	cmp	x3, #0x20			// check d/i abort 
-	b.ne	4f
-
-	mov	x0, #0x3f
-	and	x3, x2, x0			// bit mask 111111
-	cmp	x3, #0x30			// check IFSC/DFSC
-	b.eq	2f
-
-4:
-	/* check pc alignment exception */
-	cmp	x1, #ESR_ELx_EC_PC_ALIGN	// pc alignment exception
-	.if	\el == 0
-	b	3f
-	.else	/* el == 1 */
-	/* go to wdt reset right away */
-	b.eq	2f
-	.endif
-
-	/* check if exception class is undef & task is init*/
-	cmp	x1, #ESR_ELx_EC_UNKNOWN	// unknown exception in EL1
-	b.ne	3f
-
-2:	/* wdt reset */
-	/* wdt_reset, x0:reg_base, x1:con, x2:dat, x3:cnt(=5 tick)*/
-
-	/* save important information */
-	ldr	x1, =entry_dbg_saved_data
-	mov	x0, \el			// 
-	str	x0, [x1, #0x8]		// save el
-	mrs	x0, esr_el1		// read the syndrome register	
-	str	x0, [x1, #0x10]		// save esr
-	mrs	x0, elr_el1
-	str	x0, [x1, #0x18]		// save elr
-	mrs	x0, far_el1
-	str	x0, [x1, #0x20]		// save elr
-	ldr	x0, =0x57445200
-	str	x0, [x1]		// save magic
-
-	/* do wdt reset */
-	ldr	x1, =s3c_wdt
-	ldr	x1, [x1]
-	ldr	x0, [x1, #0x18]
-
-	ldr	w1, [x0]
-	mov	w2, #0
-	str	w2, [x0, #4]
-	mov	w3, #2 // 2 tick
-	str	w3, [x0,#0x8]
-	mov	w3, #0x21
-	orr	w1, w1,w3
-	str	w1, [x0]
-	b	.
-
-3:	/* register restore */
-	ldp x0, x1, [sp]
-	ldp x2, x3, [sp,#0x10]
-	add sp, sp, #0x20
-	.endm
 
 el0_sync_invalid:
 	inv_entry 0, BAD_SYNC
@@ -645,7 +553,7 @@ el1_sync:
 skip:
 	ldp	x0, x1, [sp]
 	add	sp, sp, #0x10
-	wdt_reset_for_icache 1
+
 	kernel_entry 1
 	mov	x9, #0
 	str_l	x9, __tlb_conflict_cnt, x8
@@ -762,7 +670,7 @@ el1_preempt:
  */
 	.align	6
 el0_sync:
-	wdt_reset_for_icache 0
+
 	kernel_entry 0
 	mrs	x25, esr_el1			// read the syndrome register
 	lsr	x24, x25, #ESR_ELx_EC_SHIFT	// exception class

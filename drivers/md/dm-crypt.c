@@ -23,9 +23,7 @@
 #include <linux/atomic.h>
 #include <linux/scatterlist.h>
 #include <linux/rbtree.h>
-#include <linux/platform_device.h>
-#include <linux/of.h>
-#include <linux/of_device.h>
+#include <linux/smc.h>
 #include <asm/page.h>
 #include <asm/unaligned.h>
 #include <crypto/hash.h>
@@ -36,16 +34,17 @@
 
 #include <linux/device-mapper.h>
 
-#include "dm-crypt-fmp.h"
-
 #define DM_MSG_PREFIX "crypt"
+#define FMP_KEY_STORAGE_OFFSET 0x0FC0
+#define EXYNOS8895_PA_SRAM_NS 0x0206F000
+#define FMP_SYSRAM_NS(soc) EXYNOS##soc##_PA_SRAM_NS
 
-uint8_t fmp_disk_key[FMP_MAX_KEY_SIZE * 2];
+volatile unsigned int disk_key_flag;
+DEFINE_SPINLOCK(disk_key_lock);
 
-struct exynos_fmp_data {
-	struct exynos_fmp_variant_ops *vops;
-	struct platform_device *pdev;
-};
+#if defined(CONFIG_FIPS_FMP)
+extern int fmp_clear_disk_key(void);
+#endif
 
 /*
  * context holding the current state of a multi-part conversion
@@ -74,7 +73,6 @@ struct dm_crypt_io {
 	atomic_t io_pending;
 	int error;
 	sector_t sector;
-	unsigned long id;	/* bio_trace id */
 
 	struct rb_node rb_node;
 } CRYPTO_MINALIGN_ATTR;
@@ -101,7 +99,7 @@ struct crypt_iv_operations {
 };
 
 struct iv_essiv_private {
-	struct crypto_ahash *hash_tfm;
+	struct crypto_shash *hash_tfm;
 	u8 *salt;
 };
 
@@ -129,14 +127,11 @@ struct iv_tcw_private {
 enum flags { DM_CRYPT_SUSPENDED, DM_CRYPT_KEY_VALID,
 	     DM_CRYPT_SAME_CPU, DM_CRYPT_NO_OFFLOAD };
 
-struct dm_crypt_bio_trace;
-
 /*
  * The fields in here must be read only after initialization.
  */
 struct crypt_config {
 	struct dm_dev *dev;
-	struct exynos_fmp_data fmp;
 	sector_t start;
 
 	/*
@@ -160,9 +155,6 @@ struct crypt_config {
 
 	/* hardware acceleration. 0 : no, 1 : yes */
 	unsigned int hw_fmp;
-	
-	/* to trace bios used by hw_fmp */
-	struct dm_crypt_bio_trace *bio_trace;
 
 	struct crypt_iv_operations *iv_gen_ops;
 	union {
@@ -202,118 +194,6 @@ struct crypt_config {
 	unsigned int key_extra_size; /* additional keys length */
 	u8 key[0];
 };
-
-/*
- * To trace submitted and ended bio
- */
-#define DM_CRYPT_BIO_TRACE_SLOT_SIZE	(64)
-struct dm_crypt_btrace_slot {
-	unsigned long id;
-	unsigned long time;
-	sector_t sec;
-	struct bio *bio;
-	struct dm_crypt_io *io;
-	union {
-		pid_t pid;
-		int err;
-	};
-};
-
-struct dm_crypt_bio_trace {
-	unsigned int start_idx;	/* protected by start_lock */
-	unsigned int end_idx;	/* protected by end_lock */
-	unsigned long next_id;	/* protected by start_lock */
-	struct crypt_config *cc;	/* just for fast debugging */
-
-	spinlock_t start_lock;
-	spinlock_t end_lock;
-	struct dm_crypt_btrace_slot start[DM_CRYPT_BIO_TRACE_SLOT_SIZE];
-	struct dm_crypt_btrace_slot end[DM_CRYPT_BIO_TRACE_SLOT_SIZE];
-};
-
-static inline bool dm_crypt_need_bio_trace(struct crypt_config *cc,
-		struct bio *bio, const char *fn_name)
-{
-#ifdef CONFIG_JOURNAL_DATA_TAG
-	if (!(bio->bi_flags & (1 << BIO_JOURNAL)))
-		return false;
-
-	if (!cc->bio_trace)
-		return false;
-
-	if (!cc->hw_fmp)
-		printk( KERN_WARNING
-			"%s: hw_fmp is not set, is possible?", fn_name);
-
-	return true;
-#else
-	return false;
-#endif
-}
-
-static void dm_crypt_bio_trace_start(struct crypt_config *cc, struct bio *bio)
-{
-	unsigned long flags;
-	unsigned long id;
-	unsigned int idx;
-	struct dm_crypt_bio_trace *btrace;
-	struct dm_crypt_io *io;
-
-	if (!dm_crypt_need_bio_trace(cc, bio, __func__))
-		return;
-
-	btrace = cc->bio_trace;
-	io = (struct dm_crypt_io *)bio->bi_private;
-
-	spin_lock_irqsave(&btrace->start_lock, flags);
-	id = btrace->next_id++;
-	idx = btrace->start_idx++;
-	BUG_ON(idx >= DM_CRYPT_BIO_TRACE_SLOT_SIZE);
-	if (idx == (DM_CRYPT_BIO_TRACE_SLOT_SIZE - 1))
-		btrace->start_idx = 0;
-
-	io->id = id;
-	btrace->start[idx].id = id;
-	btrace->start[idx].time = jiffies;
-	btrace->start[idx].sec = bio->bi_iter.bi_sector;
-	btrace->start[idx].bio = bio;
-	btrace->start[idx].io = io;
-	btrace->start[idx].pid = current->pid;
-	spin_unlock_irqrestore(&btrace->start_lock, flags);
-}
-
-static void dm_crypt_bio_trace_end(struct crypt_config *cc, struct bio *bio)
-{
-	unsigned long flags;
-	unsigned long id;
-	unsigned int idx;
-	struct dm_crypt_bio_trace *btrace;
-	struct dm_crypt_io *io;
-	
-	if (!dm_crypt_need_bio_trace(cc, bio, __func__))
-		return;
-
-	btrace = cc->bio_trace;
-	io = (struct dm_crypt_io *)bio->bi_private;
-
-	spin_lock_irqsave(&btrace->end_lock, flags);
-	id = io->id;
-	idx = btrace->end_idx++;
-	BUG_ON(idx >= DM_CRYPT_BIO_TRACE_SLOT_SIZE);
-
-	if (idx == (DM_CRYPT_BIO_TRACE_SLOT_SIZE - 1))
-		btrace->end_idx = 0;
-
-	btrace->end[idx].id = id;
-	btrace->end[idx].time = jiffies;
-	btrace->end[idx].sec = bio->bi_iter.bi_sector;
-	btrace->end[idx].bio = bio;
-	btrace->end[idx].io = io;
-	btrace->end[idx].err = bio->bi_error;
-	spin_unlock_irqrestore(&btrace->end_lock, flags);
-}
-
-static struct dm_crypt_bio_trace dm_crypt_btrace;
 
 #define MIN_IOS        64
 
@@ -398,36 +278,26 @@ static int crypt_iv_plain64_gen(struct crypt_config *cc, u8 *iv,
 static int crypt_iv_essiv_init(struct crypt_config *cc)
 {
 	struct iv_essiv_private *essiv = &cc->iv_gen_private.essiv;
-	AHASH_REQUEST_ON_STACK(req, essiv->hash_tfm);
-	struct scatterlist sg;
+	SHASH_DESC_ON_STACK(desc, essiv->hash_tfm);
 	struct crypto_cipher *essiv_tfm;
 	int err;
 
-	sg_init_one(&sg, cc->key, cc->key_size);
-	ahash_request_set_tfm(req, essiv->hash_tfm);
-	ahash_request_set_callback(req, CRYPTO_TFM_REQ_MAY_SLEEP, NULL, NULL);
-	ahash_request_set_crypt(req, &sg, essiv->salt, cc->key_size);
-
-	err = crypto_ahash_digest(req);
-	ahash_request_zero(req);
+	desc->tfm = essiv->hash_tfm;
+	desc->flags = CRYPTO_TFM_REQ_MAY_SLEEP;
+	err = crypto_shash_digest(desc, cc->key, cc->key_size, essiv->salt);
+	memzero_explicit(desc, sizeof(*desc) + crypto_shash_descsize(essiv->hash_tfm));
 	if (err)
 		return err;
-
 	essiv_tfm = cc->iv_private;
-
-	err = crypto_cipher_setkey(essiv_tfm, essiv->salt,
-			    crypto_ahash_digestsize(essiv->hash_tfm));
-	if (err)
-		return err;
-
-	return 0;
+	return crypto_cipher_setkey(essiv_tfm, essiv->salt,
+				    crypto_shash_digestsize(essiv->hash_tfm));
 }
 
 /* Wipe salt and reset key derived from volume key */
 static int crypt_iv_essiv_wipe(struct crypt_config *cc)
 {
 	struct iv_essiv_private *essiv = &cc->iv_gen_private.essiv;
-	unsigned salt_size = crypto_ahash_digestsize(essiv->hash_tfm);
+	unsigned salt_size = crypto_shash_digestsize(essiv->hash_tfm);
 	struct crypto_cipher *essiv_tfm;
 	int r, err = 0;
 
@@ -479,7 +349,7 @@ static void crypt_iv_essiv_dtr(struct crypt_config *cc)
 	struct crypto_cipher *essiv_tfm;
 	struct iv_essiv_private *essiv = &cc->iv_gen_private.essiv;
 
-	crypto_free_ahash(essiv->hash_tfm);
+	crypto_free_shash(essiv->hash_tfm);
 	essiv->hash_tfm = NULL;
 
 	kzfree(essiv->salt);
@@ -497,7 +367,7 @@ static int crypt_iv_essiv_ctr(struct crypt_config *cc, struct dm_target *ti,
 			      const char *opts)
 {
 	struct crypto_cipher *essiv_tfm = NULL;
-	struct crypto_ahash *hash_tfm = NULL;
+	struct crypto_shash *hash_tfm = NULL;
 	u8 *salt = NULL;
 	int err;
 
@@ -507,14 +377,14 @@ static int crypt_iv_essiv_ctr(struct crypt_config *cc, struct dm_target *ti,
 	}
 
 	/* Allocate hash algorithm */
-	hash_tfm = crypto_alloc_ahash(opts, 0, CRYPTO_ALG_ASYNC);
+	hash_tfm = crypto_alloc_shash(opts, 0, 0);
 	if (IS_ERR(hash_tfm)) {
 		ti->error = "Error initializing ESSIV hash";
 		err = PTR_ERR(hash_tfm);
 		goto bad;
 	}
 
-	salt = kzalloc(crypto_ahash_digestsize(hash_tfm), GFP_KERNEL);
+	salt = kzalloc(crypto_shash_digestsize(hash_tfm), GFP_KERNEL);
 	if (!salt) {
 		ti->error = "Error kmallocing salt storage in ESSIV";
 		err = -ENOMEM;
@@ -525,7 +395,7 @@ static int crypt_iv_essiv_ctr(struct crypt_config *cc, struct dm_target *ti,
 	cc->iv_gen_private.essiv.hash_tfm = hash_tfm;
 
 	essiv_tfm = setup_essiv_cpu(cc, ti, salt,
-				crypto_ahash_digestsize(hash_tfm));
+				crypto_shash_digestsize(hash_tfm));
 	if (IS_ERR(essiv_tfm)) {
 		crypt_iv_essiv_dtr(cc);
 		return PTR_ERR(essiv_tfm);
@@ -536,7 +406,7 @@ static int crypt_iv_essiv_ctr(struct crypt_config *cc, struct dm_target *ti,
 
 bad:
 	if (hash_tfm && !IS_ERR(hash_tfm))
-		crypto_free_ahash(hash_tfm);
+		crypto_free_shash(hash_tfm);
 	kfree(salt);
 	return err;
 }
@@ -817,7 +687,7 @@ static int crypt_iv_tcw_whitening(struct crypt_config *cc,
 				  u8 *data)
 {
 	struct iv_tcw_private *tcw = &cc->iv_gen_private.tcw;
-	__le64 sector = cpu_to_le64(dmreq->iv_sector);
+	u64 sector = cpu_to_le64((u64)dmreq->iv_sector);
 	u8 buf[TCW_WHITENING_SIZE];
 	SHASH_DESC_ON_STACK(desc, tcw->crc32_tfm);
 	int i, r;
@@ -856,7 +726,7 @@ static int crypt_iv_tcw_gen(struct crypt_config *cc, u8 *iv,
 			    struct dm_crypt_request *dmreq)
 {
 	struct iv_tcw_private *tcw = &cc->iv_gen_private.tcw;
-	__le64 sector = cpu_to_le64(dmreq->iv_sector);
+	u64 sector = cpu_to_le64((u64)dmreq->iv_sector);
 	u8 *src;
 	int r = 0;
 
@@ -1243,7 +1113,6 @@ static void crypt_endio(struct bio *clone)
 	unsigned rw = bio_data_dir(clone);
 	int error;
 
-	dm_crypt_bio_trace_end(cc, clone);
 	if (cc->hw_fmp) {
 		error = clone->bi_error;
 		bio_put(clone);
@@ -1277,9 +1146,6 @@ static void clone_init(struct dm_crypt_io *io, struct bio *clone)
 	clone->bi_end_io  = crypt_endio;
 	clone->bi_bdev    = cc->dev->bdev;
 	bio_set_op_attrs(clone, bio_op(io->base_bio), bio_flags(io->base_bio));
-#ifdef CONFIG_JOURNAL_DATA_TAG
-	clone->bi_flags   |= io->base_bio->bi_flags & (1 << BIO_JOURNAL);
-#endif
 }
 
 static int kcryptd_io_rw(struct dm_crypt_io *io, gfp_t gfp)
@@ -1299,13 +1165,12 @@ static int kcryptd_io_rw(struct dm_crypt_io *io, gfp_t gfp)
 	crypt_inc_pending(io);
 
 	clone_init(io, clone);
-	clone->fmp_ci.private_enc_mode = EXYNOS_FMP_DISK_ENC;
-	clone->fmp_ci.private_algo_mode = EXYNOS_FMP_ALGO_MODE_AES_XTS;
-	clone->fmp_ci.key = cc->key;
-	clone->fmp_ci.key_length = cc->key_size;
+	clone->private_enc_mode = FMP_DISK_ENC_MODE;
+	clone->private_algo_mode = FMP_XTS_ALGO_MODE;
+	clone->key = cc->key;
+	clone->key_length = cc->key_size;
 	clone->bi_iter.bi_sector = cc->start + io->sector;
 
-	dm_crypt_bio_trace_start(cc, clone);
 	generic_make_request(clone);
 
 	return 0;
@@ -1668,36 +1533,37 @@ static int crypt_setkey_allcpus(struct crypt_config *cc)
 	subkey_size = (cc->key_size - cc->key_extra_size) >> ilog2(cc->tfms_count);
 
 	if (cc->hw_fmp) {
-		struct fmp_data_setting fmp_data;
+		uint32_t base;
+		volatile u8 __iomem *key_storage;
 
-		if (!cc->fmp.vops || !cc->fmp.pdev) {
-			err = -ENODEV;
-			return err;
+		base = FMP_SYSRAM_NS(8895);
+		key_storage = ioremap(base + FMP_KEY_STORAGE_OFFSET, SZ_4K);
+		if (!key_storage) {
+			pr_err("dm-crypt: Failure of ioremap for FMP key\n");
+			return -ENOMEM;
 		}
 
-		if (cc->key_size > FMP_MAX_KEY_SIZE) {
-			pr_err("dm-crypt: Invalid key size(%d)\n", cc->key_size);
-			err = -ENODEV;
-			return err;
-		}
+		for (i = 0; i < cc->key_size; i++)
+			key_storage[i] = cc->key[i];
 
-		memcpy(fmp_disk_key, cc->key, cc->key_size);
-		memset(fmp_data.disk.key, 0, FMP_MAX_KEY_SIZE);
-		memcpy(fmp_data.disk.key, fmp_disk_key, cc->key_size);
-		fmp_data.disk.key_size = cc->key_size;
-
-		r = cc->fmp.vops->set_disk_key(cc->fmp.pdev, &fmp_data);
+		r = exynos_smc(SMC_CMD_FMP_DISKENC, FMP_DISKKEY_STORE,
+				ID_FMP_UFS_MMC, cc->key_size);
 		if (r) {
-			pr_err("dm-crypt: Fail to set fmp disk key. r(%d)\n", r);
-			err = r;
-			return err;
+			pr_err("dm-crypt: Fail to store FMP disk key. r = 0x%x\n", r);
+			iounmap((void *)key_storage);
+			return -ENOSYS;
 		}
-		pr_info("%s: fmp disk key is set\n", __func__);
+
+		spin_lock(&disk_key_lock);
+		disk_key_flag = 1;
+		spin_unlock(&disk_key_lock);
+
+		iounmap((void *)key_storage);
 	} else {
 		for (i = 0; i < cc->tfms_count; i++) {
-			r = crypto_skcipher_setkey(cc->tfms[i],
-						   cc->key + (i * subkey_size),
-						   subkey_size);
+		r = crypto_skcipher_setkey(cc->tfms[i],
+					   cc->key + (i * subkey_size),
+					   subkey_size);
 			if (r)
 				err = r;
 		}
@@ -1744,29 +1610,11 @@ static int crypt_wipe_key(struct crypt_config *cc)
 	return crypt_setkey_allcpus(cc);
 }
 
-static int crypt_clear_key(struct crypt_config *cc)
-{
-	int ret = 0;
-	char *disk_key = (char *)fmp_disk_key;
-
-	if (!cc->fmp.vops || !cc->fmp.pdev) {
-		ret = -ENODEV;
-		goto out;
-	}
-
-	memset(disk_key, 0, cc->key_size);
-	ret = cc->fmp.vops->clear_disk_key(cc->fmp.pdev);
-	if (ret)
-		pr_err("dm-crypt: Fail to clear disk key. ret(%d)\n", ret);
-
-	pr_info("%s: fmp disk key is clear\n", __func__);
-out:
-	return ret;
-}
-
 static void crypt_dtr(struct dm_target *ti)
 {
+#if defined(CONFIG_FIPS_FMP)
 	int r;
+#endif
 	struct crypt_config *cc = ti->private;
 
 	ti->private = NULL;
@@ -1774,17 +1622,14 @@ static void crypt_dtr(struct dm_target *ti)
 	if (!cc)
 		return;
 
-	if (!cc->hw_fmp) {
-		if (cc->write_thread)
-			kthread_stop(cc->write_thread);
-	}
+	if (!cc->hw_fmp && cc->write_thread)
+		kthread_stop(cc->write_thread);
 
 	if (cc->io_queue)
 		destroy_workqueue(cc->io_queue);
-	if (!cc->hw_fmp) {
-		if (cc->crypt_queue)
-			destroy_workqueue(cc->crypt_queue);
-	}
+
+	if (!cc->hw_fmp && cc->crypt_queue)
+		destroy_workqueue(cc->crypt_queue);
 
 	crypt_free_tfms(cc);
 
@@ -1798,93 +1643,21 @@ static void crypt_dtr(struct dm_target *ti)
 		if (cc->iv_gen_ops && cc->iv_gen_ops->dtr)
 			cc->iv_gen_ops->dtr(cc);
 	}
-
+#if defined(CONFIG_FIPS_FMP)
+	if (cc->hw_fmp) {
+		r = fmp_clear_disk_key();
+		if (r)
+			pr_err("dm-crypt: Fail to clear FMP disk key. r = 0x%x\n", r);
+	}
+#endif
 	if (cc->dev)
 		dm_put_device(ti, cc->dev);
 
 	kzfree(cc->cipher);
 	kzfree(cc->cipher_string);
 
-	if (cc->hw_fmp) {
-		r = crypt_clear_key(cc);
-		if (r)
-			pr_err("dm-crypt: Fail to clear fmp key.(%d)\n", r);
-	}
-
 	/* Must zero key material before freeing */
 	kzfree(cc);
-}
-
-static struct exynos_fmp_variant_ops *dm_exynos_fmp_get_vops(void)
-{
-	struct exynos_fmp_variant_ops *fmp_vops = NULL;
-	struct device_node *node;
-
-	node = of_find_compatible_node(NULL, NULL, "samsung,exynos-fmp");
-	if (!node) {
-		pr_err("%s: Fail to find exynos fmp device node\n", __func__);
-		goto out;
-	}
-
-	fmp_vops = exynos_fmp_get_variant_ops(node);
-	if (!fmp_vops)
-		pr_err("%s: Fail to get fmp_vops\n", __func__);
-
-	of_node_put(node);
-out:
-	return fmp_vops;
-}
-
-static struct platform_device *dm_exynos_fmp_get_pdevice(void)
-{
-	struct device_node *node;
-	struct platform_device *fmp_pdev = NULL;
-
-	node = of_find_compatible_node(NULL, NULL, "samsung,exynos-fmp");
-	if (!node) {
-		pr_err("%s: Fail to find exynos fmp device node\n", __func__);
-		goto out;
-	}
-
-	fmp_pdev = exynos_fmp_get_pdevice(node);
-	if (!fmp_pdev)
-		pr_err("%s: Fail to get fmp platform device\n", __func__);
-out:
-	return fmp_pdev;
-}
-
-static int req_crypt_fmp_get_dev(struct crypt_config *cc)
-{
-	int ret = 0;
-
-	if (!cc) {
-		pr_err("%s: Invalid crypt config.\n", __func__);
-		ret = -EINVAL;
-		return ret;
-	}
-
-	cc->fmp.vops = dm_exynos_fmp_get_vops();
-	cc->fmp.pdev = dm_exynos_fmp_get_pdevice();
-
-	if (cc->fmp.pdev == ERR_PTR(-EPROBE_DEFER)) {
-		pr_err("%s: FMP device not probed yet\n", __func__);
-		ret = -EPROBE_DEFER;
-		goto err;
-	}
-
-	if (!cc->fmp.pdev || !cc->fmp.vops) {
-		pr_err("%s: Invalid platform device %p or vops %p\n",
-				__func__, cc->fmp.pdev, cc->fmp.vops);
-		ret = -ENODEV;
-		goto err;
-	}
-
-	return 0;
-err:
-	cc->fmp.pdev = NULL;
-	cc->fmp.vops = NULL;
-
-	return ret;
 }
 
 static int crypt_ctr_cipher(struct dm_target *ti,
@@ -1966,24 +1739,16 @@ static int crypt_ctr_cipher(struct dm_target *ti,
 		goto bad;
 	}
 
-	if ((strcmp(chainmode, "xts") == 0) && ivmode &&
+	if ((strcmp(chainmode, "xts") == 0) &&
 			(strcmp(cipher, "aes") == 0) &&
-			(!strcmp(ivmode, "fmp") || !strcmp(ivmode, "disk"))) {
-		ret = req_crypt_fmp_get_dev(cc);
-		if (ret) {
-			ti->error = "Cannot get FMP device";
-			goto bad;
-		}
-
+			((strcmp(ivmode, "fmp") == 0) || (strcmp(ivmode, "disk") == 0))) {
 		pr_info("%s: H/W FMP disk encryption\n", __func__);
+#if !defined(CONFIG_FMP_DM_CRYPT)
+		ti->error = "Error decoding xts-aes-fmp";
+		ret = -EINVAL;
+		goto bad;
+#endif
 		cc->hw_fmp = 1;
-
-		/* link to global bio_trace info */
-		memset(&dm_crypt_btrace, 0, sizeof(struct dm_crypt_bio_trace));
-		spin_lock_init(&dm_crypt_btrace.start_lock);
-		spin_lock_init(&dm_crypt_btrace.end_lock);
-		dm_crypt_btrace.cc = cc;
-		cc->bio_trace = &dm_crypt_btrace;
 
 		/* Initialize max_io_len */
 		ret = dm_set_target_max_io_len(ti, 1024);
@@ -1998,9 +1763,6 @@ static int crypt_ctr_cipher(struct dm_target *ti,
 		}
 	} else {
 		pr_info("%s: S/W disk encryption\n", __func__);
-		
-		/* do not link to global bio_trace info */
-		cc->bio_trace = NULL;
 
 		/* Allocate cipher */
 		ret = crypt_alloc_tfms(cc, cipher_api);
@@ -2239,14 +2001,14 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	ret = -ENOMEM;
 	if (cc->hw_fmp) {
 		cc->io_queue = alloc_workqueue("kcryptd_fmp_io",
-					       WQ_HIGHPRI |
-					       WQ_MEM_RECLAIM,
-					       1);
+						WQ_HIGHPRI |
+						WQ_MEM_RECLAIM,
+						1);
 	} else {
 		cc->io_queue = alloc_workqueue("kcryptd_io",
-					       WQ_HIGHPRI |
-					       WQ_MEM_RECLAIM,
-					       1);
+						WQ_HIGHPRI |
+						WQ_MEM_RECLAIM,
+						1);
 	}
 
 	if (!cc->io_queue) {
@@ -2285,7 +2047,6 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 
 	ti->num_flush_bios = 1;
 	ti->discard_zeroes_data_unsupported = true;
-	ti->num_discard_bios = 1;
 
 	return 0;
 
@@ -2305,7 +2066,7 @@ static int crypt_map(struct dm_target *ti, struct bio *bio)
 	 * - for REQ_OP_DISCARD caller must use flush if IO ordering matters
 	 */
 	if (unlikely(bio->bi_opf & REQ_PREFLUSH ||
-	    bio_op(bio) == REQ_OP_DISCARD || bio->bi_sec_flags & SEC_BYPASS)) {
+	    bio_op(bio) == REQ_OP_DISCARD)) {
 		bio->bi_bdev = cc->dev->bdev;
 		if (bio_sectors(bio))
 			bio->bi_iter.bi_sector = cc->start +
@@ -2455,8 +2216,6 @@ static int crypt_iterate_devices(struct dm_target *ti,
 
 static void crypt_io_hints(struct dm_target *ti, struct queue_limits *limits)
 {
-	struct crypt_config *cc = ti->private;
-
 	/*
 	 * Unfortunate constraint that is required to avoid the potential
 	 * for exceeding underlying device's max_segments limits -- due to
@@ -2464,8 +2223,6 @@ static void crypt_io_hints(struct dm_target *ti, struct queue_limits *limits)
 	 * bio that are not as physically contiguous as the original bio.
 	 */
 	limits->max_segment_size = PAGE_SIZE;
-	if (cc->hw_fmp)
-		limits->logical_block_size = PAGE_SIZE;
 }
 
 static struct target_type crypt_target = {

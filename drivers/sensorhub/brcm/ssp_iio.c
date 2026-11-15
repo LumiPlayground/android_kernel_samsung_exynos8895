@@ -14,18 +14,12 @@
  */
 #include "ssp.h"
 #include "ssp_iio.h"
-#include "ssp_sensorhub.h"
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
 #include <linux/iio/events.h>
 #include <linux/iio/buffer.h>
 #include <linux/iio/types.h>
 #include <linux/iio/kfifo_buf.h>
-#if defined(CONFIG_BATTERY_SAMSUNG_V2)
-#include "../../battery_v2/include/sec_charging_common.h"
-#else
-#include <linux/battery/sec_charging_common.h>
-#endif
 
 static struct sensor_info info_table[] = {
 	SENSOR_INFO_ACCELEROMETER,
@@ -51,11 +45,9 @@ static struct sensor_info info_table[] = {
 	SENSOR_INFO_PICK_UP_GESTURE,
 	SENSOR_INFO_SCONTEXT,
 	SENSOR_INFO_LIGHT_CCT,
-	SENSOR_INFO_THERMISTOR,
-	SENSOR_INFO_PROXIMITY_POCKET,
 	SENSOR_INFO_ACCEL_UNCALIBRATED,
 	SENSOR_INFO_META,
-	SENSOR_INFO_WAKE_UP_MOTION, 
+	SENSOR_INFO_WAKE_UP_MOTION,
 };
 
 #define IIO_ST(si, rb, sb, sh)	\
@@ -99,23 +91,12 @@ err_config_ring_buffer:
 static int ssp_push_iio_buffer(struct iio_dev *indio_dev, u64 timestamp, u8 *data, int data_len)
 {
 	u8 buf[data_len + sizeof(timestamp)];
-	int iRet = 0, retry = 3;
 
 	memcpy(buf, data, data_len);
 	memcpy(&buf[data_len], &timestamp, sizeof(timestamp));
 
 	mutex_lock(&indio_dev->mlock);
-
-	do {
-		if(retry != 3)
-			usleep_range(150, 151);
-
-		iRet = iio_push_to_buffers(indio_dev, buf);
-	} while(iRet < 0 && retry-- > 0);
-
-	if(retry == 0 && iRet < 0)
-		pr_err("[SSP] %s - %s push fail erro %d", __func__, indio_dev->name, iRet);
-
+	iio_push_to_buffers(indio_dev, buf);
 	mutex_unlock(&indio_dev->mlock);
 
 	return 0;
@@ -142,12 +123,12 @@ void report_meta_data(struct ssp_data *data, struct sensor_value *s)
 		memset(uncal_gyro_buf, 0, sizeof(uncal_gyro_buf));
 		ssp_push_iio_buffer(data->indio_dev[GYRO_UNCALIB_SENSOR], 0, (u8 *)uncal_gyro_buf, sizeof(uncal_gyro_buf));
 	} else if (s->meta_data.sensor == GEOMAGNETIC_SENSOR) {
-		u8 mag_buf[8];
+		u8 mag_buf[MAGNETIC_SIZE];
 
 		memset(mag_buf, 0, sizeof(mag_buf));
 		ssp_push_iio_buffer(data->indio_dev[GEOMAGNETIC_SENSOR], 0, (u8 *)mag_buf, sizeof(mag_buf));
 	} else if (s->meta_data.sensor == GEOMAGNETIC_UNCALIB_SENSOR) {
-		u8 uncal_mag_buf[13];
+		u8 uncal_mag_buf[UNCAL_MAGNETIC_SIZE];
 
 		memset(uncal_mag_buf, 0, sizeof(uncal_mag_buf));
 		ssp_push_iio_buffer(data->indio_dev[GEOMAGNETIC_UNCALIB_SENSOR], 0, (u8 *)uncal_mag_buf, sizeof(uncal_mag_buf));
@@ -295,12 +276,12 @@ void report_light_cct_data(struct ssp_data *data, struct sensor_value *lightdata
 
 	if (data->light_log_cnt < 3) {
 #ifdef CONFIG_SENSORS_SSP_LIGHT_REPORT_LUX
-		ssp_dbg("[SSP] #>CCT lux=%u cct=%d r=%d g=%d b=%d c=%d atime=%d again=%d",
+		ssp_dbg("[SSP] #>L lux=%u cct=%d r=%d g=%d b=%d c=%d atime=%d again=%d",
 			data->buf[LIGHT_CCT_SENSOR].lux, data->buf[LIGHT_CCT_SENSOR].cct,
 			data->buf[LIGHT_CCT_SENSOR].r, data->buf[LIGHT_CCT_SENSOR].g, data->buf[LIGHT_CCT_SENSOR].b,
 			data->buf[LIGHT_CCT_SENSOR].w, data->buf[LIGHT_CCT_SENSOR].a_time, data->buf[LIGHT_CCT_SENSOR].a_gain);
 #else
-		ssp_dbg("[SSP] #>CCT r=%d g=%d b=%d c=%d atime=%d again=%d",
+		ssp_dbg("[SSP] #>L r=%d g=%d b=%d c=%d atime=%d again=%d",
 			data->buf[LIGHT_CCT_SENSOR].r, data->buf[LIGHT_CCT_SENSOR].g, data->buf[LIGHT_CCT_SENSOR].b,
 			data->buf[LIGHT_CCT_SENSOR].w, data->buf[LIGHT_CCT_SENSOR].a_time, data->buf[LIGHT_CCT_SENSOR].a_gain);
 #endif
@@ -357,14 +338,6 @@ void report_prox_raw_data(struct ssp_data *data,
 	data->buf[PROXIMITY_RAW].prox_raw[0] = proxrawdata->prox_raw[0];
 }
 
-void report_proximity_pocket_data(struct ssp_data *data, struct sensor_value *proximity_pocket)
-{
-	usleep_range(500, 1000);
-
-	report_iio_data(data, PROXIMITY_POCKET, proximity_pocket);
-	wake_lock_timeout(&data->ssp_wake_lock, 0.3*HZ);
-}
-
 void report_prox_alert_data(struct ssp_data *data, struct sensor_value *prox_alert_data)
 {
 	report_iio_data(data, PROXIMITY_ALERT_SENSOR, prox_alert_data);
@@ -409,11 +382,12 @@ void report_pickup_data(struct ssp_data *data,
 void report_wakeup_motion_data(struct ssp_data *data,
 		struct sensor_value *wakeup_motion_data)
 {
-	report_iio_data(data, WAKE_UP_MOTION, wakeup_motion_data);
+	memcpy(&data->buf[WAKE_UP_MOTION], &wakeup_motion_data->wakeup_event, sensors_info[WAKE_UP_MOTION].get_data_len);
+	ssp_push_iio_buffer(data->indio_dev[WAKE_UP_MOTION], wakeup_motion_data->timestamp, 
+		(u8 *)(&data->buf[WAKE_UP_MOTION]), sensors_info[WAKE_UP_MOTION].report_data_len);
 	wake_lock_timeout(&data->ssp_wake_lock, 0.3*HZ);
-	pr_err("[SSP]: %s: %d", __func__,  wakeup_motion_data->wakeup_motion);
+	pr_err("[SSP]: %s: %d", __func__,  wakeup_motion_data->wakeup_event);
 }
-
 void report_scontext_data(struct ssp_data *data,
 		struct sensor_value *scontextbuf)
 {
@@ -435,68 +409,6 @@ void report_uncalib_accel_data(struct ssp_data *data, struct sensor_value *accel
 	report_iio_data(data, ACCEL_UNCALIB_SENSOR, acceldata);
 }
 
-#define THM_UP		0
-#define THM_SUB		1
-short thermistor_rawToTemperature(struct ssp_data *data, int type, s16 raw)
-{
-	int startTemp = -20, i = 0, diff;
-	int temperature = 0, temperature_norm = 0;
-
-	for (i = 0; i < ARRAY_SIZE(data->tempTable_up) - 1; i++) {
-		if (type == THM_UP) {
-			if (raw > data->tempTable_up[0]) {
-				temperature = -20; // MIN value
-				break;
-			} else if (raw <= data->tempTable_up[22]) {
-				temperature = 90; // MAX value
-				break;
-			} else if (data->tempTable_up[i] >= raw && raw > data->tempTable_up[i + 1]) {
-				diff = data->tempTable_up[i] - data->tempTable_up[i + 1];
-				//value : diff = temperature : 5
-				temperature = startTemp + (5 * i) + ((data->tempTable_up[i] - raw) * 5 / diff);
-				temperature_norm = ((data->tempTable_up[i] - raw) * 5 % diff);
-				temperature_norm = (temperature_norm * 10) / diff;
-				break;
-			}
-		} else {
-			if (raw > data->tempTable_sub[0]) {
-				temperature = -20; // MIN value
-				break;
-			} else if (raw <= data->tempTable_sub[22]) {
-				temperature = 90; // MAX value
-				break;
-			} else if (data->tempTable_sub[i] >= raw && raw > data->tempTable_sub[i + 1]) {
-				diff = data->tempTable_sub[i] - data->tempTable_sub[i + 1];
-				temperature = startTemp + (5 * i) + ((data->tempTable_sub[i] - raw) * 5 / diff);
-				temperature_norm = ((data->tempTable_sub[i] - raw) * 5 % diff);
-				temperature_norm = (temperature_norm * 10) / diff;
-				break;
-			}
-		}
-	}
-
-	temperature = temperature * 10 + temperature_norm;
-	pr_info("[SSP] %s type: %d raw: %d temper: %d", __func__, type, raw, temperature);
-	return temperature;
-}
-
-void report_thermistor_data(struct ssp_data *data,
-		struct sensor_value *thermistor_data)
-{
-	u8 reportData[3];
-	s16 temperature = thermistor_rawToTemperature(data, thermistor_data->thermistor_type, thermistor_data->thermistor_raw);
-	union power_supply_propval val = {0,};
-
-	reportData[0] = thermistor_data->thermistor_type;
-	memcpy(&reportData[1], &temperature, sizeof(temperature));
-	ssp_push_iio_buffer(data->indio_dev[THERMISTOR_SENSOR], thermistor_data->timestamp, (u8 *)reportData, sizeof(reportData));
-	wake_lock_timeout(&data->ssp_wake_lock, 0.3*HZ);
-
-	data->buf[THERMISTOR_SENSOR].thermistor_type = thermistor_data->thermistor_type;
-	data->buf[THERMISTOR_SENSOR].thermistor_raw = thermistor_data->thermistor_raw;
-
-	psy_do_property("battery", set, POWER_SUPPLY_EXT_PROP_OVERHEAT_NOTIFY, val);
-}
 void report_temp_humidity_data(struct ssp_data *data,
 	struct sensor_value *temp_humi_data)
 {

@@ -115,7 +115,7 @@ static int sensor_4e6_init(struct v4l2_subdev *subdev, u32 val)
 	struct fimc_is_module_4e6 *module_4e6;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	module_4e6 = module->private_data;
@@ -284,7 +284,7 @@ static int sensor_4e6_c2_power_setpin(struct platform_device *pdev,
 	int gpio_none = 0, gpio_reset = 0, gpio_standby = 0, gpio_prep_reset = 0;
 	int gpio_mclk = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -532,7 +532,7 @@ static int sensor_4e6_c2_power_setpin(struct platform_device *pdev,
 	int gpio_none = 0, gpio_reset = 0, gpio_standby = 0, gpio_prep_reset = 0;
 	int gpio_mclk = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -787,8 +787,8 @@ int sensor_4e6_c2_probe(struct platform_device *pdev)
 	}
 
 	/* S5K4E6 */
-	module = &device->module_enum[atomic_read(&device->module_count)];
-	atomic_inc(&device->module_count);
+	module = &device->module_enum[atomic_read(&core->resourcemgr.rsccount_module)];
+	atomic_inc(&core->resourcemgr.rsccount_module);
 	clear_bit(FIMC_IS_MODULE_GPIO_ON, &module->state);
 	module->pdata = pdata;
 	module->dev = dev;

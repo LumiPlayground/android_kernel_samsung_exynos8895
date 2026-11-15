@@ -9,7 +9,6 @@
  * published by the Free Software Foundation.
  */
 
-#include <linux/acpi.h>
 #include <linux/fs.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -40,15 +39,6 @@
 #define RT5677_PR_SPACING 0x100
 
 #define RT5677_PR_BASE (RT5677_PR_RANGE_BASE + (0 * RT5677_PR_SPACING))
-
-/* GPIO indexes defined by ACPI */
-enum {
-	RT5677_GPIO_PLUG_DET		= 0,
-	RT5677_GPIO_MIC_PRESENT_L	= 1,
-	RT5677_GPIO_HOTWORD_DET_L	= 2,
-	RT5677_GPIO_DSP_INT		= 3,
-	RT5677_GPIO_HP_AMP_SHDN_L	= 4,
-};
 
 static const struct regmap_range_cfg rt5677_ranges[] = {
 	{
@@ -4667,7 +4657,7 @@ static int rt5677_to_irq(struct gpio_chip *chip, unsigned offset)
 	return regmap_irq_get_virq(data, irq);
 }
 
-static const struct gpio_chip rt5677_template_chip = {
+static struct gpio_chip rt5677_template_chip = {
 	.label			= "rt5677",
 	.owner			= THIS_MODULE,
 	.direction_output	= rt5677_gpio_direction_out,
@@ -4984,14 +4974,12 @@ static struct snd_soc_codec_driver soc_codec_dev_rt5677 = {
 	.resume = rt5677_resume,
 	.set_bias_level = rt5677_set_bias_level,
 	.idle_bias_off = true,
-	.component_driver = {
-		.controls		= rt5677_snd_controls,
-		.num_controls		= ARRAY_SIZE(rt5677_snd_controls),
-		.dapm_widgets		= rt5677_dapm_widgets,
-		.num_dapm_widgets	= ARRAY_SIZE(rt5677_dapm_widgets),
-		.dapm_routes		= rt5677_dapm_routes,
-		.num_dapm_routes	= ARRAY_SIZE(rt5677_dapm_routes),
-	},
+	.controls = rt5677_snd_controls,
+	.num_controls = ARRAY_SIZE(rt5677_snd_controls),
+	.dapm_widgets = rt5677_dapm_widgets,
+	.num_dapm_widgets = ARRAY_SIZE(rt5677_dapm_widgets),
+	.dapm_routes = rt5677_dapm_routes,
+	.num_dapm_routes = ARRAY_SIZE(rt5677_dapm_routes),
 };
 
 static const struct regmap_config rt5677_regmap_physical = {
@@ -5030,7 +5018,6 @@ static const struct regmap_config rt5677_regmap = {
 static const struct i2c_device_id rt5677_i2c_id[] = {
 	{ "rt5677", RT5677 },
 	{ "rt5676", RT5676 },
-	{ "RT5677CE:00", RT5677 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, rt5677_i2c_id);
@@ -5182,12 +5169,8 @@ static int rt5677_i2c_probe(struct i2c_client *i2c,
 
 	if (pdata)
 		rt5677->pdata = *pdata;
-	else if (i2c->dev.of_node)
-		rt5677_read_device_properties(rt5677, &i2c->dev);
-	else if (ACPI_HANDLE(&i2c->dev))
-		rt5677_read_acpi_properties(rt5677, &i2c->dev);
 	else
-		return -EINVAL;
+		rt5677_read_device_properties(rt5677, &i2c->dev);
 
 	/* pow-ldo2 and reset are optional. The codec pins may be statically
 	 * connected on the board without gpios. If the gpio device property

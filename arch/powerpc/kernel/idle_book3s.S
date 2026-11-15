@@ -41,9 +41,17 @@
 #define _WORC	GPR11
 #define _PTCR	GPR12
 
-#define PSSCR_HV_TEMPLATE	PSSCR_ESL | PSSCR_EC | \
-				PSSCR_PSLL_MASK | PSSCR_TR_MASK | \
-				PSSCR_MTL_MASK
+/* Idle state entry routines */
+
+#define	IDLE_STATE_ENTER_SEQ(IDLE_INST)				\
+	/* Magic NAP/SLEEP/WINKLE mode enter sequence */	\
+	std	r0,0(r1);					\
+	ptesync;						\
+	ld	r0,0(r1);					\
+1:	cmpd	cr0,r0,r0;					\
+	bne	1b;						\
+	IDLE_INST;						\
+	b	.
 
 	.text
 

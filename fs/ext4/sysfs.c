@@ -17,7 +17,6 @@
 
 typedef enum {
 	attr_noop,
-	attr_sec_defrag_stat,
 	attr_sec_fs_stat,
 	attr_sec_fs_freefrag,
 	attr_delayed_allocation_blocks,
@@ -50,34 +49,6 @@ struct ext4_attr {
 	} u;
 };
 
-static ssize_t sec_defrag_stat_show(struct ext4_attr *a,
-				struct ext4_sb_info *sbi, char *buf)
-{
-	return snprintf(buf, PAGE_SIZE,
-		"\"%s\":\"%u\",\"%s\":\"%u\",\"%s\":\"%u\",\"%s\":\"%u\",\"%s\":\"%u\",\"%s\":\"%u\"\n",
-		"BESTEXT", 	sbi->s_sec_part_best_extents,
-		"CUREXT", 	sbi->s_sec_part_current_extents,
-		"DEFSCORE", sbi->s_sec_part_score,
-		"DEFWRITE", sbi->s_sec_defrag_writes_kb,
-		"NUMAPP", 	sbi->s_sec_num_apps,
-		"CAPAPP", 	sbi->s_sec_capacity_apps_kb);
-}
-
-static ssize_t sec_defrag_stat_store(struct ext4_attr *a,
-					  struct ext4_sb_info *sbi,
-					  const char *buf, size_t count)
-{
-	if (buf[0] == 'c' || buf[0] == 'C') {
-		sbi->s_sec_part_best_extents = 0;
-		sbi->s_sec_part_current_extents = 0;
-		sbi->s_sec_part_score = 0;
-		sbi->s_sec_defrag_writes_kb = 0;
-		sbi->s_sec_num_apps = 0;
-		sbi->s_sec_capacity_apps_kb = 0;
-	}
-	return count;
-}
-
 static ssize_t sec_fs_stat_show(struct ext4_attr *a,
 				struct ext4_sb_info *sbi, char *buf)
 {
@@ -85,15 +56,12 @@ static ssize_t sec_fs_stat_show(struct ext4_attr *a,
 		"F_BLOCKS",
 		(unsigned long long)ext4_blocks_count(sbi->s_es),
 		"F_BFREE",
-		(unsigned long long)percpu_counter_sum_positive(
-						&sbi->s_freeclusters_counter) -
-		(unsigned long long)percpu_counter_sum_positive(
-						&sbi->s_dirtyclusters_counter),
+		(unsigned long long)percpu_counter_sum_positive(&sbi->s_freeclusters_counter) -
+		(unsigned long long)percpu_counter_sum_positive(&sbi->s_dirtyclusters_counter),
 		"F_FILES",
 		(unsigned int)le32_to_cpu(sbi->s_es->s_inodes_count),
 		"F_FFREE",
-		(unsigned long long)percpu_counter_sum_positive(
-						&sbi->s_freeinodes_counter),
+		(unsigned long long)percpu_counter_sum_positive(&sbi->s_freeinodes_counter),
 		"FS_ERROR",
 		(unsigned int)le32_to_cpu(sbi->s_es->s_error_count));
 }
@@ -103,7 +71,6 @@ static ssize_t sec_fs_freefrag_show(struct ext4_attr *a,
 {
 	return ext4_mb_freefrag_show(sbi, buf);
 }
-
 
 static ssize_t session_write_kbytes_show(struct ext4_attr *a,
 					 struct ext4_sb_info *sbi, char *buf)
@@ -220,14 +187,6 @@ static struct ext4_attr ext4_attr_##_name = {			\
 
 #define ATTR_LIST(name) &ext4_attr_##name.attr
 
-EXT4_RW_ATTR_SBI_UI(sec_part_best_extents, s_sec_part_best_extents);
-EXT4_RW_ATTR_SBI_UI(sec_part_current_extents, s_sec_part_current_extents);
-EXT4_RW_ATTR_SBI_UI(sec_part_score, s_sec_part_score);
-EXT4_RW_ATTR_SBI_UI(sec_defrag_writes_kb, s_sec_defrag_writes_kb);
-EXT4_RW_ATTR_SBI_UI(sec_num_apps, s_sec_num_apps);
-EXT4_RW_ATTR_SBI_UI(sec_capacity_apps_kb, s_sec_capacity_apps_kb);
-
-EXT4_ATTR_FUNC(sec_defrag_stat, 0644);
 EXT4_ATTR_FUNC(sec_fs_stat, 0444);
 EXT4_ATTR_FUNC(sec_fs_freefrag, 0444);
 
@@ -261,13 +220,6 @@ static unsigned int old_bump_val = 128;
 EXT4_ATTR_PTR(max_writeback_mb_bump, 0444, pointer_ui, &old_bump_val);
 
 static struct attribute *ext4_attrs[] = {
-	ATTR_LIST(sec_part_best_extents),
-	ATTR_LIST(sec_part_current_extents),
-	ATTR_LIST(sec_part_score),
-	ATTR_LIST(sec_defrag_writes_kb),
-	ATTR_LIST(sec_num_apps),
-	ATTR_LIST(sec_capacity_apps_kb),
-	ATTR_LIST(sec_defrag_stat),
 	ATTR_LIST(sec_fs_stat),
 	ATTR_LIST(sec_fs_freefrag),
 	ATTR_LIST(delayed_allocation_blocks),
@@ -339,8 +291,6 @@ static ssize_t ext4_attr_show(struct kobject *kobj,
 	void *ptr = calc_ptr(a, sbi);
 
 	switch (a->attr_id) {
-	case attr_sec_defrag_stat:
-		return sec_defrag_stat_show(a, sbi, buf);
 	case attr_sec_fs_stat:
 		return sec_fs_stat_show(a, sbi, buf);
 	case attr_sec_fs_freefrag:
@@ -387,8 +337,6 @@ static ssize_t ext4_attr_store(struct kobject *kobj,
 	int ret;
 
 	switch (a->attr_id) {
-	case attr_sec_defrag_stat:
-		return sec_defrag_stat_store(a, sbi, buf, len);
 	case attr_reserved_clusters:
 		return reserved_clusters_store(a, sbi, buf, len);
 	case attr_pointer_ui:
@@ -449,6 +397,7 @@ static int name##_open(struct inode *inode, struct file *file) \
 } \
 \
 static const struct file_operations ext4_seq_##name##_fops = { \
+	.owner		= THIS_MODULE, \
 	.open		= name##_open, \
 	.read		= seq_read, \
 	.llseek		= seq_lseek, \
@@ -484,15 +433,14 @@ int ext4_register_sysfs(struct super_block *sb)
 	if (err)
 		return err;
 
-	if (le32_to_cpu(sbi->s_es->s_sec_magic) == EXT4_SEC_DATA_MAGIC ||
-			strncmp(sbi->s_es->s_volume_name, "data", 4) == 0) {
+	if (le32_to_cpu(sbi->s_es->s_sec_magic) == EXT4_SEC_DATA_MAGIC) {
 		err = sysfs_create_link(&ext4_kset.kobj, &sbi->s_kobj,
 			      "userdata");
 		if (err)
 			printk(KERN_ERR "Can not create sysfs link"
 					"for userdata(%d)", err);
 	}
-
+	
 	if (ext4_proc_root)
 		sbi->s_proc = proc_mkdir(sb->s_id, ext4_proc_root);
 
@@ -515,8 +463,7 @@ void ext4_unregister_sysfs(struct super_block *sb)
 		remove_proc_entry(sb->s_id, ext4_proc_root);
 	}
 
-	if (le32_to_cpu(sbi->s_es->s_sec_magic) == EXT4_SEC_DATA_MAGIC ||
-			strncmp(sbi->s_es->s_volume_name, "data", 4) == 0)
+	if (le32_to_cpu(sbi->s_es->s_sec_magic) == EXT4_SEC_DATA_MAGIC)
 		sysfs_delete_link(&ext4_kset.kobj, &sbi->s_kobj, "userdata");
 
 	kobject_del(&sbi->s_kobj);

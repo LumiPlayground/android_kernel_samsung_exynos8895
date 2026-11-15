@@ -223,4 +223,3 @@ config CFG80211_REG_NOT_UPDATED
 	  Regulation should not updated even if device found other country
 	  Access Point Beacon once since device should find around other
 	  Access Points.
-

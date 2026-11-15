@@ -7,7 +7,7 @@
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
-*/
+ */
 #include "displayport.h"
 #include "decon.h"
 
@@ -64,7 +64,7 @@ void HDCP13_dump(char *str, u8 *buf, int size)
 
 	displayport_dbg("[HDCP 1.3] %s = 0x", str);
 	if (displayport_log_level >=7) {
-	for (i = 0; i < size; i++)
+		for (i = 0; i < size; i++)
 			pr_info("%02x ", *(buffer+i));
 
 		pr_info("\n");
@@ -226,7 +226,7 @@ u8 HDCP13_CMP_Ri(void)
 
 		mdelay(RI_AVAILABLE_WAITING);
 		cnt++;
-		}
+	}
 
 	if (cnt >= RI_WAIT_COUNT) {
 		displayport_info("[HDCP 1.3] R0 not available in RX part\n");
@@ -290,7 +290,7 @@ void HDCP13_Link_integrity_check(void)
 			displayport_reg_dpcd_read(ADDR_HDCP13_BSTATUS, 1,
 					HDCP13_DPCD.HDCP13_BSTATUS);
 			if ((HDCP13_DPCD.HDCP13_BSTATUS[0] & BSTATUS_REAUTH_REQ) ||
-				(HDCP13_DPCD.HDCP13_BSTATUS[0] & BSTATUS_LINK_INTEGRITY_FAIL)) {
+					(HDCP13_DPCD.HDCP13_BSTATUS[0] & BSTATUS_LINK_INTEGRITY_FAIL)) {
 
 				displayport_info("[HDCP 1.3] HDCP13_DPCD.HDCP13_BSTATUS = %02x : retry(%d)\n",
 						HDCP13_DPCD.HDCP13_BSTATUS[0], i);
@@ -435,7 +435,7 @@ int HDCP13_compare_v(u8 *tx_v_value)
 	u8 *tx_v_value_address;
 	u8 *rx_v_value_address;
 
-	while(v_read_retry_cnt < V_READ_RETRY_CNT) {
+	while (v_read_retry_cnt < V_READ_RETRY_CNT) {
 		ret = 0;
 		tx_v_value_address = tx_v_value;
 		rx_v_value_address = HDCP13_DPCD.HDCP13_V_H0;
@@ -448,10 +448,10 @@ int HDCP13_compare_v(u8 *tx_v_value)
 
 		v_read_retry_cnt++;
 
-	for (i = 0; i < SHA1_SIZE; i++) {
-				if (*(tx_v_value_address++) != *(rx_v_value_address++))
-			ret = -EFAULT;
-	}
+		for (i = 0; i < SHA1_SIZE; i++) {
+			if (*(tx_v_value_address++) != *(rx_v_value_address++))
+				ret = -EFAULT;
+		}
 
 		if (ret == 0)
 			break;

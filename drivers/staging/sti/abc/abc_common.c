@@ -20,7 +20,7 @@
 #include <linux/sti/abc_common.h>
 
 #define DEBUG_ABC
-#define ABC_WARNING_REPORT
+// #define ABC_WARNING_REPORT
 
 static struct device *sec_abc;
 static int abc_enabled;
@@ -329,7 +329,6 @@ static void sec_abc_work_func(struct work_struct *work)
 	char *uevent_str[ABC_UEVENT_MAX] = {0,};
 	char temp[ABC_BUFFER_MAX], timestamp[ABC_BUFFER_MAX], event_type[ABC_BUFFER_MAX];
 	int idx = 0;
-	int i = 0;
 	u64 ktime;
 	unsigned long ktime_ms;
 	int ktime_rem;
@@ -360,9 +359,11 @@ static void sec_abc_work_func(struct work_struct *work)
 	ABC_PRINT("event type : %s\n", event_type);
 
 #if defined(DEBUG_ABC)
-	/* print except for TIMESTAMP(uevent_str[idx - 1]) */
-	for (i = 0; i < idx - 1; i++)
-		ABC_PRINT("%s\n", uevent_str[i]);
+	idx = 0;
+	while ((c = uevent_str[idx]) != '\0') {
+		ABC_PRINT("%s\n", uevent_str[idx]);
+		idx++;
+	}
 #endif
 
 	/* Add abc log_list */

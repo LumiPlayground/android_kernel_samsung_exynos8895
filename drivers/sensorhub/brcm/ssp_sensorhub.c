@@ -105,7 +105,7 @@ static ssize_t ssp_sensorhub_write(struct file *file, const char __user *buf,
 		return -EINVAL;
 	}
 
-	buffer = kcalloc(count, sizeof(char), GFP_KERNEL);
+	buffer = kzalloc(count * sizeof(char), GFP_KERNEL);
 	if (unlikely(!buffer)) {
 		sensorhub_err("allocate memory for kernel buffer err");
 		return -ENOMEM;
@@ -271,6 +271,7 @@ static struct file_operations const ssp_sensorhub_fops = {
 
 void ssp_sensorhub_report_notice(struct ssp_data *ssp_data, char notice)
 {
+#if ANDROID_VERSION >= 80000
 	struct sensor_value sensorsdata;
 	int size = 0, index = 0;
 	char reportData[4] = {0x02, 0x01, 0x00, 0x00};
@@ -301,7 +302,23 @@ void ssp_sensorhub_report_notice(struct ssp_data *ssp_data, char notice)
 	memcpy(&sensorsdata.scontext_buf[index], reportData, size + 1);
 
 	report_scontext_data(ssp_data, &sensorsdata);
+#else
+	struct ssp_sensorhub_data *hub_data = ssp_data->hub_data;
 
+	if (notice == MSG2SSP_AP_STATUS_RESET) {
+		if (ssp_data->IsMcuCrashed == true) {
+			input_report_rel(hub_data->sensorhub_input_dev, NOTICE, MCU_CRASHED);
+			ssp_data->IsMcuCrashed = false;
+		} else if (ssp_data->intendedMcuReset == true) {
+			input_report_rel(hub_data->sensorhub_input_dev, NOTICE, MCU_INTENDED_RESET);
+			ssp_data->intendedMcuReset = false;
+		} else
+			input_report_rel(hub_data->sensorhub_input_dev, NOTICE, KERNEL_RESET);
+	} else
+		input_report_rel(hub_data->sensorhub_input_dev, NOTICE, notice);
+
+	input_sync(hub_data->sensorhub_input_dev);
+#endif
 	if (notice == MSG2SSP_AP_STATUS_WAKEUP)
 		sensorhub_info("wake up");
 	else if (notice == MSG2SSP_AP_STATUS_SLEEP)
@@ -312,7 +329,6 @@ void ssp_sensorhub_report_notice(struct ssp_data *ssp_data, char notice)
 		sensorhub_err("invalid notice(0x%x)", notice);
 }
 
-#if 0
 static void ssp_sensorhub_report_library(struct ssp_sensorhub_data *hub_data)
 {
 	input_report_rel(hub_data->sensorhub_input_dev, DATA, DATA);
@@ -327,7 +343,6 @@ static void ssp_sensorhub_report_big_library(
 	input_sync(hub_data->sensorhub_input_dev);
 	wake_lock_timeout(&hub_data->sensorhub_wake_lock, WAKE_LOCK_TIMEOUT);
 }
-#endif
 
 static int ssp_sensorhub_list(struct ssp_sensorhub_data *hub_data,
 				char *dataframe, int length)
@@ -355,7 +370,7 @@ static int ssp_sensorhub_list(struct ssp_sensorhub_data *hub_data,
 	/* allocate memory for new event */
 	kfree(hub_data->events[hub_data->event_number].library_data);
 	hub_data->events[hub_data->event_number].library_data
-		= kcalloc(length, sizeof(char), GFP_ATOMIC);
+		= kzalloc(length * sizeof(char), GFP_ATOMIC);
 	if (unlikely(!hub_data->events[hub_data->event_number].library_data)) {
 		sensorhub_err("allocate memory for library err");
 		return -ENOMEM;
@@ -400,7 +415,6 @@ int ssp_sensorhub_handle_data(struct ssp_data *ssp_data, char *dataframe,
 	return ret;
 }
 
-#if 0
 static int ssp_sensorhub_thread(void *arg)
 {
 	struct ssp_sensorhub_data *hub_data = (struct ssp_sensorhub_data *)arg;
@@ -447,7 +461,6 @@ static int ssp_sensorhub_thread(void *arg)
 
 	return 0;
 }
-#endif
 
 void ssp_read_big_library_task(struct work_struct *work)
 {
@@ -528,7 +541,6 @@ void ssp_send_big_library_task(struct work_struct *work)
 	complete(&hub_data->big_write_done);
 	kfree(big);
 }
-
 
 void ssp_pcm_dump_task(struct work_struct *work)
 {
@@ -664,20 +676,17 @@ int ssp_sensorhub_initialize(struct ssp_data *ssp_data)
 	}
 
 	/* create and run sensorhub thread */
-/*
 	hub_data->sensorhub_task = kthread_run(ssp_sensorhub_thread,
 				(void *)hub_data, "ssp_sensorhub_thread");
 	if (IS_ERR(hub_data->sensorhub_task)) {
 		ret = PTR_ERR(hub_data->sensorhub_task);
 		goto err_kthread_run;
 	}
-*/
+
 	return 0;
 
-/*
 err_kthread_run:
 	kfifo_free(&hub_data->fifo);
-*/
 err_kfifo_alloc:
 	misc_deregister(&hub_data->sensorhub_device);
 err_misc_register:
@@ -697,7 +706,7 @@ void ssp_sensorhub_remove(struct ssp_data *ssp_data)
 {
 	struct ssp_sensorhub_data *hub_data = ssp_data->hub_data;
 
-//	kthread_stop(hub_data->sensorhub_task);
+	kthread_stop(hub_data->sensorhub_task);
 	kfifo_free(&hub_data->fifo);
 	misc_deregister(&hub_data->sensorhub_device);
 	input_unregister_device(hub_data->sensorhub_input_dev);

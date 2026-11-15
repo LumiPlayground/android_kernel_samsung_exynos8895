@@ -166,6 +166,9 @@ static struct io_device *create_io_device(struct platform_device *pdev,
 	iod->attrs = io_t->attrs;
 	iod->app = io_t->app;
 	iod->max_tx_size = io_t->ul_buffer_size;
+#ifdef CONFIG_LINK_DEVICE_NAPI
+	iod->napi_weight = io_t->napi_weight;
+#endif /* CONFIG_LINK_DEVICE_NAPI */
 	iod->net_typ = pdata->modem_net;
 	iod->use_handover = pdata->use_handover;
 	iod->ipc_version = pdata->ipc_version;
@@ -290,6 +293,9 @@ static int parse_dt_common_pdata(struct device_node *np,
 
 	mif_dt_read_u32(np, "mif,buff_offset", pdata->buff_offset);
 	mif_dt_read_u32(np, "mif,buff_size", pdata->buff_size);
+
+	mif_dt_read_u32(np, "mif,bufpool_2nd_base", pdata->bufpool_2nd_base);
+	mif_dt_read_u32(np, "mif,bufpool_2nd_size", pdata->bufpool_2nd_size);
 
 	return 0;
 }
@@ -479,7 +485,6 @@ static int parse_dt_mbox_pdata(struct device *dev, struct device_node *np,
 	mif_dt_read_u32 (np, "mif,int_ap2cp_wakeup", mbox->int_ap2cp_wakeup);
 	mif_dt_read_u32 (np, "mif,int_ap2cp_status", mbox->int_ap2cp_status);
 	mif_dt_read_u32 (np, "mif,int_ap2cp_active", mbox->int_ap2cp_active);
-	mif_dt_read_u32_noerr (np, "mif,int_ap2cp_smapper", mbox->int_ap2cp_smapper);
 
 	mif_dt_read_u32 (np, "mif,irq_cp2ap_msg", mbox->irq_cp2ap_msg);
 	mif_dt_read_u32 (np, "mif,irq_cp2ap_status", mbox->irq_cp2ap_status);
@@ -492,7 +497,6 @@ static int parse_dt_mbox_pdata(struct device *dev, struct device_node *np,
 	mif_dt_read_u32 (np, "mif,irq_cp2ap_active", mbox->irq_cp2ap_active);
 	mif_dt_read_u32 (np, "mif,irq_cp2ap_wakelock", mbox->irq_cp2ap_wakelock);
 	mif_dt_read_u32 (np, "mif,irq_cp2ap_ratmode", mbox->irq_cp2ap_rat_mode);
-	mif_dt_read_u32 (np, "mif,irq_cp2ap_smapper", mbox->irq_cp2ap_smapper);
 
 	mif_dt_read_u32 (np, "mbx_ap2cp_msg", mbox->mbx_ap2cp_msg);
 	mif_dt_read_u32 (np, "mbx_cp2ap_msg", mbox->mbx_cp2ap_msg);
@@ -508,8 +512,6 @@ static int parse_dt_mbox_pdata(struct device *dev, struct device_node *np,
 	mif_dt_read_u32 (np, "sbi_lte_active_pos", mbox->sbi_lte_active_pos);
 	mif_dt_read_u32 (np, "sbi_cp_status_mask", mbox->sbi_cp_status_mask);
 	mif_dt_read_u32 (np, "sbi_cp_status_pos", mbox->sbi_cp_status_pos);
-	mif_dt_read_u32_noerr (np, "sbi_cp_smapper_mask", mbox->sbi_cp_smapper_mask);
-	mif_dt_read_u32_noerr (np, "sbi_cp_smapper_pos", mbox->sbi_cp_smapper_pos);
 	mif_dt_read_u32 (np, "sbi_cp_rat_mode_mask", mbox->sbi_cp2ap_rat_mode_mask);
 	mif_dt_read_u32 (np, "sbi_cp_rat_mode_pos", mbox->sbi_cp2ap_rat_mode_pos);
 	mif_dt_read_u32 (np, "sbi_cp2ap_wakelock_mask", mbox->sbi_cp2ap_wakelock_mask);
@@ -518,11 +520,9 @@ static int parse_dt_mbox_pdata(struct device *dev, struct device_node *np,
 	mif_dt_read_u32 (np, "sbi_pda_active_pos", mbox->sbi_pda_active_pos);
 	mif_dt_read_u32 (np, "sbi_ap_status_mask", mbox->sbi_ap_status_mask);
 	mif_dt_read_u32 (np, "sbi_ap_status_pos", mbox->sbi_ap_status_pos);
-	mif_dt_read_u32_noerr (np, "sbi_ap2cp_wakelock_mask", mbox->sbi_ap2cp_wakelock_mask);
-	mif_dt_read_u32_noerr (np, "sbi_ap2cp_wakelock_pos", mbox->sbi_ap2cp_wakelock_pos);
 	mif_dt_read_u32 (np, "sbi_crash_type_mask", mbox->sbi_crash_type_mask);
 	mif_dt_read_u32 (np, "sbi_crash_type_pos", mbox->sbi_crash_type_pos);
-
+	
 	mif_dt_read_u32 (np, "sbi_ap2cp_kerneltime_sec_mask",
 			mbox->sbi_ap2cp_kerneltime_sec_mask);
 	mif_dt_read_u32 (np, "sbi_ap2cp_kerneltime_sec_pos",
@@ -564,6 +564,11 @@ static int parse_dt_iodevs_pdata(struct device *dev, struct device_node *np,
 		/* mif_dt_read_string(child, "iod,app", iod->app); */
 		mif_dt_read_u32_noerr(child, "iod,max_tx_size",
 				iod->ul_buffer_size);
+#ifdef CONFIG_LINK_DEVICE_NAPI
+		mif_dt_read_u32_noerr(child, "iod,napi_weight",
+				iod->napi_weight);
+#endif /* CONFIG_LINK_DEVICE_NAPI */
+
 		if (iod->attrs & IODEV_ATTR(ATTR_SBD_IPC)) {
 			mif_dt_read_u32(child, "iod,ul_num_buffers",
 					iod->ul_num_buffers);
@@ -885,6 +890,8 @@ static void modem_shutdown(struct platform_device *pdev)
 
 	mc->ops.modem_shutdown(mc);
 	mc->phone_state = STATE_OFFLINE;
+
+	clean_vss_magic_code();
 
 	mif_err("%s\n", mc->name);
 }

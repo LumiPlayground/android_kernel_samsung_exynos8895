@@ -2211,11 +2211,16 @@ static struct imon_context *imon_init_intf0(struct usb_interface *intf,
 		goto exit;
 	}
 	rx_urb = usb_alloc_urb(0, GFP_KERNEL);
-	if (!rx_urb)
+	if (!rx_urb) {
+		dev_err(dev, "%s: usb_alloc_urb failed for IR urb", __func__);
 		goto rx_urb_alloc_failed;
+	}
 	tx_urb = usb_alloc_urb(0, GFP_KERNEL);
-	if (!tx_urb)
+	if (!tx_urb) {
+		dev_err(dev, "%s: usb_alloc_urb failed for display urb",
+			__func__);
 		goto tx_urb_alloc_failed;
+	}
 
 	mutex_init(&ictx->lock);
 	spin_lock_init(&ictx->kc_lock);
@@ -2300,8 +2305,10 @@ static struct imon_context *imon_init_intf1(struct usb_interface *intf,
 	int ret = -ENOMEM;
 
 	rx_urb = usb_alloc_urb(0, GFP_KERNEL);
-	if (!rx_urb)
+	if (!rx_urb) {
+		pr_err("usb_alloc_urb failed for IR urb\n");
 		goto rx_urb_alloc_failed;
+	}
 
 	mutex_lock(&ictx->lock);
 

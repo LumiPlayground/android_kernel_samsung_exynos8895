@@ -1163,43 +1163,48 @@ static u8 vkc_a2_da_lpm_mode_table[][1] = {
 	{ 0x02 }, // HLPM_40NIT
 };
 
-static struct maptbl vkc_a2_da_maptbl[MAX_MAPTBL] = {
-	[GAMMA_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_gamma_table, s6e3hf4_init_gamma_table, s6e3hf4_getidx_dimming_maptbl, s6e3hf4_copy_common_maptbl),
+struct maptbl vkc_a2_da_maptbl[MAX_MAPTBL] = {
+	[GAMMA_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_gamma_table, init_gamma_table, getidx_dimming_maptbl, copy_common_maptbl),
 #if (PANEL_BACKLIGHT_PAC_STEPS == 512 || PANEL_BACKLIGHT_PAC_STEPS == 256)
-	[AOR_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_aor_table, s6e3hf4_init_common_table, s6e3hf4_getidx_aor_table, s6e3hf4_copy_common_maptbl),
+	[AOR_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_aor_table, init_common_table, getidx_aor_table, copy_common_maptbl),
 #else
-	[AOR_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_aor_table, s6e3hf4_init_common_table, s6e3hf4_getidx_dimming_maptbl, s6e3hf4_copy_common_maptbl),
+	[AOR_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_aor_table, init_common_table, getidx_dimming_maptbl, copy_common_maptbl),
 #endif
-	[MPS_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_mps_table, s6e3hf4_init_common_table, s6e3hf4_getidx_mps_table, s6e3hf4_copy_common_maptbl),
-	[TSET_MAPTBL] = DEFINE_0D_MAPTBL(vkc_a2_da_tset_table, s6e3hf4_init_common_table, NULL, s6e3hf4_copy_tset_maptbl),
-	[ELVSS_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_elvss_table, s6e3hf4_init_common_table, s6e3hf4_getidx_dimming_maptbl, s6e3hf4_copy_common_maptbl),
-	[ELVSS_TEMP_MAPTBL] = DEFINE_3D_MAPTBL(vkc_a2_da_elvss_temp_table, s6e3hf4_init_common_table, s6e3hf4_getidx_elvss_temp_table, s6e3hf4_copy_elvss_temp_maptbl),
-	[VINT_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_vint_table, s6e3hf4_init_common_table, s6e3hf4_getidx_vint_table, s6e3hf4_copy_common_maptbl),
-	[ACL_ONOFF_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_acl_onoff_table, s6e3hf4_init_common_table, s6e3hf4_getidx_acl_onoff_table, s6e3hf4_copy_common_maptbl),
-	[ACL_OPR_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_acl_opr_table, s6e3hf4_init_common_table, s6e3hf4_getidx_acl_opr_table, s6e3hf4_copy_common_maptbl),
+	[MPS_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_mps_table, init_common_table, getidx_mps_table, copy_common_maptbl),
+	[TSET_MAPTBL] = DEFINE_0D_MAPTBL(vkc_a2_da_tset_table, init_common_table, NULL, copy_tset_maptbl),
+	[ELVSS_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_elvss_table, init_common_table, getidx_dimming_maptbl, copy_common_maptbl),
+	[ELVSS_TEMP_MAPTBL] = DEFINE_3D_MAPTBL(vkc_a2_da_elvss_temp_table, init_common_table, getidx_elvss_temp_table, copy_elvss_temp_maptbl),
+	[VINT_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_vint_table, init_common_table, getidx_vint_table, copy_common_maptbl),
+	[ACL_ONOFF_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_acl_onoff_table, init_common_table, getidx_acl_onoff_table, copy_common_maptbl),
+	[ACL_OPR_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_acl_opr_table, init_common_table, getidx_acl_opr_table, copy_common_maptbl),
 #if (PANEL_BACKLIGHT_PAC_STEPS == 512 || PANEL_BACKLIGHT_PAC_STEPS == 256)
-	[IRC_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_irc_table, s6e3hf4_init_common_table, s6e3hf4_getidx_irc_table, s6e3hf4_copy_common_maptbl),
+	[IRC_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_irc_table, init_common_table, getidx_irc_table, copy_common_maptbl),
 #else
-	[IRC_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_irc_table, s6e3hf4_init_common_table, s6e3hf4_getidx_dimming_maptbl, s6e3hf4_copy_common_maptbl),
+	[IRC_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_irc_table, init_common_table, getidx_dimming_maptbl, copy_common_maptbl),
 #endif
-	[LPM_NIT_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_lpm_nit_table, s6e3hf4_init_common_table, s6e3hf4_getidx_lpm_table, s6e3hf4_copy_common_maptbl),
-	[LPM_MODE_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_lpm_mode_table, s6e3hf4_init_common_table, s6e3hf4_getidx_lpm_table, s6e3hf4_copy_common_maptbl),
+#ifdef CONFIG_SUPPORT_HMD
+	[HMD_GAMMA_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_hmd_gamma_table, init_hmd_gamma_table, getidx_hmd_dimming_mtptbl, copy_common_maptbl),
+	[HMD_AOR_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_hmd_aor_table, init_common_table, getidx_hmd_dimming_mtptbl, copy_common_maptbl),
+	[HMD_ELVSS_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_hmd_elvss_table, init_common_table, getidx_hmd_dimming_mtptbl, copy_common_maptbl),
+#endif /* CONFIG_SUPPORT_HMD */
+	[LPM_NIT_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_lpm_nit_table, init_common_table, getidx_lpm_table, copy_common_maptbl),
+	[LPM_MODE_MAPTBL] = DEFINE_2D_MAPTBL(vkc_a2_da_lpm_mode_table, init_common_table, getidx_lpm_table, copy_common_maptbl),
 };
 
 /* ===================================================================================== */
 /* ============================== [S6E3HF4 COMMAND TABLE] ============================== */
 /* ===================================================================================== */
-static u8 VKC_A2_DA_KEY2_ENABLE[] = { 0xF0, 0x5A, 0x5A };
-static u8 VKC_A2_DA_KEY3_ENABLE[] = { 0xFC, 0x5A, 0x5A };
-static u8 VKC_A2_DA_KEY2_DISABLE[] = { 0xF0, 0xA5, 0xA5 };
-static u8 VKC_A2_DA_KEY3_DISABLE[] = { 0xFC, 0xA5, 0xA5 };
-static u8 VKC_A2_DA_SLEEP_OUT[] = { 0x11 };
-static u8 VKC_A2_DA_SLEEP_IN[] = { 0x10 };
-static u8 VKC_A2_DA_DISPLAY_OFF[] = { 0x28 };
-static u8 VKC_A2_DA_DISPLAY_ON[] = { 0x29 };
+u8 VKC_A2_DA_KEY2_ENABLE[] = { 0xF0, 0x5A, 0x5A };
+u8 VKC_A2_DA_KEY3_ENABLE[] = { 0xFC, 0x5A, 0x5A };
+u8 VKC_A2_DA_KEY2_DISABLE[] = { 0xF0, 0xA5, 0xA5 };
+u8 VKC_A2_DA_KEY3_DISABLE[] = { 0xFC, 0xA5, 0xA5 };
+u8 VKC_A2_DA_SLEEP_OUT[] = { 0x11 };
+u8 VKC_A2_DA_SLEEP_IN[] = { 0x10 };
+u8 VKC_A2_DA_DISPLAY_OFF[] = { 0x28 };
+u8 VKC_A2_DA_DISPLAY_ON[] = { 0x29 };
 
-static u8 VKC_A2_DA_DSC[] = { 0x01, 0x00 };
-static u8 VKC_A2_DA_PPS[] = {
+u8 VKC_A2_DA_DSC[] = { 0x01, 0x00 };
+u8 VKC_A2_DA_PPS[] = {
 	// PPS : 1080x1920 (FHD) Slice Info : 540x32
 	0x11, 0x00, 0x00, 0x89, 0x30, 0x80, 0x07, 0x80, 0x04, 0x38,
 	0x00, 0x40, 0x01, 0x0E, 0x01, 0x0E, 0x02, 0x00, 0x01, 0x87,
@@ -1216,19 +1221,19 @@ static u8 VKC_A2_DA_PPS[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
-static u8 VKC_A2_DA_SCALER[] = { 0xBA, 0x02 };
-static u8 VKC_A2_DA_TE_ON[] = { 0x35 };
-static u8 VKC_A2_DA_TE_OFF[] = { 0x34 };
-static u8 VKC_A2_DA_TSP_TE[] = { 0xBC, 0x11, 0x11, 0x02, 0x16, 0x02, 0x16 };
-static u8 VKC_A2_DA_ERR_FG[] = { 0xED, 0x44 };
-static u8 VKC_A2_DA_TE_START[] = { 0xB9, 0x01, 0x09, 0xFF, 0x00, 0x09 };
-static u8 VKC_A2_DA_FFC[] = {
+u8 VKC_A2_DA_SCALER[] = { 0xBA, 0x02 };
+u8 VKC_A2_DA_TE_ON[] = { 0x35 };
+u8 VKC_A2_DA_TE_OFF[] = { 0x34 };
+u8 VKC_A2_DA_TSP_TE[] = { 0xBC, 0x11, 0x11, 0x02, 0x16, 0x02, 0x16 };
+u8 VKC_A2_DA_ERR_FG_SETTING[] = { 0xED, 0x44 };
+u8 VKC_A2_DA_TE_START_SETTING[] = { 0xB9, 0x01, 0x09, 0xFF, 0x00, 0x09 };
+u8 VKC_A2_DA_FFC_SETTING[] = {
 	0xCE,
 	0x0D, 0x58, 0x14, 0x64, 0x38, 0xB8,	0xF2, 0x03,
 	0x00, 0xFF, 0x02, 0x0A,	0x0A, 0x0A, 0x0A, 0x0F,
 	0x23,
 };
-static u8 VKC_A2_DA_GAMMA[] = {
+u8 VKC_A2_DA_GAMMA[] = {
 	0xCA,
 	0x01, 0x00, 0x01, 0x00, 0x01, 0x00,
 	0x80, 0x80, 0x80,
@@ -1243,8 +1248,8 @@ static u8 VKC_A2_DA_GAMMA[] = {
 	0x00, 0x00
 };
 
-static u8 VKC_A2_DA_AOR[] = { 0xB1, 0x00, 0x0C };
-static u8 VKC_A2_DA_TSET_MPS_ELVSS[] = {
+u8 VKC_A2_DA_AOR[] = { 0xB1, 0x00, 0x0C };
+u8 VKC_A2_DA_TSET_MPS_ELVSS[] = {
 	0xB5,
 	0x19,	/* temperature 25 */
 	0xBC,	/* MPS_CON: ACL OFF */
@@ -1256,113 +1261,104 @@ static u8 VKC_A2_DA_TSET_MPS_ELVSS[] = {
 	0x10,	/* ELVSS_Offset */
 };
 
-static u8 VKC_A2_DA_VINT[] = {
+u8 VKC_A2_DA_VINT[] = {
 	0xF4,
 	0xBB,                   /* VINT */
 	0x1E                    /* 360nit */
 };
 
-static u8 VKC_A2_DA_IRC_ON[] = {
+u8 VKC_A2_DA_IRC_ON[] = {
 	0xB8,
 	0x01, 0x6D, 0x46, 0x4E, 0x95, 0xEC, 0x33, 0x69,
 	0x12, 0x7A, 0xFF, 0x4B, 0x47, 0x42, 0x19, 0x19,
 	0x1B, 0x0F, 0x11, 0x0F
 };
 
-static u8 VKC_A2_DA_GAMMA_UPDATE_ENABLE[] = { 0xF7, 0x03 };
-static u8 VKC_A2_DA_GAMMA_UPDATE_DISABLE[] = { 0xF7, 0x00 };
-static u8 VKC_A2_DA_ACL_ONOFF[] = { 0x55, 0x00 };
-static u8 VKC_A2_DA_ACL_OPR[] = { 0xB4, 0x40, 0x7F, 0x27, 0x01 };
-static u8 VKC_A2_DA_SCALER_UPDATE_TIMMING_00[] = { 0xB0, 0x0A };
-static u8 VKC_A2_DA_SCALER_UPDATE_TIMMING_01[] = { 0xF2, 0x0D, 0x2A };
-static u8 VKC_A2_DA_CASET[] = { 0x2A, 0x00, 0x00, 0x04, 0x37 };
-static u8 VKC_A2_DA_PASET[] = { 0x2B, 0x00, 0x00, 0x07, 0x7F };
-static u8 VKC_A2_DA_LPM_NIT[] = { 0xBB, 0x00, 0x00 };
-static u8 VKC_A2_DA_LPM_MODE[] = { 0x53, 0x00 };
+u8 VKC_A2_DA_GAMMA_UPDATE_ENABLE[] = { 0xF7, 0x03 };
+u8 VKC_A2_DA_GAMMA_UPDATE_DISABLE[] = { 0xF7, 0x00 };
+u8 VKC_A2_DA_ACL_ONOFF[] = { 0x55, 0x00 };
+u8 VKC_A2_DA_ACL_OPR[] = { 0xB4, 0x40, 0x7F, 0x27, 0x01 };
+u8 VKC_A2_DA_SCALER_UPDATE_TIMMING_00[] = { 0xB0, 0x0A };
+u8 VKC_A2_DA_SCALER_UPDATE_TIMMING_01[] = { 0xF2, 0x0D, 0x2A };
+u8 VKC_A2_DA_CASET[] = { 0x2A, 0x00, 0x00, 0x04, 0x37 };
+u8 VKC_A2_DA_PASET[] = { 0x2B, 0x00, 0x00, 0x07, 0x7F };
+u8 VKC_A2_DA_LPM_NIT[] = { 0xBB, 0x00, 0x00 };
+u8 VKC_A2_DA_LPM_MODE[] = { 0x53, 0x00 };
 
-static u8 VKC_A2_DA_MCLK_1HZ[] = {
+u8 VKC_A2_DA_MCLK_1HZ[] = {
 	0xCB,
 	0x12, 0x11, 0x81, 0x01, 0x00, 0x63, 0x82, 0x00,
 	0x00, 0x10, 0x01
 };
 
-static u8 VKC_A2_DA_MCLK_3HZ[] = {
+u8 VKC_A2_DA_MCLK_3HZ[] = {
 	0xCB,
 	0x12, 0x11, 0x81, 0x01, 0x00, 0x63, 0x82, 0x00,
 	0x00, 0x0C, 0x05
 };
 
-static u8 VKC_A2_DA_IRC_OFF[2] = {0xB8, 0x00};
+u8 VKC_A2_DA_IRC_OFF[2] = {0xB8, 0x00};
 
-static DEFINE_STATIC_PACKET(vkc_a2_da_level2_key_enable, DSI_PKT_TYPE_WR, VKC_A2_DA_KEY2_ENABLE, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_level3_key_enable, DSI_PKT_TYPE_WR, VKC_A2_DA_KEY3_ENABLE, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_level2_key_disable, DSI_PKT_TYPE_WR, VKC_A2_DA_KEY2_DISABLE, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_level3_key_disable, DSI_PKT_TYPE_WR, VKC_A2_DA_KEY3_DISABLE, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_sleep_out, DSI_PKT_TYPE_WR, VKC_A2_DA_SLEEP_OUT, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_sleep_in, DSI_PKT_TYPE_WR, VKC_A2_DA_SLEEP_IN, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_display_on, DSI_PKT_TYPE_WR, VKC_A2_DA_DISPLAY_ON, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_display_off, DSI_PKT_TYPE_WR, VKC_A2_DA_DISPLAY_OFF, 0);
+DEFINE_STATIC_PACKET(vkc_a2_da_level2_key_enable, DSI_PKT_TYPE_WR, VKC_A2_DA_KEY2_ENABLE);
+DEFINE_STATIC_PACKET(vkc_a2_da_level3_key_enable, DSI_PKT_TYPE_WR, VKC_A2_DA_KEY3_ENABLE);
+DEFINE_STATIC_PACKET(vkc_a2_da_level2_key_disable, DSI_PKT_TYPE_WR, VKC_A2_DA_KEY2_DISABLE);
+DEFINE_STATIC_PACKET(vkc_a2_da_level3_key_disable, DSI_PKT_TYPE_WR, VKC_A2_DA_KEY3_DISABLE);
+DEFINE_STATIC_PACKET(vkc_a2_da_sleep_out, DSI_PKT_TYPE_WR, VKC_A2_DA_SLEEP_OUT);
+DEFINE_STATIC_PACKET(vkc_a2_da_sleep_in, DSI_PKT_TYPE_WR, VKC_A2_DA_SLEEP_IN);
+DEFINE_STATIC_PACKET(vkc_a2_da_display_on, DSI_PKT_TYPE_WR, VKC_A2_DA_DISPLAY_ON);
+DEFINE_STATIC_PACKET(vkc_a2_da_display_off, DSI_PKT_TYPE_WR, VKC_A2_DA_DISPLAY_OFF);
 
-static DEFINE_STATIC_PACKET(vkc_a2_da_scaler_update_timming0, DSI_PKT_TYPE_WR, VKC_A2_DA_SCALER_UPDATE_TIMMING_00, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_scaler_update_timming1, DSI_PKT_TYPE_WR, VKC_A2_DA_SCALER_UPDATE_TIMMING_01, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_scaler, DSI_PKT_TYPE_WR, VKC_A2_DA_SCALER, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_caset, DSI_PKT_TYPE_WR, VKC_A2_DA_CASET, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_paset, DSI_PKT_TYPE_WR, VKC_A2_DA_PASET, 0);
+DEFINE_STATIC_PACKET(vkc_a2_da_scaler_update_timming0, DSI_PKT_TYPE_WR, VKC_A2_DA_SCALER_UPDATE_TIMMING_00);
+DEFINE_STATIC_PACKET(vkc_a2_da_scaler_update_timming1, DSI_PKT_TYPE_WR, VKC_A2_DA_SCALER_UPDATE_TIMMING_01);
+DEFINE_STATIC_PACKET(vkc_a2_da_scaler, DSI_PKT_TYPE_WR, VKC_A2_DA_SCALER);
+DEFINE_STATIC_PACKET(vkc_a2_da_caset, DSI_PKT_TYPE_WR, VKC_A2_DA_CASET);
+DEFINE_STATIC_PACKET(vkc_a2_da_paset, DSI_PKT_TYPE_WR, VKC_A2_DA_PASET);
 
-static DEFINE_STATIC_PACKET(vkc_a2_da_te_off, DSI_PKT_TYPE_WR, VKC_A2_DA_TE_OFF, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_te_on, DSI_PKT_TYPE_WR, VKC_A2_DA_TE_ON, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_tsp_te, DSI_PKT_TYPE_WR, VKC_A2_DA_TSP_TE, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_err_fg, DSI_PKT_TYPE_WR, VKC_A2_DA_ERR_FG, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_te_start, DSI_PKT_TYPE_WR, VKC_A2_DA_TE_START, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_ffc, DSI_PKT_TYPE_WR, VKC_A2_DA_FFC, 0);
+DEFINE_STATIC_PACKET(vkc_a2_da_te_off, DSI_PKT_TYPE_WR, VKC_A2_DA_TE_OFF);
+DEFINE_STATIC_PACKET(vkc_a2_da_te_on, DSI_PKT_TYPE_WR, VKC_A2_DA_TE_ON);
+DEFINE_STATIC_PACKET(vkc_a2_da_err_fg, DSI_PKT_TYPE_WR, VKC_A2_DA_ERR_FG_SETTING);
+DEFINE_STATIC_PACKET(vkc_a2_da_te_start, DSI_PKT_TYPE_WR, VKC_A2_DA_TE_START_SETTING);
+DEFINE_STATIC_PACKET(vkc_a2_da_ffc, DSI_PKT_TYPE_WR, VKC_A2_DA_FFC_SETTING);
 
-static DEFINE_STATIC_PACKET(vkc_a2_da_dsc, DSI_PKT_TYPE_COMP, VKC_A2_DA_DSC, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_pps, DSI_PKT_TYPE_PPS, VKC_A2_DA_PPS, 0);
-static DEFINE_PKTUI(vkc_a2_da_lpm_nit, &vkc_a2_da_maptbl[LPM_NIT_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(vkc_a2_da_lpm_nit, DSI_PKT_TYPE_WR, VKC_A2_DA_LPM_NIT, 0);
-static DEFINE_PKTUI(vkc_a2_da_lpm_mode, &vkc_a2_da_maptbl[LPM_MODE_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(vkc_a2_da_lpm_mode, DSI_PKT_TYPE_WR, VKC_A2_DA_LPM_MODE, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_mclk1, DSI_PKT_TYPE_WR, VKC_A2_DA_MCLK_1HZ, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_mclk3, DSI_PKT_TYPE_WR, VKC_A2_DA_MCLK_3HZ, 0);
+DEFINE_STATIC_PACKET(vkc_a2_da_dsc, DSI_PKT_TYPE_COMP, VKC_A2_DA_DSC);
+DEFINE_STATIC_PACKET(vkc_a2_da_pps, DSI_PKT_TYPE_PPS, VKC_A2_DA_PPS);
+DEFINE_VARIABLE_PACKET(vkc_a2_da_lpm_nit, DSI_PKT_TYPE_WR, VKC_A2_DA_LPM_NIT, &vkc_a2_da_maptbl[LPM_NIT_MAPTBL], 1);
+DEFINE_VARIABLE_PACKET(vkc_a2_da_lpm_mode, DSI_PKT_TYPE_WR, VKC_A2_DA_LPM_MODE, &vkc_a2_da_maptbl[LPM_MODE_MAPTBL], 1);
+DEFINE_STATIC_PACKET(vkc_a2_da_mclk1, DSI_PKT_TYPE_WR, VKC_A2_DA_MCLK_1HZ);
+DEFINE_STATIC_PACKET(vkc_a2_da_mclk3, DSI_PKT_TYPE_WR, VKC_A2_DA_MCLK_3HZ);
 
-static DEFINE_PKTUI(vkc_a2_da_gamma, &vkc_a2_da_maptbl[GAMMA_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(vkc_a2_da_gamma, DSI_PKT_TYPE_WR, VKC_A2_DA_GAMMA, 0);
-static DEFINE_PKTUI(vkc_a2_da_aor, &vkc_a2_da_maptbl[AOR_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(vkc_a2_da_aor, DSI_PKT_TYPE_WR, VKC_A2_DA_AOR, 0);
+DEFINE_VARIABLE_PACKET(vkc_a2_da_gamma, DSI_PKT_TYPE_WR, VKC_A2_DA_GAMMA, &vkc_a2_da_maptbl[GAMMA_MAPTBL], 1);
+DEFINE_VARIABLE_PACKET(vkc_a2_da_aor, DSI_PKT_TYPE_WR, VKC_A2_DA_AOR, &vkc_a2_da_maptbl[AOR_MAPTBL], 1);
 
-static DECLARE_PKTUI(vkc_a2_da_tset_mps_elvss) = {
+static struct pkt_update_info pktui_vkc_a2_da_tset_mps_elvss[] = {
 	{ .offset = 1, .maptbl = &vkc_a2_da_maptbl[TSET_MAPTBL] },
 	{ .offset = 2, .maptbl = &vkc_a2_da_maptbl[MPS_MAPTBL] },
 	{ .offset = 3, .maptbl = &vkc_a2_da_maptbl[ELVSS_MAPTBL] },
 	{ .offset = 23, .maptbl = &vkc_a2_da_maptbl[ELVSS_TEMP_MAPTBL] },
 };
-static DEFINE_VARIABLE_PACKET(vkc_a2_da_tset_mps_elvss, DSI_PKT_TYPE_WR, VKC_A2_DA_TSET_MPS_ELVSS, 0);
+static DEFINE_PACKET(vkc_a2_da_tset_mps_elvss, DSI_PKT_TYPE_WR, VKC_A2_DA_TSET_MPS_ELVSS,
+		PKTUI(vkc_a2_da_tset_mps_elvss), ARRAY_SIZE(PKTUI(vkc_a2_da_tset_mps_elvss)));
 
 #ifdef CONFIG_SUPPORT_HMD
-static DEFINE_PKTUI(vkc_a2_da_hmd_gamma, &vkc_a2_da_maptbl[HMD_GAMMA_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(vkc_a2_da_hmd_gamma, DSI_PKT_TYPE_WR, VKC_A2_DA_GAMMA, 0);
-static DEFINE_PKTUI(vkc_a2_da_hmd_aor, &vkc_a2_da_maptbl[HMD_AOR_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(vkc_a2_da_hmd_aor, DSI_PKT_TYPE_WR, VKC_A2_DA_AOR, 0);
-static DECLARE_PKTUI(vkc_a2_da_hmd_tset_mps_elvss) = {
+DEFINE_VARIABLE_PACKET(vkc_a2_da_hmd_gamma, DSI_PKT_TYPE_WR, VKC_A2_DA_GAMMA, &vkc_a2_da_maptbl[HMD_GAMMA_MAPTBL], 1);
+DEFINE_VARIABLE_PACKET(vkc_a2_da_hmd_aor, DSI_PKT_TYPE_WR, VKC_A2_DA_AOR, &vkc_a2_da_maptbl[HMD_AOR_MAPTBL], 1);
+static struct pkt_update_info pktui_vkc_a2_da_hmd_tset_mps_elvss[] = {
 	{ .offset = 1, .maptbl = &vkc_a2_da_maptbl[TSET_MAPTBL] },
 	{ .offset = 2, .maptbl = &vkc_a2_da_maptbl[MPS_MAPTBL] },
 	{ .offset = 3, .maptbl = &vkc_a2_da_maptbl[HMD_ELVSS_MAPTBL] },
 	{ .offset = 23, .maptbl = &vkc_a2_da_maptbl[ELVSS_TEMP_MAPTBL] },
 };
-static DEFINE_VARIABLE_PACKET(vkc_a2_da_hmd_tset_mps_elvss, DSI_PKT_TYPE_WR, VKC_A2_DA_TSET_MPS_ELVSS, 0);
+static DEFINE_PACKET(vkc_a2_da_hmd_tset_mps_elvss, DSI_PKT_TYPE_WR, VKC_A2_DA_TSET_MPS_ELVSS,
+		PKTUI(vkc_a2_da_hmd_tset_mps_elvss), ARRAY_SIZE(PKTUI(vkc_a2_da_hmd_tset_mps_elvss)));
 #endif /* CONFIG_SUPPORT_HMD */
 
-static DEFINE_PKTUI(vkc_a2_da_vint, &vkc_a2_da_maptbl[VINT_MAPTBL], 2);
-static DEFINE_VARIABLE_PACKET(vkc_a2_da_vint, DSI_PKT_TYPE_WR, VKC_A2_DA_VINT, 0);
-static DEFINE_PKTUI(vkc_a2_da_irc_on, &vkc_a2_da_maptbl[IRC_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(vkc_a2_da_irc_on, DSI_PKT_TYPE_WR, VKC_A2_DA_IRC_ON, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_irc_off, DSI_PKT_TYPE_WR, VKC_A2_DA_IRC_OFF, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_gamma_update_disable, DSI_PKT_TYPE_WR, VKC_A2_DA_GAMMA_UPDATE_DISABLE, 0);
-static DEFINE_STATIC_PACKET(vkc_a2_da_gamma_update_enable, DSI_PKT_TYPE_WR, VKC_A2_DA_GAMMA_UPDATE_ENABLE, 0);
-static DEFINE_PKTUI(vkc_a2_da_acl_onoff, &vkc_a2_da_maptbl[ACL_ONOFF_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(vkc_a2_da_acl_onoff, DSI_PKT_TYPE_WR, VKC_A2_DA_ACL_ONOFF, 0);
-static DEFINE_PKTUI(vkc_a2_da_acl_opr, &vkc_a2_da_maptbl[ACL_OPR_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(vkc_a2_da_acl_opr, DSI_PKT_TYPE_WR, VKC_A2_DA_ACL_OPR, 0);
+DEFINE_VARIABLE_PACKET(vkc_a2_da_vint, DSI_PKT_TYPE_WR, VKC_A2_DA_VINT, &vkc_a2_da_maptbl[VINT_MAPTBL], 2);
+DEFINE_VARIABLE_PACKET(vkc_a2_da_irc_on, DSI_PKT_TYPE_WR, VKC_A2_DA_IRC_ON, &vkc_a2_da_maptbl[IRC_MAPTBL], 1);
+DEFINE_STATIC_PACKET(vkc_a2_da_irc_off, DSI_PKT_TYPE_WR, VKC_A2_DA_IRC_OFF);
+DEFINE_STATIC_PACKET(vkc_a2_da_gamma_update_disable, DSI_PKT_TYPE_WR, VKC_A2_DA_GAMMA_UPDATE_DISABLE);
+DEFINE_STATIC_PACKET(vkc_a2_da_gamma_update_enable, DSI_PKT_TYPE_WR, VKC_A2_DA_GAMMA_UPDATE_ENABLE);
+DEFINE_VARIABLE_PACKET(vkc_a2_da_acl_onoff, DSI_PKT_TYPE_WR, VKC_A2_DA_ACL_ONOFF, &vkc_a2_da_maptbl[ACL_ONOFF_MAPTBL], 1);
+DEFINE_VARIABLE_PACKET(vkc_a2_da_acl_opr, DSI_PKT_TYPE_WR, VKC_A2_DA_ACL_OPR, &vkc_a2_da_maptbl[ACL_OPR_MAPTBL], 1);
 
 static DEFINE_PANEL_UDELAY(vkc_a2_da_wait_1usec, 1);
 static DEFINE_PANEL_MDELAY(vkc_a2_da_wait_5msec, 5);
@@ -1388,7 +1384,6 @@ static void *vkc_a2_da_init_cmdtbl[] = {
 	&DLYINFO(vkc_a2_da_wait_120msec),
 	&KEYINFO(vkc_a2_da_level2_key_enable),
 	&PKTINFO(vkc_a2_da_te_on),
-	&PKTINFO(vkc_a2_da_tsp_te),
 	&PKTINFO(vkc_a2_da_err_fg),
 	&PKTINFO(vkc_a2_da_te_start),
 	&PKTINFO(vkc_a2_da_ffc),
@@ -1549,7 +1544,7 @@ static struct seqinfo vkc_a2_da_seqtbl[MAX_PANEL_SEQ] = {
 	[PANEL_DUMMY_SEQ] = SEQINFO_INIT("dummy-seq", vkc_a2_da_dummy_cmdtbl),
 };
 
-static struct common_panel_info s6e3hf4_vkc_a2_da_default_panel_info = {
+struct common_panel_info s6e3hf4_vkc_a2_da_default_panel_info = {
 	.ldi_name = "s6e3hf4",
 	.name = "s6e3hf4_vkc_a2_da_default",
 	.model = "AMB549KR01",
@@ -1572,9 +1567,6 @@ static struct common_panel_info s6e3hf4_vkc_a2_da_default_panel_info = {
 	.panel_dim_info = {
 		&s6e3hf4_vkc_a2_da_panel_dimming_info,
 	},
-#ifdef CONFIG_EXYNOS_DECON_LCD_COPR
-	.copr_data = &s6e3hf4_vkc_a2_da_copr_data,
-#endif
 };
 
 static int __init s6e3hf4_vkc_a2_da_panel_init(void)

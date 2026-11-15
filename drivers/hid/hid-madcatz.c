@@ -64,15 +64,12 @@ static int madcatz_universal_kbd_input_mapping(struct hid_device *hdev,
 		return 0;
 
 	dbg_hid("madcatz game controller input mapping event [0x%x], [0x%x], %ld, %ld, [0x%x]\n",
-		usage->hid, usage->hid & HID_USAGE, hi->input->evbit[0],
-		hi->input->absbit[0], usage->hid & HID_USAGE_PAGE);
+		usage->hid, usage->hid & HID_USAGE, hi->input->evbit[0], hi->input->absbit[0], usage->hid & HID_USAGE_PAGE);
 
 	if (HID_UP_BUTTON == (usage->hid & HID_USAGE_PAGE)) {
-		switch (usage->hid & HID_USAGE) {
+		switch(usage->hid & HID_USAGE) {
 		/* GAME */
-		case 0x10:
-			madcatz_gamepad_map_key_clear(BTN_GAME);
-		break;
+		case 0x10: madcatz_gamepad_map_key_clear(BTN_GAME); break;
 		default:
 			return 0;
 		}
@@ -83,79 +80,45 @@ static int madcatz_universal_kbd_input_mapping(struct hid_device *hdev,
 		set_bit(EV_REP, hi->input->evbit);
 		/* Only for UK keyboard */
 #ifdef CONFIG_HID_KK_UPGRADE
-		case 0x32:
-			madcatz_gamepad_map_key_clear(KEY_KBDILLUMTOGGLE);
-		break;
-		case 0x64:
-			madcatz_gamepad_map_key_clear(KEY_BACKSLASH);
-		break;
+		case 0x32: madcatz_gamepad_map_key_clear(KEY_KBDILLUMTOGGLE); break;
+		case 0x64: madcatz_gamepad_map_key_clear(KEY_BACKSLASH); break;
 #else
-		case 0x32:
-			madcatz_gamepad_map_key_clear(KEY_BACKSLASH);
-		break;
-		case 0x64:
-			madcatz_gamepad_map_key_clear(KEY_102ND);
-		break;
+		case 0x32: madcatz_gamepad_map_key_clear(KEY_BACKSLASH); break;
+		case 0x64: madcatz_gamepad_map_key_clear(KEY_102ND); break;
 #endif
 		/* Only for BR keyboard */
-		case 0x87:
-			madcatz_gamepad_map_key_clear(KEY_RO);
-		break;
+		case 0x87: madcatz_gamepad_map_key_clear(KEY_RO); break;
 		default:
 			return 0;
 		}
-	}
+	}	
 
 	if (HID_UP_CONSUMER == (usage->hid & HID_USAGE_PAGE)) {
 		switch (usage->hid & HID_USAGE) {
 		/* report 2 */
 		/* RECENTAPPS */
-		case 0x29d:
-			madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY1);
-		break;
-		case 0x301:
-			madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY1);
-		break;
+		case 0x29d: madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY1); break;
+		case 0x301: madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY1); break;
 		/* APPLICATION */
-		case 0x302:
-			madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY2);
-		break;
+		case 0x302: madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY2); break;
 		/* Voice search */
-		case 0x305:
-			madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY4);
-		break;
+		case 0x305: madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY4); break;
 		/* QPANEL on/off */
-		case 0x306:
-			madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY5);
-		break;
+		case 0x306: madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY5); break;
 		/* SIP on/off */
-		case 0x307:
-			madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY3);
-		break;
+		case 0x307: madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY3); break;
 		/* LANG */
-		case 0x308:
-			madcatz_gamepad_map_key_clear(KEY_LANGUAGE);
-		break;
+		case 0x308: madcatz_gamepad_map_key_clear(KEY_LANGUAGE); break;
 		/* BRIGHTNESS DOWN */
-		case 0x30a:
-			madcatz_gamepad_map_key_clear(KEY_BRIGHTNESSDOWN);
-		break;
-		/* BRIGHTNESS UP */
-		case 0x30b:
-			madcatz_gamepad_map_key_clear(KEY_BRIGHTNESSUP);
-		break;
+		case 0x30a: madcatz_gamepad_map_key_clear(KEY_BRIGHTNESSDOWN); break;
+		/* BRIGHTNESS UP */        
+		case 0x30b: madcatz_gamepad_map_key_clear(KEY_BRIGHTNESSUP); break;
 		/* S-Finder */
-		case 0x304:
-			madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY7);
-		break;
+		case 0x304: madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY7); break;
 		/* Screen Capture */
-		case 0x303:
-			madcatz_gamepad_map_key_clear(KEY_SYSRQ);
-		break;
+		case 0x303: madcatz_gamepad_map_key_clear(KEY_SYSRQ); break;
 		/* Multi Window */
-		case 0x309:
-			madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY9);
-		break;
+		case 0x309: madcatz_gamepad_map_key_clear(BTN_TRIGGER_HAPPY9); break;
 		default:
 			return 0;
 		}
@@ -176,10 +139,10 @@ static int madcatz_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 {
 	int ret = 0;
 
-	if (hdev->product == USB_DEVICE_ID_MADCATZ_SURFR_SMAPP)
+    if(USB_DEVICE_ID_MADCATZ_SURFR_SMAPP == hdev->product)
 		ret = madcatz_universal_kbd_input_mapping(hdev,
 			hi, field, usage, bit, max);
-	else if (hdev->product == USB_DEVICE_ID_MADCATZ_CTRLR_SMAPP)
+	else if(USB_DEVICE_ID_MADCATZ_CTRLR_SMAPP == hdev->product)
 		ret = madcatz_universal_kbd_input_mapping(hdev,
 			hi, field, usage, bit, max);
 
@@ -198,7 +161,7 @@ static int madcatz_probe(struct hid_device *hdev,
 		goto err_free;
 	}
 
-	if (hdev->product == USB_DEVICE_ID_SAMSUNG_IR_REMOTE) {
+	if (USB_DEVICE_ID_SAMSUNG_IR_REMOTE == hdev->product) {
 		if (hdev->rsize == 184) {
 			/* disable hidinput, force hiddev */
 			cmask = (cmask & ~HID_CONNECT_HIDINPUT) |

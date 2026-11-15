@@ -23,8 +23,6 @@
  * 02111-1307, USA.
  */
 
-#include <crypto/hash.h>
-#include <crypto/skcipher.h>
 #include <linux/fs.h>
 #include <linux/mount.h>
 #include <linux/pagemap.h>
@@ -32,13 +30,20 @@
 #include <linux/compiler.h>
 #include <linux/key.h>
 #include <linux/namei.h>
+#include <linux/crypto.h>
+#include <crypto/hash.h>
 #include <linux/file.h>
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
-#include <asm/unaligned.h>
-
+#if defined(CONFIG_FMP_ECRYPT_FS)
+#include <linux/ecryptfs.h>
+#endif
+#ifdef CONFIG_CRYPTO_FIPS
 #include <crypto/rng.h>
+#define SEED_LEN 32
+#endif
 
+#include <asm/unaligned.h>
 #include "ecryptfs_kernel.h"
 
 #ifdef CONFIG_SDP
@@ -50,11 +55,11 @@
 #define ENCRYPT		1
 
 #ifdef CONFIG_CRYPTO_FIPS
+
 static struct crypto_rng *ecryptfs_crypto_rng;
 
 static int crypto_rng_init(void)
 {
-	const int seed_len = 32;
 	char *seed = NULL;
 	int read_bytes = 0;
 	int get_bytes = 0;
@@ -65,7 +70,7 @@ static int crypto_rng_init(void)
 	mm_segment_t oldfs;
 
 	ecryptfs_crypto_rng = NULL;
-	seed = kmalloc(seed_len, GFP_KERNEL);
+	seed = kmalloc(SEED_LEN, GFP_KERNEL);
 	if (!seed) {
 		ecryptfs_printk(KERN_ERR, "Failed to get memory space for seed\n");
 		ret = -1;
@@ -81,24 +86,22 @@ static int crypto_rng_init(void)
 
 	oldfs = get_fs();
 	set_fs(KERNEL_DS);
-	memset((void *)seed, 0, seed_len);
+	memset((void *)seed, 0, SEED_LEN);
 
 	while (trialcount > 0) {
-		get_bytes = (int)filp->f_op->read(filp, &(seed[read_bytes]), seed_len-read_bytes, &filp->f_pos);
+		get_bytes = (int)filp->f_op->read(filp, &(seed[read_bytes]), SEED_LEN-read_bytes, &filp->f_pos);
 
 		if (get_bytes > 0)
 			read_bytes += get_bytes;
-		if (read_bytes != seed_len)
+		if (read_bytes != SEED_LEN)
 			trialcount--;
 		else
 			break;
 	}
 	set_fs(oldfs);
 
-	if (read_bytes != seed_len) {
-		ecryptfs_printk(KERN_ERR,
-			"Failed to get enough random bytes (read=%d/request=%d)\n",
-			read_bytes, seed_len);
+	if (read_bytes != SEED_LEN) {
+		ecryptfs_printk(KERN_ERR, "Failed to get enough random bytes (read=%d/request=%d)\n", read_bytes, SEED_LEN);
 		ret = -1;
 		goto err_out;
 	}
@@ -110,10 +113,11 @@ static int crypto_rng_init(void)
 		goto err_out;
 	}
 
-	ret = crypto_rng_reset(ecryptfs_crypto_rng, seed, seed_len);
+	ret = crypto_rng_reset(ecryptfs_crypto_rng, seed, SEED_LEN);
 
-	if (ret < 0)
+	if (ret < 0) {
 		ecryptfs_printk(KERN_ERR, "rng reset fail (%d)\n", ret);
+	}
 
 err_out:
 	if (seed)
@@ -133,13 +137,13 @@ static void crypto_rng_destroy(void)
 /**
  * crypto_cc_rng_get_bytes
  * @data: Buffer to get random bytes
- * @len: the length of random bytes
+ * @len: the lengh of random bytes
  */
 static void crypto_cc_rng_get_bytes(u8 *data, unsigned int len)
 {
 	int ret = 0;
 
-	if (ecryptfs_crypto_rng == NULL || IS_ERR(ecryptfs_crypto_rng)) {
+	if (NULL == ecryptfs_crypto_rng || IS_ERR(ecryptfs_crypto_rng)) {
 		if (crypto_rng_init() < 0) {
 			ecryptfs_printk(KERN_ERR, "crypto_rng_init fail\n");
 			crypto_rng_destroy();
@@ -147,10 +151,10 @@ static void crypto_cc_rng_get_bytes(u8 *data, unsigned int len)
 		}
 	}
 
-	if (ecryptfs_crypto_rng == NULL || IS_ERR(ecryptfs_crypto_rng)) {
+	if (NULL == ecryptfs_crypto_rng || IS_ERR(ecryptfs_crypto_rng)) {
 		ecryptfs_printk(KERN_ERR, "rng generation is failed\n");
 	} else {
-		if (data == NULL || IS_ERR(data)) {
+		if (NULL == data || IS_ERR(data)) {
 			ecryptfs_printk(KERN_ERR, "key buffer is wrong\n");
 			crypto_rng_destroy();
 			return;
@@ -163,13 +167,14 @@ static void crypto_cc_rng_get_bytes(u8 *data, unsigned int len)
 		}
 	}
 }
+
 #endif
 
 /**
  * ecryptfs_to_hex
  * @dst: Buffer to take hex character representation of contents of
  *       src; must be at least of size (src_size * 2)
- * @src: Buffer to be converted to a hex string representation
+ * @src: Buffer to be converted to a hex string respresentation
  * @src_size: number of bytes to convert
  */
 void ecryptfs_to_hex(char *dst, char *src, size_t src_size)
@@ -184,7 +189,7 @@ void ecryptfs_to_hex(char *dst, char *src, size_t src_size)
  * ecryptfs_from_hex
  * @dst: Buffer to take the bytes from src hex; must be at least of
  *       size (src_size / 2)
- * @src: Buffer to be converted from a hex string representation to raw value
+ * @src: Buffer to be converted from a hex string respresentation to raw value
  * @dst_size: size of dst buffer, or number of hex characters pairs to convert
  */
 void ecryptfs_from_hex(char *dst, char *src, int dst_size)
@@ -199,19 +204,20 @@ void ecryptfs_from_hex(char *dst, char *src, int dst_size)
 	}
 }
 
-static int ecryptfs_hash_digest(struct crypto_shash *tfm,
-				char *src, int len, char *dst)
+static int ecryptfs_hash_digest(struct crypto_shash *tfm, char *src,
+				int len, char *dst)
 {
 	SHASH_DESC_ON_STACK(desc, tfm);
-	int err;
+	int ret;
 
 	desc->tfm = tfm;
 	desc->flags = CRYPTO_TFM_REQ_MAY_SLEEP;
-	err = crypto_shash_digest(desc, src, len, dst);
-	shash_desc_zero(desc);
-	return err;
+	ret = crypto_shash_digest(desc, (u8 *)src, len, (u8 *)dst);
+	memzero_explicit(desc, sizeof(*desc) + crypto_shash_descsize(tfm));
+	return ret;
 }
 
+#ifdef CONFIG_CRYPTO_FIPS
 /**
  * ecryptfs_calculate_sha256 - calculates the sha256 of @src
  * @dst: Pointer to 32 bytes of allocated memory
@@ -229,16 +235,31 @@ static int ecryptfs_calculate_sha256(char *dst,
 	struct crypto_shash *tfm;
 	int rc = 0;
 
+	mutex_lock(&crypt_stat->cs_hash_tfm_mutex);
 	tfm = crypt_stat->hash_tfm;
+	if (!tfm) {
+		tfm = crypto_alloc_shash(ECRYPTFS_SHA256_HASH, 0, 0);
+		if (IS_ERR(tfm)) {
+			rc = PTR_ERR(tfm);
+			ecryptfs_printk(KERN_ERR, "Error attempting to "
+					"allocate crypto context; rc = [%d]\n",
+					rc);
+			goto out;
+		}
+		crypt_stat->hash_tfm = tfm;
+	}
 	rc = ecryptfs_hash_digest(tfm, src, len, dst);
 	if (rc) {
 		printk(KERN_ERR
 		       "%s: Error computing crypto hash; rc = [%d]\n",
 		       __func__, rc);
+		goto out;
 	}
-
+out:
+	mutex_unlock(&crypt_stat->cs_hash_tfm_mutex);
 	return rc;
 }
+#endif
 
 /**
  * ecryptfs_calculate_md5 - calculates the md5 of @src
@@ -257,28 +278,28 @@ static int ecryptfs_calculate_md5(char *dst,
 	struct crypto_shash *tfm;
 	int rc = 0;
 
+	mutex_lock(&crypt_stat->cs_hash_tfm_mutex);
 	tfm = crypt_stat->hash_tfm;
+	if (!tfm) {
+		tfm = crypto_alloc_shash(ECRYPTFS_DEFAULT_HASH, 0, 0);
+		if (IS_ERR(tfm)) {
+			rc = PTR_ERR(tfm);
+			ecryptfs_printk(KERN_ERR, "Error attempting to "
+					"allocate crypto context; rc = [%d]\n",
+					rc);
+			goto out;
+		}
+		crypt_stat->hash_tfm = tfm;
+	}
 	rc = ecryptfs_hash_digest(tfm, src, len, dst);
 	if (rc) {
 		printk(KERN_ERR
 		       "%s: Error computing crypto hash; rc = [%d]\n",
 		       __func__, rc);
+		goto out;
 	}
-
-	return rc;
-}
-
-static int ecryptfs_calculate_hash(char *dst,
-				  struct ecryptfs_crypt_stat *crypt_stat,
-				  char *src, int len)
-{
-	int rc = 0;
-
-	if (crypt_stat->mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC)
-		rc = ecryptfs_calculate_sha256(dst, crypt_stat, src, len);
-	else
-		rc = ecryptfs_calculate_md5(dst, crypt_stat, src, len);
-
+out:
+	mutex_unlock(&crypt_stat->cs_hash_tfm_mutex);
 	return rc;
 }
 
@@ -319,8 +340,12 @@ int ecryptfs_derive_iv(char *iv, struct ecryptfs_crypt_stat *crypt_stat,
 		       loff_t offset)
 {
 	int rc = 0;
+#ifdef CONFIG_CRYPTO_FIPS
+	char dst[SHA256_HASH_SIZE];
+#else
+	char dst[MD5_DIGEST_SIZE];
+#endif
 	char src[ECRYPTFS_MAX_IV_BYTES + 16];
-	char *dst = NULL;
 
 	if (unlikely(ecryptfs_verbosity > 0)) {
 		ecryptfs_printk(KERN_DEBUG, "root iv:\n");
@@ -337,13 +362,12 @@ int ecryptfs_derive_iv(char *iv, struct ecryptfs_crypt_stat *crypt_stat,
 		ecryptfs_printk(KERN_DEBUG, "source:\n");
 		ecryptfs_dump_hex(src, (crypt_stat->iv_bytes + 16));
 	}
-
-	dst = kmalloc((crypt_stat->mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC)?SHA256_HASH_SIZE:MD5_DIGEST_SIZE, GFP_KERNEL);
-	if (!dst)
-		goto out;
-
-	rc = ecryptfs_calculate_hash(dst, crypt_stat, src,
-				    (crypt_stat->iv_bytes + 16));
+#ifdef CONFIG_CRYPTO_FIPS
+	if (crypt_stat->mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC)
+		rc = ecryptfs_calculate_sha256(dst, crypt_stat, src, (crypt_stat->iv_bytes + 16));
+	else
+#endif
+		rc = ecryptfs_calculate_md5(dst, crypt_stat, src, (crypt_stat->iv_bytes + 16));
 	if (rc) {
 		ecryptfs_printk(KERN_WARNING, "Error attempting to compute "
 				"MD5 while generating IV for a page\n");
@@ -355,7 +379,6 @@ int ecryptfs_derive_iv(char *iv, struct ecryptfs_crypt_stat *crypt_stat,
 		ecryptfs_dump_hex(iv, crypt_stat->iv_bytes);
 	}
 out:
-	kfree(dst);
 	return rc;
 }
 
@@ -365,29 +388,16 @@ out:
  *
  * Initialize the crypt_stat structure.
  */
-int ecryptfs_init_crypt_stat(struct ecryptfs_crypt_stat *crypt_stat)
+void
+ecryptfs_init_crypt_stat(struct ecryptfs_crypt_stat *crypt_stat)
 {
-	struct crypto_shash *tfm;
-	int rc;
-
-	tfm = crypto_alloc_shash(ECRYPTFS_DEFAULT_HASH, 0, 0);
-	if (IS_ERR(tfm)) {
-		rc = PTR_ERR(tfm);
-		ecryptfs_printk(KERN_ERR, "Error attempting to "
-				"allocate crypto context; rc = [%d]\n",
-				rc);
-		return rc;
-	}
-
 	memset((void *)crypt_stat, 0, sizeof(struct ecryptfs_crypt_stat));
 	INIT_LIST_HEAD(&crypt_stat->keysig_list);
 	mutex_init(&crypt_stat->keysig_list_mutex);
 	mutex_init(&crypt_stat->cs_mutex);
 	mutex_init(&crypt_stat->cs_tfm_mutex);
-	crypt_stat->hash_tfm = tfm;
+	mutex_init(&crypt_stat->cs_hash_tfm_mutex);
 	crypt_stat->flags |= ECRYPTFS_STRUCT_INITIALIZED;
-
-	return 0;
 }
 
 /**
@@ -400,8 +410,10 @@ void ecryptfs_destroy_crypt_stat(struct ecryptfs_crypt_stat *crypt_stat)
 {
 	struct ecryptfs_key_sig *key_sig, *key_sig_tmp;
 
-	crypto_free_skcipher(crypt_stat->tfm);
-	crypto_free_shash(crypt_stat->hash_tfm);
+	if (crypt_stat->tfm)
+		crypto_free_skcipher(crypt_stat->tfm);
+	if (crypt_stat->hash_tfm)
+		crypto_free_shash(crypt_stat->hash_tfm);
 	list_for_each_entry_safe(key_sig, key_sig_tmp,
 				 &crypt_stat->keysig_list, crypt_stat_list) {
 		list_del(&key_sig->crypt_stat_list);
@@ -457,7 +469,7 @@ int virt_to_scatterlist(const void *addr, int size, struct scatterlist *sg,
 		pg = virt_to_page(addr);
 		offset = offset_in_page(addr);
 		sg_set_page(&sg[i], pg, 0, offset);
-		remainder_of_page = PAGE_SIZE - offset;
+		remainder_of_page = PAGE_CACHE_SIZE - offset;
 		if (size >= remainder_of_page) {
 			sg[i].length = remainder_of_page;
 			addr += remainder_of_page;
@@ -535,7 +547,7 @@ static int crypt_scatterlist(struct ecryptfs_crypt_stat *crypt_stat,
 	/* Consider doing this once, when the file is opened */
 	if (!(crypt_stat->flags & ECRYPTFS_KEY_SET)) {
 		rc = crypto_skcipher_setkey(crypt_stat->tfm, crypt_stat->key,
-					    crypt_stat->key_size);
+					      crypt_stat->key_size);
 		if (rc) {
 			ecryptfs_printk(KERN_ERR,
 					"Error setting key; rc = [%d]\n",
@@ -571,7 +583,7 @@ static loff_t lower_offset_for_page(struct ecryptfs_crypt_stat *crypt_stat,
 				    struct page *page)
 {
 	return ecryptfs_lower_header_size(crypt_stat) +
-	       ((loff_t)page->index << PAGE_SHIFT);
+	       ((loff_t)page->index << PAGE_CACHE_SHIFT);
 }
 
 /**
@@ -599,7 +611,7 @@ static int crypt_extent(struct ecryptfs_crypt_stat *crypt_stat,
 	size_t extent_size = crypt_stat->extent_size;
 	int rc;
 
-	extent_base = (((loff_t)page_index) * (PAGE_SIZE / extent_size));
+	extent_base = (((loff_t)page_index) * (PAGE_CACHE_SIZE / extent_size));
 	rc = ecryptfs_derive_iv(extent_iv, crypt_stat,
 				(extent_base + extent_offset));
 	if (rc) {
@@ -658,15 +670,23 @@ int ecryptfs_encrypt_page(struct page *page)
 #ifdef CONFIG_SDP
 	sdp_fs_command_t *cmd = NULL;
 #endif
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat = NULL;
+#endif
 
 	ecryptfs_inode = page->mapping->host;
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	mount_crypt_stat = &ecryptfs_superblock_to_private(ecryptfs_inode->i_sb)->mount_crypt_stat;
+#endif
+
 	crypt_stat =
 		&(ecryptfs_inode_to_private(ecryptfs_inode)->crypt_stat);
 	BUG_ON(!(crypt_stat->flags & ECRYPTFS_ENCRYPTED));
+
 #ifdef CONFIG_SDP
 	if (!(crypt_stat->flags & ECRYPTFS_KEY_SET) ||
 			!(crypt_stat->flags & ECRYPTFS_KEY_VALID)) {
-		if ((crypt_stat->flags & ECRYPTFS_DEK_SDP_ENABLED) &&
+		if((crypt_stat->flags & ECRYPTFS_DEK_SDP_ENABLED) &&
 			(crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)) {
 			rc = ecryptfs_get_sdp_dek(crypt_stat);
 			if (rc) {
@@ -688,6 +708,17 @@ int ecryptfs_encrypt_page(struct page *page)
 	ecryptfs_dump_hex(crypt_stat->root_iv, ECRYPTFS_MAX_IV_BYTES);
 #endif
 #endif
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	if (!(mount_crypt_stat->flags & ECRYPTFS_USE_FMP)) {
+		enc_extent_page = alloc_page(GFP_USER);
+		if (!enc_extent_page) {
+			rc = -ENOMEM;
+			ecryptfs_printk(KERN_ERR, "Error allocating memory for "
+					"encrypted extent\n");
+			goto out;
+		}
+	}
+#else
 	enc_extent_page = alloc_page(GFP_USER);
 	if (!enc_extent_page) {
 		rc = -ENOMEM;
@@ -695,15 +726,32 @@ int ecryptfs_encrypt_page(struct page *page)
 				"encrypted extent\n");
 		goto out;
 	}
-
+#endif
 	for (extent_offset = 0;
-	     extent_offset < (PAGE_SIZE / crypt_stat->extent_size);
+	     extent_offset < (PAGE_CACHE_SIZE / crypt_stat->extent_size);
 	     extent_offset++) {
+#if defined(CONFIG_FMP_ECRYPT_FS)
+		if (!(mount_crypt_stat->flags & ECRYPTFS_USE_FMP)) {
+			rc = crypt_extent(crypt_stat, enc_extent_page, page,
+					extent_offset, ENCRYPT);
+			if (rc) {
+				printk(KERN_ERR "%s: Error encrypting extent; "
+						"rc = [%d]\n", __func__, rc);
+#ifdef CONFIG_SDP
+				cmd = sdp_fs_command_alloc(FSOP_AUDIT_FAIL_ENCRYPT,
+						current->tgid, crypt_stat->mount_crypt_stat->userid,
+						crypt_stat->mount_crypt_stat->partition_id,
+						ecryptfs_inode->i_ino, GFP_KERNEL);
+#endif
+				goto out;
+			}
+		}
+#else
 		rc = crypt_extent(crypt_stat, enc_extent_page, page,
 				  extent_offset, ENCRYPT);
 		if (rc) {
 			printk(KERN_ERR "%s: Error encrypting extent; "
-					"rc = [%d]\n", __func__, rc);
+			       "rc = [%d]\n", __func__, rc);
 #ifdef CONFIG_SDP
 			cmd = sdp_fs_command_alloc(FSOP_AUDIT_FAIL_ENCRYPT,
 					current->tgid, crypt_stat->mount_crypt_stat->userid,
@@ -712,12 +760,28 @@ int ecryptfs_encrypt_page(struct page *page)
 #endif
 			goto out;
 		}
+#endif
 	}
 
 	lower_offset = lower_offset_for_page(crypt_stat, page);
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP)
+		enc_extent_virt = kmap(page);
+	else
+		enc_extent_virt = kmap(enc_extent_page);
+#else
+	enc_extent_virt = kmap(enc_extent_page);
+#endif
+	if (!enc_extent_virt) {
+		rc = -ENOMEM;
+		ecryptfs_printk(KERN_ERR, "Error mapping memory for "
+				"encrypted extent virtual memory\n");
+		goto out;
+	}
+
 	enc_extent_virt = kmap(enc_extent_page);
 	rc = ecryptfs_write_lower(ecryptfs_inode, enc_extent_virt, lower_offset,
-				  PAGE_SIZE);
+				  PAGE_CACHE_SIZE);
 	kunmap(enc_extent_page);
 	if (rc < 0) {
 		ecryptfs_printk(KERN_ERR,
@@ -727,11 +791,24 @@ int ecryptfs_encrypt_page(struct page *page)
 	}
 	rc = 0;
 out:
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP) {
+		if (enc_extent_virt)
+			kunmap(page);
+	} else {
+		if (enc_extent_page) {
+			if (enc_extent_virt)
+				kunmap(enc_extent_page);
+			__free_page(enc_extent_page);
+		}
+	}
+#else
 	if (enc_extent_page) {
 		__free_page(enc_extent_page);
 	}
+#endif
 #ifdef CONFIG_SDP
-	if (cmd) {
+	if(cmd) {
 		sdp_fs_request(cmd, NULL);
 		sdp_fs_command_free(cmd);
 	}
@@ -766,16 +843,24 @@ int ecryptfs_decrypt_page(struct page *page)
 #ifdef CONFIG_SDP
 	sdp_fs_command_t *cmd = NULL;
 #endif
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat = NULL;
+#endif
 
 	ecryptfs_inode = page->mapping->host;
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	mount_crypt_stat = &ecryptfs_superblock_to_private(
+                ecryptfs_inode->i_sb)->mount_crypt_stat;
+#endif
 	crypt_stat =
 		&(ecryptfs_inode_to_private(ecryptfs_inode)->crypt_stat);
 	BUG_ON(!(crypt_stat->flags & ECRYPTFS_ENCRYPTED));
 
+
 #ifdef CONFIG_SDP
 	if (!(crypt_stat->flags & ECRYPTFS_KEY_SET) ||
 			!(crypt_stat->flags & ECRYPTFS_KEY_VALID)) {
-		if ((crypt_stat->flags & ECRYPTFS_DEK_SDP_ENABLED) &&
+		if((crypt_stat->flags & ECRYPTFS_DEK_SDP_ENABLED) &&
 			(crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)) {
 			rc = ecryptfs_get_sdp_dek(crypt_stat);
 			if (rc) {
@@ -797,10 +882,10 @@ int ecryptfs_decrypt_page(struct page *page)
 	ecryptfs_dump_hex(crypt_stat->root_iv, ECRYPTFS_MAX_IV_BYTES);
 #endif
 #endif
-
+	
 	lower_offset = lower_offset_for_page(crypt_stat, page);
 	page_virt = kmap(page);
-	rc = ecryptfs_read_lower(page_virt, lower_offset, PAGE_SIZE,
+	rc = ecryptfs_read_lower(page_virt, lower_offset, PAGE_CACHE_SIZE,
 				 ecryptfs_inode);
 	kunmap(page);
 	if (rc < 0) {
@@ -810,14 +895,20 @@ int ecryptfs_decrypt_page(struct page *page)
 		goto out;
 	}
 
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP) {
+		rc = 0;
+		return rc;
+	}
+#endif
 	for (extent_offset = 0;
-	     extent_offset < (PAGE_SIZE / crypt_stat->extent_size);
+	     extent_offset < (PAGE_CACHE_SIZE / crypt_stat->extent_size);
 	     extent_offset++) {
 		rc = crypt_extent(crypt_stat, page, page,
 				  extent_offset, DECRYPT);
 		if (rc) {
-			printk(KERN_ERR "%s: Error encrypting extent; "
-					"rc = [%d]\n", __func__, rc);
+			printk(KERN_ERR "%s: Error decrypting extent; "
+			       "rc = [%d]\n", __func__, rc);
 #ifdef CONFIG_SDP
 			cmd = sdp_fs_command_alloc(FSOP_AUDIT_FAIL_DECRYPT,
 					current->tgid, crypt_stat->mount_crypt_stat->userid,
@@ -829,7 +920,7 @@ int ecryptfs_decrypt_page(struct page *page)
 	}
 out:
 #ifdef CONFIG_SDP
-	if (cmd) {
+	if(cmd) {
 		sdp_fs_request(cmd, NULL);
 		sdp_fs_command_free(cmd);
 	}
@@ -864,7 +955,7 @@ int ecryptfs_init_crypt_ctx(struct ecryptfs_crypt_stat *crypt_stat)
 		goto out_unlock;
 	}
 	rc = ecryptfs_crypto_api_algify_cipher_name(&full_alg_name,
-						    crypt_stat->cipher, ECRYPTFS_AES_CBC_MODE);
+						    crypt_stat->cipher, "cbc");
 	if (rc)
 		goto out_unlock;
 	crypt_stat->tfm = crypto_alloc_skcipher(full_alg_name, 0, 0);
@@ -911,11 +1002,11 @@ void ecryptfs_set_default_sizes(struct ecryptfs_crypt_stat *crypt_stat)
 	if (crypt_stat->flags & ECRYPTFS_METADATA_IN_XATTR)
 		crypt_stat->metadata_size = ECRYPTFS_MINIMUM_HEADER_EXTENT_SIZE;
 	else {
-		if (PAGE_SIZE <= ECRYPTFS_MINIMUM_HEADER_EXTENT_SIZE)
+		if (PAGE_CACHE_SIZE <= ECRYPTFS_MINIMUM_HEADER_EXTENT_SIZE)
 			crypt_stat->metadata_size =
 				ECRYPTFS_MINIMUM_HEADER_EXTENT_SIZE;
 		else
-			crypt_stat->metadata_size = PAGE_SIZE;
+			crypt_stat->metadata_size = PAGE_CACHE_SIZE;
 	}
 }
 
@@ -928,7 +1019,11 @@ void ecryptfs_set_default_sizes(struct ecryptfs_crypt_stat *crypt_stat)
 int ecryptfs_compute_root_iv(struct ecryptfs_crypt_stat *crypt_stat)
 {
 	int rc = 0;
-	char *dst = NULL;
+#ifdef CONFIG_CRYPTO_FIPS
+	char dst[SHA256_HASH_SIZE];
+#else
+	char dst[MD5_DIGEST_SIZE];
+#endif
 
 	BUG_ON(crypt_stat->iv_bytes > MD5_DIGEST_SIZE);
 	BUG_ON(crypt_stat->iv_bytes <= 0);
@@ -938,12 +1033,14 @@ int ecryptfs_compute_root_iv(struct ecryptfs_crypt_stat *crypt_stat)
 				"cannot generate root IV\n");
 		goto out;
 	}
-	dst = kmalloc((crypt_stat->mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC)?SHA256_HASH_SIZE:MD5_DIGEST_SIZE, GFP_KERNEL);
-	if (!dst)
-		goto out;
 
-	rc = ecryptfs_calculate_hash(dst, crypt_stat, crypt_stat->key,
-			    crypt_stat->key_size);
+#ifdef CONFIG_CRYPTO_FIPS
+	if (crypt_stat->mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC)
+		rc = ecryptfs_calculate_sha256(dst, crypt_stat, crypt_stat->key, crypt_stat->key_size);
+	else
+#endif
+		rc = ecryptfs_calculate_md5(dst, crypt_stat, crypt_stat->key, crypt_stat->key_size);
+
 	if (rc) {
 		ecryptfs_printk(KERN_WARNING, "Error attempting to compute "
 				"MD5 while generating root IV\n");
@@ -955,24 +1052,26 @@ out:
 		memset(crypt_stat->root_iv, 0, crypt_stat->iv_bytes);
 		crypt_stat->flags |= ECRYPTFS_SECURITY_WARNING;
 	}
-	if (!dst)
-		kfree(dst);
 	return rc;
-}
-
-static void get_random_key(u8 *data, unsigned int len)
-{
-#ifdef CONFIG_CRYPTO_FIPS
-	crypto_cc_rng_get_bytes(data, len);
-#else
-	get_random_bytes(data, len);
-#endif
 }
 
 static void ecryptfs_generate_new_key(struct ecryptfs_crypt_stat *crypt_stat)
 {
-	get_random_key(crypt_stat->key, crypt_stat->key_size);
-
+#ifdef CONFIG_CRYPTO_FIPS
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	if (crypt_stat->mount_crypt_stat->cipher_code == RFC2440_CIPHER_AES_XTS_256)
+		crypto_cc_rng_get_bytes(crypt_stat->key, crypt_stat->key_size * 2);
+	else
+#endif
+		crypto_cc_rng_get_bytes(crypt_stat->key, crypt_stat->key_size);
+#else
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	if (crypt_stat->mount_crypt_stat->cipher_code == RFC2440_CIPHER_AES_XTS_256)
+		get_random_bytes(crypt_stat->key, crypt_stat->key_size * 2);
+	else
+#endif
+		get_random_bytes(crypt_stat->key, crypt_stat->key_size);
+#endif
 	crypt_stat->flags |= ECRYPTFS_KEY_VALID;
 	ecryptfs_compute_root_iv(crypt_stat);
 	if (unlikely(ecryptfs_verbosity > 0)) {
@@ -1009,8 +1108,8 @@ static void ecryptfs_copy_mount_wide_flags_to_inode_flags(
 	}
 
 #ifdef CONFIG_SDP
-	if (mount_crypt_stat->flags & ECRYPTFS_MOUNT_SDP_ENABLED)
-		crypt_stat->flags |= ECRYPTFS_DEK_SDP_ENABLED;
+    if (mount_crypt_stat->flags & ECRYPTFS_MOUNT_SDP_ENABLED)
+        crypt_stat->flags |= ECRYPTFS_DEK_SDP_ENABLED;
 #endif
 }
 
@@ -1118,7 +1217,20 @@ int ecryptfs_new_file_context(struct inode *ecryptfs_inode)
 	crypt_stat->key_size =
 		mount_crypt_stat->global_default_cipher_key_size;
 	ecryptfs_generate_new_key(crypt_stat);
+
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	if (!(mount_crypt_stat->flags & ECRYPTFS_USE_FMP)) {
+		rc = ecryptfs_init_crypt_ctx(crypt_stat);
+		if (rc)
+			ecryptfs_printk(KERN_ERR, "Error initializing cryptographic "
+					"context for cipher [%s]: rc = [%d]\n",
+					crypt_stat->cipher, rc);
+	} else {
+		rc = 0;
+	}
+#else
 	rc = ecryptfs_init_crypt_ctx(crypt_stat);
+#endif
 	if (rc)
 		ecryptfs_printk(KERN_ERR, "Error initializing cryptographic "
 				"context for cipher [%s]: rc = [%d]\n",
@@ -1159,12 +1271,13 @@ static struct ecryptfs_flag_map_elem ecryptfs_flag_map[] = {
 	{0x00000001, ECRYPTFS_ENABLE_HMAC},
 	{0x00000002, ECRYPTFS_ENCRYPTED},
 	{0x00000004, ECRYPTFS_METADATA_IN_XATTR},
-	{0x00000008, ECRYPTFS_ENCRYPT_FILENAMES},
-	{0x00000010, ECRYPTFS_SUPPORT_HMAC_KEY},
 #ifdef CONFIG_SDP
+	{0x00000008, ECRYPTFS_ENCRYPT_FILENAMES},
 	{0x00100000, ECRYPTFS_DEK_SDP_ENABLED},
-	{0x00200000, ECRYPTFS_DEK_IS_SENSITIVE},
-	{0x00400000, ECRYPTFS_DEK_MULTI_ENGINE},
+    {0x00200000, ECRYPTFS_DEK_IS_SENSITIVE},
+    {0x00400000, ECRYPTFS_DEK_MULTI_ENGINE},
+#else
+	{0x00000008, ECRYPTFS_ENCRYPT_FILENAMES},
 #endif
 #ifdef CONFIG_DLP
 	{0x00080000, ECRYPTFS_DLP_ENABLED},
@@ -1210,7 +1323,11 @@ static void write_ecryptfs_marker(char *page_virt, size_t *written)
 {
 	u32 m_1, m_2;
 
+#ifdef CONFIG_CRYPTO_FIPS
+	crypto_cc_rng_get_bytes((unsigned char*)&m_1, (MAGIC_ECRYPTFS_MARKER_SIZE_BYTES / 2));
+#else
 	get_random_bytes(&m_1, (MAGIC_ECRYPTFS_MARKER_SIZE_BYTES / 2));
+#endif
 	m_2 = (m_1 ^ MAGIC_ECRYPTFS_MARKER);
 	put_unaligned_be32(m_1, page_virt);
 	page_virt += (MAGIC_ECRYPTFS_MARKER_SIZE_BYTES / 2);
@@ -1241,11 +1358,14 @@ struct ecryptfs_cipher_code_str_map_elem {
 };
 
 /* Add support for additional ciphers by adding elements here. The
- * cipher_code is whatever OpenPGP applications use to identify the
+ * cipher_code is whatever OpenPGP applicatoins use to identify the
  * ciphers. List in order of probability. */
 static struct ecryptfs_cipher_code_str_map_elem
 ecryptfs_cipher_code_str_map[] = {
 	{"aes",RFC2440_CIPHER_AES_128 },
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	{"aesxts", RFC2440_CIPHER_AES_XTS_256},
+#endif
 	{"blowfish", RFC2440_CIPHER_BLOWFISH},
 	{"des3_ede", RFC2440_CIPHER_DES3_EDE},
 	{"cast5", RFC2440_CIPHER_CAST_5},
@@ -1280,6 +1400,12 @@ u8 ecryptfs_code_for_cipher_string(char *cipher_name, size_t key_bytes)
 		case 32:
 			code = RFC2440_CIPHER_AES_256;
 		}
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	} else if (strcmp(cipher_name, "aesxts") == 0) {
+		if (key_bytes == 32) {
+			code = RFC2440_CIPHER_AES_XTS_256;
+		}
+#endif
 	} else {
 		for (i = 0; i < ARRAY_SIZE(ecryptfs_cipher_code_str_map); i++)
 			if (strcmp(cipher_name, map[i].cipher_str) == 0) {
@@ -1319,8 +1445,20 @@ int ecryptfs_read_and_validate_header_region(struct inode *inode)
 	u8 file_size[ECRYPTFS_SIZE_AND_MARKER_BYTES];
 	u8 *marker = file_size + ECRYPTFS_FILE_SIZE_BYTES;
 	int rc;
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
+		&ecryptfs_superblock_to_private(inode->i_sb)->mount_crypt_stat;
+	struct file *lower_file = ecryptfs_inode_to_private(inode)->lower_file;
+
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP)
+		ecryptfs_propagate_rapages(lower_file, RA_CLEAR);
+#endif
 	rc = ecryptfs_read_lower(file_size, 0, ECRYPTFS_SIZE_AND_MARKER_BYTES,
 				 inode);
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP)
+		ecryptfs_propagate_rapages(lower_file, RA_RESTORE);
+#endif
 	if (rc < ECRYPTFS_SIZE_AND_MARKER_BYTES)
 		return rc >= 0 ? -EINVAL : rc;
 	rc = ecryptfs_validate_marker(marker);
@@ -1387,11 +1525,10 @@ static int ecryptfs_write_headers_virt(char *page_virt, size_t max,
 	int rc;
 	size_t written;
 	size_t offset;
+
 #ifdef CONFIG_ECRYPTFS_FEK_INTEGRITY
 	crypt_stat->flags |= ECRYPTFS_ENABLE_HMAC;
-	crypt_stat->flags |= ECRYPTFS_SUPPORT_HMAC_KEY;
 #endif
-
 	offset = ECRYPTFS_FILE_SIZE_BYTES;
 	write_ecryptfs_marker((page_virt + offset), &written);
 	offset += written;
@@ -1435,13 +1572,12 @@ ecryptfs_write_metadata_to_contents(struct inode *ecryptfs_inode,
 
 static int
 ecryptfs_write_metadata_to_xattr(struct dentry *ecryptfs_dentry,
-				 struct inode *ecryptfs_inode,
 				 char *page_virt, size_t size)
 {
 	int rc;
 
-	rc = ecryptfs_setxattr(ecryptfs_dentry, ecryptfs_inode,
-			       ECRYPTFS_XATTR_NAME, page_virt, size, 0);
+	rc = ecryptfs_setxattr(ecryptfs_dentry, d_inode(ecryptfs_dentry), ECRYPTFS_XATTR_NAME, page_virt,
+			       size, 0);
 	return rc;
 }
 
@@ -1496,10 +1632,12 @@ int ecryptfs_write_metadata(struct dentry *ecryptfs_dentry,
 #if ECRYPTFS_DEK_DEBUG
 	ecryptfs_printk(KERN_INFO, "name is [%s], flag is %d\n",
 			ecryptfs_dentry->d_name.name, crypt_stat->flags);
-	if (crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)
+	if (crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE) {
 		ecryptfs_printk(KERN_INFO, "is sensitive\n");
-	else
+	}
+	else{
 		ecryptfs_printk(KERN_INFO, "is protected\n");
+	}
 #endif
 #endif
 	virt_len = crypt_stat->metadata_size;
@@ -1520,8 +1658,8 @@ int ecryptfs_write_metadata(struct dentry *ecryptfs_dentry,
 		goto out_free;
 	}
 	if (crypt_stat->flags & ECRYPTFS_METADATA_IN_XATTR)
-		rc = ecryptfs_write_metadata_to_xattr(ecryptfs_dentry, ecryptfs_inode,
-						      virt, size);
+		rc = ecryptfs_write_metadata_to_xattr(ecryptfs_dentry, virt,
+						      size);
 	else
 		rc = ecryptfs_write_metadata_to_contents(ecryptfs_inode, virt,
 							 virt_len);
@@ -1652,7 +1790,7 @@ static int ecryptfs_read_headers_virt(char *page_virt,
 	} else
 		set_default_header_data(crypt_stat);
 #ifdef CONFIG_ECRYPTFS_FEK_INTEGRITY
-	if (crypt_stat->flags & ECRYPTFS_ENABLE_HMAC) {
+	if(crypt_stat->flags & ECRYPTFS_ENABLE_HMAC) {
 		memcpy(crypt_stat->hash, (page_virt + HASH_OFFSET), FEK_HASH_SIZE);
 	}
 #endif
@@ -1679,9 +1817,7 @@ int ecryptfs_read_xattr_region(char *page_virt, struct inode *ecryptfs_inode)
 	ssize_t size;
 	int rc = 0;
 
-	size = ecryptfs_getxattr_lower(lower_dentry,
-				       ecryptfs_inode_to_lower(ecryptfs_inode),
-				       ECRYPTFS_XATTR_NAME,
+	size = ecryptfs_getxattr_lower(lower_dentry, ECRYPTFS_XATTR_NAME,
 				       page_virt, ECRYPTFS_DEFAULT_EXTENT_SIZE);
 	if (size < 0) {
 		if (unlikely(ecryptfs_verbosity > 0))
@@ -1703,7 +1839,6 @@ int ecryptfs_read_and_validate_xattr_region(struct dentry *dentry,
 	int rc;
 
 	rc = ecryptfs_getxattr_lower(ecryptfs_dentry_to_lower(dentry),
-				     ecryptfs_inode_to_lower(inode),
 				     ECRYPTFS_XATTR_NAME, file_size,
 				     ECRYPTFS_SIZE_AND_MARKER_BYTES);
 	if (rc < ECRYPTFS_SIZE_AND_MARKER_BYTES)
@@ -1719,7 +1854,7 @@ int ecryptfs_read_and_validate_xattr_region(struct dentry *dentry,
  *
  * Common entry point for reading file metadata. From here, we could
  * retrieve the header information from the header region of the file,
- * the xattr region of the file, or some other repository that is
+ * the xattr region of the file, or some other repostory that is
  * stored separately from the file itself. The current implementation
  * supports retrieving the metadata information from the file contents
  * and from the xattr region.
@@ -1736,6 +1871,9 @@ int ecryptfs_read_metadata(struct dentry *ecryptfs_dentry)
 	struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
 		&ecryptfs_superblock_to_private(
 			ecryptfs_dentry->d_sb)->mount_crypt_stat;
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	struct file *lower_file = ecryptfs_inode_to_private(ecryptfs_inode)->lower_file;
+#endif
 
 	ecryptfs_copy_mount_wide_flags_to_inode_flags(crypt_stat,
 						      mount_crypt_stat);
@@ -1747,8 +1885,16 @@ int ecryptfs_read_metadata(struct dentry *ecryptfs_dentry)
 		       __func__);
 		goto out;
 	}
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP)
+		ecryptfs_propagate_rapages(lower_file, RA_CLEAR);
+#endif
 	rc = ecryptfs_read_lower(page_virt, 0, crypt_stat->extent_size,
 				 ecryptfs_inode);
+#if defined(CONFIG_FMP_ECRYPT_FS)
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP)
+		ecryptfs_propagate_rapages(lower_file, RA_RESTORE);
+#endif
 	if (rc >= 0)
 		rc = ecryptfs_read_headers_virt(page_virt, crypt_stat,
 						ecryptfs_dentry,
@@ -1763,7 +1909,7 @@ int ecryptfs_read_metadata(struct dentry *ecryptfs_dentry)
 #endif
 	if (rc) {
 		/* metadata is not in the file header, so try xattrs */
-		memset(page_virt, 0, PAGE_SIZE);
+		memset(page_virt, 0, PAGE_CACHE_SIZE);
 		rc = ecryptfs_read_xattr_region(page_virt, ecryptfs_inode);
 		if (rc) {
 			printk(KERN_DEBUG "Valid eCryptfs headers not found in "
@@ -1815,7 +1961,7 @@ int ecryptfs_read_metadata(struct dentry *ecryptfs_dentry)
 
 out:
 	if (page_virt) {
-		memset(page_virt, 0, PAGE_SIZE);
+		memset(page_virt, 0, PAGE_CACHE_SIZE);
 		kmem_cache_free(ecryptfs_header_cache, page_virt);
 	}
 	return rc;
@@ -1832,14 +1978,16 @@ out:
  */
 static int
 ecryptfs_encrypt_filename(struct ecryptfs_filename *filename,
+			  struct ecryptfs_crypt_stat *crypt_stat,
 			  struct ecryptfs_mount_crypt_stat *mount_crypt_stat)
 {
 	int rc = 0;
 
 	filename->encrypted_filename = NULL;
 	filename->encrypted_filename_size = 0;
-	if (mount_crypt_stat && (mount_crypt_stat->flags
-				     & ECRYPTFS_GLOBAL_ENCFN_USE_MOUNT_FNEK)) {
+	if ((crypt_stat && (crypt_stat->flags & ECRYPTFS_ENCFN_USE_MOUNT_FNEK))
+	    || (mount_crypt_stat && (mount_crypt_stat->flags
+				     & ECRYPTFS_GLOBAL_ENCFN_USE_MOUNT_FNEK))) {
 		size_t packet_size;
 		size_t remaining_bytes;
 
@@ -1921,9 +2069,15 @@ out:
  * should be released by other functions, such as on a superblock put
  * event, regardless of whether this function succeeds for fails.
  */
+#ifdef CONFIG_CRYPTO_FIPS
 static int
-ecryptfs_process_key_cipher(struct crypto_skcipher **key_tfm,
+ecryptfs_process_key_cipher(struct crypto_blkcipher **key_tfm,
 			    char *cipher_name, size_t *key_size, u32 mount_flags)
+#else
+static int
+ecryptfs_process_key_cipher(struct crypto_blkcipher **key_tfm,
+			    char *cipher_name, size_t *key_size)
+#endif
 {
 	char dummy_key[ECRYPTFS_MAX_KEY_BYTES];
 	char *full_alg_name = NULL;
@@ -1937,24 +2091,35 @@ ecryptfs_process_key_cipher(struct crypto_skcipher **key_tfm,
 		goto out;
 	}
 
-	rc = ecryptfs_crypto_api_algify_cipher_name(&full_alg_name, cipher_name,
-						    (mount_flags & ECRYPTFS_ENABLE_CC)?ECRYPTFS_AES_CBC_MODE:ECRYPTFS_AES_ECB_MODE);
+#ifdef CONFIG_CRYPTO_FIPS
+	if (mount_flags & ECRYPTFS_ENABLE_CC)
+		rc = ecryptfs_crypto_api_algify_cipher_name(&full_alg_name, cipher_name,
+						    "cbc");
+	else
+#endif
+		rc = ecryptfs_crypto_api_algify_cipher_name(&full_alg_name, cipher_name,
+						    "ecb");
 	if (rc)
 		goto out;
-	*key_tfm = crypto_alloc_skcipher(full_alg_name, 0, CRYPTO_ALG_ASYNC);
+	*key_tfm = crypto_alloc_blkcipher(full_alg_name, 0, CRYPTO_ALG_ASYNC);
 	if (IS_ERR(*key_tfm)) {
 		rc = PTR_ERR(*key_tfm);
 		printk(KERN_ERR "Unable to allocate crypto cipher with name "
 		       "[%s]; rc = [%d]\n", full_alg_name, rc);
 		goto out;
 	}
-	crypto_skcipher_set_flags(*key_tfm, CRYPTO_TFM_REQ_WEAK_KEY);
-	if (*key_size == 0)
-		*key_size = crypto_skcipher_default_keysize(*key_tfm);
+	crypto_blkcipher_set_flags(*key_tfm, CRYPTO_TFM_REQ_WEAK_KEY);
+	if (*key_size == 0) {
+		struct blkcipher_alg *alg = crypto_blkcipher_alg(*key_tfm);
 
-	get_random_key(dummy_key, *key_size);
-
-	rc = crypto_skcipher_setkey(*key_tfm, dummy_key, *key_size);
+		*key_size = alg->max_keysize;
+	}
+#ifdef CONFIG_CRYPTO_FIPS
+	crypto_cc_rng_get_bytes(dummy_key, *key_size);
+#else
+	get_random_bytes(dummy_key, *key_size);
+#endif
+	rc = crypto_blkcipher_setkey(*key_tfm, dummy_key, *key_size);
 	if (rc) {
 		printk(KERN_ERR "Error attempting to set key of size [%zd] for "
 		       "cipher [%s]; rc = [%d]\n", *key_size, full_alg_name,
@@ -1991,19 +2156,28 @@ int ecryptfs_destroy_crypto(void)
 	list_for_each_entry_safe(key_tfm, key_tfm_tmp, &key_tfm_list,
 				 key_tfm_list) {
 		list_del(&key_tfm->key_tfm_list);
-		crypto_free_skcipher(key_tfm->key_tfm);
+		if (key_tfm->key_tfm)
+			crypto_free_blkcipher(key_tfm->key_tfm);
 		kmem_cache_free(ecryptfs_key_tfm_cache, key_tfm);
 	}
+
 #ifdef CONFIG_CRYPTO_FIPS
 	crypto_rng_destroy();
 #endif
+
 	mutex_unlock(&key_tfm_list_mutex);
 	return 0;
 }
 
+#ifdef CONFIG_CRYPTO_FIPS
 int
 ecryptfs_add_new_key_tfm(struct ecryptfs_key_tfm **key_tfm, char *cipher_name,
 			 size_t key_size, u32 mount_flags)
+#else
+int
+ecryptfs_add_new_key_tfm(struct ecryptfs_key_tfm **key_tfm, char *cipher_name,
+			 size_t key_size)
+#endif
 {
 	struct ecryptfs_key_tfm *tmp_tfm;
 	int rc = 0;
@@ -2024,16 +2198,22 @@ ecryptfs_add_new_key_tfm(struct ecryptfs_key_tfm **key_tfm, char *cipher_name,
 		ECRYPTFS_MAX_CIPHER_NAME_SIZE);
 	tmp_tfm->cipher_name[ECRYPTFS_MAX_CIPHER_NAME_SIZE] = '\0';
 	tmp_tfm->key_size = key_size;
-
-	strncpy(tmp_tfm->cipher_mode,
-			(mount_flags & ECRYPTFS_ENABLE_CC)?ECRYPTFS_AES_CBC_MODE:ECRYPTFS_AES_ECB_MODE,
-			ECRYPTFS_MAX_CIPHER_MODE_SIZE + 1);
+#ifdef CONFIG_CRYPTO_FIPS
+	if (mount_flags & ECRYPTFS_ENABLE_CC) {
+		strncpy(tmp_tfm->cipher_mode, ECRYPTFS_AES_CBC_MODE, ECRYPTFS_MAX_CIPHER_MODE_SIZE+1);
+	} else {
+		strncpy(tmp_tfm->cipher_mode, ECRYPTFS_AES_ECB_MODE, ECRYPTFS_MAX_CIPHER_MODE_SIZE+1);
+	}
 
 	rc = ecryptfs_process_key_cipher(&tmp_tfm->key_tfm,
 					 tmp_tfm->cipher_name,
 					 &tmp_tfm->key_size,
 					 mount_flags);
-
+#else
+	rc = ecryptfs_process_key_cipher(&tmp_tfm->key_tfm,
+					 tmp_tfm->cipher_name,
+					 &tmp_tfm->key_size);
+#endif
 	if (rc) {
 		printk(KERN_ERR "Error attempting to initialize key TFM "
 		       "cipher with name = [%s]; rc = [%d]\n",
@@ -2058,19 +2238,31 @@ out:
  * Returns 1 if found, with @key_tfm set
  * Returns 0 if not found, with @key_tfm set to NULL
  */
+#ifdef CONFIG_CRYPTO_FIPS
 int ecryptfs_tfm_exists(char *cipher_name, char *cipher_mode, struct ecryptfs_key_tfm **key_tfm)
+#else
+int ecryptfs_tfm_exists(char *cipher_name, struct ecryptfs_key_tfm **key_tfm)
+#endif
 {
 	struct ecryptfs_key_tfm *tmp_key_tfm;
 
 	BUG_ON(!mutex_is_locked(&key_tfm_list_mutex));
 
 	list_for_each_entry(tmp_key_tfm, &key_tfm_list, key_tfm_list) {
+#ifdef CONFIG_CRYPTO_FIPS
 		if (strcmp(tmp_key_tfm->cipher_name, cipher_name) == 0 &&
 			(strcmp(tmp_key_tfm->cipher_mode, cipher_mode) == 0)) {
 			if (key_tfm)
 				(*key_tfm) = tmp_key_tfm;
 			return 1;
 		}
+#else
+		if (strcmp(tmp_key_tfm->cipher_name, cipher_name) == 0) {
+			if (key_tfm)
+				(*key_tfm) = tmp_key_tfm;
+			return 1;
+		}
+#endif
 	}
 	if (key_tfm)
 		(*key_tfm) = NULL;
@@ -2088,21 +2280,32 @@ int ecryptfs_tfm_exists(char *cipher_name, char *cipher_mode, struct ecryptfs_ke
  * Searches for cached item first, and creates new if not found.
  * Returns 0 on success, non-zero if adding new cipher failed
  */
-int ecryptfs_get_tfm_and_mutex_for_cipher_name(struct crypto_skcipher **tfm,
+#ifdef CONFIG_CRYPTO_FIPS
+int ecryptfs_get_tfm_and_mutex_for_cipher_name(struct crypto_blkcipher **tfm,
 					       struct mutex **tfm_mutex,
 					       char *cipher_name, u32 mount_flags)
+#else
+int ecryptfs_get_tfm_and_mutex_for_cipher_name(struct crypto_blkcipher **tfm,
+					       struct mutex **tfm_mutex,
+					       char *cipher_name)
+#endif
 {
 	struct ecryptfs_key_tfm *key_tfm;
 	int rc = 0;
+#ifdef CONFIG_CRYPTO_FIPS
 	char cipher_mode[ECRYPTFS_MAX_CIPHER_MODE_SIZE+1] = {0,};
+#endif
 
 	(*tfm) = NULL;
 	(*tfm_mutex) = NULL;
 
 	mutex_lock(&key_tfm_list_mutex);
-	strncpy(cipher_mode,
-			(mount_flags & ECRYPTFS_ENABLE_CC)?ECRYPTFS_AES_CBC_MODE:ECRYPTFS_AES_ECB_MODE,
-			ECRYPTFS_MAX_CIPHER_MODE_SIZE + 1);
+#ifdef CONFIG_CRYPTO_FIPS
+    if (mount_flags & ECRYPTFS_ENABLE_CC) {
+		strncpy(cipher_mode, ECRYPTFS_AES_CBC_MODE, ECRYPTFS_MAX_CIPHER_MODE_SIZE+1);
+	} else {
+		strncpy(cipher_mode, ECRYPTFS_AES_ECB_MODE, ECRYPTFS_MAX_CIPHER_MODE_SIZE+1);
+	}
 
 	if (!ecryptfs_tfm_exists(cipher_name, cipher_mode, &key_tfm)) {
 		rc = ecryptfs_add_new_key_tfm(&key_tfm, cipher_name, 0, mount_flags);
@@ -2112,7 +2315,16 @@ int ecryptfs_get_tfm_and_mutex_for_cipher_name(struct crypto_skcipher **tfm,
 			goto out;
 		}
 	}
-
+#else
+	if (!ecryptfs_tfm_exists(cipher_name, &key_tfm)) {
+		rc = ecryptfs_add_new_key_tfm(&key_tfm, cipher_name, 0);
+		if (rc) {
+			printk(KERN_ERR "Error adding new key_tfm to list; "
+					"rc = [%d]\n", rc);
+			goto out;
+		}
+	}
+#endif
 	(*tfm) = key_tfm->key_tfm;
 	(*tfm_mutex) = &key_tfm->key_tfm_mutex;
 out:
@@ -2291,6 +2503,7 @@ out:
 int ecryptfs_encrypt_and_encode_filename(
 	char **encoded_name,
 	size_t *encoded_name_size,
+	struct ecryptfs_crypt_stat *crypt_stat,
 	struct ecryptfs_mount_crypt_stat *mount_crypt_stat,
 	const char *name, size_t name_size)
 {
@@ -2299,8 +2512,9 @@ int ecryptfs_encrypt_and_encode_filename(
 
 	(*encoded_name) = NULL;
 	(*encoded_name_size) = 0;
-	if (mount_crypt_stat && (mount_crypt_stat->flags
-				     & ECRYPTFS_GLOBAL_ENCRYPT_FILENAMES)) {
+	if ((crypt_stat && (crypt_stat->flags & ECRYPTFS_ENCRYPT_FILENAMES))
+	    || (mount_crypt_stat && (mount_crypt_stat->flags
+				     & ECRYPTFS_GLOBAL_ENCRYPT_FILENAMES))) {
 		struct ecryptfs_filename *filename;
 
 		filename = kzalloc(sizeof(*filename), GFP_KERNEL);
@@ -2313,7 +2527,8 @@ int ecryptfs_encrypt_and_encode_filename(
 		}
 		filename->filename = (char *)name;
 		filename->filename_size = name_size;
-		rc = ecryptfs_encrypt_filename(filename, mount_crypt_stat);
+		rc = ecryptfs_encrypt_filename(filename, crypt_stat,
+					       mount_crypt_stat);
 		if (rc) {
 			printk(KERN_ERR "%s: Error attempting to encrypt "
 			       "filename; rc = [%d]\n", __func__, rc);
@@ -2324,9 +2539,11 @@ int ecryptfs_encrypt_and_encode_filename(
 			NULL, &encoded_name_no_prefix_size,
 			filename->encrypted_filename,
 			filename->encrypted_filename_size);
-		if (mount_crypt_stat
+		if ((crypt_stat && (crypt_stat->flags
+				    & ECRYPTFS_ENCFN_USE_MOUNT_FNEK))
+		    || (mount_crypt_stat
 			&& (mount_crypt_stat->flags
-			    & ECRYPTFS_GLOBAL_ENCFN_USE_MOUNT_FNEK))
+			    & ECRYPTFS_GLOBAL_ENCFN_USE_MOUNT_FNEK)))
 			(*encoded_name_size) =
 				(ECRYPTFS_FNEK_ENCRYPTED_FILENAME_PREFIX_SIZE
 				 + encoded_name_no_prefix_size);
@@ -2344,9 +2561,11 @@ int ecryptfs_encrypt_and_encode_filename(
 			kfree(filename);
 			goto out;
 		}
-		if (mount_crypt_stat
+		if ((crypt_stat && (crypt_stat->flags
+				    & ECRYPTFS_ENCFN_USE_MOUNT_FNEK))
+		    || (mount_crypt_stat
 			&& (mount_crypt_stat->flags
-			    & ECRYPTFS_GLOBAL_ENCFN_USE_MOUNT_FNEK)) {
+			    & ECRYPTFS_GLOBAL_ENCFN_USE_MOUNT_FNEK))) {
 			memcpy((*encoded_name),
 			       ECRYPTFS_FNEK_ENCRYPTED_FILENAME_PREFIX,
 			       ECRYPTFS_FNEK_ENCRYPTED_FILENAME_PREFIX_SIZE);
@@ -2460,7 +2679,7 @@ out:
 int ecryptfs_set_f_namelen(long *namelen, long lower_namelen,
 			   struct ecryptfs_mount_crypt_stat *mount_crypt_stat)
 {
-	struct crypto_skcipher *tfm;
+	struct blkcipher_desc desc;
 	struct mutex *tfm_mutex;
 	size_t cipher_blocksize;
 	int rc;
@@ -2470,16 +2689,20 @@ int ecryptfs_set_f_namelen(long *namelen, long lower_namelen,
 		return 0;
 	}
 
-	rc = ecryptfs_get_tfm_and_mutex_for_cipher_name(&tfm, &tfm_mutex,
-		mount_crypt_stat->global_default_fn_cipher_name, mount_crypt_stat->flags);
-
+#ifdef CONFIG_CRYPTO_FIPS
+	rc = ecryptfs_get_tfm_and_mutex_for_cipher_name(&desc.tfm, &tfm_mutex,
+			mount_crypt_stat->global_default_fn_cipher_name, mount_crypt_stat->flags);
+#else
+	rc = ecryptfs_get_tfm_and_mutex_for_cipher_name(&desc.tfm, &tfm_mutex,
+			mount_crypt_stat->global_default_fn_cipher_name);
+#endif
 	if (unlikely(rc)) {
 		(*namelen) = 0;
 		return rc;
 	}
 
 	mutex_lock(tfm_mutex);
-	cipher_blocksize = crypto_skcipher_blocksize(tfm);
+	cipher_blocksize = crypto_blkcipher_blocksize(desc.tfm);
 	mutex_unlock(tfm_mutex);
 
 	/* Return an exact amount for the common cases */
@@ -2504,3 +2727,4 @@ int ecryptfs_set_f_namelen(long *namelen, long lower_namelen,
 
 	return 0;
 }
+

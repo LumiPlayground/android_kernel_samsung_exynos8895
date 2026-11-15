@@ -114,6 +114,30 @@ p_err:
 	return ret;
 }
 
+static int preproc_itf_set_hist_roi(struct fimc_is_preprocessor_interface *itf, SENCMD_CompanionSetHistRoiInfoStr *param)
+{
+	struct fimc_is_device_sensor_peri *sensor_peri;
+	struct v4l2_subdev *subdev;
+	int ret = 0;
+
+	BUG_ON(!itf);
+	BUG_ON(!param);
+	sensor_peri = container_of(itf, struct fimc_is_device_sensor_peri, preprocessor_inferface);
+	subdev = sensor_peri->subdev_preprocessor;
+	BUG_ON(!subdev);
+
+	/* info("%s called\n", __func__); */
+
+	ret = CALL_PREPROPOPS(sensor_peri->preprocessor, preprocessor_set_hist_roi, subdev, param);
+	if (ret) {
+		err("preprocessor_set_hist_roi fail");
+		goto p_err;
+	}
+
+p_err:
+	return ret;
+}
+
 static int preproc_itf_set_motion(struct fimc_is_preprocessor_interface *itf, SENCMD_CompanionSetMotionInfoStr *param)
 {
 	struct fimc_is_device_sensor_peri *sensor_peri;
@@ -391,7 +415,7 @@ int init_preprocessor_interface(struct fimc_is_preprocessor_interface *itf)
 	itf->preproc_itf_ops.read_af_stat = preproc_itf_read_af_stat;
 	itf->preproc_itf_ops.read_af_reg = preproc_itf_read_af_reg;
     	itf->preproc_itf_ops.get_ae_gains = preproc_itf_get_ae_gains;
-
+	itf->preproc_itf_ops.set_hist_roi= preproc_itf_set_hist_roi;
 	return ret;
 }
 

@@ -29,8 +29,6 @@
 #include <linux/kernel.h>
 #include <linux/usb/hcd.h>
 #include <linux/io-64-nonatomic-lo-hi.h>
-#include <linux/wakelock.h>
-#include <linux/phy/phy.h>
 
 /* Code sharing between pci-quirks and xhci hcd */
 #include	"xhci-ext-caps.h"
@@ -38,6 +36,8 @@
 
 /* xHCI PCI Configuration Registers */
 #define XHCI_SBRN_OFFSET	(0x60)
+
+#define XHCI_PORTSC		(0x430)
 
 /* Max number of USB devices for any host controller - limit in section 6.1 */
 #define MAX_HC_SLOTS		256
@@ -234,9 +234,7 @@ struct xhci_op_regs {
  * disabled, or powered-off state.
  */
 #define CMD_PM_INDEX	(1 << 11)
-/* bit 14 Extended TBC Enable, changes Isoc TRB fields to support larger TBC */
-#define CMD_ETE		(1 << 14)
-/* bits 15:31 are reserved (and should be preserved on writes). */
+/* bits 12:31 are reserved (and should be preserved on writes). */
 
 /* IMAN - Interrupt Management Register */
 #define IMAN_IE		(1 << 1)
@@ -349,7 +347,6 @@ struct xhci_op_regs {
 #define	SLOT_SPEED_LS		(XDEV_LS << 10)
 #define	SLOT_SPEED_HS		(XDEV_HS << 10)
 #define	SLOT_SPEED_SS		(XDEV_SS << 10)
-#define	SLOT_SPEED_SSP		(XDEV_SSP << 10)
 /* Port Indicator Control */
 #define PORT_LED_OFF	(0 << 14)
 #define PORT_LED_AMBER	(1 << 14)
@@ -387,10 +384,6 @@ struct xhci_op_regs {
 #define PORT_PLC	(1 << 22)
 /* port configure error change - port failed to configure its link partner */
 #define PORT_CEC	(1 << 23)
-#define PORT_CHANGE_MASK	(PORT_CSC | PORT_PEC | PORT_WRC | PORT_OCC | \
-				 PORT_RC | PORT_PLC | PORT_CEC)
-
-
 /* Cold Attach Status - xHC can set this bit to report device attached during
  * Sx state. Warm port reset should be perfomed to clear this bit and move port
  * to connected state.
@@ -759,9 +752,8 @@ struct xhci_ep_ctx {
 #define GET_MAX_PACKET(p)	((p) & 0x7ff)
 
 /* tx_info bitmasks */
-#define EP_AVG_TRB_LENGTH(p)		((p) & 0xffff)
-#define EP_MAX_ESIT_PAYLOAD_LO(p)	(((p) & 0xffff) << 16)
-#define EP_MAX_ESIT_PAYLOAD_HI(p)	((((p) >> 16) & 0xff) << 24)
+#define AVG_TRB_LENGTH_FOR_EP(p)	((p) & 0xffff)
+#define MAX_ESIT_PAYLOAD_FOR_EP(p)	(((p) & 0xffff) << 16)
 #define CTX_TO_MAX_ESIT_PAYLOAD(p)	(((p) >> 16) & 0xffff)
 
 /* deq bitmasks */
@@ -953,8 +945,6 @@ struct xhci_virt_ep {
 	struct list_head	bw_endpoint_list;
 	/* Isoch Frame ID checking storage */
 	int			next_frame_id;
-	/* Use new Isoch TRB layout needed for extended TBC support */
-	bool			use_extended_tbc;
 };
 
 enum xhci_overhead_type {
@@ -1196,12 +1186,9 @@ enum xhci_setup_dev {
 #define	TRB_LEN(p)		((p) & 0x1ffff)
 /* TD Size, packets remaining in this TD, bits 21:17 (5 bits, so max 31) */
 #define TRB_TD_SIZE(p)          (min((p), (u32)31) << 17)
-/* xhci 1.1 uses the TD_SIZE field for TBC if Extended TBC is enabled (ETE) */
-#define TRB_TD_SIZE_TBC(p)      (min((p), (u32)31) << 17)
 /* Interrupter Target - which MSI-X vector to target the completion event at */
 #define TRB_INTR_TARGET(p)	(((p) & 0x3ff) << 22)
 #define GET_INTR_TARGET(p)	(((p) >> 22) & 0x3ff)
-/* Total burst count field, Rsvdz on xhci 1.1 with Extended TBC enabled (ETE) */
 #define TRB_TBC(p)		(((p) & 0x3) << 7)
 #define TRB_TLBPC(p)		(((p) & 0xf) << 16)
 
@@ -1346,20 +1333,12 @@ union xhci_trb {
 /* TRB buffer pointers can't cross 64KB boundaries */
 #define TRB_MAX_BUFF_SHIFT		16
 #define TRB_MAX_BUFF_SIZE	(1 << TRB_MAX_BUFF_SHIFT)
-/* How much data is left before the 64KB boundary? */
-#define TRB_BUFF_LEN_UP_TO_BOUNDARY(addr)	(TRB_MAX_BUFF_SIZE - \
-					(addr & (TRB_MAX_BUFF_SIZE - 1)))
 
 struct xhci_segment {
 	union xhci_trb		*trbs;
 	/* private to HCD */
 	struct xhci_segment	*next;
 	dma_addr_t		dma;
-	/* Max packet sized bounce buffer for td-fragmant alignment */
-	dma_addr_t		bounce_dma;
-	void			*bounce_buf;
-	unsigned int		bounce_offs;
-	unsigned int		bounce_len;
 };
 
 struct xhci_td {
@@ -1369,7 +1348,6 @@ struct xhci_td {
 	struct xhci_segment	*start_seg;
 	union xhci_trb		*first_trb;
 	union xhci_trb		*last_trb;
-	struct xhci_segment	*bounce_seg;
 	/* actual_length of the URB has already been set */
 	bool			urb_length_set;
 };
@@ -1419,7 +1397,6 @@ struct xhci_ring {
 	unsigned int		num_segs;
 	unsigned int		num_trbs_free;
 	unsigned int		num_trbs_free_temp;
-	unsigned int		bounce_buf_len;
 	enum xhci_ring_type	type;
 	bool			last_td_was_short;
 	struct radix_tree_root	*trb_address_map;
@@ -1547,10 +1524,10 @@ struct xhci_hcd {
 	struct xhci_doorbell_array __iomem *dba;
 	/* Our HCD's current interrupter register set */
 	struct	xhci_intr_reg __iomem *ir_set;
-#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
-	struct	xhci_intr_reg __iomem *ir_set_audio;
-#endif
 
+#if defined(CONFIG_USB_TYPEC_MANAGER_NOTIFIER)
+	struct notifier_block	ccic_xhci_nb;
+#endif
 	/* Cached register copies of read-only HC data */
 	__u32		hcs_params1;
 	__u32		hcs_params2;
@@ -1592,18 +1569,6 @@ struct xhci_hcd {
 	struct xhci_command	*current_cmd;
 	struct xhci_ring	*event_ring;
 	struct xhci_erst	erst;
-
-#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
-	struct xhci_ring	*event_ring_audio;
-	struct xhci_erst	erst_audio;
-	dma_addr_t save_dma;
-	void *save_addr;
-	dma_addr_t out_dma;
-	void *out_addr;
-	dma_addr_t in_dma;
-	void *in_addr;
-#endif
-
 	/* Scratchpad */
 	struct xhci_scratchpad  *scratchpad;
 	/* Store LPM test failed devices' information */
@@ -1626,9 +1591,6 @@ struct xhci_hcd {
 	struct dma_pool	*segment_pool;
 	struct dma_pool	*small_streams_pool;
 	struct dma_pool	*medium_streams_pool;
-
-	struct wake_lock *wakelock;
-	int			l2_state;
 
 	/* Host controller watchdog timer structures */
 	unsigned int		xhc_state;
@@ -1684,19 +1646,9 @@ struct xhci_hcd {
 /* For controllers with a broken beyond repair streams implementation */
 #define XHCI_BROKEN_STREAMS	(1 << 19)
 #define XHCI_PME_STUCK_QUIRK	(1 << 20)
-#define XHCI_MTK_HOST		(1 << 21)
-#define XHCI_SSIC_PORT_UNUSED	(1 << 22)
-#define XHCI_NO_64BIT_SUPPORT	(1 << 23)
 #define XHCI_MISSING_CAS	(1 << 24)
-/* For controller with a broken Port Disable implementation */
-#define XHCI_BROKEN_PORT_PED	(1 << 25)
-#define XHCI_LIMIT_ENDPOINT_INTERVAL_7	(1 << 26)
-/* Reserved. It was XHCI_U2_DISABLE_WAKE */
-#define XHCI_ASMEDIA_MODIFY_FLOWCONTROL	(1 << 28)
-/* For setting hub suspend delay to 2s from 0s */
-#define XHCI_L2_SUPPORT	(1 << 30)
 /* For enabling USB2.0 L1 mode */
-#define XHCI_LPM_L1_SUPPORT	(1 << 31)
+#define XHCI_LPM_L1_SUPPORT	(1 << 25)
 	unsigned int		num_active_eps;
 	unsigned int		limit_active_eps;
 	/* There are two roothubs to keep track of bus suspend info for */
@@ -1724,8 +1676,7 @@ struct xhci_hcd {
 /* Compliance Mode Timer Triggered every 2 seconds */
 #define COMP_MODE_RCVRY_MSECS 2000
 
-	/* platform-specific data -- must come last */
-	unsigned long		priv[0] __aligned(sizeof(s64));
+	struct usb_xhci_pre_alloc	*xhci_alloc;
 };
 
 /* Platform specific overrides to generic XHCI hc_driver ops */
@@ -1858,8 +1809,7 @@ void xhci_free_or_cache_endpoint_ring(struct xhci_hcd *xhci,
 		unsigned int ep_index);
 struct xhci_stream_info *xhci_alloc_stream_info(struct xhci_hcd *xhci,
 		unsigned int num_stream_ctxs,
-		unsigned int num_streams,
-		unsigned int max_packet, gfp_t flags);
+		unsigned int num_streams, gfp_t flags);
 void xhci_free_stream_info(struct xhci_hcd *xhci,
 		struct xhci_stream_info *stream_info);
 void xhci_setup_streams_ep_input_ctx(struct xhci_hcd *xhci,
@@ -1909,9 +1859,6 @@ int xhci_get_frame(struct usb_hcd *hcd);
 irqreturn_t xhci_irq(struct usb_hcd *hcd);
 irqreturn_t xhci_msi_irq(int irq, void *hcd);
 int xhci_alloc_dev(struct usb_hcd *hcd, struct usb_device *udev);
-int xhci_store_hw_info(struct usb_hcd *hcd, struct usb_device *udev);
-int xhci_set_deq(struct xhci_hcd *xhci, struct xhci_container_ctx *ctx,
-		unsigned int last_ep, struct usb_device *udev);
 void xhci_free_dev(struct usb_hcd *hcd, struct usb_device *udev);
 int xhci_alloc_tt_info(struct xhci_hcd *xhci,
 		struct xhci_virt_device *virt_dev,
@@ -2004,8 +1951,6 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u16 wIndex,
 		char *buf, u16 wLength);
 int xhci_hub_status_data(struct usb_hcd *hcd, char *buf);
 int xhci_find_raw_port_number(struct usb_hcd *hcd, int port1);
-int xhci_hub_check_speed(struct usb_hcd *hcd);
-int xhci_check_usbl2_support(struct usb_hcd *hcd);
 
 #ifdef CONFIG_PM
 int xhci_bus_suspend(struct usb_hcd *hcd);
@@ -2024,16 +1969,5 @@ void xhci_ring_device(struct xhci_hcd *xhci, int slot_id);
 struct xhci_input_control_ctx *xhci_get_input_control_ctx(struct xhci_container_ctx *ctx);
 struct xhci_slot_ctx *xhci_get_slot_ctx(struct xhci_hcd *xhci, struct xhci_container_ctx *ctx);
 struct xhci_ep_ctx *xhci_get_ep_ctx(struct xhci_hcd *xhci, struct xhci_container_ctx *ctx, unsigned int ep_index);
-
-struct xhci_ring *xhci_triad_to_transfer_ring(struct xhci_hcd *xhci,
-		unsigned int slot_id, unsigned int ep_index,
-		unsigned int stream_id);
-static inline struct xhci_ring *xhci_urb_to_transfer_ring(struct xhci_hcd *xhci,
-								struct urb *urb)
-{
-	return xhci_triad_to_transfer_ring(xhci, urb->dev->slot_id,
-					xhci_get_endpoint_index(&urb->ep->desc),
-					urb->stream_id);
-}
 
 #endif /* __LINUX_XHCI_HCD_H */

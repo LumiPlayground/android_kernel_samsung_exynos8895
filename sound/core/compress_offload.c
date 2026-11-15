@@ -507,10 +507,6 @@ static int snd_compr_allocate_buffer(struct snd_compr_stream *stream,
 	unsigned int buffer_size;
 	void *buffer;
 
-	if (params->buffer.fragment_size == 0 ||
-	    params->buffer.fragments > SIZE_MAX / params->buffer.fragment_size)
-		return -EINVAL;
-
 	buffer_size = params->buffer.fragment_size * params->buffer.fragments;
 	if (stream->ops->copy) {
 		buffer = NULL;
@@ -557,9 +553,13 @@ snd_compr_set_params(struct snd_compr_stream *stream, unsigned long arg)
 		 * we should allow parameter change only when stream has been
 		 * opened not in other cases
 		 */
-		params = memdup_user((void __user *)arg, sizeof(*params));
-		if (IS_ERR(params))
-			return PTR_ERR(params);
+		params = kmalloc(sizeof(*params), GFP_KERNEL);
+		if (!params)
+			return -ENOMEM;
+		if (copy_from_user(params, (void __user *)arg, sizeof(*params))) {
+			retval = -EFAULT;
+			goto out;
+		}
 
 		retval = snd_compress_check_input(params);
 		if (retval)
@@ -659,10 +659,9 @@ snd_compr_set_metadata(struct snd_compr_stream *stream, unsigned long arg)
 static inline int
 snd_compr_tstamp(struct snd_compr_stream *stream, unsigned long arg)
 {
-	struct snd_compr_tstamp tstamp;
+	struct snd_compr_tstamp tstamp = {0};
 	int ret;
 
-	memset(&tstamp, 0, sizeof(tstamp));
 	ret = snd_compr_update_tstamp(stream, &tstamp);
 	if (ret == 0)
 		ret = copy_to_user((struct snd_compr_tstamp __user *)arg,
@@ -674,11 +673,10 @@ static int snd_compr_pause(struct snd_compr_stream *stream)
 {
 	int retval;
 
-	if (stream->runtime->state != SNDRV_PCM_STATE_RUNNING
-		&& stream->runtime->state != SNDRV_PCM_STATE_DRAINING)
+	if (stream->runtime->state != SNDRV_PCM_STATE_RUNNING)
 		return -EPERM;
 	retval = stream->ops->trigger(stream, SNDRV_PCM_TRIGGER_PAUSE_PUSH);
-	if (!retval && stream->runtime->state != SNDRV_PCM_STATE_DRAINING)
+	if (!retval)
 		stream->runtime->state = SNDRV_PCM_STATE_PAUSED;
 	return retval;
 }
@@ -687,11 +685,10 @@ static int snd_compr_resume(struct snd_compr_stream *stream)
 {
 	int retval;
 
-	if (stream->runtime->state != SNDRV_PCM_STATE_PAUSED
-		&& stream->runtime->state != SNDRV_PCM_STATE_DRAINING)
+	if (stream->runtime->state != SNDRV_PCM_STATE_PAUSED)
 		return -EPERM;
 	retval = stream->ops->trigger(stream, SNDRV_PCM_TRIGGER_PAUSE_RELEASE);
-	if (!retval && stream->runtime->state != SNDRV_PCM_STATE_DRAINING)
+	if (!retval)
 		stream->runtime->state = SNDRV_PCM_STATE_RUNNING;
 	return retval;
 }
@@ -786,7 +783,7 @@ static int snd_compress_wait_for_drain(struct snd_compr_stream *stream)
 	ret = wait_event_interruptible(stream->runtime->sleep,
 			(stream->runtime->state != SNDRV_PCM_STATE_DRAINING));
 	if (ret == -ERESTARTSYS)
-		pr_debug("wait aborted by a signal\n");
+		pr_debug("wait aborted by a signal");
 	else if (ret)
 		pr_debug("wait for drain failed with %d\n", ret);
 
@@ -944,9 +941,7 @@ static const struct file_operations snd_compr_file_ops = {
 		.write =	snd_compr_write,
 		.read =		snd_compr_read,
 		.unlocked_ioctl = snd_compr_ioctl,
-#ifdef CONFIG_COMPAT
-		.compat_ioctl = snd_compr_ioctl_compat,
-#endif
+		.compat_ioctl	= snd_compr_ioctl,
 		.mmap =		snd_compr_mmap,
 		.poll =		snd_compr_poll,
 };
@@ -967,7 +962,7 @@ static int snd_compress_dev_register(struct snd_device *device)
 				  compr->card, compr->device,
 				  &snd_compr_file_ops, compr, &compr->dev);
 	if (ret < 0) {
-		pr_err("snd_register_device failed %d\n", ret);
+		pr_err("snd_register_device failed\n %d", ret);
 		return ret;
 	}
 	return ret;

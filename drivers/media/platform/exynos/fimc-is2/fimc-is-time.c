@@ -41,7 +41,7 @@ void TIME_END(unsigned int index, const char *name)
 	time = (temp.tv_sec - itime[index].tv_sec)*1000000 +
 		(temp.tv_usec - itime[index].tv_usec);
 
-	info("TIME(%s) : %ld us\n", name, time);
+	info("TIME_MEASURE(%s) : %ld us\n", name, time);
 }
 
 void fimc_is_jitter(u64 timestamp)
@@ -102,13 +102,13 @@ static inline u32 fimc_is_get_time(struct timeval *str, struct timeval *end)
 void monitor_init(struct fimc_is_time *time)
 {
 	time->time_count = 0;
-	memset(&time->t_dq[0], 0, sizeof(unsigned long long) * 10);
-	time->t_dqq_max = 0;
-	time->t_dqq_tot = 0;
+	time->time1_min = 0;
 	time->time1_max = 0;
 	time->time1_tot = 0;
+	time->time2_min = 0;
 	time->time2_max = 0;
 	time->time2_tot = 0;
+	time->time3_min = 0;
 	time->time3_max = 0;
 	time->time3_tot = 0;
 	time->time4_cur = 0;
@@ -116,23 +116,27 @@ void monitor_init(struct fimc_is_time *time)
 	time->time4_tot = 0;
 }
 
+void monitor_period(struct fimc_is_time *time,
+	u32 report_period)
+{
+	time->report_period = report_period;
+}
+
 static void monitor_report(void *group_data,
 	void *frame_data)
 {
-	unsigned int avg_cnt;
 	u32 index, shotindex;
-	unsigned long long fduration, ctime, dtime;
-	unsigned long long temp_s = 0, temp_sd = 0, temp_d = 0, temp_dqq = 0, shot_to_shot = 0;
+	u32 fduration, ctime, dtime;
+	u32 temp1, temp2, temp3, temp4, temp;
 	struct fimc_is_monitor *mp;
 	struct fimc_is_device_ischain *device;
 	struct fimc_is_group *group;
 	struct fimc_is_frame *frame;
 	struct fimc_is_time *time;
 	bool valid = true;
-	u32 f_dqq;
 
-	FIMC_BUG_VOID(!group_data);
-	FIMC_BUG_VOID(!frame_data);
+	BUG_ON(!group_data);
+	BUG_ON(!frame_data);
 
 	group = group_data;
 	device = group->device;
@@ -140,106 +144,128 @@ static void monitor_report(void *group_data,
 	frame = frame_data;
 	mp = frame->mpoint;
 	fduration = (1000000 / fimc_is_sensor_g_framerate(device->sensor)) + MONITOR_TIMEOUT;
-	ctime = 5000;
-	dtime = 5000;
-	f_dqq = frame->fcount % 10;
+	ctime = 15000;
+	dtime = 15000;
 
-	/* Shot kthread */
-	if (!frame->result && mp[TMS_Q].check && mp[TMS_SHOT1].check) {
-		temp_s = (mp[TMS_SHOT1].time - mp[TMS_Q].time) / 1000;
-		if (!test_bit(FIMC_IS_GROUP_OTF_INPUT, &group->state) && temp_s > ctime)
-			mgrinfo("[TIM] late S(%llu us > %llu us)\n", device, group, frame, temp_s, ctime);
-		if (time->t_dq[f_dqq])
-			temp_dqq = (mp[TMS_Q].time - time->t_dq[f_dqq]) / 1000;
+	/* Q interval */
+	if (!frame->result && mp[TMM_QUEUE].check && mp[TMM_START].check) {
+		temp1 = fimc_is_get_time(&mp[TMM_QUEUE].time, &mp[TMM_START].time);
+		if (temp1 > fduration) {
+			mgrinfo("[TIM] Q(%dus > %dus)\n", device, group, frame, temp1, fduration);
+		}
 	} else {
 		valid = false;
 	}
 
-	/* Shot - Done */
-	if (test_bit(FIMC_IS_GROUP_OTF_INPUT, &group->state))
-		shotindex = TMS_SHOT2;
-	else
-		shotindex = TMS_SHOT1;
-
-	if (!frame->result && mp[shotindex].check && mp[TMS_SDONE].check) {
-		temp_sd = (mp[TMS_SDONE].time - mp[shotindex].time) / 1000;
-		if (temp_sd > fduration)
-			mgrinfo("[TIM] late S-D(%llu us > %llu us)\n", device, group, frame, temp_sd, fduration);
+	/* Callback interval */
+	if (!frame->result && mp[TMM_SCALL].check && mp[TMM_ECALL].check) {
+		temp2 = fimc_is_get_time(&mp[TMM_SCALL].time, &mp[TMM_ECALL].time);
+		if (temp2 > ctime) {
+			mgrinfo("[TIM] C(%dus > %dus)\n", device, group, frame, temp2, ctime);
+			for (index = TMM_SCALL; index < TMM_ECALL; ++index) {
+				temp = fimc_is_get_time(&mp[index].time, &mp[index + 1].time);
+				mgrinfo("[TIM] %02d-%02d(%dus)\n", device, group, frame, index, index + 1, temp);
+			}
+		}
 	} else {
 		valid = false;
 	}
 
-	/* Done - Deque */
-	if (!frame->result && mp[TMS_SDONE].check && mp[TMS_DQ].check) {
-		temp_d = (mp[TMS_DQ].time - mp[TMS_SDONE].time) / 1000;
-		if (temp_d > dtime)
-			mgrinfo("[TIM] late D(%llu us > %llu us)\n", device, group, frame, temp_d, dtime);
-		if (group->gnext)
-			group->gnext->time.t_dq[f_dqq] = mp[TMS_DQ].time;
+	/* Shot interval */
+	if (test_bit(FIMC_IS_GROUP_OTF_INPUT, &group->state)) {
+		shotindex = TMM_SHOT2;
+	} else {
+		shotindex = TMM_SHOT1;
+	}
+
+	if (!frame->result && mp[shotindex].check && mp[TMM_SDONE].check) {
+		temp3 = fimc_is_get_time(&mp[shotindex].time, &mp[TMM_SDONE].time);
+		if (temp3 > fduration) {
+			mgrinfo("[TIM] S(%dus > %dus)\n", device, group, frame, temp3, fduration);
+		}
 	} else {
 		valid = false;
 	}
 
-	for (index = 0; index < TMS_END; ++index)
+	/* Deque interval */
+	if (!frame->result && mp[TMM_SDONE].check && mp[TMM_DEQUE].check) {
+		temp4 = fimc_is_get_time(&mp[TMM_SDONE].time, &mp[TMM_DEQUE].time);
+		if (temp4 > dtime) {
+			mgrinfo("[TIM] D(%dus > %dus)\n", device, group, frame, temp4, dtime);
+			for (index = TMM_SDONE; index < TMM_DEQUE; ++index) {
+				temp = fimc_is_get_time(&mp[index].time, &mp[index + 1].time);
+				mgrinfo("[TIM] %02d-%02d(%dus)\n", device, group, frame, index, index + 1, temp);
+			}
+		}
+	} else {
+		valid = false;
+	}
+
+	for (index = 0; index < TMM_END; ++index)
 		mp[index].check = false;
 
 	if (!valid)
 		return;
 
+#ifdef MONITOR_REPORT
+	temp1 += temp2;
+	temp2 = temp3;
+	temp3 = temp4;
+
 	if (!time->time_count) {
-		time->t_dqq_max = temp_dqq;
-		time->time1_max = temp_s;
-		time->time2_max = temp_sd;
-		time->time3_max = temp_d;
+		time->time1_min = temp1;
+		time->time1_max = temp1;
+		time->time2_min = temp2;
+		time->time2_max = temp2;
+		time->time3_min = temp3;
+		time->time3_max = temp3;
 	} else {
-		if (time->t_dqq_max < temp_dqq)
-			time->t_dqq_max = temp_dqq;
+		if (time->time1_min > temp1)
+			time->time1_min = temp1;
 
-		if (time->time1_max < temp_s)
-			time->time1_max = temp_s;
+		if (time->time1_max < temp1)
+			time->time1_max = temp1;
 
-		if (time->time2_max < temp_sd)
-			time->time2_max = temp_sd;
+		if (time->time2_min > temp2)
+			time->time2_min = temp2;
 
-		if (time->time3_max < temp_d)
-			time->time3_max = temp_d;
+		if (time->time2_max < temp2)
+			time->time2_max = temp2;
+
+		if (time->time3_min > temp3)
+			time->time3_min = temp3;
+
+		if (time->time3_max < temp3)
+			time->time3_max = temp3;
 	}
 
-	time->t_dqq_tot += temp_dqq;
-	time->time1_tot += temp_s;
-	time->time2_tot += temp_sd;
-	time->time3_tot += temp_d;
+	time->time1_tot += temp1;
+	time->time2_tot += temp2;
+	time->time3_tot += temp3;
 
-	time->time4_cur = mp[shotindex].time;
-	time->time4_tot += (time->time4_cur - time->time4_old) / 1000;
+	time->time4_cur = mp[TMM_QUEUE].time.tv_sec * 1000000 + mp[TMM_QUEUE].time.tv_usec;
+	time->time4_tot += (time->time4_cur - time->time4_old);
 	time->time4_old = time->time4_cur;
 
 	time->time_count++;
 
-	if (!test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state)) {
-		avg_cnt = debug_time_shot;
-		if (time->time_count % avg_cnt)
-			return;
-	} else {
-		avg_cnt = 1;
-	}
+	if (time->time_count % time->report_period)
+		return;
 
-	shot_to_shot = time->time4_tot / avg_cnt;
-
-	mginfo("[TIM] DQ-Q(avg: %05llu max: %05llu), S(avg: %05llu max: %05llu), S-D(avg: %05llu max: %05llu), D(avg: %05llu max: %05llu): %llu(%llufps)\n",
+	mginfo("[TIM] Q(%05d,%05d,%05d), S(%05d,%05d,%05d), D(%05d,%05d,%05d) : %d(%dfps)\n",
 		device, group,
-		time->t_dqq_tot / avg_cnt, time->t_dqq_max,
-		time->time1_tot / avg_cnt, time->time1_max,
-		time->time2_tot / avg_cnt, time->time2_max,
-		time->time3_tot / avg_cnt, time->time3_max,
-		shot_to_shot, 1000000 / shot_to_shot);
+		temp1, time->time1_max, time->time1_tot / time->time_count,
+		temp2, time->time2_max, time->time2_tot / time->time_count,
+		temp3, time->time3_max, time->time3_tot / time->time_count,
+		time->time4_tot / time->report_period,
+		(1000000 * time->report_period) / time->time4_tot);
 
 	time->time_count = 0;
-	time->t_dqq_tot = 0;
 	time->time1_tot = 0;
 	time->time2_tot = 0;
 	time->time3_tot = 0;
 	time->time4_tot = 0;
+#endif
 }
 #endif
 
@@ -284,87 +310,34 @@ void measure_time(struct fimc_is_interface_time *time,
 #endif
 
 void monitor_point(void *group_data,
+	void *frame_data,
 	u32 mpoint)
 {
 	struct fimc_is_group *group;
 
-	FIMC_BUG_VOID(!group_data);
+	BUG_ON(!group_data);
+	BUG_ON(!frame_data);
 
 	group = group_data;
-	group->pcount = mpoint;
-}
-
-void monitor_time_shot(void *group_data,
-	void *frame_data,
-	u32 mpoint)
-{
 #if defined(MEASURE_TIME) && defined(MONITOR_TIME)
-	struct fimc_is_frame *frame;
-	struct fimc_is_monitor *point;
+	{
+		struct fimc_is_frame *frame;
+		struct fimc_is_monitor *point;
 
-	FIMC_BUG_VOID(!frame_data);
+		frame = frame_data;
+		point = &frame->mpoint[mpoint];
 
-	frame = frame_data;
-	point = &frame->mpoint[mpoint];
-	point->time = sched_clock();
-	point->check = true;
+		do_gettimeofday(&point->time);
+		/* only group thread postion */
+		if (mpoint >= 2 && mpoint <= 12)
+			group->pcount = mpoint;
+		point->pcount = mpoint;
+		point->check = true;
 
-	if (mpoint == TMS_DQ)
-		monitor_report(group_data, frame_data);
-#endif
-}
-
-void monitor_time_queue(void *vctx_data,
-	u32 mpoint)
-{
-#if defined(MEASURE_TIME) && defined(MONITOR_TIME)
-	unsigned int avg_cnt = debug_time_queue;
-	struct fimc_is_video_ctx *vctx;
-	struct fimc_is_device_ischain *ischain;
-	struct fimc_is_video *video;
-	unsigned long long temp;
-
-	vctx = vctx_data;
-	if (!vctx)
-		return;
-
-	ischain = GET_DEVICE_ISCHAIN(vctx);
-	if (!ischain)
-		return;
-
-	video = vctx->video;
-	if (!video)
-		return;
-
-	temp = sched_clock();
-
-	if (mpoint == TMQ_DQ) {
-		if (vctx->time[mpoint] == 0) {		/* Normal: DQ --> Q --> DQ --> Q */
-			vctx->time[mpoint] = temp;
-			vctx->time_cnt++;
-		} else {				/* Abnormal: DQ --> DQ */
-			minfo("[TIM] late Q(DQ --> DQ(%llu))\n", vctx,
-				(temp - vctx->time[mpoint]) / 1000);
-		}
-	} else {
-		if (vctx->time[mpoint - 1])  {		/* check pre-point */
-			vctx->time[mpoint] = temp;
-			vctx->time_total[mpoint] += vctx->time[mpoint] - vctx->time[mpoint - 1];
-
-			if (mpoint == TMQ_QE) {		/* reset at final step */
-				if (vctx->time_cnt % avg_cnt == 0) {
-					minfo("[TIM][%s] DQ-Q(%05llu us), Q(%05llu us)\n",
-						vctx, vctx->queue.name,
-						vctx->time_total[TMQ_QS] / avg_cnt / 1000,
-						vctx->time_total[TMQ_QE] / avg_cnt / 1000);
-					vctx->time_total[TMQ_QS] = 0;
-					vctx->time_total[TMQ_QE] = 0;
-					vctx->time_cnt = 0;
-				}
-
-				vctx->time[TMQ_DQ] = 0;
-			}
-		}
+		if (mpoint == TMM_DEQUE)
+			monitor_report(group_data, frame_data);
 	}
+#else
+	group->pcount = mpoint;
 #endif
 }

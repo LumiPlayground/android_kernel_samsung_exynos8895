@@ -108,7 +108,8 @@ static inline void __sdfat_submit_bio_write2(int flags, struct bio *bio)
 #else /* LINUX_VERSION_CODE < KERNEL_VERSION(4,8,0) */
 static inline void __sdfat_submit_bio_write2(int flags, struct bio *bio)
 {
-	submit_bio(WRITE | flags, bio);
+	bio_set_op_attrs(bio, REQ_OP_WRITE, flags);
+	submit_bio(bio);
 }
 #endif
 

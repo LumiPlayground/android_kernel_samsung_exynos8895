@@ -11,10 +11,6 @@
 #include "ext4.h"
 #include "xattr.h"
 
-#ifdef CONFIG_EXT4_DLP
-#include "ext4_dlp.h"
-#endif
-
 static bool
 ext4_xattr_user_list(struct dentry *dentry)
 {
@@ -23,8 +19,8 @@ ext4_xattr_user_list(struct dentry *dentry)
 
 static int
 ext4_xattr_user_get(const struct xattr_handler *handler,
-		    struct dentry *unused, struct inode *inode,
-		    const char *name, void *buffer, size_t size)
+		    struct dentry *dentry, struct inode *inode, const char *name,
+		    void *buffer, size_t size)
 {
 	if (!test_opt(inode->i_sb, XATTR_USER))
 		return -EOPNOTSUPP;
@@ -34,25 +30,9 @@ ext4_xattr_user_get(const struct xattr_handler *handler,
 
 static int
 ext4_xattr_user_set(const struct xattr_handler *handler,
-		    struct dentry *unused, struct inode *inode,
-		    const char *name, const void *value,
-		    size_t size, int flags)
+		    struct dentry *dentry, struct inode *inode, const char *name,
+		    const void *value, size_t size, int flags)
 {
-#ifdef CONFIG_EXT4_DLP
-	if (!strcmp(name, KNOX_DLP_XATTR_NAME))
-		goto set_xattr;
-
-	if (!fbe_enable())
-		return 0;
-
-	if (!system_server_or_root()) {
-		pr_err("DLP %s: setting knox_dlp not allowed by [%d]\n",
-			__func__, from_kuid(&init_user_ns, current_uid()));
-		return -EPERM;
-	}
-set_xattr:
-#endif
-
 	if (!test_opt(inode->i_sb, XATTR_USER))
 		return -EOPNOTSUPP;
 	return ext4_xattr_set(inode, EXT4_XATTR_INDEX_USER,

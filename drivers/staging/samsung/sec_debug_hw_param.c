@@ -24,9 +24,13 @@
 #include <linux/thermal.h>
 
 #define MAX_DDR_VENDOR 16
-#define LPDDR_BASE      0x02056c00
-#define DATA_SIZE 1024
+#define LPDDR_BASE 0x16509b00
+#define DATA_SIZE 1024 
 #define LOT_STRING_LEN 5
+
+#define HW_PARAM_CHECK_SIZE(size)	\
+	if (size >= 1024)		\
+	return 1024;			\
 
 /*
  * LPDDR4 (JESD209-4) MR5 Manufacturer ID
@@ -63,13 +67,119 @@ static unsigned int chipid_fail_cnt;
 static unsigned int lpi_timeout_cnt;
 static unsigned int cache_err_cnt;
 static unsigned int codediff_cnt;
-#if defined(CONFIG_SAMSUNG_VST_CAL)
-static unsigned int vst_result;
-#endif
 static unsigned long pcb_offset;
 static unsigned long smd_offset;
 static unsigned int lpddr4_size;
 static char warranty = 'D';
+
+#if 1	/* DDR training result structure */
+#define KC_DDR_TRN_DATA_BASE 0x16509000
+#define NUM_OF_TRN_OFFSET_INFO          (2)
+#define NUM_OF_TRN_DLL_INFO             (1)
+#define NUM_OF_TRN_GATE_INFO            (4)
+#define NUM_OF_TRN_RD_DESKEW_INFO       (9)
+#define NUM_OF_TRN_RD_DESKEWQ_INFO      (2)
+#define NUM_OF_TRN_WR_DESKEW_INFO       (9)
+#define NUM_OF_TRN_INFO                 (0)
+enum phy_rank_info {
+	PHY_RANK_0,
+	PHY_RANK_1,
+	PHY_RANK_ALL,
+};
+
+enum phy_byte_info {
+	PHY_BYTE_0,
+	PHY_BYTE_1,
+	PHY_BYTE_ALL,
+};
+
+struct phy_trn_cbt_info_t {
+	unsigned char ca[6];
+	unsigned char ck;
+	unsigned char cs[2];
+	unsigned char cke[2];
+
+};
+
+struct phy_trn_read_dqs_info_t {
+	unsigned char center[PHY_BYTE_ALL];
+	unsigned char left[PHY_BYTE_ALL];
+};
+
+struct phy_trn_wr_lvl_info_t {
+	unsigned short code[PHY_BYTE_ALL];
+};
+
+struct phy_trn_gate_info_t {
+	unsigned short center[PHY_BYTE_ALL];
+	unsigned char  cycle[PHY_BYTE_ALL];
+};
+
+struct phy_trn_read_info_t {
+	unsigned short deskewc[NUM_OF_TRN_RD_DESKEW_INFO][PHY_BYTE_ALL];
+	unsigned short deskewl[NUM_OF_TRN_RD_DESKEW_INFO][PHY_BYTE_ALL];
+	struct phy_trn_read_dqs_info_t  dqs;
+};
+
+struct phy_trn_write_info_t {
+	unsigned short deskewc[NUM_OF_TRN_WR_DESKEW_INFO][PHY_BYTE_ALL];
+	unsigned short deskewl[NUM_OF_TRN_WR_DESKEW_INFO][PHY_BYTE_ALL];
+
+};
+
+struct phy_trn_all_level_deskew_offset_info_t {
+	signed char offset[PHY_BYTE_ALL];
+
+};
+
+struct phy_trn_prbs_info_t {
+	unsigned short read[PHY_BYTE_ALL];
+	unsigned short write[PHY_BYTE_ALL];
+
+};
+
+struct phy_trn_soc_vref_info_t {
+	unsigned char net_lv;
+	unsigned char vref;
+	unsigned int average;
+	unsigned char left;
+	unsigned char right;
+
+};
+
+union mr14_t {
+	volatile unsigned int data;
+	struct  {
+		volatile unsigned int	vref_dq : (5 - 0 + 1);
+		volatile unsigned int	vr_dq : (6 - 6 + 1);
+		volatile unsigned int	reserved_7 : (7 - 7 + 1);
+	} bitfield;
+};
+
+struct phy_trn_memory_vref_info_t {
+	unsigned char net_lv;
+	unsigned char vref;
+	unsigned int average;
+	unsigned char left;
+	unsigned char right;
+	union mr14_t mr14;
+};
+
+struct phy_trn_data_t {
+	unsigned short                      dll;
+	struct phy_trn_cbt_info_t           cbt;
+	struct phy_trn_wr_lvl_info_t        wr_lvl;
+	struct phy_trn_gate_info_t          gate[PHY_RANK_ALL];
+	struct phy_trn_read_info_t          read[PHY_RANK_ALL];//read training per rank enabled from KC
+	struct phy_trn_write_info_t         write[PHY_RANK_ALL];
+	struct phy_trn_all_level_deskew_offset_info_t  read_offset[13][PHY_RANK_ALL];
+	struct phy_trn_all_level_deskew_offset_info_t  write_offset[13][PHY_RANK_ALL];
+	struct phy_trn_prbs_info_t          prbs;
+	struct phy_trn_soc_vref_info_t      soc_vref[2][PHY_RANK_ALL];
+	struct phy_trn_memory_vref_info_t   memory_vref[2][PHY_RANK_ALL];
+};
+
+#endif	/* DDR training result structure */
 
 static int __init sec_hw_param_get_hw_rev(char *arg)
 {
@@ -111,19 +221,9 @@ static int __init sec_hw_param_code_diff(char *arg)
 
 early_param("sec_debug.codediff_cnt", sec_hw_param_code_diff);
 
-#if defined(CONFIG_SAMSUNG_VST_CAL)
-static int __init sec_hw_param_vst_result(char *arg)
-{
-	get_option(&arg, &vst_result);
-	return 0;
-}
-
-early_param("sec_debug.vst_result", sec_hw_param_vst_result);
-#endif
-
 static int __init sec_hw_param_pcb_offset(char *arg)
 {
-	pcb_offset = simple_strtoul(arg, NULL, 10);
+	pcb_offset = simple_strtoul(arg, NULL, 10);	
 	return 0;
 }
 
@@ -131,7 +231,7 @@ early_param("sec_debug.pcb_offset", sec_hw_param_pcb_offset);
 
 static int __init sec_hw_param_smd_offset(char *arg)
 {
-	smd_offset = simple_strtoul(arg, NULL, 10);
+	smd_offset = simple_strtoul(arg, NULL, 10);	
 	return 0;
 }
 
@@ -196,7 +296,7 @@ static char *get_dram_manufacturer(void)
 
 	val = readq((void __iomem *)lpddr_reg);
 
-	mr5_vendor_id = (val & 0xff00) >> 8;
+	mr5_vendor_id = 0xf & (val >> 8);
 
 	return lpddr4_manufacture_name[mr5_vendor_id];
 }
@@ -219,12 +319,6 @@ static ssize_t sec_hw_param_ap_info_show(struct kobject *kobj,
 		     "\"BIN\":\"%c\",", warranty);
 	info_size +=
 	    snprintf((char *)(buf + info_size), DATA_SIZE - info_size,
-		     "\"ASB\":\"%d\",", id_get_asb_ver());
-	info_size +=
-	    snprintf((char *)(buf + info_size), DATA_SIZE - info_size,
-		     "\"PSITE\":\"%d\",", id_get_product_line());
-	info_size +=
-	    snprintf((char *)(buf + info_size), DATA_SIZE - info_size,
 		     "\"LOT_ID\":\"%s\",", lot_id);
 	info_size +=
 	    snprintf((char *)(buf + info_size), DATA_SIZE - info_size,
@@ -238,14 +332,6 @@ static ssize_t sec_hw_param_ap_info_show(struct kobject *kobj,
 	info_size +=
 	    snprintf((char *)(buf + info_size), DATA_SIZE - info_size,
 		     "\"CODE_DIFF\":\"%d\",", codediff_cnt);
-#if defined(CONFIG_SAMSUNG_VST_CAL)
-	info_size +=
-	    snprintf((char *)(buf + info_size), DATA_SIZE - info_size,
-		     "\"VST_RESULT\":\"%d\",", vst_result);
-	info_size +=
-	    snprintf((char *)(buf + info_size), DATA_SIZE - info_size,
-		     "\"VST_ADJUST\":\"%d\",", volt_vst_cal_bdata);
-#endif
 	info_size +=
 	    snprintf((char *)(buf + info_size), DATA_SIZE - info_size,
 		     "\"ASV_BIG\":\"%d\",", asv_ids_information(bg));
@@ -267,6 +353,12 @@ static ssize_t sec_hw_param_ddr_info_show(struct kobject *kobj,
 					  char *buf)
 {
 	ssize_t info_size = 0;
+	struct phy_trn_data_t *trn_data;
+	unsigned long addr;
+	unsigned int data;
+	int i, j, k;
+	unsigned short min_vwm, temp_vwm;
+	void __iomem *dram_trn_addr;
 
 	info_size +=
 	    snprintf((char *)(buf), DATA_SIZE, "\"DDRV\":\"%s\",",
@@ -274,6 +366,85 @@ static ssize_t sec_hw_param_ddr_info_show(struct kobject *kobj,
 	info_size +=
 	    snprintf((char *)(buf + info_size), DATA_SIZE - info_size,
 		     "\"LPDDR4\":\"%dGB\",", lpddr4_size);
+
+	dram_trn_addr = ioremap(KC_DDR_TRN_DATA_BASE, 0x4000);
+	for (k = 0; k < 4; k++) {
+		data = readl(dram_trn_addr + 0xb60 + 4 * k);
+		info_size +=
+			snprintf(
+				(char *)(buf + info_size),
+				DATA_SIZE - info_size,
+				"\"sc%dr0\":\"%x\",", k, (data >> 16) & 0xff);
+		info_size +=
+			snprintf(
+				(char *)(buf + info_size),
+				DATA_SIZE - info_size,
+				"\"sc%dr1\":\"%x\",", k, data & 0xff);
+	}
+	for (k = 0; k < 4; k++) {
+		data = readl(dram_trn_addr + 0xb80 + 4 * k);
+		info_size +=
+			snprintf(
+				(char *)(buf + info_size),
+				DATA_SIZE - info_size,
+				"\"dc%dr0\":\"%x\",", k, (data >> 16) & 0xff);
+		info_size +=
+			snprintf(
+				(char *)(buf + info_size),
+				DATA_SIZE - info_size,
+				"\"dc%dr1\":\"%x\",", k, data & 0xff);
+	}
+	for (k = 0; k < 4; k++) {
+		addr = readl(dram_trn_addr + 0xb50 + 4 * k);
+		if (addr > 0xa000 && addr < 0xc000) {
+			trn_data =
+				(struct phy_trn_data_t *)
+				(dram_trn_addr + addr - 0x9000);
+
+			for (j = 0; j < PHY_BYTE_ALL; j++) {
+				for (i = 0; i < NUM_OF_TRN_RD_DESKEW_INFO; i++) {
+					if (i == 0) {
+						min_vwm = 2 *
+							(trn_data->read[0].deskewc[i][j] -
+							 trn_data->read[0].deskewl[i][j]);
+					} else {
+						temp_vwm = 2 *
+							(trn_data->read[0].deskewc[i][j] -
+							 trn_data->read[0].deskewl[i][j]);
+						if (min_vwm > temp_vwm)
+							min_vwm = temp_vwm;
+					}
+				}
+				info_size +=
+					snprintf(
+						(char *)(buf + info_size),
+						DATA_SIZE - info_size,
+						"\"rc%db%d\":\"%x\",", k, j, min_vwm);
+			}
+			for (j = 0; j < PHY_BYTE_ALL; j++) {
+				for (i = 0; i < NUM_OF_TRN_WR_DESKEW_INFO; i++) {
+					if (i == 0) {
+						min_vwm = 2 *
+							(trn_data->write[0].deskewc[i][j] -
+							 trn_data->write[0].deskewl[i][j]);
+					} else {
+						temp_vwm = 2 *
+							(trn_data->write[0].deskewc[i][j] -
+							 trn_data->write[0].deskewl[i][j]);
+						if (min_vwm > temp_vwm)
+							min_vwm = temp_vwm;
+					}
+				}
+				info_size +=
+					snprintf(
+						(char *)(buf + info_size),
+						DATA_SIZE - info_size,
+						"\"wc%db%d\":\"%x\",", k, j, min_vwm);
+			}
+		}
+	}
+	iounmap(dram_trn_addr);
+
 	info_size +=
 	    snprintf((char *)(buf + info_size), DATA_SIZE - info_size,
 		     "\"C2D\":\"\",");
@@ -285,7 +456,7 @@ static ssize_t sec_hw_param_ddr_info_show(struct kobject *kobj,
 }
 
 static ssize_t sec_hw_param_extra_info_show(struct kobject *kobj,
-					    struct kobj_attribute *attr, char *buf)
+				struct kobj_attribute *attr, char *buf)
 {
 	ssize_t info_size = 0;
 
@@ -315,7 +486,7 @@ static ssize_t sec_hw_param_extrb_info_show(struct kobject *kobj,
 }
 
 static ssize_t sec_hw_param_extrc_info_show(struct kobject *kobj,
-					    struct kobj_attribute *attr, char *buf)
+						struct kobj_attribute *attr, char *buf)
 {
 	ssize_t info_size = 0;
 
@@ -330,7 +501,7 @@ static ssize_t sec_hw_param_extrc_info_show(struct kobject *kobj,
 }
 
 static ssize_t sec_hw_param_extrm_info_show(struct kobject *kobj,
-					    struct kobj_attribute *attr, char *buf)
+						struct kobj_attribute *attr, char *buf)
 {
 	ssize_t info_size = 0;
 
@@ -344,50 +515,33 @@ static ssize_t sec_hw_param_extrm_info_show(struct kobject *kobj,
 	return info_size;
 }
 
-static ssize_t sec_hw_param_extrf_info_show(struct kobject *kobj,
-					    struct kobj_attribute *attr, char *buf)
-{
-	ssize_t info_size = 0;
-
-	if (reset_reason == RR_K || reset_reason == RR_D || 
-		reset_reason == RR_P || reset_reason == RR_S) {
-		sec_debug_store_extra_info_F();
-		strncpy(buf, (char *)SEC_DEBUG_EXTRA_INFO_VA, SZ_1K);
-		info_size = strlen(buf);
-	}
-
-	return info_size;
-}
-
 static ssize_t sec_hw_param_pcb_info_store(struct kobject *kobj,
-					   struct kobj_attribute *attr,
-					   const char *buf, size_t count)
+				struct kobj_attribute *attr, const char *buf, size_t count)
 {
 	unsigned char barcode[6] = {0,};
 	int ret = -1;
 
 	strncpy(barcode, buf, 5);
 
-	ret = sec_set_param_str(pcb_offset, barcode, 5);
+	ret = sec_set_param_str(pcb_offset , barcode, 5);
 	if (ret < 0)
 		pr_err("%s : Set Param fail. offset (%lu), data (%s)", __func__, pcb_offset, barcode);
-
+	
 	return count;
 }
 
 static ssize_t sec_hw_param_smd_info_store(struct kobject *kobj,
-					   struct kobj_attribute *attr,
-					   const char *buf, size_t count)
+				struct kobj_attribute *attr, const char *buf, size_t count)
 {
 	unsigned char smd_date[9] = {0,};
 	int ret = -1;
 
 	strncpy(smd_date, buf, 8);
 
-	ret = sec_set_param_str(smd_offset, smd_date, 8);
+	ret = sec_set_param_str(smd_offset , smd_date, 8);
 	if (ret < 0)
 		pr_err("%s : Set Param fail. offset (%lu), data (%s)", __func__, smd_offset, smd_date);
-
+	
 	return count;
 }
 
@@ -401,10 +555,10 @@ static ssize_t sec_hw_param_thermal_info_show(struct kobject *kobj,
 }
 
 static struct kobj_attribute sec_hw_param_ap_info_attr =
-	__ATTR(ap_info, 0440, sec_hw_param_ap_info_show, NULL);
+        __ATTR(ap_info, 0440, sec_hw_param_ap_info_show, NULL);
 
 static struct kobj_attribute sec_hw_param_ddr_info_attr =
-	__ATTR(ddr_info, 0440, sec_hw_param_ddr_info_show, NULL);
+        __ATTR(ddr_info, 0440, sec_hw_param_ddr_info_show, NULL);
 
 static struct kobj_attribute sec_hw_param_extra_info_attr =
 	__ATTR(extra_info, 0440, sec_hw_param_extra_info_show, NULL);
@@ -418,11 +572,8 @@ static struct kobj_attribute sec_hw_param_extrc_info_attr =
 static struct kobj_attribute sec_hw_param_extrm_info_attr =
 	__ATTR(extrm_info, 0440, sec_hw_param_extrm_info_show, NULL);
 
-static struct kobj_attribute sec_hw_param_extrf_info_attr =
-	__ATTR(extrf_info, 0440, sec_hw_param_extrf_info_show, NULL);
-
 static struct kobj_attribute sec_hw_param_pcb_info_attr =
-	__ATTR(pcb_info, 0660, NULL, sec_hw_param_pcb_info_store);
+        __ATTR(pcb_info, 0660, NULL, sec_hw_param_pcb_info_store);
 
 static struct kobj_attribute sec_hw_param_smd_info_attr =
 	__ATTR(smd_info, 0660, NULL, sec_hw_param_smd_info_store);
@@ -437,7 +588,6 @@ static struct attribute *sec_hw_param_attributes[] = {
 	&sec_hw_param_extrb_info_attr.attr,
 	&sec_hw_param_extrc_info_attr.attr,
 	&sec_hw_param_extrm_info_attr.attr,
-	&sec_hw_param_extrf_info_attr.attr,
 	&sec_hw_param_pcb_info_attr.attr,
 	&sec_hw_param_smd_info_attr.attr,
 	&sec_hw_param_thermal_info_attr.attr,

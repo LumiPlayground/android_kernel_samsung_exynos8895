@@ -846,7 +846,7 @@ static int exynos_speedy_xfer_batcher(struct exynos_speedy *speedy,
 	}
 	return ret;
 }
-#if 0
+
 static irqreturn_t exynos_speedy_irq_batcher(int irqno, void *dev_id)
 {
 	/* TODO : implementation is needed more */
@@ -894,7 +894,6 @@ static irqreturn_t exynos_speedy_irq_batcher(int irqno, void *dev_id)
 
 	return IRQ_HANDLED;
 }
-#endif
 
 static int exynos_speedy_xfer(struct i2c_adapter *adap,
 			  struct i2c_msg *msgs, int num)
@@ -954,6 +953,7 @@ static int exynos_speedy_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct exynos_speedy *speedy;
 	struct resource *mem;
+	void __iomem	*pmu_batcher;
 	int ret;
 
 	dev_info(&pdev->dev, "speedy driver probe started\n");
@@ -981,19 +981,34 @@ static int exynos_speedy_probe(struct platform_device *pdev)
 	speedy->adap.class   = I2C_CLASS_HWMON | I2C_CLASS_SPD;
 
 	speedy->dev = &pdev->dev;
-#if 0
 	speedy->clk = devm_clk_get(&pdev->dev, "gate_speedy");
 	if (IS_ERR(speedy->clk)) {
 		dev_err(&pdev->dev, "cannot get clock\n");
 		return -ENOENT;
 	}
-#endif
+
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	speedy->regs = devm_ioremap_resource(&pdev->dev, mem);
 	if (speedy->regs == NULL) {
 		dev_err(&pdev->dev, "cannot map speedy SFR register\n");
 		ret = PTR_ERR(speedy->regs);
 		goto err_probe;
+	}
+
+	/* TODO : need handling PMU register for batcher ? */
+	/* for enable Batcher in PMU */
+	mem = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (mem != NULL) {
+		pmu_batcher = devm_ioremap_resource(&pdev->dev, mem);
+
+		if (pmu_batcher == NULL) {
+			dev_err(&pdev->dev, "cannot map PMU register for batcher enable\n");
+			ret = PTR_ERR(pmu_batcher);
+			goto err_probe;
+		}
+		/* TODO : need handling PMU register for batcher ? */
+		writel(0x3, pmu_batcher);
+		devm_iounmap(&pdev->dev, pmu_batcher);
 	}
 
 	speedy->adap.dev.of_node = np;
@@ -1006,9 +1021,7 @@ static int exynos_speedy_probe(struct platform_device *pdev)
 		ret = -EINVAL;
 		goto err_probe;
 	}
-	platform_set_drvdata(pdev, speedy);
 
-#if 0
 	/* clear speedy interrupt status */
 	writel(0xFFFFFFFF, speedy->regs + SPEEDY_INT_STATUS);
 
@@ -1020,18 +1033,22 @@ static int exynos_speedy_probe(struct platform_device *pdev)
 		exynos_speedy_irq_batcher, 0, dev_name(&pdev->dev), speedy);
 
 	disable_irq(speedy->irq);
+
 	if (ret != 0) {
 		dev_err(&pdev->dev, "cannot request speedy IRQ %d\n", speedy->irq);
 		goto err_probe;
 	}
+
+	platform_set_drvdata(pdev, speedy);
+
 	/* release semaphore after direct SPEEDY SFR access */
 	release_semaphore(speedy);
 
 	/* reset batcher */
 	batcher_swreset(speedy);
+
 	/* select bitfield to monitor interrupt and status by batcher */
 	program_batcher_fsm(speedy);
-#endif
 
 	speedy->adap.nr = -1;
 	ret = i2c_add_numbered_adapter(&speedy->adap);

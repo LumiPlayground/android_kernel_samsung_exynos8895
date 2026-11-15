@@ -597,6 +597,8 @@ static int __init exynos_ion_reserved_mem_setup(struct reserved_mem *rmem)
 RESERVEDMEM_OF_DECLARE(name, compat#name, exynos_ion_reserved_mem_setup)
 
 DECLARE_EXYNOS_ION_RESERVED_REGION("exynos8890-ion,", crypto);
+/* Preserve the existing 8895 secure UI reserved region. */
+DECLARE_EXYNOS_ION_RESERVED_REGION("exynos8890-ion,", tui);
 DECLARE_EXYNOS_ION_RESERVED_REGION("exynos8890-ion,", vfw);
 DECLARE_EXYNOS_ION_RESERVED_REGION("exynos8890-ion,", vnfw);
 DECLARE_EXYNOS_ION_RESERVED_REGION("exynos8890-ion,", vstream);

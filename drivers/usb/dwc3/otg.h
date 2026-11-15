@@ -22,7 +22,7 @@
 #define __LINUX_USB_DWC3_OTG_H
 #include <linux/wakelock.h>
 #include <linux/usb/otg-fsm.h>
-#include "dwc3-exynos.h"
+
 struct dwc3_ext_otg_ops {
 	int	(*setup)(struct device *dev, struct otg_fsm *fsm);
 	void	(*exit)(struct device *dev);
@@ -52,19 +52,10 @@ struct dwc3_otg {
 	struct wake_lock	wakelock;
 
 	unsigned		ready:1;
-	int			otg_connection;
 
 	struct regulator	*vbus_reg;
-	int			*ldo_num;
-	int			ldos;
-	int			ldo_manual_control;
-	struct regulator	*ldo12;
-	struct regulator	*ldo13;
-	struct regulator	*ldo14;
 
 	struct dwc3_ext_otg_ops *ext_otg_ops;
-	struct mutex lock;
-	u32 combo_phy_control;
 };
 
 static inline int dwc3_ext_otg_setup(struct dwc3_otg *dotg)

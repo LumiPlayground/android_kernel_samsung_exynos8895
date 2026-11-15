@@ -23,16 +23,13 @@ int dplink_emul_handler(int cmd);
  */
 int hdcp_dplink_authenticate(void);
 
-int do_dplink_auth(struct hdcp_link_info *lk_handle);
 int hdcp_dplink_get_rxstatus(uint8_t *status);
 int hdcp_dplink_set_paring_available(void);
 int hdcp_dplink_set_hprime_available(void);
 int hdcp_dplink_set_rp_ready(void);
 int hdcp_dplink_set_reauth(void);
 int hdcp_dplink_set_integrity_fail(void);
-int hdcp_dplink_cancel_auth(void);
 int hdcp_dplink_stream_manage(void);
 int hdcp_dplink_is_auth_state(void);
-void hdcp_clear_session(uint32_t id);
-void hdcp_dplink_clear_all(void);
+
 #endif

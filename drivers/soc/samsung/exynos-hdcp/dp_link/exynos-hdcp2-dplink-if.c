@@ -152,25 +152,9 @@ uint32_t dpcd_addr[NUM_HDCP22_MSG_NAME] = {
 	DPCD_ADDR_HDCP22_Type,
 };
 
-#if defined(CONFIG_EXYNOS_DISPLAYPORT)
 extern int displayport_dpcd_read_for_hdcp22(u32 address, u32 length, u8 *data);
 extern int displayport_dpcd_write_for_hdcp22(u32 address, u32 length, u8 *data);
 extern void displayport_hdcp22_enable(u32 en);
-
-#else
-int displayport_dpcd_read_for_hdcp22(u32 address, u32 length, u8 *data)
-{
-	return 0;
-}
-int displayport_dpcd_write_for_hdcp22(u32 address, u32 length, u8 *data)
-{
-	return 0;
-}
-void displayport_hdcp22_enable(u32 en)
-{
-	return;
-}
-#endif
 
 int hdcp_dplink_init(void)
 {

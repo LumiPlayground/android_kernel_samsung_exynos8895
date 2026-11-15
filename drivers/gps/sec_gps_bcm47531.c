@@ -26,7 +26,7 @@
 static struct device *gps_dev;
 //static wait_queue_head_t *p_geofence_wait;
 //static unsigned int gps_host_wake_up = 0;
-static unsigned int gps_pwr_on;
+static unsigned int gps_pwr_on = 0;
 static struct pinctrl *gps_pwr_pinctrl;
 static struct pinctrl_state *gps_pwr_on_pinctrl;
 
@@ -92,10 +92,10 @@ static long gps_geofence_wake_ioctl(struct file *filp,
 	 * (like test helper)
 	 */
 	/*
-	 *switch(cmd) {
-	 *	default:
-	 *  }
-	 */
+	switch(cmd) {
+		default:
+	}
+	*/
 	return 0;
 }
 
@@ -106,8 +106,7 @@ static const struct file_operations gps_geofence_wake_fops = {
 	.release = gps_geofence_wake_release,
 	.poll = gps_geofence_wake_poll,
 	/*.read = gps_geofence_wake_read,
-	 *.write = gps_geofence_wake_write,
-	 */
+	.write = gps_geofence_wake_write,*/
 	.unlocked_ioctl = gps_geofence_wake_ioctl
 };
 
@@ -118,7 +117,6 @@ static int gps_geofence_wake_init(int irq, int host_req_pin)
 	int ret;
 
 	struct gps_geofence_wake *ac_data = &geofence_wake;
-
 	memset(ac_data, 0, sizeof(struct gps_geofence_wake));
 
 	/* misc device setup */
@@ -135,12 +133,12 @@ static int gps_geofence_wake_init(int irq, int host_req_pin)
 	/* which will be used by poll or select system call */
 	init_waitqueue_head(&ac_data->wait);
 
-	pr_info("%s misc register, name %s, irq %d, host req pin num %d\n",
+	printk(KERN_INFO "%s misc register, name %s, irq %d, host req pin num %d\n",
 		__func__, ac_data->misc.name, irq, host_req_pin);
 
 	ret = misc_register(&ac_data->misc);
 	if (ret != 0) {
-		pr_err("cannot register gps geofence wake miscdev on minor=%d (%d)\n",
+		printk(KERN_ERR "cannot register gps geofence wake miscdev on minor=%d (%d)\n",
 			MISC_DYNAMIC_MINOR, ret);
 		return -ENODEV;
 	}
@@ -167,7 +165,7 @@ static irqreturn_t gps_host_wake_isr(int irq, void *dev)
 	// printk(KERN_ERR "%s GPS pin level[%s]\n", __func__, gps_host_wake ? "High" : "Low");
 
 	if (p_geofence_wait && gps_host_wake) {
-		pr_err("%s Wake-up GPS daemon[TRUE]\n", __func__);
+		printk(KERN_ERR "%s Wake-up GPS daemon[TRUE]\n", __func__);
 		wake_up_interruptible(p_geofence_wait);
 	}
 
@@ -179,51 +177,51 @@ int check_gps_op(void)
 	/* This pin is high when gps is working */
 	int gps_is_running = gpio_get_value(gps_pwr_on);
 
-	pr_debug("LPA : %s(%d)\n", __func__, gps_is_running);
+	pr_debug("LPA : check_gps_op(%d)\n", gps_is_running);
 
 	return gps_is_running;
 }
 EXPORT_SYMBOL(check_gps_op);
 
 #if 0 //def CONFIG_SENSORS_SSP_BBD
-static int bcm477x_notifier(struct notifier_block *nb, unsigned long event, void *data)
+static int bcm477x_notifier(struct notifier_block *nb, unsigned long event, void * data)
 {
 	int ret = 0;
 
 	// printk("--> %s(%lu)\n", __func__, event);
 
 	switch (event) {
-	case PM_SUSPEND_PREPARE:
-		pr_info("%s going to sleep.\n", __func__);
-		// set pulldown and config interrupt
-		ret = pinctrl_select_state(host_wake_pinctrl, host_wake_irq);
-		if (ret) {
-			dev_err(gps_dev, "Failed to get host_wake_irq pinctrl.\n");
-			return ret;
-		}
-		break;
+		case PM_SUSPEND_PREPARE:
+			 printk("%s going to sleep.\n", __func__);
+			// set pulldown and config interrupt
+			ret = pinctrl_select_state(host_wake_pinctrl, host_wake_irq);
+			if (ret) {
+				dev_err(gps_dev, "Failed to get host_wake_irq pinctrl.\n");
+				return ret;
+			}
+			break;
 
-	case PM_POST_SUSPEND:
-		pr_info("%s waking up.\n", __func__);
-		// set pullup and config input
-		ret = pinctrl_select_state(host_wake_pinctrl, host_wake_input);
-		if (ret) {
-			dev_err(gps_dev, "Failed to get host_wake pinctrl.\n");
-			return ret;
-		}
-		break;
-	}
-	return NOTIFY_OK;
+		case PM_POST_SUSPEND:
+			 printk("%s waking up.\n", __func__);
+			// set pullup and config input
+			ret = pinctrl_select_state(host_wake_pinctrl, host_wake_input);
+			if (ret) {
+				dev_err(gps_dev, "Failed to get host_wake pinctrl.\n");
+				return ret;
+			}
+			break;
+        }
+        return NOTIFY_OK;
 }
 
 static struct notifier_block bcm477x_notifier_block = {
-	.notifier_call = bcm477x_notifier,
+        .notifier_call = bcm477x_notifier,
 };
 #endif
 
 static int __init gps_bcm47531_init(void)
 {
-	//int irq = 0,
+	//int irq = 0, 
 	int ret = 0;
 	const char *gps_node = "samsung,exynos54xx-bcm4753";
 
@@ -299,7 +297,7 @@ static int __init gps_bcm47531_init(void)
 	if (!host_wake_irq)
 		pr_err("%s: failed to get host_wake_input pinctrl\n", __func__);
 
-	pr_info("%s waking up", __func__);
+	printk("%s waking up", __func__);
 	ret = pinctrl_select_state(host_wake_pinctrl, host_wake_input);
 	if (ret) {
 		dev_err(gps_dev, "Failed to get host_wake pinctrl.\n");
@@ -334,12 +332,12 @@ static int __init gps_bcm47531_init(void)
 #endif
 
 #if 0 // def CONFIG_SENSORS_SSP_BBD
-	ret = register_pm_notifier(&bcm477x_notifier_block);
-	if (ret) {
-		pr_err("[GPS] register_pm_notifier failed.\n");
-		ret = -ENODEV;
-		goto err_free_irq;
-	}
+    ret = register_pm_notifier(&bcm477x_notifier_block);
+    if (ret) {
+        pr_err("[GPS] register_pm_notifier failed.\n");
+        ret = -ENODEV;
+        goto err_free_irq;
+    }
 #endif
 
 	return 0;

@@ -17,13 +17,14 @@
 
 extern int ss310ap_force_crash_exit_ext(void);
 extern int ss310ap_send_panic_noti_ext(void);
-extern bool __skb_free_head_cp_zerocopy(struct sk_buff *skb);
 
+
+extern bool __skb_free_head_cp_zerocopy(struct sk_buff *skb);
 #ifdef CONFIG_CP_ZEROCOPY
 /**
- @brief		skb_free_head_cp_zerocopy
- @param skb	the pointer to skbuff
- @return bool	return true if skb->data in zerocopy buffer,
+@brief		skb_free_head_cp_zerocopy
+@param skb	the pointer to skbuff
+@return bool	return true if skb->data in zerocopy buffer,
 		not to do a rest of skb_free_head process.
 */
 static inline bool skb_free_head_cp_zerocopy(struct sk_buff *skb)
@@ -31,7 +32,8 @@ static inline bool skb_free_head_cp_zerocopy(struct sk_buff *skb)
 	return __skb_free_head_cp_zerocopy(skb);
 }
 #else
-static inline bool skb_free_head_cp_zerocopy(struct sk_buff *skb) {
+static inline bool skb_free_head_cp_zerocopy(struct sk_buff *skb)
+{
 	return false;
 }
 #endif

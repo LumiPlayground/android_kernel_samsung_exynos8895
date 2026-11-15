@@ -41,6 +41,9 @@ enum exynos_pm_event {
 #define EXYNOS_PM_PREFIX	"EXYNOS-PM:"
 
 int register_usb_is_connect(bool (*func)(void));
+#ifdef CONFIG_SOC_EXYNOS8895
+bool is_test_cp_call_set(void);
+#endif
 
 #ifdef CONFIG_CPU_IDLE
 int exynos_pm_register_notifier(struct notifier_block *nb);
@@ -77,7 +80,7 @@ static inline int acpm_get_mifdn_count(void)
 }
 #endif
 
-#if defined(CONFIG_SEC_DEBUG)
+#if defined(CONFIG_SEC_DEBUG) || defined(CONFIG_SEC_FACTORY)
 enum ids_info {
 	tg,
 	lg,

@@ -618,7 +618,7 @@ void s5p_mfc_handle_released_info(struct s5p_mfc_ctx *ctx,
 		return;
 	}
 	refBuf = &dec->ref_info[index];
-	
+
 	if (dec->dec_only_release_flag) {
 		for (t = 0; t < MFC_MAX_DPBS; t++) {
 			if (dec->dec_only_release_flag & (1 << t)) {
@@ -630,7 +630,7 @@ void s5p_mfc_handle_released_info(struct s5p_mfc_ctx *ctx,
 			}
 		}
 	}
-	
+
 	if (released_flag) {
 		for (t = 0; t < MFC_MAX_DPBS; t++) {
 			if (released_flag & (1 << t)) {
@@ -652,8 +652,7 @@ void s5p_mfc_handle_released_info(struct s5p_mfc_ctx *ctx,
 					ncount++;
 				}
 				dec->assigned_fd[t] = MFC_INFO_INIT_FD;
-				mfc_check_ref_frame(&ctx->buf_queue_lock, &ctx->dst_buf_queue,
-						&ctx->ref_buf_queue, ctx, t);
+				mfc_check_ref_frame(&ctx->buf_queue_lock, &ctx->dst_buf_queue, &ctx->ref_buf_queue, ctx, t);
 			}
 		}
 	}
@@ -677,7 +676,7 @@ struct s5p_mfc_buf *s5p_mfc_move_reuse_buffer(struct s5p_mfc_ctx *ctx, int relea
 	list_for_each_entry_safe(ref_mb, tmp_mb, &ref_queue->head, list) {
 		index = ref_mb->vb.vb2_buf.index;
 		if (index == release_index) {
-			s5p_mfc_raw_unprotect(ctx, ref_mb, index);
+			s5p_mfc_raw_buf_prot(ctx, ref_mb, false);
 
 			ref_mb->used = 0;
 
@@ -713,8 +712,14 @@ void s5p_mfc_cleanup_enc_src_queue(struct s5p_mfc_ctx *ctx)
 
 		list_for_each_entry_safe(src_mb, tmp_mb, &ctx->src_buf_queue.head, list) {
 			i = src_mb->vb.vb2_buf.index;
-
-			s5p_mfc_raw_unprotect(ctx, src_mb, i);
+			if (test_bit(i, &ctx->raw_protect_flag)) {
+				if (s5p_mfc_raw_buf_prot(ctx, src_mb, false))
+					mfc_err_ctx("failed to CFW_UNPROT\n");
+				else
+					clear_bit(i, &ctx->raw_protect_flag);
+			}
+			mfc_debug(2, "[%d] enc src buf un-prot_flag: %#lx\n",
+					i, ctx->raw_protect_flag);
 
 			for (i = 0; i < src_mb->vb.vb2_buf.num_planes; i++)
 				vb2_set_plane_payload(&src_mb->vb.vb2_buf, i, 0);
@@ -748,8 +753,14 @@ void s5p_mfc_cleanup_enc_dst_queue(struct s5p_mfc_ctx *ctx)
 
 		list_for_each_entry_safe(dst_mb, tmp_mb, &ctx->dst_buf_queue.head, list) {
 			i = dst_mb->vb.vb2_buf.index;
-
-			s5p_mfc_stream_unprotect(ctx, dst_mb, i);
+			if (test_bit(i, &ctx->stream_protect_flag)) {
+				if (s5p_mfc_stream_buf_prot(ctx, dst_mb, false))
+					mfc_err_ctx("failed to CFW_UNPROT\n");
+				else
+					clear_bit(i, &ctx->stream_protect_flag);
+			}
+			mfc_debug(2, "[%d] enc dst buf un-prot_flag: %#lx\n",
+					i, ctx->stream_protect_flag);
 
 			for (i = 0; i < dst_mb->vb.vb2_buf.num_planes; i++)
 				vb2_set_plane_payload(&dst_mb->vb.vb2_buf, i, 0);
@@ -914,38 +925,26 @@ void s5p_mfc_store_dpb(struct s5p_mfc_ctx *ctx, struct vb2_buffer *vb)
 
 	mutex_lock(&dec->dpb_mutex);
 	if (!dec->assigned_refcnt[index]) {
-		mfc_debug(2, "[IOVMM] map the new DPB[%d] %#llx\n", index, mfc_buf->planes.raw[0]);
 		s5p_mfc_get_iovmm(ctx, vb);
 	} else {
-		if (dec->assigned_refcnt[index] == 2) {
-			mfc_debug(2, "[IOVMM] remove spare DPB[%d] %#llx\n",
-					index, dec->assigned_addr[index][1][0]);
-			s5p_mfc_put_iovmm(ctx, ctx->dst_fmt->mem_planes, index, 1);
-		}
-
-		if (dec->assigned_addr[index][0][0] != mfc_buf->planes.raw[0]) {
+		if (dec->assigned_addr[index][0] != mfc_buf->planes.raw[0]) {
 			if (dec->dynamic_used & (1 << index)) {
-				mfc_debug(2, "[IOVMM] used DPB[%d] was changed %#llx->%#llx (used: %#x)\n",
-						index, dec->assigned_addr[index][0][0],
+				mfc_err_ctx("[IOVMM] ref DPB[%d] was changed %#llx->%#llx (used: %#x)\n",
+						index, dec->assigned_addr[index][0],
 						mfc_buf->planes.raw[0], dec->dynamic_used);
-				MFC_TRACE_CTX("used DPB[%d] %#llx->%#llx (%#x)\n",
-						index, dec->assigned_addr[index][0][0],
+				MFC_TRACE_CTX("ref DPB[%d] %#llx->%#llx (%#x)\n",
+						index, dec->assigned_addr[index][0],
 						mfc_buf->planes.raw[0], dec->dynamic_used);
-				s5p_mfc_move_iovmm_to_spare(ctx, ctx->dst_fmt->mem_planes, index);
-				s5p_mfc_get_iovmm(ctx, vb);
 			} else {
 				mfc_debug(2, "[IOVMM] DPB[%d] was changed %#llx->%#llx (used: %#x)\n",
-						index, dec->assigned_addr[index][0][0],
+						index, dec->assigned_addr[index][0],
 						mfc_buf->planes.raw[0], dec->dynamic_used);
 				MFC_TRACE_CTX("DPB[%d] %#llx->%#llx (%#x)\n",
-						index, dec->assigned_addr[index][0][0],
+						index, dec->assigned_addr[index][0],
 						mfc_buf->planes.raw[0], dec->dynamic_used);
-				s5p_mfc_put_iovmm(ctx, ctx->dst_fmt->mem_planes, index, 0);
+				s5p_mfc_put_iovmm(ctx, ctx->dst_fmt->mem_planes, index);
 				s5p_mfc_get_iovmm(ctx, vb);
 			}
-		} else {
-			mfc_debug(2, "[IOVMM] DPB[%d] has same address %#llx and already mapped\n",
-					index, mfc_buf->planes.raw[0]);
 		}
 	}
 	mutex_unlock(&dec->dpb_mutex);

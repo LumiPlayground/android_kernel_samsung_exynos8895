@@ -60,7 +60,6 @@
 #define MAIN_FUNCTION "mtp"
 #define MULTI_FUNCTION_1 "mtp"
 #define MULTI_FUNCTION_2 "acm"
-#define MULTI_FUNCTION_3 "conn_gadget"
 #define MULTI_EXCEPTION_FUNCTION "adb"
 
 #define MAC_REQUEST	0

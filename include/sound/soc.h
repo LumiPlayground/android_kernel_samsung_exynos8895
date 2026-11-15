@@ -898,6 +898,14 @@ struct snd_soc_codec_driver {
 	int (*resume)(struct snd_soc_codec *);
 	struct snd_soc_component_driver component_driver;
 
+	/* Default control and setup, added after probe() is run */
+	const struct snd_kcontrol_new *controls;
+	int num_controls;
+	const struct snd_soc_dapm_widget *dapm_widgets;
+	int num_dapm_widgets;
+	const struct snd_soc_dapm_route *dapm_routes;
+	int num_dapm_routes;
+
 	/* codec wide operations */
 	int (*set_sysclk)(struct snd_soc_codec *codec,
 			  int clk_id, int source, unsigned int freq, int dir);
@@ -1019,7 +1027,7 @@ struct snd_soc_dai_link {
 
 	/* optional hw_params re-writing for BE and FE sync */
 	int (*be_hw_params_fixup)(struct snd_soc_pcm_runtime *rtd,
-			struct snd_pcm_hw_params *params, int stream);
+			struct snd_pcm_hw_params *params);
 
 	/* machine stream operations */
 	const struct snd_soc_ops *ops;
@@ -1537,6 +1545,17 @@ static inline void snd_soc_platform_set_drvdata(struct snd_soc_platform *platfor
 static inline void *snd_soc_platform_get_drvdata(struct snd_soc_platform *platform)
 {
 	return snd_soc_component_get_drvdata(&platform->component);
+}
+
+static inline void snd_soc_pcm_set_drvdata(struct snd_soc_pcm_runtime *rtd,
+		void *data)
+{
+	dev_set_drvdata(rtd->dev, data);
+}
+
+static inline void *snd_soc_pcm_get_drvdata(struct snd_soc_pcm_runtime *rtd)
+{
+	return dev_get_drvdata(rtd->dev);
 }
 
 static inline void snd_soc_initialize_card_lists(struct snd_soc_card *card)

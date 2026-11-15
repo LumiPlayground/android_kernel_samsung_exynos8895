@@ -163,7 +163,7 @@ int bbd_do_transfer(struct ssp_data *data, struct ssp_msg *msg,
 			bcm4773_debug_info();
 
 			status = -2;
-                        
+
 			mutex_lock(&data->pending_mutex);
 			if (!use_no_irq && !msg_dead) {
 				if ((msg->list.next != NULL) &&
@@ -209,7 +209,7 @@ int bbd_do_transfer(struct ssp_data *data, struct ssp_msg *msg,
 
 /****************************************************************
  *
- * Callback functios
+ * Callback fucntios
  *
  ****************************************************************/
 
@@ -295,18 +295,6 @@ int callback_bbd_on_mcu_ready(void *ssh_data, bool ready)
  *
  * @return:	0 = success, -1 = failure
  */
- void makeResetInfoString(char *src, char *dst)
-{
-        int i, idx = 0, dstLen = (int)strlen(dst), totalLen = (int)strlen(src);
-        
-        for(i = 0; i < totalLen && idx < dstLen; i++) {
-            if(src[i] == '"' || src[i] == '<' || src[i] == '>')
-                continue;
-            if(src[i] == ';')
-                break;
-                dst[idx++] = src[i];
-        }
-}
 int callback_bbd_on_control(void *ssh_data, const char *str_ctrl)
 {
 	struct ssp_data *data = (struct ssp_data *)ssh_data;
@@ -322,17 +310,8 @@ int callback_bbd_on_control(void *ssh_data, const char *str_ctrl)
 	} else if (strstr(str_ctrl, BBD_CTRL_LHD_STOP)) {
 		int prefixLen = (int)strlen(BBD_CTRL_LHD_STOP) + 1; //puls one is for blank ex) "LHD:STOP "
 		int totalLen = (int)strlen(str_ctrl);
-		int copyLen = totalLen - prefixLen <= sizeof(data->resetInfo) ? totalLen - prefixLen : sizeof(data->resetInfo);
 
-		memcpy(data->resetInfo, str_ctrl + prefixLen, copyLen);
-		
-			if(totalLen != prefixLen) {
-					
-					/* this value is used on debug work func */
-					memset(data->resetInfoDebug, 0, sizeof(data->resetInfoDebug));
-					makeResetInfoString(data->resetInfo, data->resetInfoDebug);
-					data->resetInfoDebugTime = get_current_timestamp();
-			}
+		memcpy(data->resetInfo, str_ctrl + prefixLen, totalLen - prefixLen);
 	}
 	dprint("Received string command from LHD(=%s)\n", str_ctrl);
 
@@ -346,15 +325,12 @@ int callback_bbd_on_control(void *ssh_data, const char *str_ctrl)
  *
  * @return:	0 = success, -1 = failure
  */
-int callback_bbd_on_mcu_reset(void *ssh_data, bool IsNoResp)
+int callback_bbd_on_mcu_reset(void *ssh_data)
 {
 	struct ssp_data *data = (struct ssp_data *)ssh_data;
 
 	if (!data)
 		return -1;
-        if(IsNoResp && !data->resetting)
-            data->IsNoRespCnt++;
-
 	data->resetting = true;
 	//data->uResetCnt++;
 
@@ -363,7 +339,7 @@ int callback_bbd_on_mcu_reset(void *ssh_data, bool IsNoResp)
 
 /****************************************************************
  *
- * Work queue functios
+ * Work queue fucntios
  *
  ****************************************************************/
 
@@ -405,7 +381,6 @@ retries:
 		if (++retries > 3) {
 			pr_err("[SSPBBD] fail to initialize mcu\n");
 			ssp_enable(data, false);
-                        data->resetting = false;
 			return;
 		}
 		goto retries;
@@ -430,7 +405,7 @@ retries:
 }
 
 /**
- * This work queue function starts from alarm callback function
+ * This work queue fucntion starts from alarm callback function
  *
  * @work:	work structure
  *
@@ -514,7 +489,7 @@ process_one:
 			}
 
 			if (msg->dead && !msg->free_buffer) {
-				msg->buffer = kzalloc(msg->length, GFP_KERNEL);
+				msg->buffer = (char *) kzalloc(msg->length, GFP_KERNEL);
 				msg->free_buffer = 1;
 			} /* For dead msg, make a temporary buffer to read. */
 
@@ -568,8 +543,13 @@ exit:
 		break;
 	case HUB2AP_WRITE:
 		{
-		char *buffer = kzalloc(chLength, GFP_KERNEL);
+		char *buffer = (char *) kzalloc(chLength, GFP_KERNEL);
 
+		if (buffer == NULL) {
+			pr_err("[SSP] %s, failed to alloc memory for buffer\n", __func__);
+			iRet = -ENOMEM;
+			break;
+		}
 		if (nDataLen <= 0) {
 			dprint("Waiting 2nd message...(chLength=%d)\n", chLength);
 			iRet = bbd_pull_packet(buffer, chLength, BBD_PULL_TIMEOUT);
@@ -636,7 +616,7 @@ static inline struct ssp_msg *bbd_find_ssp_msg(struct ssp_data *data)
 
 	/* For dead msg, make a temporary buffer to read. */
 	if (msg->dead && !msg->free_buffer) {
-		msg->buffer = kzalloc(msg->length, GFP_KERNEL);
+		msg->buffer = (char *)kzalloc(msg->length, GFP_KERNEL);
 		msg->free_buffer = 1;
 	}
 	if (msg->buffer == NULL) {

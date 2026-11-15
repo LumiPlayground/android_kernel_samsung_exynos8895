@@ -100,8 +100,7 @@ static void ffs_func_disable(struct usb_function *);
 static int ffs_func_setup(struct usb_function *,
 			  const struct usb_ctrlrequest *);
 static bool ffs_func_req_match(struct usb_function *,
-			       const struct usb_ctrlrequest *,
-			       bool config0);
+			       const struct usb_ctrlrequest *);
 static void ffs_func_suspend(struct usb_function *);
 static void ffs_func_resume(struct usb_function *);
 
@@ -136,7 +135,7 @@ struct ffs_epfile {
 
 	/*
 	 * Buffer for holding data from partial reads which may happen since
-	 * we’re rounding user read requests to a multiple of a max packet size.
+	 * we??re rounding user read requests to a multiple of a max packet size.
 	 *
 	 * The pointer is initialised with NULL value and may be set by
 	 * __ffs_epfile_read_data function to point to a temporary buffer.
@@ -160,34 +159,34 @@ struct ffs_epfile {
 	 *
 	 * == State transitions ==
 	 *
-	 * • ptr == NULL:  (initial state)
-	 *   ◦ __ffs_epfile_read_buffer_free: go to ptr == DROP
-	 *   ◦ __ffs_epfile_read_buffered:    nop
-	 *   ◦ __ffs_epfile_read_data allocates temp buffer: go to ptr == buf
-	 *   ◦ reading finishes:              n/a, not in ‘and reading’ state
-	 * • ptr == DROP:
-	 *   ◦ __ffs_epfile_read_buffer_free: nop
-	 *   ◦ __ffs_epfile_read_buffered:    go to ptr == NULL
-	 *   ◦ __ffs_epfile_read_data allocates temp buffer: free buf, nop
-	 *   ◦ reading finishes:              n/a, not in ‘and reading’ state
-	 * • ptr == buf:
-	 *   ◦ __ffs_epfile_read_buffer_free: free buf, go to ptr == DROP
-	 *   ◦ __ffs_epfile_read_buffered:    go to ptr == NULL and reading
-	 *   ◦ __ffs_epfile_read_data:        n/a, __ffs_epfile_read_buffered
+	 * ? ptr == NULL:  (initial state)
+	 *   ? __ffs_epfile_read_buffer_free: go to ptr == DROP
+	 *   ? __ffs_epfile_read_buffered:    nop
+	 *   ? __ffs_epfile_read_data allocates temp buffer: go to ptr == buf
+	 *   ? reading finishes:              n/a, not in ??and reading?? state
+	 * ? ptr == DROP:
+	 *   ? __ffs_epfile_read_buffer_free: nop
+	 *   ? __ffs_epfile_read_buffered:    go to ptr == NULL
+	 *   ? __ffs_epfile_read_data allocates temp buffer: free buf, nop
+	 *   ? reading finishes:              n/a, not in ??and reading?? state
+	 * ? ptr == buf:
+	 *   ? __ffs_epfile_read_buffer_free: free buf, go to ptr == DROP
+	 *   ? __ffs_epfile_read_buffered:    go to ptr == NULL and reading
+	 *   ? __ffs_epfile_read_data:        n/a, __ffs_epfile_read_buffered
 	 *                                    is always called first
-	 *   ◦ reading finishes:              n/a, not in ‘and reading’ state
-	 * • ptr == NULL and reading:
-	 *   ◦ __ffs_epfile_read_buffer_free: go to ptr == DROP and reading
-	 *   ◦ __ffs_epfile_read_buffered:    n/a, mutex is held
-	 *   ◦ __ffs_epfile_read_data:        n/a, mutex is held
-	 *   ◦ reading finishes and …
-	 *     … all data read:               free buf, go to ptr == NULL
-	 *     … otherwise:                   go to ptr == buf and reading
-	 * • ptr == DROP and reading:
-	 *   ◦ __ffs_epfile_read_buffer_free: nop
-	 *   ◦ __ffs_epfile_read_buffered:    n/a, mutex is held
-	 *   ◦ __ffs_epfile_read_data:        n/a, mutex is held
-	 *   ◦ reading finishes:              free buf, go to ptr == DROP
+	 *   ? reading finishes:              n/a, not in ??and reading?? state
+	 * ? ptr == NULL and reading:
+	 *   ? __ffs_epfile_read_buffer_free: go to ptr == DROP and reading
+	 *   ? __ffs_epfile_read_buffered:    n/a, mutex is held
+	 *   ? __ffs_epfile_read_data:        n/a, mutex is held
+	 *   ? reading finishes and ??
+	 *     ?? all data read:               free buf, go to ptr == NULL
+	 *     ?? otherwise:                   go to ptr == buf and reading
+	 * ? ptr == DROP and reading:
+	 *   ? __ffs_epfile_read_buffer_free: nop
+	 *   ? __ffs_epfile_read_buffered:    n/a, mutex is held
+	 *   ? __ffs_epfile_read_data:        n/a, mutex is held
+	 *   ? reading finishes:              free buf, go to ptr == DROP
 	 */
 	struct ffs_buffer		*read_buffer;
 #define READ_BUFFER_DROP ((struct ffs_buffer *)ERR_PTR(-ESHUTDOWN))
@@ -266,7 +265,6 @@ static char *ffs_prepare_buffer(const char __user *buf, size_t len)
 static void ffs_ep0_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct ffs_data *ffs = req->context;
-
 	complete_all(&ffs->ep0req_completion);
 }
 
@@ -729,7 +727,7 @@ static ssize_t ffs_copy_to_iter(void *data, int data_len, struct iov_iter *iter)
 	 * internally uses a larger, aligned buffer so that such UDCs are happy.
 	 *
 	 * Unfortunately, this means that host may send more data than was
-	 * requested in read(2) system call.  f_fs doesn’t know what to do with
+	 * requested in read(2) system call.  f_fs doesn??t know what to do with
 	 * that excess data so it simply drops it.
 	 *
 	 * Was the buffer aligned in the first place, no such problem would
@@ -737,7 +735,7 @@ static ssize_t ffs_copy_to_iter(void *data, int data_len, struct iov_iter *iter)
 	 *
 	 * Data may be dropped only in AIO reads.  Synchronous reads are handled
 	 * by splitting a request into multiple parts.  This splitting may still
-	 * be a problem though so it’s likely best to align the buffer
+	 * be a problem though so it??s likely best to align the buffer
 	 * regardless of it being AIO or not..
 	 *
 	 * This only affects OUT endpoints, i.e. reading data with a read(2),
@@ -760,13 +758,9 @@ static void ffs_user_copy_worker(struct work_struct *work)
 	bool kiocb_has_eventfd = io_data->kiocb->ki_flags & IOCB_EVENTFD;
 
 	if (io_data->read && ret > 0) {
-		mm_segment_t oldfs = get_fs();
-
-		set_fs(USER_DS);
 		use_mm(io_data->mm);
 		ret = ffs_copy_to_iter(io_data->buf, ret, &io_data->data);
 		unuse_mm(io_data->mm);
-		set_fs(oldfs);
 	}
 
 	io_data->kiocb->ki_complete(io_data->kiocb, ret, ret);
@@ -898,7 +892,6 @@ static ssize_t ffs_epfile_io(struct file *file, struct ffs_io_data *io_data)
 		if (ret)
 			return -EINTR;
 	}
-
 	/* Do we halt? */
 	halt = (!io_data->read == !epfile->in);
 	if (halt && epfile->isoc)
@@ -916,7 +909,7 @@ static ssize_t ffs_epfile_io(struct file *file, struct ffs_io_data *io_data)
 		/*
 		 * Do we have buffered data from previous partial read?  Check
 		 * that for synchronous case only because we do not have
-		 * facility to ‘wake up’ a pending asynchronous read and push
+		 * facility to ??wake up?? a pending asynchronous read and push
 		 * buffered data to it which we would need to make things behave
 		 * consistently.
 		 */
@@ -1282,15 +1275,15 @@ ffs_sb_make_inode(struct super_block *sb, void *data,
 	inode = new_inode(sb);
 
 	if (likely(inode)) {
-		struct timespec ts = current_time(inode);
+		struct timespec current_time = CURRENT_TIME;
 
 		inode->i_ino	 = get_next_ino();
 		inode->i_mode    = perms->mode;
 		inode->i_uid     = perms->uid;
 		inode->i_gid     = perms->gid;
-		inode->i_atime   = ts;
-		inode->i_mtime   = ts;
-		inode->i_ctime   = ts;
+		inode->i_atime   = current_time;
+		inode->i_mtime   = current_time;
+		inode->i_ctime   = current_time;
 		inode->i_private = data;
 		if (fops)
 			inode->i_fop = fops;
@@ -1527,6 +1520,7 @@ ffs_fs_kill_sb(struct super_block *sb)
 	if (sb->s_fs_info) {
 		ffs_release_dev(sb->s_fs_info);
 		ffs_data_closed(sb->s_fs_info);
+		ffs_data_put(sb->s_fs_info);
 	}
 }
 
@@ -2266,18 +2260,9 @@ static int __ffs_data_do_os_desc(enum ffs_os_desc_type type,
 		int i;
 
 		if (len < sizeof(*d) ||
-		    d->bFirstInterfaceNumber >= ffs->interfaces_count)
+		    d->bFirstInterfaceNumber >= ffs->interfaces_count ||
+		    !d->Reserved1)
 			return -EINVAL;
-		if (d->Reserved1 != 1) {
-			/*
-			 * According to the spec, Reserved1 must be set to 1
-			 * but older kernels incorrectly rejected non-zero
-			 * values.  We fix it here to avoid returning EINVAL
-			 * in response to values we used to accept.
-			 */
-			pr_debug("usb_ext_compat_desc::Reserved1 forced to 1\n");
-			d->Reserved1 = 1;
-		}
 		for (i = 0; i < ARRAY_SIZE(d->Reserved2); ++i)
 			if (d->Reserved2[i])
 				return -EINVAL;
@@ -2970,8 +2955,10 @@ static int _ffs_func_bind(struct usb_configuration *c,
 	struct ffs_data *ffs = func->ffs;
 
 	const int full = !!func->ffs->fs_descs_count;
-	const int high = !!func->ffs->hs_descs_count;
-	const int super = !!func->ffs->ss_descs_count;
+	const int high = gadget_is_dualspeed(func->gadget) &&
+		func->ffs->hs_descs_count;
+	const int super = gadget_is_superspeed(func->gadget) &&
+		func->ffs->ss_descs_count;
 
 	int fs_len, hs_len, ss_len, ret, i;
 	struct ffs_ep *eps_ptr;
@@ -3254,16 +3241,15 @@ static int ffs_func_setup(struct usb_function *f,
 	__ffs_event_add(ffs, FUNCTIONFS_SETUP);
 	spin_unlock_irqrestore(&ffs->ev.waitq.lock, flags);
 
-	return creq->wLength == 0 ? USB_GADGET_DELAYED_STATUS : 0;
+	return 0;
 }
 
 static bool ffs_func_req_match(struct usb_function *f,
-			       const struct usb_ctrlrequest *creq,
-			       bool config0)
+			       const struct usb_ctrlrequest *creq)
 {
 	struct ffs_function *func = ffs_func_from_usb(f);
 
-	if (config0 && !(func->ffs->user_flags & FUNCTIONFS_CONFIG0_SETUP))
+	if (!(func->ffs->user_flags & FUNCTIONFS_CONFIG0_SETUP))
 		return false;
 
 	switch (creq->bRequestType & USB_RECIP_MASK) {
@@ -3719,7 +3705,6 @@ static void ffs_closed(struct ffs_data *ffs)
 		goto done;
 
 	ffs_obj->desc_ready = false;
-	ffs_obj->ffs_data = NULL;
 
 	if (test_and_clear_bit(FFS_FL_CALL_CLOSED_CALLBACK, &ffs->flags) &&
 	    ffs_obj->ffs_closed_callback)

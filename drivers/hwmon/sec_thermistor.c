@@ -1,13 +1,23 @@
 /*
  * sec_thermistor.c - SEC Thermistor
  *
- *  Copyright (c) 2013 Samsung Electronics Co., Ltd.
- *      http://www.samsung.com
+ *  Copyright (C) 2013 Samsung Electronics
  *  Minsung Kim <ms925.kim@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
  */
 
 #include <linux/module.h>
@@ -25,87 +35,98 @@
 #define ADC_SAMPLING_CNT	5
 
 struct sec_therm_info {
-	int id;
 	struct device *dev;
-	struct device *sec_dev;
 	struct device *hwmon_dev;
 	struct sec_therm_platform_data *pdata;
 	struct iio_channel *chan;
 	char name[PLATFORM_NAME_SIZE];
-	struct device_node *np;
 };
 
 #ifdef CONFIG_OF
+enum sec_thermistor_type {
+	TYPE_SEC_THREM_AP,	/* Close to AP */
+	TYPE_SEC_THREM_PA,	/* Close to PA */
+	TYPE_SEC_THREM_CAM_FLASH,	/* Close to CAM_FLASH */
+	TYPE_SEC_THREM_WIFI,	/* Close to WIFI */
+	TYPE_SEC_THREM_5G,	/* Close to 5G */
+	NR_TYPE_SEC_TERM
+};
+
+static const struct platform_device_id sec_thermistor_id[] = {
+	{ "sec-ap-thermistor", TYPE_SEC_THREM_AP },
+	{ "sec-pa-thermistor", TYPE_SEC_THREM_PA },
+	{ "sec-cf-thermistor", TYPE_SEC_THREM_CAM_FLASH },
+	{ "sec-wf-thermistor", TYPE_SEC_THREM_WIFI },
+	{ "sec-5g-thermistor", TYPE_SEC_THREM_5G },
+	{ },
+};
+
 static const struct of_device_id sec_therm_match[] = {
-	{ .compatible = "samsung,sec-thermistor", },
+	{ .compatible = "samsung,sec-ap-thermistor",
+		.data = &sec_thermistor_id[TYPE_SEC_THREM_AP] },
+	{ .compatible = "samsung,sec-pa-thermistor",
+		.data = &sec_thermistor_id[TYPE_SEC_THREM_PA] },
+	{ .compatible = "samsung,sec-cf-thermistor",
+		.data = &sec_thermistor_id[TYPE_SEC_THREM_CAM_FLASH] },
+	{ .compatible = "samsung,sec-wf-thermistor",
+		.data = &sec_thermistor_id[TYPE_SEC_THREM_WIFI] },
+	{ .compatible = "samsung,sec-5g-thermistor",
+		.data = &sec_thermistor_id[TYPE_SEC_THREM_5G] },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, sec_therm_match);
 
-static int sec_therm_parse_dt(struct platform_device *pdev)
+static bool sec_therm_single_inst[NR_TYPE_SEC_TERM] = {0,};
+
+static struct sec_therm_platform_data *
+sec_therm_parse_dt(struct platform_device *pdev)
 {
-	struct sec_therm_info *info = platform_get_drvdata(pdev);
+	struct device_node *np = pdev->dev.of_node;
 	struct sec_therm_platform_data *pdata;
-	const char *name;
-	int adc_arr_len, temp_arr_len;
+	u32 len1, len2;
 	int i;
-	u32 adc, tp;
+	u32 adc, temp;
 
-	if (!info || !pdev->dev.of_node)
-		return -ENODEV;
+	if (!np)
+		return NULL;
 
-	info->np = pdev->dev.of_node;
-
-	if (of_property_read_u32(info->np, "id", &info->id)) {
-		dev_err(info->dev, "failed to get thermistor ID\n");
-		return -EINVAL;
-	}
-
-	if (!of_property_read_string(info->np, "thermistor_name", &name)) {
-		strlcpy(info->name, name, sizeof(info->name));
-	} else {
-		dev_err(info->dev, "failed to get thermistor name\n");
-		return -EINVAL;
-	}
-
-	pdata = devm_kzalloc(info->dev, sizeof(*pdata), GFP_KERNEL);
+	pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata), GFP_KERNEL);
 	if (!pdata)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 
-	if (!of_get_property(info->np, "adc_array", &adc_arr_len))
-		return -ENOENT;
-	if (!of_get_property(info->np, "temp_array", &temp_arr_len))
-		return -ENOENT;
+	if (!of_get_property(np, "adc_array", &len1))
+		return ERR_PTR(-ENOENT);
+	if (!of_get_property(np, "temp_array", &len2))
+		return ERR_PTR(-ENOENT);
 
-	if (adc_arr_len != temp_arr_len) {
-		dev_err(info->dev, "%s: invalid array length(%u,%u)\n",
-				__func__, adc_arr_len, temp_arr_len);
-		return -EINVAL;
+	if (len1 != len2) {
+		dev_err(&pdev->dev, "%s: invalid array length(%u,%u)\n",
+				__func__, len1, len2);
+		return ERR_PTR(-EINVAL);
 	}
 
-	pdata->adc_arr_size = adc_arr_len / sizeof(u32);
+	pdata->adc_arr_size = len1 / sizeof(u32);
 	pdata->adc_table = devm_kzalloc(&pdev->dev,
 			sizeof(*pdata->adc_table) * pdata->adc_arr_size,
 			GFP_KERNEL);
 	if (!pdata->adc_table)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 
 	for (i = 0; i < pdata->adc_arr_size; i++) {
-		if (of_property_read_u32_index(info->np, "adc_array", i, &adc))
-			return -EINVAL;
-		if (of_property_read_u32_index(info->np, "temp_array", i, &tp))
-			return -EINVAL;
+		if (of_property_read_u32_index(np, "adc_array", i, &adc))
+			return ERR_PTR(-EINVAL);
+		if (of_property_read_u32_index(np, "temp_array", i, &temp))
+			return ERR_PTR(-EINVAL);
 
 		pdata->adc_table[i].adc = (int)adc;
-		pdata->adc_table[i].temperature = (int)tp;
+		pdata->adc_table[i].temperature = (int)temp;
 	}
 
-	info->pdata = pdata;
-
-	return 0;
+	return pdata;
 }
 #else
-static int sec_therm_parse_dt(struct platform_device *pdev) { return -ENODEV; }
+static struct sec_therm_platform_data *
+sec_therm_parse_dt(struct platform_device *pdev) { return NULL; }
 #endif
 
 static int sec_therm_get_adc_data(struct sec_therm_info *info)
@@ -116,7 +137,6 @@ static int sec_therm_get_adc_data(struct sec_therm_info *info)
 
 	for (i = 0; i < ADC_SAMPLING_CNT; i++) {
 		int ret = iio_read_channel_raw(info->chan, &adc_data);
-
 		if (ret < 0) {
 			dev_err(info->dev, "%s : err(%d) returned, skip read\n",
 				__func__, adc_data);
@@ -159,7 +179,6 @@ static int convert_adc_to_temper(struct sec_therm_info *info, unsigned int adc)
 
 	while (low <= high) {
 		int mid = 0;
-
 		mid = (low + high) / 2;
 		if (info->pdata->adc_table[mid].adc > adc)
 			high = mid - 1;
@@ -191,10 +210,10 @@ static ssize_t sec_therm_show_temperature(struct device *dev,
 
 	adc = sec_therm_get_adc_data(info);
 
-	if (adc >= 0)
-		temp = convert_adc_to_temper(info, adc);
-	else
+	if (adc < 0)
 		return adc;
+	else
+		temp = convert_adc_to_temper(info, adc);
 
 	return sprintf(buf, "%d\n", temp);
 }
@@ -219,10 +238,10 @@ static ssize_t sec_therm_show_name(struct device *dev,
 	return sprintf(buf, "%s\n", info->name);
 }
 
-static SENSOR_DEVICE_ATTR(temperature, 0444, sec_therm_show_temperature,
+static SENSOR_DEVICE_ATTR(temperature, S_IRUGO, sec_therm_show_temperature,
 		NULL, 0);
-static SENSOR_DEVICE_ATTR(temp_adc, 0444, sec_therm_show_temp_adc, NULL, 0);
-static DEVICE_ATTR(name, 0444, sec_therm_show_name, NULL);
+static SENSOR_DEVICE_ATTR(temp_adc, S_IRUGO, sec_therm_show_temp_adc, NULL, 0);
+static DEVICE_ATTR(name, S_IRUGO, sec_therm_show_name, NULL);
 
 static struct attribute *sec_therm_attributes[] = {
 	&sensor_dev_attr_temperature.dev_attr.attr,
@@ -246,47 +265,79 @@ int sec_therm_get_ap_temperature(void)
 
 	adc = sec_therm_get_adc_data(g_ap_therm_info);
 
-	if (adc >= 0)
-		temp = convert_adc_to_temper(g_ap_therm_info, adc);
-	else
+	if (adc < 0)
 		return adc;
+	else
+		temp = convert_adc_to_temper(g_ap_therm_info, adc);
 
 	return temp;
 }
 
 static int sec_therm_probe(struct platform_device *pdev)
 {
+	const struct of_device_id *of_id =
+		of_match_device(of_match_ptr(sec_therm_match), &pdev->dev);
+	const struct platform_device_id *pdev_id;
+	struct sec_therm_platform_data *pdata;
 	struct sec_therm_info *info;
 	int ret;
 
 	dev_dbg(&pdev->dev, "%s: SEC Thermistor Driver Loading\n", __func__);
 
+	pdata = sec_therm_parse_dt(pdev);
+	if (IS_ERR(pdata))
+		return PTR_ERR(pdata);
+	else if (pdata == NULL)
+		pdata = pdev->dev.platform_data;
+
+	if (!pdata) {
+		dev_err(&pdev->dev, "No platform init data supplied.\n");
+		return -ENODEV;
+	}
+
 	info = devm_kzalloc(&pdev->dev, sizeof(*info), GFP_KERNEL);
 	if (!info)
 		return -ENOMEM;
 
-	platform_set_drvdata(pdev, info);
+	pdev_id = of_id ? of_id->data : platform_get_device_id(pdev);
+
 	info->dev = &pdev->dev;
+	info->pdata = pdata;
+	strlcpy(info->name, pdev_id->name, sizeof(info->name));
+	platform_set_drvdata(pdev, info);
 
-	ret = sec_therm_parse_dt(pdev);
-	if (ret) {
-		dev_err(info->dev, "%s: fail to parse dt\n", __func__);
-		return ret;
-	}
-
-	info->chan = iio_channel_get(info->dev, NULL);
+	info->chan = iio_channel_get(&pdev->dev, NULL);
 	if (IS_ERR(info->chan)) {
-		dev_err(info->dev, "%s: fail to get iio channel\n", __func__);
+		dev_err(&pdev->dev, "%s: fail to get iio channel\n", __func__);
 		return PTR_ERR(info->chan);
 	}
 
-	info->sec_dev = sec_device_create(info, info->name);
-	if (IS_ERR(info->sec_dev)) {
-		dev_err(info->dev, "%s: fail to create sec_dev\n", __func__);
-		return PTR_ERR(info->sec_dev);
+	switch (pdev_id->driver_data) {
+	case TYPE_SEC_THREM_AP:
+	case TYPE_SEC_THREM_PA:
+	case TYPE_SEC_THREM_CAM_FLASH:
+	case TYPE_SEC_THREM_WIFI:
+	case TYPE_SEC_THREM_5G:
+		/* Allow only a single device instance for each device type */
+		if (sec_therm_single_inst[pdev_id->driver_data])
+			return -EPERM;
+		else
+			sec_therm_single_inst[pdev_id->driver_data] = true;
+
+		info->dev = sec_device_create(info, pdev_id->name);
+		if (IS_ERR(info->dev)) {
+			dev_err(&pdev->dev, "%s: fail to create sec_dev\n",
+					__func__);
+			return PTR_ERR(info->dev);
+		}
+		break;
+	default:
+		dev_err(&pdev->dev, "%s: Unknown device type: %lu\n", __func__,
+				pdev_id->driver_data);
+		return -EINVAL;
 	}
 
-	ret = sysfs_create_group(&info->sec_dev->kobj, &sec_therm_attr_group);
+	ret = sysfs_create_group(&info->dev->kobj, &sec_therm_attr_group);
 	if (ret) {
 		dev_err(info->dev, "failed to create sysfs group\n");
 		goto err_create_sysfs;
@@ -294,39 +345,43 @@ static int sec_therm_probe(struct platform_device *pdev)
 
 	info->hwmon_dev = hwmon_device_register(info->dev);
 	if (IS_ERR(info->hwmon_dev)) {
-		dev_err(info->dev, "unable to register as hwmon device.\n");
+		dev_err(&pdev->dev, "unable to register as hwmon device.\n");
 		ret = PTR_ERR(info->hwmon_dev);
 		goto err_register_hwmon;
 	}
 
-	if (info->id == 0)
+	if (pdev_id->driver_data == TYPE_SEC_THREM_AP)
 		g_ap_therm_info = info;
 
-	dev_info(info->dev, "%s successfully probed.\n", info->name);
+	dev_info(&pdev->dev, "%s successfully probed.\n", pdev_id->name);
 
 	return 0;
 
 err_register_hwmon:
-	sysfs_remove_group(&info->sec_dev->kobj, &sec_therm_attr_group);
+	sysfs_remove_group(&info->dev->kobj, &sec_therm_attr_group);
 err_create_sysfs:
-	sec_device_destroy(info->sec_dev->devt);
+	sec_device_destroy(info->dev->devt);
 	return ret;
 }
 
 static int sec_therm_remove(struct platform_device *pdev)
 {
+	const struct of_device_id *of_id =
+		of_match_device(of_match_ptr(sec_therm_match), &pdev->dev);
 	struct sec_therm_info *info = platform_get_drvdata(pdev);
+	const struct platform_device_id *pdev_id;
 
 	if (!info)
 		return 0;
 
-	if (info->id == 0)
+	pdev_id = of_id ? of_id->data : platform_get_device_id(pdev);
+	if (pdev_id->driver_data == TYPE_SEC_THREM_AP)
 		g_ap_therm_info = NULL;
 
 	hwmon_device_unregister(info->hwmon_dev);
-	sysfs_remove_group(&info->sec_dev->kobj, &sec_therm_attr_group);
+	sysfs_remove_group(&info->dev->kobj, &sec_therm_attr_group);
 	iio_channel_release(info->chan);
-	sec_device_destroy(info->sec_dev->devt);
+	sec_device_destroy(info->dev->devt);
 	platform_set_drvdata(pdev, NULL);
 
 	return 0;

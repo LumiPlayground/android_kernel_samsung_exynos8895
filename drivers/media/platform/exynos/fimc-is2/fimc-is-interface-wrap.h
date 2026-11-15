@@ -48,6 +48,5 @@ int fimc_is_itf_sensor_mode_wrap(struct fimc_is_device_ischain *device,
 	struct fimc_is_sensor_cfg *cfg);
 int fimc_is_itf_shot_wrap(struct fimc_is_device_ischain *device,
 	struct fimc_is_group *group, struct fimc_is_frame *frame);
-void fimc_is_itf_sfr_dump_wrap(struct fimc_is_device_ischain *device, u32 group, bool flag_print_log);
 
 #endif

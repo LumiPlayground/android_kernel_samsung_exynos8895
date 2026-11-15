@@ -136,3 +136,7 @@ static inline bool of_dma_multi_irq(struct device_node *np)
 #endif
 
 #endif /* __LINUX_OF_DMA_H */
+
+#ifdef CONFIG_SOC_EXYNOS8895
+extern void __iomem *of_dma_get_sel_chan_address(struct device_node *np);
+#endif

@@ -210,7 +210,11 @@ section_table:
 efi_header_end:
 #endif
 
+#if defined(CONFIG_SOC_EXYNOS8895) && defined(CONFIG_RELOCATABLE_KERNEL)
+	__HEAD
+#else
 	__INIT
+#endif
 
 	/*
 	 * The following callee saved general purpose registers are used on the

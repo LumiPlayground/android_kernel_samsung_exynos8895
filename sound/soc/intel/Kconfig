@@ -25,7 +25,6 @@ config SND_SST_IPC_ACPI
 	tristate
 	select SND_SST_IPC
 	select SND_SOC_INTEL_SST
-	select IOSF_MBI
 
 config SND_SOC_INTEL_SST
 	tristate

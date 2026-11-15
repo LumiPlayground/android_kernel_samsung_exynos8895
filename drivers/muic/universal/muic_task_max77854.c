@@ -201,7 +201,7 @@ static inline bool muis_is_vbus_int(muic_data_t *pmuic, int irq)
 {
 	int local_irq;
 
-	if (irq < 0)
+	if(irq < 0)
 		return false;
 
 	local_irq = irq - pmuic->pdata->irq_gpio;
@@ -213,7 +213,7 @@ static inline bool muis_is_vbus_int(muic_data_t *pmuic, int irq)
 
 void muic_set_hmt_status(int status)
 {
-
+	
 	pr_info("%s:%s hmt_status=[%s]\n", MUIC_DEV_NAME, __func__,
 		status ? "abnormal" : "normal");
 
@@ -233,7 +233,8 @@ static int muic_get_hmt_status(void)
 #if defined(CONFIG_VBUS_NOTIFIER)
 static void muic_handle_vbus(muic_data_t *pmuic)
 {
-	vbus_status_t status = pmuic->vps.t.vbvolt ? STATUS_VBUS_HIGH : STATUS_VBUS_LOW;
+	vbus_status_t status = pmuic->vps.t.vbvolt ?
+				STATUS_VBUS_HIGH: STATUS_VBUS_LOW;
 
 	pr_info("%s:%s <%d>\n", MUIC_DEV_NAME, __func__, pmuic->vps.t.vbvolt);
 
@@ -248,6 +249,8 @@ static void muic_handle_vbus(muic_data_t *pmuic)
 #endif
 
 	vbus_notifier_handle(status);
+
+	return;
 }
 #else
 static void muic_handle_vbus(muic_data_t *pmuic)
@@ -522,7 +525,7 @@ static int muic_probe(struct platform_device *pdev)
 	pmuic->regmapdesc = pdesc;
 
 #if defined(CONFIG_MUIC_SUPPORT_CCIC)
-	pmuic->pdata->opmode = get_ccic_info() & 0x0F;
+	pmuic->opmode = get_ccic_info() & 0x0F;
 	pmuic->afc_water_disable = false;
 #endif
 	/* set switch device's driver_data */
@@ -582,7 +585,7 @@ static int muic_probe(struct platform_device *pdev)
 #if defined(CONFIG_MUIC_SUPPORT_CCIC)
 	muic_is_ccic_supported_jig(pmuic, pmuic->attached_dev);
 
-	if (pmuic->pdata->opmode & OPMODE_CCIC)
+	if (pmuic->opmode & OPMODE_CCIC)
 		muic_register_ccic_notifier(pmuic);
 	else
 		pr_info("%s: OPMODE_MUIC. CCIC is not used.\n", __func__);

@@ -15,18 +15,20 @@
 
 #define USE_BINARY_PADDING_DATA_ADDED
 
-#if defined(USE_BINARY_PADDING_DATA_ADDED) && (defined(CONFIG_USE_SIGNED_BINARY) || defined(CONFIG_SAMSUNG_PRODUCT_SHIP))
+#if defined(USE_BINARY_PADDING_DATA_ADDED) && defined(CONFIG_USE_SIGNED_BINARY)
 #define USE_TZ_CONTROLLED_MEM_ATTRIBUTE
 #endif
 
-#if defined(CONFIG_CAMERA_STAR) || defined(CONFIG_CAMERA_HAECHIY19)
-#include "fimc-is-vendor-config_star.h"
-#elif defined(CONFIG_CAMERA_STAR2)
-#include "fimc-is-vendor-config_star2.h"
-#elif defined(CONFIG_CAMERA_CROWN)
-#include "fimc-is-vendor-config_crown.h"
+#if defined(CONFIG_CAMERA_DREAM2) || defined(CONFIG_CAMERA_HERO2DREAM2)
+#include "fimc-is-vendor-config_dream2.h"
+#elif defined(CONFIG_CAMERA_DREAM)
+#include "fimc-is-vendor-config_dream.h"
+#elif defined(CONFIG_CAMERA_GREAT)
+#include "fimc-is-vendor-config_great.h"
+#elif defined(CONFIG_CAMERA_VALLEY)
+#include "fimc-is-vendor-config_valley.h"
 #else
-#include "fimc-is-vendor-config_star.h" /* Default */
+#include "fimc-is-vendor-config_dream.h" /* Default */
 #endif
 
 #endif

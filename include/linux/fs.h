@@ -448,6 +448,7 @@ int pagecache_write_end(struct file *, struct address_space *mapping,
 				struct page *page, void *fsdata);
 
 #define MAX_KEY_SIZE	64
+#define KEY_MAX_SIZE	64
 struct _fmp_ci {
 	unsigned char		*iv;		/* initial vector */
 	unsigned char		key[MAX_KEY_SIZE];	/* key */
@@ -473,7 +474,18 @@ struct address_space {
 	gfp_t			gfp_mask;	/* implicit gfp mask for allocations */
 	struct list_head	private_list;	/* ditto */
 	void			*private_data;	/* ditto */
-	struct _fmp_ci		fmp_ci;
+	unsigned char           *iv;            /* iv */
+	unsigned char           key[KEY_MAX_SIZE];	/* key */
+	unsigned long           key_length;     /* key length */
+	char                    *alg;           /* algorithm */
+	pgoff_t                 sensitive_data_index;   /* data starts here */
+	struct crypto_shash     *hash_tfm;      /* hash transform */
+#ifdef CONFIG_CRYPTO_FIPS
+	bool                    cc_enable;      /* cc flag */
+#endif
+	int			private_enc_mode;	/* private enc mode */
+	int			private_algo_mode;	/* private algo mode */
+	bool                    plain_text;     /* plain_text flag */
 #ifdef CONFIG_SDP
 	int userid;
 #endif

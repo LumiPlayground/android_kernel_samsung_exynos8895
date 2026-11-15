@@ -130,7 +130,6 @@ int s5p_mfc_get_new_ctx(struct s5p_mfc_dev *dev)
 	unsigned long wflags;
 	int new_ctx_index = 0;
 	int cnt = 0;
-	int i;
 
 	if (!dev) {
 		mfc_err_dev("no mfc device to run\n");
@@ -146,16 +145,6 @@ int s5p_mfc_get_new_ctx(struct s5p_mfc_dev *dev)
 		new_ctx_index = dev->preempt_ctx;
 		mfc_debug(2, "preempt_ctx is : %d\n", new_ctx_index);
 	} else {
-		for (i = 0; i < MFC_NUM_CONTEXTS; i++) {
-			if (dev->ctx[i] && dev->ctx[i]->otf_handle) {
-				if (test_bit(i, &dev->work_bits.bits)) {
-					spin_unlock_irqrestore(&dev->work_bits.lock, wflags);
-					return i;
-				}
-				break;
-			}
-		}
-
 		new_ctx_index = (dev->curr_ctx + 1) % MFC_NUM_CONTEXTS;
 		while (!test_bit(new_ctx_index, &dev->work_bits.bits)) {
 			new_ctx_index = (new_ctx_index + 1) % MFC_NUM_CONTEXTS;

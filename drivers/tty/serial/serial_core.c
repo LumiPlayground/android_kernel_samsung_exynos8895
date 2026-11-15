@@ -39,6 +39,10 @@
 #include <asm/uaccess.h>
 
 #define BT43XX_LINE 1
+
+#if defined(CONFIG_BCM4361)
+#define WIFI_UART_PORT_LINE 15
+#endif
 /*
  * This is used to lock changes in serial line configuration.
  */
@@ -174,7 +178,7 @@ uart_update_mctrl(struct uart_port *port, unsigned int set, unsigned int clear)
 static int uart_port_startup(struct tty_struct *tty, struct uart_state *state,
 		int init_hw)
 {
-	struct uart_port *uport = uart_port_check(state);
+	struct uart_port *uport = state->uart_port;
 	void *addr;
 	int retval = 0;
 
@@ -506,13 +510,23 @@ static void uart_change_speed(struct tty_struct *tty, struct uart_state *state,
 
 	/* reset sw-assisted CTS flow control based on (possibly) new mode */
 	hw_stopped = uport->hw_stopped;
-	if (uart_softcts_mode(uport) && !(uport->ops->get_mctrl(uport) & TIOCM_CTS)) {
-		if (uport->line != BT43XX_LINE)
+	if(uart_softcts_mode(uport) &&
+				!(uport->ops->get_mctrl(uport) & TIOCM_CTS))
+	{
+	
+#if defined(CONFIG_BCM4361)
+		if ((uport->line != BT43XX_LINE) && (uport->line != WIFI_UART_PORT_LINE))	
 			uport->hw_stopped = 1;
-	} else {
+#else				
+		if(uport->line != BT43XX_LINE)
+			uport->hw_stopped = 1;
+#endif
+	}
+	else
+	{
 		uport->hw_stopped = 0;
 	}
-
+	
 	if (uport->hw_stopped) {
 		if (!hw_stopped)
 			uport->ops->stop_tx(uport);
@@ -3002,20 +3016,16 @@ void uart_insert_char(struct uart_port *port, unsigned int status,
 	struct tty_port *tport = &port->state->port;
 
 	if ((status & port->ignore_status_mask & ~overrun) == 0)
-		if (tty_insert_flip_char(tport, ch, flag) == 0) {
-			pr_err("[tty] uart insert fail");
+		if (tty_insert_flip_char(tport, ch, flag) == 0)
 			++port->icount.buf_overrun;
-		}
 
 	/*
 	 * Overrun is special.  Since it's reported immediately,
 	 * it doesn't affect the current character.
 	 */
 	if (status & ~port->ignore_status_mask & overrun)
-		if (tty_insert_flip_char(tport, 0, TTY_OVERRUN) == 0) {
-			pr_err("[tty] uart insert fail overrun");
+		if (tty_insert_flip_char(tport, 0, TTY_OVERRUN) == 0)
 			++port->icount.buf_overrun;
-		}
 }
 EXPORT_SYMBOL_GPL(uart_insert_char);
 

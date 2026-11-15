@@ -1505,7 +1505,7 @@ int fimc_is_comp_read_ver(void *core_data)
 	companion_ver = 0;
 	/* check companion version(EVT0, EVT1) */
 	fimc_is_comp_i2c_read(core->client0, 0x02, &companion_ver);
-	info("%s_c2: Companion version: 0x%04x\n", __func__, companion_ver);
+	info("Companion version: 0x%04x\n", companion_ver);
 
 p_err:
 	return ret;

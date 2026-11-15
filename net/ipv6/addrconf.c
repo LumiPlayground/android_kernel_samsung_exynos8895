@@ -903,10 +903,6 @@ void inet6_ifa_finish_destroy(struct inet6_ifaddr *ifp)
 	kfree_rcu(ifp, rcu);
 }
 
-#ifdef CONFIG_MPTCP
-	EXPORT_SYMBOL(inet6_ifa_finish_destroy);
-#endif
-
 static void
 ipv6_link_dev_addr(struct inet6_dev *idev, struct inet6_ifaddr *ifp)
 {
@@ -1044,41 +1040,6 @@ out:
 	spin_unlock(&addrconf_hash_lock);
 	goto out2;
 }
-
-#ifdef CONFIG_NETPM
-struct net_device *ip6_dev_find(struct net *net, const struct in6_addr *addr)
-{
-	struct net_device *result = NULL;
-	struct inet6_ifaddr *ifp;
-	unsigned int hash = inet6_addr_hash(addr);
-
-	rcu_read_lock();
-	hlist_for_each_entry_rcu(ifp, &inet6_addr_lst[hash], addr_lst) {
-		if (ipv6_addr_equal(&ifp->addr, addr)) {
-			struct net_device *dev = ifp->idev->dev;
-
-			pr_err("netpm: (v6) %s, 1: dev=%s\n", __func__, dev->name);
-
-			if (!net_eq(dev_net(dev), net))
-				continue;
-			result = dev;
-			break;
-		}
-	}
-	if (!result) {
-		struct rt6_info *rt = rt6_lookup(net, addr, NULL, 0, 0);
-
-		if (rt) {
-			result = rt->dst.dev;
-			pr_err("netpm: (v6) %s, 2: dev=%s\n", __func__, result->name);
-			ip6_rt_put(rt);
-		}
-	}
-
-	rcu_read_unlock();
-	return result;
-}
-#endif
 
 enum cleanup_prefix_rt_t {
 	CLEANUP_PREFIX_RT_NOP,    /* no cleanup action for prefix route */
@@ -3263,9 +3224,8 @@ static void addrconf_dev_config(struct net_device *dev)
 	    (dev->type != ARPHRD_INFINIBAND) &&
 	    (dev->type != ARPHRD_IEEE1394) &&
 	    (dev->type != ARPHRD_TUNNEL6) &&
-		(dev->type != ARPHRD_PPP) &&
-	    (dev->type != ARPHRD_6LOWPAN) &&
-	    (dev->type != ARPHRD_NONE)) {
+	    (dev->type != ARPHRD_PPP) &&
+	    (dev->type != ARPHRD_6LOWPAN)) {
 		/* Alas, we support only Ethernet autoconfiguration. */
 		return;
 	}
@@ -5523,20 +5483,13 @@ static void __ipv6_ifa_notify(int event, struct inet6_ifaddr *ifp)
 	switch (event) {
 	case RTM_NEWADDR:
 		/*
-		 * If the address was optimistic we inserted the route at the
-		 * start of our DAD process, so we don't need to do it again.
-		 * If the device was taken down in the middle of the DAD
-		 * cycle there is a race where we could get here without a
-		 * host route, so nothing to insert. That will be fixed when
-		 * the device is brought up.
+		 * If the address was optimistic
+		 * we inserted the route at the start of
+		 * our DAD process, so we don't need
+		 * to do it again
 		 */
-		if (ifp->rt && !rcu_access_pointer(ifp->rt->rt6i_node)) {
+		if (!rcu_access_pointer(ifp->rt->rt6i_node))
 			ip6_ins_rt(ifp->rt);
-		} else if (!ifp->rt && (ifp->idev->dev->flags & IFF_UP)) {
-			pr_warn("BUG: Address %pI6c on device %s is missing its host route.\n",
-				&ifp->addr, ifp->idev->dev->name);
-		}
-
 		if (ifp->idev->cnf.forwarding)
 			addrconf_join_anycast(ifp);
 		if (!ipv6_addr_any(&ifp->peer_addr))
@@ -5601,8 +5554,20 @@ int addrconf_sysctl_forward(struct ctl_table *ctl, int write,
 	return ret;
 }
 
-static
-int addrconf_sysctl_mtu(struct ctl_table *ctl, int write,
+static int addrconf_sysctl_hop_limit(struct ctl_table *ctl, int write,
+                              void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	struct ctl_table lctl;
+	int min_hl = 1, max_hl = 255;
+
+	lctl = *ctl;
+	lctl.extra1 = &min_hl;
+	lctl.extra2 = &max_hl;
+
+	return proc_dointvec_minmax(&lctl, write, buffer, lenp, ppos);
+}
+
+static int addrconf_sysctl_mtu(struct ctl_table *ctl, int write,
 			void __user *buffer, size_t *lenp, loff_t *ppos)
 {
 	struct inet6_dev *idev = ctl->extra1;
@@ -5832,177 +5797,170 @@ int addrconf_sysctl_ignore_routes_with_linkdown(struct ctl_table *ctl,
 	return ret;
 }
 
-static int minus_one = -1;
-static const int one = 1;
-static const int two_five_five = 255;
-
-static const struct ctl_table addrconf_sysctl[] = {
-	{
-		.procname	= "forwarding",
-		.data		= &ipv6_devconf.forwarding,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= addrconf_sysctl_forward,
-	},
-	{
-		.procname	= "hop_limit",
-		.data		= &ipv6_devconf.hop_limit,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= (void *)&one,
-		.extra2		= (void *)&two_five_five,
-	},
-	{
-		.procname	= "mtu",
-		.data		= &ipv6_devconf.mtu6,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= addrconf_sysctl_mtu,
-	},
-	{
-		.procname	= "accept_ra",
-		.data		= &ipv6_devconf.accept_ra,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "accept_redirects",
-		.data		= &ipv6_devconf.accept_redirects,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "autoconf",
-		.data		= &ipv6_devconf.autoconf,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "dad_transmits",
-		.data		= &ipv6_devconf.dad_transmits,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "router_solicitations",
-		.data		= &ipv6_devconf.rtr_solicits,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= &minus_one,
-	},
-	{
-		.procname	= "router_solicitation_interval",
-		.data		= &ipv6_devconf.rtr_solicit_interval,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec_jiffies,
-	},
-	{
-		.procname	= "router_solicitation_max_interval",
-		.data		= &ipv6_devconf.rtr_solicit_max_interval,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec_jiffies,
-	},
-	{
-		.procname	= "router_solicitation_delay",
-		.data		= &ipv6_devconf.rtr_solicit_delay,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec_jiffies,
-	},
-	{
-		.procname	= "force_mld_version",
-		.data		= &ipv6_devconf.force_mld_version,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "mldv1_unsolicited_report_interval",
-		.data		=
-			&ipv6_devconf.mldv1_unsolicited_report_interval,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec_ms_jiffies,
-	},
-	{
-		.procname	= "mldv2_unsolicited_report_interval",
-		.data		=
-			&ipv6_devconf.mldv2_unsolicited_report_interval,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec_ms_jiffies,
-	},
-	{
-		.procname	= "use_tempaddr",
-		.data		= &ipv6_devconf.use_tempaddr,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "temp_valid_lft",
-		.data		= &ipv6_devconf.temp_valid_lft,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "temp_prefered_lft",
-		.data		= &ipv6_devconf.temp_prefered_lft,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "regen_max_retry",
-		.data		= &ipv6_devconf.regen_max_retry,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "max_desync_factor",
-		.data		= &ipv6_devconf.max_desync_factor,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "max_addresses",
-		.data		= &ipv6_devconf.max_addresses,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "accept_ra_defrtr",
-		.data		= &ipv6_devconf.accept_ra_defrtr,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "accept_ra_min_hop_limit",
-		.data		= &ipv6_devconf.accept_ra_min_hop_limit,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "accept_ra_pinfo",
-		.data		= &ipv6_devconf.accept_ra_pinfo,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
+static struct ctl_table addrconf_sysctl[] __read_mostly = {
+		{
+			.procname	= "forwarding",
+			.data		= &ipv6_devconf.forwarding,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= addrconf_sysctl_forward,
+		},
+		{
+			.procname	= "hop_limit",
+			.data		= &ipv6_devconf.hop_limit,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= addrconf_sysctl_hop_limit,
+		},
+		{
+			.procname	= "mtu",
+			.data		= &ipv6_devconf.mtu6,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= addrconf_sysctl_mtu,
+		},
+		{
+			.procname	= "accept_ra",
+			.data		= &ipv6_devconf.accept_ra,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "accept_redirects",
+			.data		= &ipv6_devconf.accept_redirects,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "autoconf",
+			.data		= &ipv6_devconf.autoconf,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "dad_transmits",
+			.data		= &ipv6_devconf.dad_transmits,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "router_solicitations",
+			.data		= &ipv6_devconf.rtr_solicits,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "router_solicitation_interval",
+			.data		= &ipv6_devconf.rtr_solicit_interval,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec_jiffies,
+		},
+		{
+			.procname	= "router_solicitation_max_interval",
+			.data		= &ipv6_devconf.rtr_solicit_max_interval,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec_jiffies,
+		},
+		{
+			.procname	= "router_solicitation_delay",
+			.data		= &ipv6_devconf.rtr_solicit_delay,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec_jiffies,
+		},
+		{
+			.procname	= "force_mld_version",
+			.data		= &ipv6_devconf.force_mld_version,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "mldv1_unsolicited_report_interval",
+			.data		=
+				&ipv6_devconf.mldv1_unsolicited_report_interval,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec_ms_jiffies,
+		},
+		{
+			.procname	= "mldv2_unsolicited_report_interval",
+			.data		=
+				&ipv6_devconf.mldv2_unsolicited_report_interval,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec_ms_jiffies,
+		},
+		{
+			.procname	= "use_tempaddr",
+			.data		= &ipv6_devconf.use_tempaddr,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "temp_valid_lft",
+			.data		= &ipv6_devconf.temp_valid_lft,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "temp_prefered_lft",
+			.data		= &ipv6_devconf.temp_prefered_lft,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "regen_max_retry",
+			.data		= &ipv6_devconf.regen_max_retry,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "max_desync_factor",
+			.data		= &ipv6_devconf.max_desync_factor,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "max_addresses",
+			.data		= &ipv6_devconf.max_addresses,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "accept_ra_defrtr",
+			.data		= &ipv6_devconf.accept_ra_defrtr,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "accept_ra_min_hop_limit",
+			.data		= &ipv6_devconf.accept_ra_min_hop_limit,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "accept_ra_pinfo",
+			.data		= &ipv6_devconf.accept_ra_pinfo,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec,
+		},
 #ifdef CONFIG_IPV6_ROUTER_PREF
 	{
 		.procname	= "accept_ra_rtr_pref",

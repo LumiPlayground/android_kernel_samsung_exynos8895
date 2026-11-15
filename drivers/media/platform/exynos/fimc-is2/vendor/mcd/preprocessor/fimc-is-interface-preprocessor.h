@@ -57,6 +57,15 @@ typedef struct {
 } SENCMD_CompanionSetWdrAeInfoStr;
 
 typedef struct {
+	unsigned int uWinEnable;
+	unsigned int uTopLeftX;
+	unsigned int uTopLeftY;
+	unsigned int uSpanWidth;
+	unsigned int uSpanHeight;
+	bool bHwSetEveryFrame;
+} SENCMD_CompanionSetHistRoiInfoStr;
+
+typedef struct {
 	unsigned int uiMode;
 } SENCMD_CompanionChangeModeStr;
 
@@ -66,6 +75,7 @@ typedef struct
 	unsigned int *pAfUpdate;	/* pAfUpdate[NUM_OF_73C3_AF_PARAMETERS] */
 	unsigned int buf_size;		/* ex. buf_size = NUM_OF_73C3_AF_PARAMETERS */
 	bool bHwSetEveryFrame;
+	bool bBurstMode;
 }SENCMD_CompanionSetAfInfoStr_73C3;
 
 typedef struct
@@ -129,9 +139,10 @@ typedef struct
 typedef struct
 {
 	u8 *pAfData;
-        u32 pAfDataSize;
+	u32 pAfDataSize;
 	bool crcResult;
 	bool isValid;	
+	u32 sensorPosition;
 }SENCMD_CompanionReadAfStatFromSpiStr;
 
 typedef struct
@@ -168,6 +179,7 @@ struct fimc_is_preprocessor_interface_ops {
 	int (*read_af_stat)(struct fimc_is_preprocessor_interface *itf, SENCMD_CompanionReadAfStatFromSpiStr *param);
 	int (*read_af_reg)(struct fimc_is_preprocessor_interface *itf, SENCMD_CompanionReadAfReg *param);
 	int (*get_ae_gains)(struct fimc_is_preprocessor_interface *itf, u32 **preproc_auto_exposure);
+	int (*set_hist_roi)(struct fimc_is_preprocessor_interface *itf, SENCMD_CompanionSetHistRoiInfoStr *param);	
 };
 
 struct fimc_is_preprocessor_interface {
@@ -208,6 +220,8 @@ struct fimc_is_preprocessor_ops {
 	preprocessor_func_type preprocessor_change_config;
 	preprocessor_func_type preprocessor_read_af_stat;
 	preprocessor_func_type preprocessor_read_af_reg;
+	preprocessor_func_type preprocessor_set_hist_roi;
+	preprocessor_func_type preprocessor_wdr_mode_change;
 #endif
 };
 

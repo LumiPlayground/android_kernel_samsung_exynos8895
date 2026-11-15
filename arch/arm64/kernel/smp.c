@@ -58,7 +58,7 @@
 #include <asm/tlbflush.h>
 #include <asm/ptrace.h>
 #include <asm/virt.h>
-#include <soc/samsung/exynos-sdm.h>
+
 #include <soc/samsung/exynos-cpu_hotplug.h>
 
 #define CREATE_TRACE_POINTS
@@ -139,7 +139,6 @@ static inline int op_cpu_kill(unsigned int cpu)
 static int boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
 	if (cpu_ops[cpu]->cpu_boot) {
-		exynos_hpgov_validate_hpin(cpu);
 		return cpu_ops[cpu]->cpu_boot(cpu);
 	}
 
@@ -846,7 +845,6 @@ static void ipi_cpu_stop(unsigned int cpu, struct pt_regs *regs)
 	if (!user_mode(regs))
 		sec_debug_set_extra_info_backtrace_cpu(regs, cpu);
 #endif
-	exynos_sdm_flush_secdram();
 
 	while (1)
 		cpu_relax();
@@ -983,4 +981,40 @@ bool cpus_are_stuck_in_kernel(void)
 	bool smp_spin_tables = (num_possible_cpus() > 1 && !have_cpu_die());
 
 	return !!cpus_stuck_in_kernel || smp_spin_tables;
+}
+
+static void flush_all_cpu_cache(void *info)
+{
+	flush_cache_louis();
+}
+
+static void flush_all_cluster_cache(void *info)
+{
+	flush_cache_all();
+}
+
+void flush_all_cpu_caches(void)
+{
+	int cpu, cluster, target_cluster = -1;
+	struct cpumask shared_cache_flush_mask;
+
+	preempt_disable();
+	cpu = smp_processor_id();
+	cluster = MPIDR_AFFINITY_LEVEL(cpu_logical_map(cpu), 1);
+	cpumask_clear(&shared_cache_flush_mask);
+
+	/* make cpumask to flush shared cache */
+	for_each_online_cpu(cpu)
+		if (cluster != topology_physical_package_id(cpu) &&
+				target_cluster != topology_physical_package_id(cpu)) {
+			target_cluster = topology_physical_package_id(cpu);
+			cpumask_set_cpu(cpu, &shared_cache_flush_mask);
+		}
+
+	smp_call_function(flush_all_cpu_cache, NULL, 1);
+	smp_call_function_many(&shared_cache_flush_mask,
+			flush_all_cluster_cache, NULL, 1);
+	flush_cache_all();
+
+	preempt_enable();
 }

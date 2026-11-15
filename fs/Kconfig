@@ -9,7 +9,7 @@ config DCACHE_WORD_ACCESS
        bool
 
 config INTERRUPTIBLE_SYNC
-        bool "Support interruptible sync for Samsung Mobile Device"
+	bool "Support interruptible sync for Samsung Mobile Device"
 	default y
 
 if BLOCK
@@ -89,15 +89,7 @@ config FILE_LOCKING
           for filesystems like NFS and for the flock() system
           call. Disabling this option saves about 11k.
 
-config MANDATORY_FILE_LOCKING
-	bool "Enable Mandatory file locking"
-	depends on FILE_LOCKING
-	default y
-	help
-	  This option enables files appropriately marked files on appropriely
-	  mounted filesystems to support mandatory locking.
-
-	  To the best of my knowledge this is dead code that no one cares about.
+source "fs/crypto/Kconfig"
 
 source "fs/crypto/Kconfig"
 
@@ -129,8 +121,8 @@ if BLOCK
 menu "DOS/FAT/NT Filesystems"
 
 source "fs/fat/Kconfig"
-source "fs/ntfs/Kconfig"
 source "fs/sdfat/Kconfig"
+source "fs/ntfs/Kconfig"
 
 endmenu
 endif # BLOCK

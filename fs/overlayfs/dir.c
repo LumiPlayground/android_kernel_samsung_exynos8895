@@ -12,8 +12,6 @@
 #include <linux/xattr.h>
 #include <linux/security.h>
 #include <linux/cred.h>
-#include <linux/posix_acl.h>
-#include <linux/posix_acl_xattr.h>
 #include <linux/atomic.h>
 #include "overlayfs.h"
 
@@ -926,6 +924,7 @@ static int ovl_rename2(struct inode *olddir, struct dentry *old,
 				goto out_dput;
 		}
 	} else {
+		new_create = true;
 		if (!d_is_negative(newdentry) &&
 		    (!new_opaque || !ovl_is_whiteout(newdentry)))
 			goto out_dput;

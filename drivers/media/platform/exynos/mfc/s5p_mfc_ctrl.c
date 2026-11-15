@@ -19,7 +19,6 @@
 
 #include "s5p_mfc_pm.h"
 #include "s5p_mfc_cmd.h"
-#include "s5p_mfc_cal.h"
 #include "s5p_mfc_reg.h"
 
 #include "s5p_mfc_utils.h"
@@ -27,6 +26,7 @@
 /* Initialize hardware */
 static int mfc_init_hw(struct s5p_mfc_dev *dev, enum mfc_buf_usage_type buf_type)
 {
+	char fimv_info;
 	int fw_ver;
 	int ret = 0;
 	int curr_ctx_is_drm_backup;
@@ -40,7 +40,7 @@ static int mfc_init_hw(struct s5p_mfc_dev *dev, enum mfc_buf_usage_type buf_type
 
 	curr_ctx_is_drm_backup = dev->curr_ctx_is_drm;
 
-	if (!dev->fw_buf.handle)
+	if (!dev->fw_buf.alloc)
 		return -EINVAL;
 
 	/* 0. MFC reset */
@@ -105,9 +105,9 @@ static int mfc_init_hw(struct s5p_mfc_dev *dev, enum mfc_buf_usage_type buf_type
 		goto err_init_hw;
 	}
 
-	dev->fw.fimv_info = s5p_mfc_get_fimv_info();
-	if (dev->fw.fimv_info != 'D' && dev->fw.fimv_info != 'E')
-		dev->fw.fimv_info = 'N';
+	fimv_info = s5p_mfc_get_fimv_info();
+	if (fimv_info != 'D' && fimv_info != 'E')
+		fimv_info = 'N';
 
 	mfc_info_dev("MFC v%x.%x, F/W: %02xyy, %02xmm, %02xdd (%c)\n",
 		 MFC_VER_MAJOR(dev),
@@ -115,7 +115,7 @@ static int mfc_init_hw(struct s5p_mfc_dev *dev, enum mfc_buf_usage_type buf_type
 		 s5p_mfc_get_fw_ver_year(),
 		 s5p_mfc_get_fw_ver_month(),
 		 s5p_mfc_get_fw_ver_date(),
-		 dev->fw.fimv_info);
+		 fimv_info);
 
 	dev->fw.date = s5p_mfc_get_fw_ver_all();
 	/* Check MFC version and F/W version */
@@ -141,6 +141,8 @@ static int mfc_init_hw(struct s5p_mfc_dev *dev, enum mfc_buf_usage_type buf_type
 		s5p_mfc_pm_clock_off(dev);
 		dev->curr_ctx_is_drm = curr_ctx_is_drm_backup;
 		s5p_mfc_pm_clock_on_with_base(dev, MFCBUF_NORMAL);
+	} else if (buf_type == MFCBUF_NORMAL && curr_ctx_is_drm_backup) {
+		s5p_mfc_set_risc_base_addr(dev, MFCBUF_DRM);
 	}
 #endif
 
@@ -175,8 +177,6 @@ int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
 /* Deinitialize hardware */
 void s5p_mfc_deinit_hw(struct s5p_mfc_dev *dev)
 {
-	int ret;
-
 	mfc_debug(2, "mfc deinit start\n");
 
 	if (!dev) {
@@ -184,15 +184,7 @@ void s5p_mfc_deinit_hw(struct s5p_mfc_dev *dev)
 		return;
 	}
 
-	ret = s5p_mfc_pm_clock_on(dev);
-	if (ret) {
-		mfc_err_dev("Failed to enable clock before reset(%d)\n", ret);
-		return;
-	}
-
 	s5p_mfc_mfc_off(dev);
-
-	s5p_mfc_pm_clock_off(dev);
 
 	mfc_debug(2, "mfc deinit completed\n");
 }
@@ -212,8 +204,7 @@ int s5p_mfc_sleep(struct s5p_mfc_dev *dev)
 	ret = s5p_mfc_get_hwlock_dev(dev);
 	if (ret < 0) {
 		mfc_err_dev("Failed to get hwlock.\n");
-		mfc_err_dev("dev.hwlock.dev = 0x%lx, bits = 0x%lx, owned_by_irq = %d,"
-				" wl_count = %d, transfer_owner = %d\n",
+		mfc_err_dev("dev.hwlock.dev = 0x%lx, bits = 0x%lx, owned_by_irq = %d, wl_count = %d, transfer_owner = %d\n",
 				dev->hwlock.dev, dev->hwlock.bits, dev->hwlock.owned_by_irq,
 				dev->hwlock.wl_count, dev->hwlock.transfer_owner);
 		return -EBUSY;
@@ -244,7 +235,6 @@ int s5p_mfc_sleep(struct s5p_mfc_dev *dev)
 			}
 		}
 	}
-
 	s5p_mfc_pm_clock_on(dev);
 
 	if (need_cache_flush)

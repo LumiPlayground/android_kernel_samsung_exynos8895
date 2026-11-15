@@ -39,8 +39,7 @@ u8 GREAT_A2_S3_COPR[] = {
 	0xE1, 0x03, 0x5D, 0x6E, 0xB5, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
-static DEFINE_PKTUI(great_a2_s3_copr, &great_a2_s3_copr_maptbl[COPR_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(great_a2_s3_copr, DSI_PKT_TYPE_WR, GREAT_A2_S3_COPR, 0);
+DEFINE_VARIABLE_PACKET(great_a2_s3_copr, DSI_PKT_TYPE_WR, GREAT_A2_S3_COPR, &great_a2_s3_copr_maptbl[COPR_MAPTBL], 1);
 
 static void *great_a2_s3_set_copr_cmdtbl[] = {
 	&PKTINFO(great_a2_s3_level2_key_enable),

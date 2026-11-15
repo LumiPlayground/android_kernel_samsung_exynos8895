@@ -9,10 +9,9 @@
 #include "fuse_i.h"
 
 #include <linux/xattr.h>
-#include <linux/posix_acl_xattr.h>
 
-int fuse_setxattr(struct inode *inode, const char *name, const void *value,
-		  size_t size, int flags)
+static int fuse_setxattr(struct inode *inode, const char *name,
+			 const void *value, size_t size, int flags)
 {
 	struct fuse_conn *fc = get_fuse_conn(inode);
 	FUSE_ARGS(args);
@@ -46,8 +45,8 @@ int fuse_setxattr(struct inode *inode, const char *name, const void *value,
 	return err;
 }
 
-ssize_t fuse_getxattr(struct inode *inode, const char *name, void *value,
-		      size_t size)
+static ssize_t fuse_getxattr(struct inode *inode, const char *name,
+			     void *value, size_t size)
 {
 	struct fuse_conn *fc = get_fuse_conn(inode);
 	FUSE_ARGS(args);
@@ -79,7 +78,7 @@ ssize_t fuse_getxattr(struct inode *inode, const char *name, void *value,
 	}
 	ret = fuse_simple_request(fc, &args);
 	if (!ret && !size)
-		ret = min_t(ssize_t, outarg.size, XATTR_SIZE_MAX);
+		ret = outarg.size;
 	if (ret == -ENOSYS) {
 		fc->no_getxattr = 1;
 		ret = -EOPNOTSUPP;
@@ -138,7 +137,7 @@ ssize_t fuse_listxattr(struct dentry *entry, char *list, size_t size)
 	}
 	ret = fuse_simple_request(fc, &args);
 	if (!ret && !size)
-		ret = min_t(ssize_t, outarg.size, XATTR_LIST_MAX);
+		ret = outarg.size;
 	if (ret > 0 && size)
 		ret = fuse_verify_xattr_list(list, ret);
 	if (ret == -ENOSYS) {
@@ -148,7 +147,7 @@ ssize_t fuse_listxattr(struct dentry *entry, char *list, size_t size)
 	return ret;
 }
 
-int fuse_removexattr(struct inode *inode, const char *name)
+static int fuse_removexattr(struct inode *inode, const char *name)
 {
 	struct fuse_conn *fc = get_fuse_conn(inode);
 	FUSE_ARGS(args);
@@ -199,13 +198,6 @@ static const struct xattr_handler fuse_xattr_handler = {
 };
 
 const struct xattr_handler *fuse_xattr_handlers[] = {
-	&fuse_xattr_handler,
-	NULL
-};
-
-const struct xattr_handler *fuse_acl_xattr_handlers[] = {
-	&posix_acl_access_xattr_handler,
-	&posix_acl_default_xattr_handler,
 	&fuse_xattr_handler,
 	NULL
 };

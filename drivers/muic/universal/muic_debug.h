@@ -5,9 +5,6 @@
 #define DEBUG_MUIC
 #endif
 
-#define MUIC_READ 0
-#define MUIC_WRITE 1
-
 extern void muic_reg_log(u8 reg, u8 value, u8 rw);
 extern void muic_print_reg_log(void);
 extern void muic_read_reg_dump(muic_data_t *muic, char *mesg);

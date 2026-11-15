@@ -27,19 +27,26 @@
 #include <linux/slab.h>
 #include <linux/fips.h>
 
-#define SKC_VERSION_TEXT "SKC v1.9"
+/*
+ * Use this only for FIPS Functional Test with CMT Lab.
+ * FIPS_FUNC_TEST 1 will make self algorithm test (ecb aes) fail
+ * FIPS_FUNC_TEST 12 will make self algorithm test (hmac sha1) fail
+ * FIPS_FUNC_TEST 2 will make integrity check fail by corrupting the
+ * kernel image
+ * FIPS_FUNC_TEST 3 will make sure all the logs needed in no error mode
+ * FIPS_FUNC_TEST 4 will make the necessary dumps for zeroization test
+ * FIPS_FUNC_TEST 5 will make the continous PRNG test fail
+ * FIPS_FUNC_TEST 6 will make the SHA1 test fail
+ * FIPS_FUNC_TEST 91 will make the drbg_pr_ctr_aes128 test fail
+ * FIPS_FUNC_TEST 92 will make the drbg_pr_sha256 test fail
+ * FIPS_FUNC_TEST 93 will make the drbg_pr_hmac_sha256 test fail
+ * FIPS_FUNC_TEST 94 will make the continous PRNG test fail for DRBG
+ * FIPS_FUNC_TEST 100 will make the AES GCM self test fail
+ */
 
-#define FIPS_HMAC_SIZE         (32)
-#define FIPS_CRYPTO_ADDRS_SIZE (1000)
+#define FIPS_FUNC_TEST 0
 
-struct first_last {
-	aligned_u64 first;
-	aligned_u64 last;
-};
-
-extern const __u64 crypto_buildtime_address;
-extern const struct first_last integrity_crypto_addrs[FIPS_CRYPTO_ADDRS_SIZE];
-extern const __s8 builtime_crypto_hmac[FIPS_HMAC_SIZE];
+#define SKC_VERSION_TEXT "SKC v1.8"
 
 /* Crypto notification events. */
 enum {
@@ -69,19 +76,9 @@ extern struct blocking_notifier_head crypto_chain;
 #ifdef CONFIG_CRYPTO_FIPS
 bool in_fips_err(void);
 void set_in_fips_err(void);
-#ifdef CONFIG_CRYPTO_FIPS_FUNC_TEST
-void reset_in_fips_err(void);
-void set_fips_functest_KAT_mode(const int num);
-void set_fips_functest_conditional_mode(const int num);
-char *get_fips_functest_mode(void);
-#define SKC_FUNCTEST_KAT_CASE_NUM 24
-#define SKC_FUNCTEST_CONDITIONAL_CASE_NUM 2
-#define SKC_FUNCTEST_NO_TEST "NO_TEST"
-#endif
 void crypto_init_proc(int *fips_error);
 int do_integrity_check(void);
 int testmgr_crypto_proc_init(void);
-const char *get_builtime_crypto_hmac(void);
 #else
 void __init crypto_init_proc(void);
 #endif

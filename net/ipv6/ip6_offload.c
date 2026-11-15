@@ -104,6 +104,8 @@ static struct sk_buff *ipv6_gso_segment(struct sk_buff *skb,
 	gso_partial = !!(skb_shinfo(segs)->gso_type & SKB_GSO_PARTIAL);
 
 	for (skb = segs; skb; skb = skb->next) {
+		unsigned int payload_len;
+
 		ipv6h = (struct ipv6hdr *)(skb_mac_header(skb) + nhoff);
 		if (gso_partial && skb_is_gso(skb))
 			payload_len = skb_shinfo(skb)->gso_size +

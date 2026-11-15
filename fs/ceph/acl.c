@@ -133,7 +133,7 @@ int ceph_set_acl(struct inode *inode, struct posix_acl *acl, int type)
 	if (new_mode != old_mode) {
 		newattrs.ia_mode = new_mode;
 		newattrs.ia_valid = ATTR_MODE;
-		ret = __ceph_setattr(inode, &newattrs);
+		ret = __ceph_setattr(dentry, &newattrs);
 		if (ret)
 			goto out_free;
 	}
@@ -143,7 +143,7 @@ int ceph_set_acl(struct inode *inode, struct posix_acl *acl, int type)
 		if (new_mode != old_mode) {
 			newattrs.ia_mode = old_mode;
 			newattrs.ia_valid = ATTR_MODE;
-			__ceph_setattr(inode, &newattrs);
+			__ceph_setattr(dentry, &newattrs);
 		}
 		goto out_free;
 	}

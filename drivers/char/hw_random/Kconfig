@@ -383,46 +383,6 @@ config HW_RANDOM_STM32
 
 	  If unsure, say N.
 
-config HW_RANDOM_PIC32
-	tristate "Microchip PIC32 Random Number Generator support"
-	depends on HW_RANDOM && MACH_PIC32
-	default y
-	---help---
-	  This driver provides kernel-side support for the Random Number
-	  Generator hardware found on a PIC32.
-
-	  To compile this driver as a module, choose M here. the
-	  module will be called pic32-rng.
-
-	  If unsure, say Y.
-
-config HW_RANDOM_MESON
-	tristate "Amlogic Meson Random Number Generator support"
-	depends on HW_RANDOM
-	depends on ARCH_MESON || COMPILE_TEST
-	default y
-	---help---
-	  This driver provides kernel-side support for the Random Number
-	  Generator hardware found on Amlogic Meson SoCs.
-
-	  To compile this driver as a module, choose M here. the
-	  module will be called meson-rng.
-
-	  If unsure, say Y.
-
-config HW_RANDOM_CAVIUM
-       tristate "Cavium ThunderX Random Number Generator support"
-       depends on HW_RANDOM && PCI && (ARM64 || (COMPILE_TEST && 64BIT))
-       default HW_RANDOM
-       ---help---
-         This driver provides kernel-side support for the Random Number
-         Generator hardware found on Cavium SoCs.
-
-         To compile this driver as a module, choose M here: the
-         module will be called cavium_rng.
-
-         If unsure, say Y.
-
 config HW_RANDOM_EXYNOS_SWD
 	tristate "EXYNOS SWD HW random number generator support"
 	depends on ARCH_EXYNOS
@@ -452,12 +412,26 @@ config EXYRNG_FAIL_POLICY_DISABLE
 config EXYRNG_FAIL_POLICY_RESET
 	bool "Reset if the tests fail"
 	depends on EXYRNG_FIPS_COMPLIANCE
+
 endchoice
 
 config EXYRNG_USE_CRYPTOMANAGER
 	tristate "Use CryptoManager"
 	depends on HW_RANDOM_EXYNOS_SWD
 	default n
+
+config HW_RANDOM_CAVIUM
+       tristate "Cavium ThunderX Random Number Generator support"
+       depends on HW_RANDOM && PCI && (ARM64 || (COMPILE_TEST && 64BIT))
+       default HW_RANDOM
+       ---help---
+         This driver provides kernel-side support for the Random Number
+         Generator hardware found on Cavium SoCs.
+
+         To compile this driver as a module, choose M here: the
+         module will be called cavium_rng.
+
+         If unsure, say Y.
 
 endif # HW_RANDOM
 

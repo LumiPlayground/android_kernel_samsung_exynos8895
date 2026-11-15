@@ -3952,6 +3952,30 @@ static void iscsit_get_rx_pdu(struct iscsi_conn *conn)
 	u8 buffer[ISCSI_HDR_LEN], opcode;
 	u32 checksum = 0, digest = 0;
 	struct kvec iov;
+	bool conn_freed = false;
+	/*
+	 * Allow ourselves to be interrupted by SIGINT so that a
+	 * connection recovery / failure event can be triggered externally.
+	 */
+	allow_signal(SIGINT);
+	/*
+	 * Wait for iscsi_post_login_handler() to complete before allowing
+	 * incoming iscsi/tcp socket I/O, and/or failing the connection.
+	 */
+	rc = wait_for_completion_interruptible(&conn->rx_login_comp);
+	if (rc < 0 || iscsi_target_check_conn_state(conn))
+		goto out;
+
+	if (conn->conn_transport->transport_type == ISCSI_INFINIBAND) {
+		struct completion comp;
+
+		init_completion(&comp);
+		rc = wait_for_completion_interruptible(&comp);
+		if (rc < 0)
+			goto transport_err;
+
+		goto transport_err;
+	}
 
 	while (!kthread_should_stop()) {
 		/*

@@ -283,8 +283,7 @@ static int smfc_s_ctrl(struct v4l2_ctrl *ctrl)
 			return -EINVAL;
 		}
 		ctx->enable_hwfc = (unsigned char)ctrl->val;
-		/* TODO: implement to store information into dev */
-		vb2_ion_set_noncoherent_dma_read(ctx->smfc->dev,
+		vb2_ion_set_noncoherent_dma_read(ctx->smfc->vb2_alloc_ctx,
 						 ctx->enable_hwfc);
 		break;
 	case V4L2_CID_JPEG_RESTART_INTERVAL:

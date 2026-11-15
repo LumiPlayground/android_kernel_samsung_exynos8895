@@ -43,11 +43,7 @@ static inline void dpu_event_log_decon
 	case DPU_EVT_WIN_CONFIG:
 	case DPU_EVT_TRIG_UNMASK:
 	case DPU_EVT_TRIG_MASK:
-	case DPU_EVT_FENCE_RELEASE:
 	case DPU_EVT_DECON_FRAMEDONE:
-		log->data.fence.timeline_value = decon->timeline->value;
-		log->data.fence.timeline_max = decon->timeline_max;
-		break;
 	case DPU_EVT_WB_SW_TRIGGER:
 		break;
 	case DPU_EVT_TE_INTERRUPT:
@@ -80,8 +76,14 @@ static inline void dpu_event_log_dsim
 	case DPU_EVT_DSIM_RESUME:
 	case DPU_EVT_ENTER_ULPS:
 	case DPU_EVT_EXIT_ULPS:
+	case DPU_EVT_DSIM_ENABLE:
 		log->data.pm.pm_status = pm_runtime_active(dsim->dev);
 		log->data.pm.elapsed = ktime_sub(ktime_get(), log->time);
+		if (type == DPU_EVT_DSIM_ENABLE) {
+			log->data.pm.pmu_info[0] = dsim->pmu_info[0];
+			log->data.pm.pmu_info[1] = dsim->pmu_info[1];
+			log->data.pm.pmu_info[2] = dsim->pmu_info[2];
+		}
 		break;
 	default:
 		/* Any remaining types will be log just time and type */
@@ -192,7 +194,6 @@ void DPU_EVENT_LOG(dpu_event_t type, struct v4l2_subdev *sd, ktime_t time)
 	case DPU_EVT_LINECNT_ZERO:
 	case DPU_EVT_TRIG_MASK:
 	case DPU_EVT_TRIG_UNMASK:
-	case DPU_EVT_FENCE_RELEASE:
 	case DPU_EVT_DECON_FRAMEDONE:
 	case DPU_EVT_DECON_FRAMEDONE_WAIT:
 	case DPU_EVT_WIN_CONFIG:
@@ -200,12 +201,22 @@ void DPU_EVENT_LOG(dpu_event_t type, struct v4l2_subdev *sd, ktime_t time)
 	case DPU_EVT_DECON_SHUTDOWN:
 	case DPU_EVT_RSC_CONFLICT:
 	case DPU_EVT_DECON_FRAMESTART:
+	case DPU_EVT_DECON_RECOVERY:
+#ifdef CONFIG_SUPPORT_DOZE
+	case DPU_EVT_DOZE:
+	case DPU_EVT_DOZE_SUSPEND:
+#endif
+#ifdef CONFIG_DECON_SELF_REFRESH
+	case DPU_EVT_DSR_ENABLE:
+	case DPU_EVT_DSR_DISABLE:
+#endif
 		dpu_event_log_decon(type, sd, time);
 		break;
 	case DPU_EVT_DSIM_FRAMEDONE:
 	case DPU_EVT_ENTER_ULPS:
 	case DPU_EVT_EXIT_ULPS:
 	case DPU_EVT_DSIM_SHUTDOWN:
+	case DPU_EVT_DSIM_ENABLE:
 		dpu_event_log_dsim(type, sd, time);
 		break;
 	case DPU_EVT_DPP_FRAMEDONE:
@@ -296,10 +307,62 @@ void DPU_EVENT_LOG_WINCON(struct v4l2_subdev *sd, struct decon_reg_data *regs)
 	}
 }
 
+static int sync_status_str(int status)
+{
+	if (status == 0)
+		return 0; /*"signaled";*/
+
+	if (status > 0)
+		return 1; /*"active";*/
+
+	return 9; /*"error";*/
+}
+
+void DPU_EVENT_LOG_FENCE(struct v4l2_subdev *sd, struct decon_reg_data *regs, dpu_event_t type)
+{
+	struct decon_device *decon = container_of(sd, struct decon_device, sd);
+	int idx = atomic_inc_return(&decon->d.event_log_idx) % DPU_EVENT_LOG_MAX;
+	struct dpu_log *log = &decon->d.event_log[idx];
+	int win = 0;
+	struct sync_fence *fence = NULL;
+	static int fence_log_cnt;
+
+	log->time = ktime_get();
+	log->type = type;
+
+	if (++fence_log_cnt < (DPU_EVENT_LOG_MAX/2))
+		return;
+
+	--fence_log_cnt;
+
+	for (win = 0; win < MAX_DECON_WIN; win++) {
+		log->data.fence.acquire_fence[win][0] = '\0';
+		fence = regs->dma_buf_data[win][0].fence;
+		if (fence) {
+#if defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+			snprintf(&log->data.fence.acquire_fence[win][0], ACQUIRE_FENCE_LEN, "%pK:%s:%d",
+				fence, fence->name, sync_status_str(atomic_read(&fence->status)));
+#else
+			snprintf(&log->data.fence.acquire_fence[win][0], ACQUIRE_FENCE_LEN, "%p:%s:%d",
+				fence, fence->name, sync_status_str(atomic_read(&fence->status)));
+#endif
+		}
+	}
+
+	log->data.fence.release_fence[0] = '\0';
+	if (regs->pt) {
+		snprintf(&log->data.fence.release_fence[0], RELEASE_FENCE_LEN, "decon%d_pt:%d/%d",
+			decon->id, ((struct sw_sync_pt *)(regs->pt))->value, decon->timeline->value);
+	}
+
+	log->data.fence.timeline_value = decon->timeline->value;
+	log->data.fence.timeline_max = decon->timeline_max;
+}
+
 extern void *return_address(int);
 
 /* Common API to log a event related with DSIM COMMAND */
-void DPU_EVENT_LOG_CMD(struct v4l2_subdev *sd, u32 cmd_id, unsigned long data)
+void DPU_EVENT_LOG_CMD(struct v4l2_subdev *sd, u32 cmd_id, char data)
 {
 	struct dsim_device *dsim = container_of(sd, struct dsim_device, sd);
 	struct decon_device *decon = get_decon_drvdata(dsim->id);
@@ -315,10 +378,8 @@ void DPU_EVENT_LOG_CMD(struct v4l2_subdev *sd, u32 cmd_id, unsigned long data)
 	log->time = ktime_get();
 	log->type = DPU_EVT_DSIM_COMMAND;
 	log->data.cmd_buf.id = cmd_id;
-	if (cmd_id == MIPI_DSI_DCS_LONG_WRITE)
-		log->data.cmd_buf.buf = *(u8 *)(data);
-	else
-		log->data.cmd_buf.buf = (u8)data;
+
+	log->data.cmd_buf.buf = data;
 
 	for (i = 0; i < DPU_CALLSTACK_MAX; i++)
 		log->data.cmd_buf.caller[i] = (void *)((size_t)return_address(i + 1));
@@ -334,7 +395,8 @@ void DPU_EVENT_SHOW(struct seq_file *s, struct decon_device *decon)
 	ktime_t prev_ktime;
 	struct dsim_device *dsim;
 
-	dsim = get_dsim_drvdata(decon->id);
+	if (!decon->id)
+		dsim = get_dsim_drvdata(decon->id);
 
 	/* TITLE */
 	seq_printf(s, "-------------------DECON%d EVENT LOGGER ----------------------\n",
@@ -345,7 +407,9 @@ void DPU_EVENT_SHOW(struct seq_file *s, struct decon_device *decon)
 			IS_ENABLED(CONFIG_DECON_BLOCKING_MODE) ? "on" : "off");
 	seq_printf(s, "Window_Update(%s)\n",
 			IS_ENABLED(CONFIG_FB_WINDOW_UPDATE) ? "on" : "off");
-	seq_printf(s, "-- Total underrun count(%d)\n", dsim->total_underrun_cnt);
+	if (!decon->id)
+		seq_printf(s, "-- Total underrun count(%d)\n",
+				dsim->total_underrun_cnt);
 	seq_puts(s, "-------------------------------------------------------------\n");
 	seq_printf(s, "%14s  %20s  %20s\n",
 		"Time", "Event ID", "Remarks");
@@ -386,6 +450,14 @@ void DPU_EVENT_SHOW(struct seq_file *s, struct decon_device *decon)
 		case DPU_EVT_WIN_CONFIG:
 			seq_printf(s, "%20s  %20s", "WIN_CONFIG", "-\n");
 			break;
+#ifdef	CONFIG_DECON_SELF_REFRESH
+		case DPU_EVT_DSR_ENABLE:
+			seq_printf(s, "%20s  %20s", "DSR_ENABLE", "-\n");
+			break;
+		case DPU_EVT_DSR_DISABLE:
+			seq_printf(s, "%20s  %20s", "DSR_DISABLE", "-\n");
+			break;
+#endif
 		case DPU_EVT_TE_INTERRUPT:
 			prev_ktime = ktime_sub(log->time, prev_ktime);
 			seq_printf(s, "%20s  ", "TE_INTERRUPT");
@@ -515,6 +587,60 @@ static const struct file_operations decon_event_fops = {
 	.release = seq_release,
 };
 
+
+#ifdef CONFIG_DUMPSTATE_LOGGING
+static void decon_show_debug_info(struct decon_device *decon, struct seq_file *s)
+{
+	if (s != NULL)
+		seq_printf(s, "Current update list count : %d\n",
+			decon->update_regs_list_cnt);
+	else
+		decon_info("Current update list count : %d\n",
+			decon->update_regs_list_cnt);
+
+	if (s != NULL)
+		seq_printf(s, "Current timeline max : %d\n",
+			decon->timeline_max);
+	else
+		decon_info("Current timeline max : %d\n",
+			decon->timeline_max);
+
+	if (s != NULL)
+		seq_printf(s, "Frame Count : %d\n",
+			decon->frame_cnt);
+	else
+		decon_info("Frame Count : %d\n",
+			decon->frame_cnt);
+
+}
+
+
+
+static int decon_debug_info_show(struct seq_file *s, void *unused)
+{
+	struct decon_device *decon = s->private;
+
+	if (decon != NULL) {
+		decon_dump_recovery_list(decon, s);
+		decon_show_debug_info(decon, s);
+		decon_print_fence_err(decon, s);
+	}
+	return 0;
+}
+
+static int decon_debug_info_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, decon_debug_info_show, inode->i_private);
+}
+
+static const struct file_operations decon_debug_fops = {
+	.open = decon_debug_info_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = seq_release,
+};
+
+#endif
 int decon_create_debugfs(struct decon_device *decon)
 {
 	char name[MAX_NAME_SIZE];
@@ -541,6 +667,19 @@ int decon_create_debugfs(struct decon_device *decon)
 		ret = -ENOENT;
 		goto err_debugfs;
 	}
+#ifdef CONFIG_DUMPSTATE_LOGGING
+	if (decon->id == 0) {
+		decon->d.debug_info = debugfs_create_file("debug", 0444,
+			decon->d.debug_root, decon, &decon_debug_fops);
+		if (!decon->d.debug_info) {
+			decon_err("DECON:ERR:%s:failed to create debugfs file:%s\n",
+				__func__, name);
+			ret = -ENOENT;
+			goto err_debugfs;
+		}
+	}
+#endif
+	return 0;
 
 err_debugfs:
 	if (decon->d.debug_root)

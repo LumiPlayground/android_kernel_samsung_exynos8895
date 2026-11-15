@@ -27,6 +27,8 @@ struct dwc3;
 #define to_dwc3_ep(ep)		(container_of(ep, struct dwc3_ep, endpoint))
 #define gadget_to_dwc(g)	(container_of(g, struct dwc3, gadget))
 
+#define TCXO_UFS_BUF_CTRL	0x11021150
+
 /* DEPCFG parameter 1 */
 #define DWC3_DEPCFG_INT_NUM(n)		(((n) & 0x1f) << 0)
 #define DWC3_DEPCFG_XFER_COMPLETE_EN	(1 << 8)
@@ -72,16 +74,16 @@ static inline void dwc3_gadget_move_request_list_front(struct dwc3_request *req)
 {
 	struct dwc3_ep		*dep = req->dep;
 
-	req->started = false;
-	list_move(&req->list, &dep->pending_list);
+	req->queued = false;
+	list_move(&req->list, &dep->request_list);
 }
 
-static inline void dwc3_gadget_move_started_request(struct dwc3_request *req)
+static inline void dwc3_gadget_move_request_queued(struct dwc3_request *req)
 {
 	struct dwc3_ep		*dep = req->dep;
 
-	req->started = true;
-	list_move_tail(&req->list, &dep->started_list);
+	req->queued = true;
+	list_move_tail(&req->list, &dep->req_queued);
 }
 
 void dwc3_gadget_giveback(struct dwc3_ep *dep, struct dwc3_request *req,
@@ -103,11 +105,11 @@ int __dwc3_gadget_ep_set_halt(struct dwc3_ep *dep, int value, int protocol);
  *
  * Caller should take care of locking
  */
-static inline u32 dwc3_gadget_ep_get_transfer_index(struct dwc3_ep *dep)
+static inline u32 dwc3_gadget_ep_get_transfer_index(struct dwc3 *dwc, u8 number)
 {
 	u32			res_id;
 
-	res_id = dwc3_readl(dep->regs, DWC3_DEPCMD);
+	res_id = dwc3_readl(dwc->regs, DWC3_DEPCMD(number));
 
 	return DWC3_DEPCMD_GET_RSC_IDX(res_id);
 }

@@ -65,15 +65,18 @@ EXPORT_SYMBOL_GPL(usb_speed_string);
 enum usb_device_speed usb_get_maximum_speed(struct device *dev)
 {
 	const char *maximum_speed;
-	int ret;
+	int err;
+	int i;
 
-	ret = device_property_read_string(dev, "maximum-speed", &maximum_speed);
-	if (ret < 0)
+	err = device_property_read_string(dev, "maximum-speed", &maximum_speed);
+	if (err < 0)
 		return USB_SPEED_UNKNOWN;
 
-	ret = match_string(speed_names, ARRAY_SIZE(speed_names), maximum_speed);
+	for (i = 0; i < ARRAY_SIZE(speed_names); i++)
+		if (strcmp(maximum_speed, speed_names[i]) == 0)
+			return i;
 
-	return (ret < 0) ? USB_SPEED_UNKNOWN : ret;
+	return USB_SPEED_UNKNOWN;
 }
 EXPORT_SYMBOL_GPL(usb_get_maximum_speed);
 
@@ -107,10 +110,13 @@ static const char *const usb_dr_modes[] = {
 
 static enum usb_dr_mode usb_get_dr_mode_from_string(const char *str)
 {
-	int ret;
+	int i;
 
-	ret = match_string(usb_dr_modes, ARRAY_SIZE(usb_dr_modes), str);
-	return (ret < 0) ? USB_DR_MODE_UNKNOWN : ret;
+	for (i = 0; i < ARRAY_SIZE(usb_dr_modes); i++)
+		if (!strcmp(usb_dr_modes[i], str))
+			return i;
+
+	return USB_DR_MODE_UNKNOWN;
 }
 
 enum usb_dr_mode usb_get_dr_mode(struct device *dev)
@@ -151,17 +157,15 @@ EXPORT_SYMBOL_GPL(of_usb_get_suspend_clk_freq);
  * of_usb_get_dr_mode_by_phy - Get dual role mode for the controller device
  * which is associated with the given phy device_node
  * @np:	Pointer to the given phy device_node
- * @arg0: phandle args[0] for phy's with #phy-cells >= 1, or -1 for
- *        phys which do not have phy-cells
  *
  * In dts a usb controller associates with phy devices.  The function gets
  * the string from property 'dr_mode' of the controller associated with the
  * given phy device node, and returns the correspondig enum usb_dr_mode.
  */
-enum usb_dr_mode of_usb_get_dr_mode_by_phy(struct device_node *np, int arg0)
+enum usb_dr_mode of_usb_get_dr_mode_by_phy(struct device_node *phy_np)
 {
 	struct device_node *controller = NULL;
-	struct of_phandle_args args;
+	struct device_node *phy;
 	const char *dr_mode;
 	int index;
 	int err;
@@ -170,24 +174,12 @@ enum usb_dr_mode of_usb_get_dr_mode_by_phy(struct device_node *np, int arg0)
 		controller = of_find_node_with_property(controller, "phys");
 		index = 0;
 		do {
-			if (arg0 == -1) {
-				args.np = of_parse_phandle(controller, "phys",
-							index);
-				args.args_count = 0;
-			} else {
-				err = of_parse_phandle_with_args(controller,
-							"phys", "#phy-cells",
-							index, &args);
-				if (err)
-					break;
-			}
-
-			of_node_put(args.np);
-			if (args.np == np && (args.args_count == 0 ||
-					      args.args[0] == arg0))
+			phy = of_parse_phandle(controller, "phys", index);
+			of_node_put(phy);
+			if (phy == phy_np)
 				goto finish;
 			index++;
-		} while (args.np);
+		} while (phy);
 	} while (controller);
 
 finish:

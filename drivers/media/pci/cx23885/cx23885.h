@@ -103,8 +103,6 @@
 #define CX23885_BOARD_HAUPPAUGE_STARBURST      53
 #define CX23885_BOARD_VIEWCAST_260E            54
 #define CX23885_BOARD_VIEWCAST_460E            55
-#define CX23885_BOARD_HAUPPAUGE_QUADHD_DVB     56
-#define CX23885_BOARD_HAUPPAUGE_QUADHD_ATSC    57
 
 #define GPIO_0 0x00000001
 #define GPIO_1 0x00000002
@@ -257,7 +255,7 @@ struct cx23885_dmaqueue {
 struct cx23885_tsport {
 	struct cx23885_dev *dev;
 
-	unsigned                   nr;
+	int                        nr;
 	int                        sram_chno;
 
 	struct vb2_dvb_frontends   frontends;
@@ -432,6 +430,7 @@ struct cx23885_dev {
 	struct vb2_queue           vb2_vidq;
 	struct cx23885_dmaqueue    vbiq;
 	struct vb2_queue           vb2_vbiq;
+	void			   *alloc_ctx;
 
 	spinlock_t                 slock;
 

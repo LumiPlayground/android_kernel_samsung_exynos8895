@@ -14,11 +14,43 @@
 
 #include "s5p_mfc_cmd.h"
 
-#include "s5p_mfc_cal.h"
 #include "s5p_mfc_reg.h"
 
 #include "s5p_mfc_utils.h"
 #include "s5p_mfc_buf.h"
+
+extern int dbg_enable;
+
+void s5p_mfc_cmd_host2risc(struct s5p_mfc_dev *dev, int cmd)
+{
+	mfc_debug(1, "Issue the command: %d\n", cmd);
+	MFC_TRACE_DEV(">> CMD : %d, (dev:0x%lx, bits:%lx, owned:%d, wl:%d, trans:%d)\n",
+			cmd, dev->hwlock.dev, dev->hwlock.bits, dev->hwlock.owned_by_irq,
+			dev->hwlock.wl_count, dev->hwlock.transfer_owner);
+	MFC_TRACE_LOG_DEV("C%d", cmd);
+
+	trace_mfc_frame_start(dev->curr_ctx, cmd, 0, 0);
+	/* Reset RISC2HOST command except nal q stop command */
+	if (cmd != S5P_FIMV_H2R_CMD_STOP_QUEUE)
+		MFC_WRITEL(0x0, S5P_FIMV_RISC2HOST_CMD);
+
+	/* Start the timeout watchdog */
+	if ((cmd != S5P_FIMV_H2R_CMD_NAL_QUEUE) && (cmd != S5P_FIMV_H2R_CMD_STOP_QUEUE))
+		s5p_mfc_watchdog_start_tick(dev);
+
+	if (dbg_enable) {
+		/* For FW debugging */
+		s5p_mfc_dbg_set_addr(dev);
+		s5p_mfc_dbg_enable(dev);
+	}
+
+	dev->last_cmd = cmd;
+	dev->last_cmd_time = ktime_to_timeval(ktime_get());
+
+	/* Issue the command */
+	MFC_WRITEL(cmd, S5P_FIMV_HOST2RISC_CMD);
+	MFC_WRITEL(0x1, S5P_FIMV_HOST2RISC_INT);
+}
 
 int s5p_mfc_cmd_sys_init(struct s5p_mfc_dev *dev,
 					enum mfc_buf_usage_type buf_type)
@@ -136,7 +168,6 @@ int s5p_mfc_cmd_dec_init_buffers(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev;
 	struct s5p_mfc_dec *dec;
-	unsigned int reg = 0, pix_val, mem_type = 0;
 	int ret;
 
 	if (!ctx) {
@@ -153,57 +184,6 @@ int s5p_mfc_cmd_dec_init_buffers(struct s5p_mfc_ctx *ctx)
 	/* Header was parsed now starting processing
 	 * First set the output frame buffers
 	 * s5p_mfc_alloc_dec_buffers(ctx); */
-
-	switch (ctx->dst_fmt->fourcc) {
-	case V4L2_PIX_FMT_NV12M:
-	case V4L2_PIX_FMT_NV12N:
-	case V4L2_PIX_FMT_NV12MT_16X16:
-	case V4L2_PIX_FMT_NV16M:
-		pix_val = 0;
-		break;
-	case V4L2_PIX_FMT_NV21M:
-	case V4L2_PIX_FMT_NV61M:
-		pix_val = 1;
-		break;
-	case V4L2_PIX_FMT_YVU420M:
-		pix_val = 2;
-		break;
-	case V4L2_PIX_FMT_YUV420M:
-	case V4L2_PIX_FMT_YUV420N:
-		pix_val = 3;
-		break;
-	/* 10bit */
-	case V4L2_PIX_FMT_NV12N_10B:
-	case V4L2_PIX_FMT_NV12M_S10B:
-	case V4L2_PIX_FMT_NV16M_S10B:
-		mem_type = 0;
-		pix_val = 0;
-		break;
-	case V4L2_PIX_FMT_NV12M_P010:
-	case V4L2_PIX_FMT_NV16M_P210:
-		mem_type = 1;
-		pix_val = 0;
-		break;
-	case V4L2_PIX_FMT_NV21M_S10B:
-	case V4L2_PIX_FMT_NV61M_S10B:
-		mem_type = 0;
-		pix_val = 1;
-		break;
-	case V4L2_PIX_FMT_NV21M_P010:
-	case V4L2_PIX_FMT_NV61M_P210:
-		mem_type = 1;
-		pix_val = 1;
-		break;
-	default:
-		pix_val = 0;
-		break;
-	}
-	reg = 0;
-	reg |= pix_val;
-	reg |= (mem_type << 4);
-	MFC_WRITEL(reg, S5P_FIMV_PIXEL_FORMAT);
-	mfc_debug(2, "pixel format: %d, mem_type for 10bit: %d (reg: %#x)\n",
-			pix_val, mem_type, reg);
 
 	s5p_mfc_clean_ctx_int_flags(ctx);
 	ret = s5p_mfc_set_dec_codec_buffers(ctx);
@@ -242,7 +222,14 @@ int s5p_mfc_cmd_enc_init_buffers(struct s5p_mfc_ctx *ctx)
 	/* Header was generated now starting processing
 	 * First set the reference frame buffers
 	 */
-	if (!ctx->codec_buf.handle) {
+	if (ctx->capture_state != QUEUE_BUFS_REQUESTED) {
+		mfc_err_ctx("It seems that destionation buffers were not "
+			"requested.\nMFC requires that header should be generated "
+			"before allocating codec buffer.\n");
+		return -EAGAIN;
+	}
+
+	if (!ctx->codec_buf.alloc) {
 		mfc_info_ctx("there isn't codec buffer, re-alloc!\n");
 		ret = s5p_mfc_alloc_codec_buffers(ctx);
 		if (ret) {

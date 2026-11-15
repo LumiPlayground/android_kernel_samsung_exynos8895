@@ -16,7 +16,6 @@
 #include <soc/samsung/bts.h>
 #include <soc/samsung/cal-if.h>
 #include <linux/apm-exynos.h>
-#include <soc/samsung/acpm_mfd.h>
 struct exynos_pm_domain *exynos_pd_lookup_name(const char *domain_name)
 {
 	struct exynos_pm_domain *exypd = NULL;
@@ -352,7 +351,13 @@ static __init int exynos_pd_dt_parse(void)
 		platform_set_drvdata(pdev, pd);
 
 		exynos_pd_genpd_init(pd, initial_state);
-		of_genpd_add_provider_simple(np, &pd->genpd);
+
+		ret = of_genpd_add_provider_simple(np, &pd->genpd);
+		if (ret) {
+			pr_err(EXYNOS_PD_PREFIX "%s: provider registration failed: %d\n",
+				pd->name, ret);
+			return ret;
+		}
 
 		/* add LOGICAL sub-domain
 		 * It is not assumed that there is REAL sub-domain.
@@ -390,7 +395,13 @@ static __init int exynos_pd_dt_parse(void)
 			platform_set_drvdata(sub_pdev, sub_pd);
 
 			exynos_pd_genpd_init(sub_pd, initial_state);
-			of_genpd_add_provider_simple(children, &sub_pd->genpd);
+
+			ret = of_genpd_add_provider_simple(children, &sub_pd->genpd);
+			if (ret) {
+				pr_err(EXYNOS_PD_PREFIX "%s: provider registration failed: %d\n",
+					sub_pd->name, ret);
+				return ret;
+			}
 
 			if (pm_genpd_add_subdomain(&pd->genpd, &sub_pd->genpd))
 				pr_err("%s %s can't add subdomain %s\n",

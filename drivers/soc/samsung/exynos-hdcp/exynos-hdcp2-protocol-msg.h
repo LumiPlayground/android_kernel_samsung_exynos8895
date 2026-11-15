@@ -55,11 +55,9 @@
 #define HDCP_RP_RCV_LIST_PRE_META_LEN   2
 #define HDCP_RP_RCV_LIST_META_LEN       23
 
-#define HDCP_PROTO_MSG_ID_LEN   	1
+#define HDCP_PROTO_MSG_ID_LEN   1
 #define HDCP_TX_REPEATER_MAX_STREAM     32
-#define STREAM_ELEM_SIZE		5
-#define STREAM_INFO_SIZE    		7
-#define STREAM_MAX_LEN			1024
+#define STREAM_INFO_SIZE    7
 
 enum {
 	HDCP_VERSION_2_0 = 0x00,

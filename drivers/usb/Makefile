@@ -26,7 +26,7 @@ obj-$(CONFIG_USB_U132_HCD)	+= host/
 obj-$(CONFIG_USB_R8A66597_HCD)	+= host/
 obj-$(CONFIG_USB_HWA_HCD)	+= host/
 obj-$(CONFIG_USB_IMX21_HCD)	+= host/
-obj-$(CONFIG_USB_FSL_USB2)	+= host/
+obj-$(CONFIG_USB_FSL_MPH_DR_OF)	+= host/
 obj-$(CONFIG_USB_FOTG210_HCD)	+= host/
 obj-$(CONFIG_USB_MAX3421_HCD)	+= host/
 
@@ -61,7 +61,6 @@ obj-$(CONFIG_USB_GADGET)	+= gadget/
 obj-$(CONFIG_USB_COMMON)	+= common/
 
 obj-$(CONFIG_USBIP_CORE)	+= usbip/
-
 obj-$(CONFIG_TYPEC)		+= typec/
 obj-$(CONFIG_USB_NOTIFY_LAYER)	+= notify/
 obj-$(CONFIG_USB_TYPEC_MANAGER_NOTIFIER)	+= manager/

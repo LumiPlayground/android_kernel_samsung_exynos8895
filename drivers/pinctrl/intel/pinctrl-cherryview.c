@@ -1125,27 +1125,6 @@ static int chv_config_set_pull(struct chv_pinctrl *pctrl, unsigned pin,
 	return 0;
 }
 
-static int chv_config_set_oden(struct chv_pinctrl *pctrl, unsigned int pin,
-			       bool enable)
-{
-	void __iomem *reg = chv_padreg(pctrl, pin, CHV_PADCTRL1);
-	unsigned long flags;
-	u32 ctrl1;
-
-	raw_spin_lock_irqsave(&chv_lock, flags);
-	ctrl1 = readl(reg);
-
-	if (enable)
-		ctrl1 |= CHV_PADCTRL1_ODEN;
-	else
-		ctrl1 &= ~CHV_PADCTRL1_ODEN;
-
-	chv_writel(ctrl1, reg);
-	raw_spin_unlock_irqrestore(&chv_lock, flags);
-
-	return 0;
-}
-
 static int chv_config_set(struct pinctrl_dev *pctldev, unsigned pin,
 			  unsigned long *configs, unsigned nconfigs)
 {

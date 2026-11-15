@@ -75,8 +75,7 @@ struct videobuf_buffer *videobuf_alloc_vb(struct videobuf_queue *q)
 }
 EXPORT_SYMBOL_GPL(videobuf_alloc_vb);
 
-static int state_neither_active_nor_queued(struct videobuf_queue *q,
-					   struct videobuf_buffer *vb)
+static int is_state_active_or_queued(struct videobuf_queue *q, struct videobuf_buffer *vb)
 {
 	unsigned long flags;
 	bool rc;
@@ -96,7 +95,7 @@ int videobuf_waiton(struct videobuf_queue *q, struct videobuf_buffer *vb,
 	MAGIC_CHECK(vb->magic, MAGIC_BUFFER);
 
 	if (non_blocking) {
-		if (state_neither_active_nor_queued(q, vb))
+		if (is_state_active_or_queued(q, vb))
 			return 0;
 		return -EAGAIN;
 	}
@@ -108,10 +107,9 @@ int videobuf_waiton(struct videobuf_queue *q, struct videobuf_buffer *vb,
 	if (is_ext_locked)
 		mutex_unlock(q->ext_lock);
 	if (intr)
-		ret = wait_event_interruptible(vb->done,
-					state_neither_active_nor_queued(q, vb));
+		ret = wait_event_interruptible(vb->done, is_state_active_or_queued(q, vb));
 	else
-		wait_event(vb->done, state_neither_active_nor_queued(q, vb));
+		wait_event(vb->done, is_state_active_or_queued(q, vb));
 	/* Relock */
 	if (is_ext_locked)
 		mutex_lock(q->ext_lock);

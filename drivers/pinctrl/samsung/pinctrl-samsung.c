@@ -1129,7 +1129,6 @@ samsung_pinctrl_get_soc_data(struct samsung_pinctrl_drv_data *d,
 		bank->eint_type = bdata->eint_type;
 		bank->eint_mask = bdata->eint_mask;
 		bank->eint_offset = bdata->eint_offset;
-		bank->fltcon_offset = bdata->fltcon_offset;
 		bank->name = bdata->name;
 
 		spin_lock_init(&bank->slock);
@@ -1616,11 +1615,11 @@ static void check_gpio_status(unsigned char phonestate, const char *skip_grps)
 	}
 }
 
-struct gpio_dvs_t exynos9810_secgpio_dvs = {
+struct gpio_dvs_t exynos8895_secgpio_dvs = {
 	.result = &gpiomap_result,
 	.check_gpio_status = check_gpio_status,
-	.get_nr_gpio = exynos9810_secgpio_get_nr_gpio,
-	.skip_grps = "gpb gph gpt", /* AUDIO, CHUB, VTS */
+	.get_nr_gpio = exynos8895_secgpio_get_nr_gpio,
+	.skip_grps = "gph", /* ABOX, VTS */
 };
 #endif /* CONFIG_SEC_GPIO_DVS && CONFIG_PINCTRL_EXYNOS */
 
@@ -1650,8 +1649,6 @@ static const struct of_device_id samsung_pinctrl_dt_match[] = {
 		.data = (void *)exynos7_pin_ctrl },
 	{ .compatible = "samsung,exynos8895-pinctrl",
 		.data = (void *)exynos8895_pin_ctrl },
-	{ .compatible = "samsung,exynos9810-pinctrl",
-		.data = (void *)exynos9810_pin_ctrl },
 #endif
 #ifdef CONFIG_PINCTRL_S3C64XX
 	{ .compatible = "samsung,s3c64xx-pinctrl",

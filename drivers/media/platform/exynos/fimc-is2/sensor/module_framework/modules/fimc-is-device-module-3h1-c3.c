@@ -67,6 +67,8 @@ static struct fimc_is_sensor_cfg config_module_3h1_c3[] = {
 	FIMC_IS_SENSOR_CFG(752, 1328, 15, 15, 8, CSI_DATA_LANES_2),
 	/* 376X664@110fps */
 	FIMC_IS_SENSOR_CFG(376, 664, 110, 15, 9, CSI_DATA_LANES_2),
+	/* 3264X1592@30fps */
+	FIMC_IS_SENSOR_CFG_EXT(3264, 1592, 30, 15, 10, CSI_DATA_LANES_2, 2145, 0, SET_VC(VC_MIPI_STAT, 3264, 6), 0),
 };
 
 static struct fimc_is_vci vci_module_3h1_c3[] = {
@@ -122,7 +124,7 @@ static int sensor_module_3h1_c3_power_setpin(struct platform_device *pdev,
 	struct device_node *dnode;
 	int gpio_none = 0, gpio_reset = 0, gpio_prep_reset = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -280,7 +282,7 @@ static int sensor_module_3h1_c3_power_setpin(struct platform_device *pdev,
 	return 0;
 }
 
-static int __init sensor_module_3h1_c3_probe(struct platform_device *pdev)
+int sensor_module_3h1_c3_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -293,7 +295,8 @@ static int __init sensor_module_3h1_c3_probe(struct platform_device *pdev)
 	int ch, vc_idx;
 	struct pinctrl_state *s;
 
-	FIMC_BUG(!fimc_is_dev);
+	if (!fimc_is_dev)
+		return -EPROBE_DEFER;
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -316,9 +319,9 @@ static int __init sensor_module_3h1_c3_probe(struct platform_device *pdev)
 	}
 
 	probe_info("%s pdta->id(%d), module_enum id = %d \n", __func__, pdata->id,
-				atomic_read(&device->module_count));
-	module = &device->module_enum[atomic_read(&device->module_count)];
-	atomic_inc(&device->module_count);
+				atomic_read(&core->resourcemgr.rsccount_module));
+	module = &device->module_enum[atomic_read(&core->resourcemgr.rsccount_module)];
+	atomic_inc(&core->resourcemgr.rsccount_module);
 	clear_bit(FIMC_IS_MODULE_GPIO_ON, &module->state);
 	module->pdata = pdata;
 	module->dev = dev;
@@ -348,17 +351,19 @@ static int __init sensor_module_3h1_c3_probe(struct platform_device *pdev)
 	module->cfg = config_module_3h1_c3;
 	module->ops = NULL;
 
-	for (ch = 1; ch < CSI_VIRTUAL_CH_MAX; ch++)
+	for (ch = 1; ch < CSI_VIRTUAL_CH_MAX; ch++) {
+		module->internal_vc[ch] = pdata->internal_vc[ch];
 		module->vc_buffer_offset[ch] = pdata->vc_buffer_offset[ch];
+	}
 
 	for (vc_idx = 0; vc_idx < 2; vc_idx++) {
 		switch (vc_idx) {
-		case VC_BUF_DATA_TYPE_SENSOR_STAT:
+		case VC_BUF_DATA_TYPE_PDAF:
 			module->vc_max_size[vc_idx].width = S5K3H1_PDAF_MAXWIDTH;
 			module->vc_max_size[vc_idx].height = S5K3H1_PDAF_MAXHEIGHT;
 			module->vc_max_size[vc_idx].element_size = S5K3H1_PDAF_ELEMENT;
 			break;
-		case VC_BUF_DATA_TYPE_GENERAL_STAT:
+		case VC_BUF_DATA_TYPE_MIPI_STAT:
 			module->vc_max_size[vc_idx].width = S5K3H1_MIPI_MAXWIDTH;
 			module->vc_max_size[vc_idx].height = S5K3H1_MIPI_MAXHEIGHT;
 			module->vc_max_size[vc_idx].element_size = S5K3H1_MIPI_ELEMENT;
@@ -451,6 +456,15 @@ p_err:
 	return ret;
 }
 
+static int sensor_module_3h1_c3_remove(struct platform_device *pdev)
+{
+	int ret = 0;
+
+	info("%s\n", __func__);
+
+	return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_module_3h1_c3_match[] = {
 	{
 		.compatible = "samsung,sensor-module-3h1-c3",
@@ -460,6 +474,8 @@ static const struct of_device_id exynos_fimc_is_sensor_module_3h1_c3_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_3h1_c3_match);
 
 static struct platform_driver sensor_module_3h1_c3_driver = {
+	.probe  = sensor_module_3h1_c3_probe,
+	.remove = sensor_module_3h1_c3_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-MODULE-3H1-C3",
 		.owner  = THIS_MODULE,
@@ -467,16 +483,4 @@ static struct platform_driver sensor_module_3h1_c3_driver = {
 	}
 };
 
-static int __init fimc_is_sensor_module_3h1_c3_init(void)
-{
-	int ret;
-
-	ret = platform_driver_probe(&sensor_module_3h1_c3_driver,
-				sensor_module_3h1_c3_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_3h1_c3_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall(fimc_is_sensor_module_3h1_c3_init);
+module_platform_driver(sensor_module_3h1_c3_driver);

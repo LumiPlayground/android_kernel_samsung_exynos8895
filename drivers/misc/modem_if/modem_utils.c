@@ -64,6 +64,7 @@ void ts2utc(struct timespec *ts, struct utc_time *utc)
 	utc->min = tm.tm_min;
 	utc->sec = tm.tm_sec;
 	utc->msec = ns2ms(ts->tv_nsec);
+	utc->us = ns2us(ts->tv_nsec);
 }
 
 void get_utc_time(struct utc_time *utc)
@@ -241,9 +242,11 @@ static inline void pr_ipc_msg(int level, u8 ch, struct timespec *ts,
 
 	/* If @ch is for BOOT or DUMP, only UDL command without any payload
 	 * should be printed. */
-	if (exynos_udl_ch(ch))
-		if (len > 16)
+	if (exynos_udl_ch(ch)) {
+		u32 udl_cmd = *((u32 *)msg);
+		if (std_udl_with_payload(udl_cmd))
 			return;
+	}
 
 	ts2utc(ts, &utc);
 
@@ -317,10 +320,6 @@ void log_ipc_pkt(struct sk_buff *skb, enum ipc_layer layer, enum direction dir)
 		pr_ipc_msg(log_info.ps_msg, ch, ts, prefix, msg, msg_len);
 	else if (exynos_router_ch(ch))
 		pr_ipc_msg(log_info.router_msg, ch, ts, prefix, msg, msg_len);
-	else if (exynos_rcs_ch(ch))
-		pr_ipc_msg(log_info.rcs_msg, ch, ts, prefix, msg, msg_len);
-	else if (exynos_ppt_ch(ch))
-		pr_ipc_msg(log_info.ppt_msg, ch, ts, prefix, msg, msg_len);
 }
 
 void pr_ipc(int level, const char *tag, const char *data, size_t len)

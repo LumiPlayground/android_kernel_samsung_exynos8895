@@ -16,9 +16,6 @@
 #ifndef _RC_CORE_PRIV
 #define _RC_CORE_PRIV
 
-/* Define the max number of pulse/space transitions to buffer */
-#define	MAX_IR_EVENT_SIZE	512
-
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <media/rc-core.h>
@@ -38,8 +35,7 @@ struct ir_raw_event_ctrl {
 	struct list_head		list;		/* to keep track of raw clients */
 	struct task_struct		*thread;
 	spinlock_t			lock;
-	/* fifo for the pulse/space durations */
-	DECLARE_KFIFO(kfifo, struct ir_raw_event, MAX_IR_EVENT_SIZE);
+	struct kfifo_rec_ptr_1		kfifo;		/* fifo for the pulse/space durations */
 	ktime_t				last_event;	/* when last event occurred */
 	enum raw_event_type		last_type;	/* last event type */
 	struct rc_dev			*dev;		/* pointer to the parent rc_dev */

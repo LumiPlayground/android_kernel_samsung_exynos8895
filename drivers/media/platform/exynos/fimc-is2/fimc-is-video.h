@@ -43,14 +43,11 @@
 #define INPUT_STREAM_SHIFT			24
 
 /*
- * senosr position
- * [0] : rear
- * [1] : front
- * [2] : rear2
- * [3] : secure
+ * module id
+ * [x] : module id, this stream uses
  */
-#define INPUT_POSITION_MASK			0x00FF0000
-#define INPUT_POSITION_SHIFT			16
+#define INPUT_MODULE_MASK			0x00FF0000
+#define INPUT_MODULE_SHIFT			16
 
 /*
  * video index
@@ -90,8 +87,6 @@
 #define VIDEO_SCP_READY_BUFFERS			0
 #define VIDEO_DXS_READY_BUFFERS			0
 #define VIDEO_DXC_READY_BUFFERS			0
-#define VIDEO_DCPXS_READY_BUFFERS			0
-#define VIDEO_DCPXC_READY_BUFFERS			0
 #define VIDEO_MXS_READY_BUFFERS			0
 #define VIDEO_MXP_READY_BUFFERS			0
 #define VIDEO_VRA_READY_BUFFERS			0
@@ -111,8 +106,6 @@
 #define FIMC_IS_VIDEO_IXP_NAME(id)		FIMC_IS_VIDEO_NAME("i"#id"p")
 #define FIMC_IS_VIDEO_DXS_NAME(id)		FIMC_IS_VIDEO_NAME("d"#id"s")
 #define FIMC_IS_VIDEO_DXC_NAME(id)		FIMC_IS_VIDEO_NAME("d"#id"c")
-#define FIMC_IS_VIDEO_DCPXS_NAME(id)		FIMC_IS_VIDEO_NAME("dcp"#id"s")
-#define FIMC_IS_VIDEO_DCPXC_NAME(id)		FIMC_IS_VIDEO_NAME("dcp"#id"c")
 #define FIMC_IS_VIDEO_SCC_NAME			FIMC_IS_VIDEO_NAME("scc")
 #define FIMC_IS_VIDEO_SCP_NAME			FIMC_IS_VIDEO_NAME("scp")
 #define FIMC_IS_VIDEO_MXS_NAME(id)		FIMC_IS_VIDEO_NAME("m"#id"s")
@@ -153,14 +146,7 @@ enum fimc_is_video_dev_num {
 	FIMC_IS_VIDEO_I1S_NUM = 40,
 	FIMC_IS_VIDEO_I1C_NUM,
 	FIMC_IS_VIDEO_I1P_NUM,
-	FIMC_IS_VIDEO_DCP0S_NUM = 50,	/* Master */
-	FIMC_IS_VIDEO_DCP0C_NUM,	/* Master Main Capture */
-	FIMC_IS_VIDEO_DCP1S_NUM,	/* Slave */
-	FIMC_IS_VIDEO_DCP1C_NUM,	/* Slave Main Capture */
-	FIMC_IS_VIDEO_DCP2C_NUM,	/* Disparity + Confidence + Master */
-	/* CAMERAPP_VIDEONODE_GDC = 55, should be reserved */
-	FIMC_IS_VIDEO_DCP3C_NUM = 56,	/* Master Sub Capture */
-	FIMC_IS_VIDEO_DCP4C_NUM,	/* Slave Sub Capture */
+	FIMC_IS_VIDEO_DIS_NUM = 50,
 	FIMC_IS_VIDEO_SCC_NUM,
 	FIMC_IS_VIDEO_SCP_NUM,
 	FIMC_IS_VIDEO_M0S_NUM = 60,
@@ -170,7 +156,6 @@ enum fimc_is_video_dev_num {
 	FIMC_IS_VIDEO_M2P_NUM,
 	FIMC_IS_VIDEO_M3P_NUM,
 	FIMC_IS_VIDEO_M4P_NUM,
-	FIMC_IS_VIDEO_M5P_NUM,
 	FIMC_IS_VIDEO_VRA_NUM = 80,
 	FIMC_IS_VIDEO_D0S_NUM = 90,
 	FIMC_IS_VIDEO_D0C_NUM,
@@ -228,12 +213,12 @@ enum fimc_is_queue_state {
 struct fimc_is_frame_cfg {
 	struct fimc_is_fmt		*format;
 	enum v4l2_colorspace		colorspace;
-	enum v4l2_quantization		quantization;
 	ulong				flip;
 	u32				width;
 	u32				height;
 	u32				size[FIMC_IS_MAX_PLANES];
 	u32				bytesperline[FIMC_IS_MAX_PLANES];
+	u32				num_buffers; /* total number of buffers per frame */
 };
 
 struct fimc_is_queue_ops {
@@ -279,16 +264,15 @@ struct fimc_is_queue {
 	u32				buf_dqe;
 
 	u32				id;
-	char				name[FIMC_IS_STR_LEN];
 	unsigned long			state;
 };
 
 struct fimc_is_video_ctx {
 	struct fimc_is_queue		queue;
+	struct mutex			lock;
 	u32				instance;
 	u32				refcount;
 	unsigned long			state;
-	struct list_head		cache_flush_head;
 
 	void				*device;
 	void				*next_device;
@@ -299,12 +283,6 @@ struct fimc_is_video_ctx {
 	const struct vb2_mem_ops	*vb2_mem_ops;
 	const struct fimc_is_vb2_buf_ops *fimc_is_vb2_buf_ops;
 	struct fimc_is_video_ops	vops;
-
-#if defined(MEASURE_TIME) && defined(MONITOR_TIME)
-	unsigned long long		time[TMQ_END];
-	unsigned long long		time_total[TMQ_END];
-	unsigned long			time_cnt;
-#endif
 };
 
 struct fimc_is_video {
@@ -314,6 +292,7 @@ struct fimc_is_video {
 	struct mutex			lock;
 
 	struct video_device		vd;
+	struct media_pad		pads;
 	struct fimc_is_resourcemgr	*resourcemgr;
 	const struct vb2_mem_ops	*vb2_mem_ops;
 	const struct fimc_is_vb2_buf_ops *fimc_is_vb2_buf_ops;
@@ -328,8 +307,7 @@ int open_vctx(struct file *file,
 	struct fimc_is_video *video,
 	struct fimc_is_video_ctx **vctx,
 	u32 instance,
-	u32 id,
-	const char *name);
+	u32 id);
 int close_vctx(struct file *file,
 	struct fimc_is_video *video,
 	struct fimc_is_video_ctx *vctx);
@@ -339,7 +317,7 @@ int fimc_is_queue_setup(struct fimc_is_queue *queue,
 	void *alloc_ctx,
 	unsigned int *num_planes,
 	unsigned int sizes[],
-	struct device *alloc_devs[]);
+	void *allocators[]);
 int fimc_is_queue_buffer_queue(struct fimc_is_queue *queue,
 	struct vb2_buffer *vb);
 int fimc_is_buffer_init(struct vb2_buffer *vb);
@@ -350,7 +328,6 @@ int fimc_is_queue_start_streaming(struct fimc_is_queue *queue,
 	void *qdevice);
 int fimc_is_queue_stop_streaming(struct fimc_is_queue *queue,
 	void *qdevice);
-void fimc_is_queue_buffer_finish(struct vb2_buffer *vb);
 
 /* video operation */
 int fimc_is_video_probe(struct fimc_is_video *video,
@@ -405,8 +382,6 @@ int fimc_is_video_s_ctrl(struct file *file,
 int fimc_is_video_buffer_done(struct fimc_is_video_ctx *vctx,
 	u32 index, u32 state);
 
-struct fimc_is_fmt *fimc_is_find_format(u32 pixelformat, u32 pixel_size);
-
 extern int fimc_is_pre_video_probe(void *data);
 extern int fimc_is_ssx_video_probe(void *data);
 extern int fimc_is_30s_video_probe(void *data);
@@ -425,13 +400,6 @@ extern int fimc_is_d0s_video_probe(void *data);
 extern int fimc_is_d0c_video_probe(void *data);
 extern int fimc_is_d1s_video_probe(void *data);
 extern int fimc_is_d1c_video_probe(void *data);
-extern int fimc_is_dcp0s_video_probe(void *data);
-extern int fimc_is_dcp0c_video_probe(void *data);
-extern int fimc_is_dcp1s_video_probe(void *data);
-extern int fimc_is_dcp1c_video_probe(void *data);
-extern int fimc_is_dcp2c_video_probe(void *data);
-extern int fimc_is_dcp3c_video_probe(void *data);
-extern int fimc_is_dcp4c_video_probe(void *data);
 extern int fimc_is_scc_video_probe(void *data);
 extern int fimc_is_scp_video_probe(void *data);
 extern int fimc_is_m0s_video_probe(void *data);
@@ -441,7 +409,6 @@ extern int fimc_is_m1p_video_probe(void *data);
 extern int fimc_is_m2p_video_probe(void *data);
 extern int fimc_is_m3p_video_probe(void *data);
 extern int fimc_is_m4p_video_probe(void *data);
-extern int fimc_is_m5p_video_probe(void *data);
 extern int fimc_is_vra_video_probe(void *data);
 extern int fimc_is_ssxvc0_video_probe(void *data);
 extern int fimc_is_ssxvc1_video_probe(void *data);
@@ -459,13 +426,5 @@ extern int fimc_is_ssxvc3_video_probe(void *data);
 #endif
 #define CALL_QOPS(q, op, args...)	(((q)->qops->op) ? ((q)->qops->op(args)) : 0)
 #define CALL_VOPS(v, op, args...)	((v) && ((v)->vops.op) ? ((v)->vops.op(v, args)) : 0)
-#define CALL_CACHE_BUFS_FINISH(vctx)						\
-	({ struct fimc_is_vb2_buf *vbuf, *temp;					\
-	if (vctx) {								\
-		list_for_each_entry_safe(vbuf, temp, &(vctx)->cache_flush_head, cache_flush_list) {	\
-			CALL_VOID_BUFOP(vbuf, buf_finish, vbuf, false);		\
-			list_del(&vbuf->cache_flush_list);			\
-		}								\
-	}})
 
 #endif

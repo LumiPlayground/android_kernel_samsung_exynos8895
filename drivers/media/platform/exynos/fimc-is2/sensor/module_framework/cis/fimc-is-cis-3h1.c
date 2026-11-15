@@ -1,8 +1,8 @@
 /*
- * Samsung Exynos SoC series Sensor driver
+ * Samsung Exynos5 SoC series Sensor driver
  *
  *
- * Copyright (c) 2016 Samsung Electronics Co., Ltd
+ * Copyright (c) 2011 Samsung Electronics Co., Ltd
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -51,72 +51,27 @@ static const u32 *sensor_3h1_setfile_sizes;
 static const struct sensor_pll_info_compact **sensor_3h1_pllinfos;
 static u32 sensor_3h1_max_setfile_num;
 
-static bool sensor_3h1_cis_is_wdr_mode_on(cis_shared_data *cis_data)
-{
-	unsigned int mode = cis_data->sens_config_index_cur;
-
-	if (fimc_is_vender_wdr_mode_on(cis_data) &&
-		(mode == SENSOR_3H1_3264X2448_30FPS
-		|| mode == SENSOR_3H1_2448X2448_30FPS
-		|| mode == SENSOR_3H1_3264X1836_30FPS
-		|| mode == SENSOR_3H1_3264X1592_30FPS
-		|| mode == SENSOR_3H1_3264X1592_30FPS
-		|| mode == SENSOR_3H1_2640X1980_30FPS
-		|| mode == SENSOR_3H1_2640X1488_30FPS
-		|| mode == SENSOR_3H1_2640X1288_30FPS
-		|| mode == SENSOR_3H1_1968X1968_30FPS))
-		return true;
-
-	return false;
-}
-
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
-static const struct cam_mipi_sensor_mode *sensor_3h1_mipi_sensor_mode;
-static u32 sensor_3h1_mipi_sensor_mode_size;
-static const int *sensor_3h1_verify_sensor_mode;
-static int sensor_3h1_verify_sensor_mode_size;
-
-static int sensor_3h1_cis_set_mipi_clock(struct v4l2_subdev *subdev)
+int sensor_3h1_cis_set_mipi_clock(struct v4l2_subdev *subdev)
 {
 	int ret = 0;
 	struct fimc_is_cis *cis = NULL;
-	const struct cam_mipi_sensor_mode *cur_mipi_sensor_mode;
 	int mode = 0;
-
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	mode = cis->cis_data->sens_config_index_cur;
 
-	dbg_sensor(1, "%s : mipi_clock_index_cur(%d), new(%d)\n", __func__,
-		cis->mipi_clock_index_cur, cis->mipi_clock_index_new);
-
-	if (mode >= sensor_3h1_mipi_sensor_mode_size) {
-		err("sensor mode is out of bound");
-		return -1;
-	}
-
-	if (cis->mipi_clock_index_cur != cis->mipi_clock_index_new
-		&& cis->mipi_clock_index_new >= 0) {
-		cur_mipi_sensor_mode = &sensor_3h1_mipi_sensor_mode[mode];
-
-		if (cur_mipi_sensor_mode->sensor_setting == NULL) {
-			dbg_sensor(1, "no mipi setting for current sensor mode\n");
-		} else if (cis->mipi_clock_index_new < cur_mipi_sensor_mode->sensor_setting_size) {
-			info("%s: change mipi clock [%d %d]\n", __func__, mode, cis->mipi_clock_index_new);
-			sensor_cis_set_registers(subdev,
-				cur_mipi_sensor_mode->sensor_setting[cis->mipi_clock_index_new].setting,
-				cur_mipi_sensor_mode->sensor_setting[cis->mipi_clock_index_new].setting_size);
-
-			cis->mipi_clock_index_cur = cis->mipi_clock_index_new;
-		} else {
-			err("sensor setting index is out of bound %d %d",
-				cis->mipi_clock_index_new, cur_mipi_sensor_mode->sensor_setting_size);
+	if (cis->mipi_clock_index_cur != cis->mipi_clock_index_new) {
+		if (sensor_3h1_setfiles_A_mipi_clock_list[mode] != NULL) {
+			sensor_cis_set_registers(subdev, sensor_3h1_setfiles_A_mipi_clock_list[mode][cis->mipi_clock_index_new],
+				sensor_3h1_setfile_A_sizes_mipi_clock_list[mode]);
 		}
+		cis->mipi_clock_index_cur = cis->mipi_clock_index_new;
 	}
 
 	return ret;
@@ -128,12 +83,12 @@ static void sensor_3h1_cis_data_calculation(const struct sensor_pll_info_compact
 	u32 vt_pix_clk_hz = 0;
 	u32 frame_rate = 0, max_fps = 0, frame_valid_us = 0;
 
-	FIMC_BUG_VOID(!pll_info_compact);
+	BUG_ON(!pll_info_compact);
 
 	/* 1. get pclk value from pll info */
 	vt_pix_clk_hz = pll_info_compact->pclk;
 
-	dbg_sensor(1, "ext_clock(%d), mipi_datarate(%d), pclk(%d)\n",
+	dbg_sensor("ext_clock(%d), mipi_datarate(%d), pclk(%d)\n",
 			pll_info_compact->ext_clk, pll_info_compact->mipi_datarate, pll_info_compact->pclk);
 
 	/* 2. the time of processing one frame calculation (us) */
@@ -143,8 +98,7 @@ static void sensor_3h1_cis_data_calculation(const struct sensor_pll_info_compact
 
 	/* 3. FPS calculation */
 	frame_rate = vt_pix_clk_hz / (pll_info_compact->frame_length_lines * pll_info_compact->line_length_pck);
-	dbg_sensor(1, "frame_rate (%d) = vt_pix_clk_hz(%d) / "
-		KERN_CONT "(pll_info_compact->frame_length_lines(%d) * pll_info_compact->line_length_pck(%d))\n",
+	dbg_sensor("frame_rate (%d) = vt_pix_clk_hz(%d) / (pll_info_compact->frame_length_lines(%d) * pll_info_compact->line_length_pck(%d))\n",
 		frame_rate, vt_pix_clk_hz, pll_info_compact->frame_length_lines, pll_info_compact->line_length_pck);
 
 	/* calculate max fps */
@@ -163,22 +117,21 @@ static void sensor_3h1_cis_data_calculation(const struct sensor_pll_info_compact
 	frame_valid_us = sensor_cis_do_div64((u64)cis_data->cur_height * (u64)cis_data->line_length_pck * (u64)(1000 * 1000), cis_data->pclk);
 	cis_data->frame_valid_us_time = (int)frame_valid_us;
 
-	dbg_sensor(1, "%s\n", __func__);
-	dbg_sensor(1, "Sensor size(%d x %d) setting: SUCCESS!\n",
+	dbg_sensor("%s\n", __func__);
+	dbg_sensor("Sensor size(%d x %d) setting: SUCCESS!\n",
 					cis_data->cur_width, cis_data->cur_height);
-	dbg_sensor(1, "Frame Valid(us): %d\n", frame_valid_us);
-	dbg_sensor(1, "rolling_shutter_skew: %lld\n", cis_data->rolling_shutter_skew);
+	dbg_sensor("Frame Valid(us): %d\n", frame_valid_us);
+	dbg_sensor("rolling_shutter_skew: %lld\n", cis_data->rolling_shutter_skew);
 
-	dbg_sensor(1, "Fps: %d, max fps(%d)\n", frame_rate, cis_data->max_fps);
-	dbg_sensor(1, "min_frame_time(%d us)\n", cis_data->min_frame_us_time);
-	dbg_sensor(1, "Pixel rate(Mbps): %d\n", cis_data->pclk / 1000000);
+	dbg_sensor("Fps: %d, max fps(%d)\n", frame_rate, cis_data->max_fps);
+	dbg_sensor("min_frame_time(%d us)\n", cis_data->min_frame_us_time);
+	dbg_sensor("Pixel rate(Mbps): %d\n", cis_data->pclk / 1000000);
 
 	/* Frame period calculation */
 	cis_data->frame_time = (cis_data->line_readOut_time * cis_data->cur_height / 1000);
 	cis_data->rolling_shutter_skew = (cis_data->cur_height - 1) * cis_data->line_readOut_time;
 
-	dbg_sensor(1, "[%s] frame_time(%d), rolling_shutter_skew(%lld)\n", __func__,
-		cis_data->frame_time, cis_data->rolling_shutter_skew);
+	dbg_sensor("[%s] frame_time(%d), rolling_shutter_skew(%lld)\n", __func__, cis_data->frame_time, cis_data->rolling_shutter_skew);
 
 	/* Constant values */
 	cis_data->min_fine_integration_time = SENSOR_3H1_FINE_INTEGRATION_TIME_MIN;
@@ -192,7 +145,7 @@ static int sensor_3h1_wait_stream_off_status(cis_shared_data *cis_data)
 	int ret = 0;
 	u32 timeout = 0;
 
-	FIMC_BUG(!cis_data);
+	BUG_ON(!cis_data);
 
 #define STREAM_OFF_WAIT_TIME 250
 	while (timeout < STREAM_OFF_WAIT_TIME) {
@@ -210,45 +163,6 @@ static int sensor_3h1_wait_stream_off_status(cis_shared_data *cis_data)
 	return ret;
 }
 
-int sensor_3h1_cis_check_rev(struct v4l2_subdev *subdev)
-{
-	int ret = 0;
-	u8 rev = 0;
-	struct i2c_client *client;
-	struct fimc_is_cis *cis = NULL;
-
-	WARN_ON(!subdev);
-
-	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
-	WARN_ON(!cis);
-	WARN_ON(!cis->cis_data);
-
-	client = cis->client;
-	if (unlikely(!client)) {
-		err("client is NULL");
-		ret = -EINVAL;
-		return ret;
-	}
-
-	memset(cis->cis_data, 0, sizeof(cis_shared_data));
-	cis->rev_flag = false;
-
-	I2C_MUTEX_LOCK(cis->i2c_lock);
-
-	ret = fimc_is_sensor_read8(client, 0x0002, &rev);
-	if (ret < 0) {
-		cis->rev_flag = true;
-		ret = -EAGAIN;
-	} else {
-		cis->cis_data->cis_rev = rev;
-		pr_info("%s : Default version 3h1 sensor. Rev. 0x%X\n", __func__, rev);
-	}
-
-	I2C_MUTEX_UNLOCK(cis->i2c_lock);
-
-	return ret;
-}
-
 /* CIS OPS */
 int sensor_3h1_cis_init(struct v4l2_subdev *subdev)
 {
@@ -256,10 +170,14 @@ int sensor_3h1_cis_init(struct v4l2_subdev *subdev)
 	struct fimc_is_cis *cis;
 	u32 setfile_index = 0;
 	cis_setting_info setinfo;
+#ifdef USE_CAMERA_HW_BIG_DATA
+	struct cam_hw_param *hw_param = NULL;
+	struct fimc_is_device_sensor_peri *sensor_peri = NULL;
+#endif
 	setinfo.param = NULL;
 	setinfo.return_value = 0;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -268,42 +186,58 @@ int sensor_3h1_cis_init(struct v4l2_subdev *subdev)
 		goto p_err;
 	}
 
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis->cis_data);
+	memset(cis->cis_data, 0, sizeof(cis_shared_data));
+	cis->rev_flag = false;
+
+	ret = sensor_cis_check_rev(cis);
+	if (ret < 0) {
+#ifdef USE_CAMERA_HW_BIG_DATA
+		sensor_peri = container_of(cis, struct fimc_is_device_sensor_peri, cis);
+		if (sensor_peri)
+			fimc_is_sec_get_hw_param(&hw_param, sensor_peri->module->position);
+		if (hw_param)
+			hw_param->i2c_sensor_err_cnt++;
+#endif
+		warn("sensor_3h1_check_rev is fail when cis init, ret(%d)", ret);
+		cis->rev_flag = true;
+		goto p_err;
+	}
 
 	cis->cis_data->product_name = cis->id;
 	cis->cis_data->cur_width = SENSOR_3H1_MAX_WIDTH;
 	cis->cis_data->cur_height = SENSOR_3H1_MAX_HEIGHT;
 	cis->cis_data->low_expo_start = 33000;
-	cis->need_mode_change = true;
+	cis->need_mode_change = false;
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
-	cis->mipi_clock_index_cur = CAM_MIPI_NOT_INITIALIZED;
-	cis->mipi_clock_index_new = CAM_MIPI_NOT_INITIALIZED;
+	cis->mipi_clock_index_cur = CAMERA_MIPI_CLOCK_DEFAULT;
+	cis->mipi_clock_index_new = CAMERA_MIPI_CLOCK_DEFAULT;
 #endif
 
 	sensor_3h1_cis_data_calculation(sensor_3h1_pllinfos[setfile_index], cis->cis_data);
 
 	setinfo.return_value = 0;
 	CALL_CISOPS(cis, cis_get_min_exposure_time, subdev, &setinfo.return_value);
-	dbg_sensor(1, "[%s] min exposure time : %d\n", __func__, setinfo.return_value);
+	dbg_sensor("[%s] min exposure time : %d\n", __func__, setinfo.return_value);
 	setinfo.return_value = 0;
 	CALL_CISOPS(cis, cis_get_max_exposure_time, subdev, &setinfo.return_value);
-	dbg_sensor(1, "[%s] max exposure time : %d\n", __func__, setinfo.return_value);
+	dbg_sensor("[%s] max exposure time : %d\n", __func__, setinfo.return_value);
 	setinfo.return_value = 0;
 	CALL_CISOPS(cis, cis_get_min_analog_gain, subdev, &setinfo.return_value);
-	dbg_sensor(1, "[%s] min again : %d\n", __func__, setinfo.return_value);
+	dbg_sensor("[%s] min again : %d\n", __func__, setinfo.return_value);
 	setinfo.return_value = 0;
 	CALL_CISOPS(cis, cis_get_max_analog_gain, subdev, &setinfo.return_value);
-	dbg_sensor(1, "[%s] max again : %d\n", __func__, setinfo.return_value);
+	dbg_sensor("[%s] max again : %d\n", __func__, setinfo.return_value);
 	setinfo.return_value = 0;
 	CALL_CISOPS(cis, cis_get_min_digital_gain, subdev, &setinfo.return_value);
-	dbg_sensor(1, "[%s] min dgain : %d\n", __func__, setinfo.return_value);
+	dbg_sensor("[%s] min dgain : %d\n", __func__, setinfo.return_value);
 	setinfo.return_value = 0;
 	CALL_CISOPS(cis, cis_get_max_digital_gain, subdev, &setinfo.return_value);
-	dbg_sensor(1, "[%s] max dgain : %d\n", __func__, setinfo.return_value);
+	dbg_sensor("[%s] max dgain : %d\n", __func__, setinfo.return_value);
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -318,7 +252,7 @@ int sensor_3h1_cis_log_status(struct v4l2_subdev *subdev)
 	u8 data8 = 0;
 	u16 data16 = 0;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -344,6 +278,8 @@ int sensor_3h1_cis_log_status(struct v4l2_subdev *subdev)
 	pr_err("[SEN:DUMP] frame_count(%x)\n", data8);
 	fimc_is_sensor_read8(client, 0x0100, &data8);
 	pr_err("[SEN:DUMP] mode_select(%x)\n", data8);
+
+	sensor_cis_dump_registers(subdev, sensor_3h1_setfiles[0], sensor_3h1_setfile_sizes[0]);
 	I2C_MUTEX_UNLOCK(cis->i2c_lock);
 
 	pr_err("[SEN:DUMP] *******************************\n");
@@ -359,12 +295,12 @@ static int sensor_3h1_cis_group_param_hold_func(struct v4l2_subdev *subdev, unsi
 	struct fimc_is_cis *cis = NULL;
 	struct i2c_client *client = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -404,12 +340,12 @@ int sensor_3h1_cis_group_param_hold(struct v4l2_subdev *subdev, bool hold)
 	int ret = 0;
 	struct fimc_is_cis *cis = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
 	ret = sensor_3h1_cis_group_param_hold_func(subdev, hold);
@@ -428,11 +364,11 @@ int sensor_3h1_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 	struct fimc_is_device_sensor *device;
 	struct fimc_is_device_sensor_peri *sensor_peri;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	device = (struct fimc_is_device_sensor *)v4l2_get_subdev_hostdata(subdev);
 	if (unlikely(!device)) {
@@ -446,13 +382,12 @@ int sensor_3h1_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 		return -EINVAL;
 	}
 
-	if (mode >= sensor_3h1_max_setfile_num) {
+	if (mode > sensor_3h1_max_setfile_num) {
 		err("invalid mode(%d)!!", mode);
 		ret = -EINVAL;
 		goto p_err;
 	}
 
-#if 0
 	/* If check_rev fail when cis_init, one more check_rev in mode_change */
 	if (cis->rev_flag == true) {
 		cis->rev_flag = false;
@@ -462,12 +397,11 @@ int sensor_3h1_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 			goto p_err;
 		}
 	}
-#endif
 
 	sensor_3h1_cis_data_calculation(sensor_3h1_pllinfos[mode], cis->cis_data);
 
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
-	cis->mipi_clock_index_cur = CAM_MIPI_NOT_INITIALIZED;
+	cis->mipi_clock_index_cur = CAMERA_MIPI_CLOCK_DEFAULT;
 #endif
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
@@ -484,7 +418,7 @@ int sensor_3h1_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 	if (!test_bit(FIMC_IS_SENSOR_PREPROCESSOR_AVAILABLE, &sensor_peri->peri_state))
 		fimc_is_sensor_write16(cis->client, 0x3092, 0x0000);
 
-	dbg_sensor(1, "[%s] mode changed(%d)\n", __func__, mode);
+	dbg_sensor("[%s] mode changed(%d)\n", __func__, mode);
 
 p_err:
 	I2C_MUTEX_UNLOCK(cis->i2c_lock);
@@ -504,12 +438,12 @@ int sensor_3h1_cis_set_size(struct v4l2_subdev *subdev, cis_shared_data *cis_dat
 	struct timeval st, end;
 	do_gettimeofday(&st);
 #endif
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!cis);
+	BUG_ON(!cis);
 
-	dbg_sensor(1, "[MOD:D:%d] %s\n", cis->id, __func__);
+	dbg_sensor("[MOD:D:%d] %s\n", cis->id, __func__);
 
 	if (unlikely(!cis_data)) {
 		err("cis data is NULL");
@@ -593,7 +527,7 @@ int sensor_3h1_cis_set_size(struct v4l2_subdev *subdev, cis_shared_data *cis_dat
 
 	/* If not use to binning, sensor image should set only crop */
 	if (!binning) {
-		dbg_sensor(1, "Sensor size set is not binning\n");
+		dbg_sensor("Sensor size set is not binning\n");
 		goto p_err;
 	}
 
@@ -637,12 +571,11 @@ int sensor_3h1_cis_set_size(struct v4l2_subdev *subdev, cis_shared_data *cis_dat
 
 	cis_data->frame_time = (cis_data->line_readOut_time * cis_data->cur_height / 1000);
 	cis->cis_data->rolling_shutter_skew = (cis->cis_data->cur_height - 1) * cis->cis_data->line_readOut_time;
-	dbg_sensor(1, "[%s] frame_time(%d), rolling_shutter_skew(%lld)\n", __func__,
-		cis->cis_data->frame_time, cis->cis_data->rolling_shutter_skew);
+	dbg_sensor("[%s] frame_time(%d), rolling_shutter_skew(%lld)\n", __func__, cis->cis_data->frame_time, cis->cis_data->rolling_shutter_skew);
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec) * 1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec) * 1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -655,7 +588,6 @@ int sensor_3h1_cis_stream_on(struct v4l2_subdev *subdev)
 	int ret = 0;
 	struct fimc_is_cis *cis;
 	struct i2c_client *client;
-	struct fimc_is_device_sensor *device;
 	cis_shared_data *cis_data;
 
 #ifdef DEBUG_SENSOR_TIME
@@ -663,12 +595,12 @@ int sensor_3h1_cis_stream_on(struct v4l2_subdev *subdev)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -677,31 +609,22 @@ int sensor_3h1_cis_stream_on(struct v4l2_subdev *subdev)
 		goto p_err;
 	}
 
-	device = (struct fimc_is_device_sensor *)v4l2_get_subdev_hostdata(subdev);
-	if (unlikely(!device)) {
-		err("device sensor is null");
-		return -EINVAL;
-	}
-
 	cis_data = cis->cis_data;
 
-	dbg_sensor(1, "[MOD:D:%d] %s\n", cis->id, __func__);
+	dbg_sensor("[MOD:D:%d] %s\n", cis->id, __func__);
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
 	sensor_3h1_cis_set_mipi_clock(subdev);
 #endif
-	ret = sensor_3h1_cis_group_param_hold_func(subdev, 0x00);
-	if (ret < 0)
-		err("group_param_hold_func failed at stream on");
-
+	sensor_3h1_cis_group_param_hold_func(subdev, 0x00);
 	msleep(8);
 	/* Sensor stream on */
 	fimc_is_sensor_write16(client, 0x6028, 0x4000);
 	fimc_is_sensor_write8(client, 0x0100, 0x01);
 
 	/* WDR */
-	if (sensor_3h1_cis_is_wdr_mode_on(cis_data))
+	if (cis_data->companion_data.wdr_mode != COMPANION_WDR_OFF)
 		fimc_is_sensor_write8(client, 0x0216, 0x01);
 	else
 		fimc_is_sensor_write8(client, 0x0216, 0x00);
@@ -710,7 +633,7 @@ int sensor_3h1_cis_stream_on(struct v4l2_subdev *subdev)
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -730,12 +653,12 @@ int sensor_3h1_cis_stream_off(struct v4l2_subdev *subdev)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -746,12 +669,10 @@ int sensor_3h1_cis_stream_off(struct v4l2_subdev *subdev)
 
 	cis_data = cis->cis_data;
 
-	dbg_sensor(1, "[MOD:D:%d] %s\n", cis->id, __func__);
+	dbg_sensor("[MOD:D:%d] %s\n", cis->id, __func__);
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
-	ret = sensor_3h1_cis_group_param_hold_func(subdev, 0x00);
-	if (ret < 0)
-		err("group_param_hold_func failed at stream off");
+	sensor_3h1_cis_group_param_hold_func(subdev, 0x00);
 
 	/* Sensor stream off */
 	fimc_is_sensor_write16(client, 0x6028, 0x4000);
@@ -761,7 +682,7 @@ int sensor_3h1_cis_stream_off(struct v4l2_subdev *subdev)
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -788,13 +709,13 @@ int sensor_3h1_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_param
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!target_exposure);
+	BUG_ON(!subdev);
+	BUG_ON(!target_exposure);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -812,45 +733,45 @@ int sensor_3h1_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_param
 
 	cis_data = cis->cis_data;
 
-	dbg_sensor(1, "[MOD:D:%d] %s, vsync_cnt(%d), target long(%d), short(%d)\n", cis->id, __func__,
+	dbg_sensor("[MOD:D:%d] %s, vsync_cnt(%d), target long(%d), short(%d)\n", cis->id, __func__,
 			cis_data->sen_vsync_count, target_exposure->long_val, target_exposure->short_val);
 
 	vt_pic_clk_freq_mhz = cis_data->pclk / (1000 * 1000);
 	line_length_pck = cis_data->line_length_pck;
 	min_fine_int = cis_data->min_fine_integration_time;
 
-	dbg_sensor(1, "[MOD:D:%d] %s, vt_pic_clk_freq_mhz (%d), line_length_pck(%d), min_fine_int (%d)\n",
-		cis->id, __func__, vt_pic_clk_freq_mhz, line_length_pck, min_fine_int);
+	dbg_sensor("[MOD:D:%d] %s, vt_pic_clk_freq_mhz (%d), line_length_pck(%d), min_fine_int (%d)\n", cis->id, __func__,
+			vt_pic_clk_freq_mhz, line_length_pck, min_fine_int);
 
 	long_coarse_int = ((target_exposure->long_val * vt_pic_clk_freq_mhz) - min_fine_int) / line_length_pck;
 	short_coarse_int = ((target_exposure->short_val * vt_pic_clk_freq_mhz) - min_fine_int) / line_length_pck;
 
 	if (long_coarse_int > cis_data->max_coarse_integration_time) {
 		long_coarse_int = cis_data->max_coarse_integration_time;
-		dbg_sensor(1, "[MOD:D:%d] %s, vsync_cnt(%d), long coarse(%d) max\n", cis->id, __func__,
+		dbg_sensor("[MOD:D:%d] %s, vsync_cnt(%d), long coarse(%d) max\n", cis->id, __func__,
 			cis_data->sen_vsync_count, long_coarse_int);
 	}
 
 	if (short_coarse_int > cis_data->max_coarse_integration_time) {
 		short_coarse_int = cis_data->max_coarse_integration_time;
-		dbg_sensor(1, "[MOD:D:%d] %s, vsync_cnt(%d), short coarse(%d) max\n", cis->id, __func__,
+		dbg_sensor("[MOD:D:%d] %s, vsync_cnt(%d), short coarse(%d) max\n", cis->id, __func__,
 			cis_data->sen_vsync_count, short_coarse_int);
 	}
 
 	if (long_coarse_int < cis_data->min_coarse_integration_time) {
 		long_coarse_int = cis_data->min_coarse_integration_time;
-		dbg_sensor(1, "[MOD:D:%d] %s, vsync_cnt(%d), long coarse(%d) min\n", cis->id, __func__,
+		dbg_sensor("[MOD:D:%d] %s, vsync_cnt(%d), long coarse(%d) min\n", cis->id, __func__,
 			cis_data->sen_vsync_count, long_coarse_int);
 	}
 
 	if (short_coarse_int < cis_data->min_coarse_integration_time) {
 		short_coarse_int = cis_data->min_coarse_integration_time;
-		dbg_sensor(1, "[MOD:D:%d] %s, vsync_cnt(%d), short coarse(%d) min\n", cis->id, __func__,
+		dbg_sensor("[MOD:D:%d] %s, vsync_cnt(%d), short coarse(%d) min\n", cis->id, __func__,
 			cis_data->sen_vsync_count, short_coarse_int);
 	}
 
-	dbg_sensor(1, "[MOD:D:%d] %s, frame_length_lines(%#x), long_coarse_int %#x, short_coarse_int %#x\n",
-		cis->id, __func__, cis_data->frame_length_lines, long_coarse_int, short_coarse_int);
+	dbg_sensor("[MOD:D:%d] %s, frame_length_lines(%#x), long_coarse_int %#x, short_coarse_int %#x\n", cis->id, __func__,
+			cis_data->frame_length_lines, long_coarse_int, short_coarse_int);
 
 	cis_data->cur_long_exposure_coarse = long_coarse_int;
 	cis_data->cur_short_exposure_coarse = short_coarse_int;
@@ -863,7 +784,7 @@ int sensor_3h1_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_param
 	}
 
 	/* WDR mode */
-	if (sensor_3h1_cis_is_wdr_mode_on(cis_data)) {
+	if (fimc_is_vender_wdr_mode_on(cis_data)) {
 		fimc_is_sensor_write16(client, 0x0216, 0x0100);
 	} else {
 		fimc_is_sensor_write16(client, 0x0216, 0x0000);
@@ -875,7 +796,7 @@ int sensor_3h1_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_param
 		goto p_err;
 
 	/* Long exposure */
-	if (sensor_3h1_cis_is_wdr_mode_on(cis_data)) {
+	if (fimc_is_vender_wdr_mode_on(cis_data)) {
 		ret = fimc_is_sensor_write16(client, 0x021E, long_coarse_int);
 		if (ret < 0)
 			goto p_err;
@@ -883,7 +804,7 @@ int sensor_3h1_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_param
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -913,13 +834,13 @@ int sensor_3h1_cis_get_min_exposure_time(struct v4l2_subdev *subdev, u32 *min_ex
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!min_expo);
+	BUG_ON(!subdev);
+	BUG_ON(!min_expo);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -935,11 +856,11 @@ int sensor_3h1_cis_get_min_exposure_time(struct v4l2_subdev *subdev, u32 *min_ex
 	min_integration_time = ((line_length_pck * min_coarse) + min_fine) / vt_pic_clk_freq_mhz;
 	*min_expo = min_integration_time;
 
-	dbg_sensor(1, "[%s] min integration time %d\n", __func__, min_integration_time);
+	dbg_sensor("[%s] min integration time %d\n", __func__, min_integration_time);
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -965,13 +886,13 @@ int sensor_3h1_cis_get_max_exposure_time(struct v4l2_subdev *subdev, u32 *max_ex
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!max_expo);
+	BUG_ON(!subdev);
+	BUG_ON(!max_expo);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -996,12 +917,12 @@ int sensor_3h1_cis_get_max_exposure_time(struct v4l2_subdev *subdev, u32 *max_ex
 	cis_data->max_margin_fine_integration_time = max_fine_margin;
 	cis_data->max_coarse_integration_time = max_coarse;
 
-	dbg_sensor(1, "[%s] max integration time %d, max margin fine integration %d, max coarse integration %d\n",
+	dbg_sensor("[%s] max integration time %d, max margin fine integration %d, max coarse integration %d\n",
 			__func__, max_integration_time, cis_data->max_margin_fine_integration_time, cis_data->max_coarse_integration_time);
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -1026,13 +947,13 @@ int sensor_3h1_cis_adjust_frame_duration(struct v4l2_subdev *subdev,
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!target_duration);
+	BUG_ON(!subdev);
+	BUG_ON(!target_duration);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -1043,16 +964,16 @@ int sensor_3h1_cis_adjust_frame_duration(struct v4l2_subdev *subdev,
 
 	frame_duration = (frame_length_lines * line_length_pck) / vt_pic_clk_freq_mhz;
 
-	dbg_sensor(1, "[%s] input exp(%d), adj duration, frame duraion(%d), min_frame_us(%d)\n",
+	dbg_sensor("[%s] input exp(%d), adj duration, frame duraion(%d), min_frame_us(%d)\n",
 			__func__, input_exposure_time, frame_duration, cis_data->min_frame_us_time);
-	dbg_sensor(1, "[%s] adj duration, frame duraion(%d), min_frame_us(%d)\n",
+	dbg_sensor("[%s] adj duration, frame duraion(%d), min_frame_us(%d)\n",
 			__func__, frame_duration, cis_data->min_frame_us_time);
 
 	*target_duration = MAX(frame_duration, cis_data->min_frame_us_time);
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 	return ret;
@@ -1075,12 +996,12 @@ int sensor_3h1_cis_set_frame_duration(struct v4l2_subdev *subdev, u32 frame_dura
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1092,7 +1013,7 @@ int sensor_3h1_cis_set_frame_duration(struct v4l2_subdev *subdev, u32 frame_dura
 	cis_data = cis->cis_data;
 
 	if (frame_duration < cis_data->min_frame_us_time) {
-		dbg_sensor(1, "frame duration is less than min(%d)\n", frame_duration);
+		dbg_sensor("frame duration is less than min(%d)\n", frame_duration);
 		frame_duration = cis_data->min_frame_us_time;
 	}
 
@@ -1101,8 +1022,8 @@ int sensor_3h1_cis_set_frame_duration(struct v4l2_subdev *subdev, u32 frame_dura
 
 	frame_length_lines = (u16)((vt_pic_clk_freq_mhz * frame_duration) / line_length_pck);
 
-	dbg_sensor(1, "[MOD:D:%d] %s, vt_pic_clk_freq_mhz(%#x) frame_duration = %d us,"
-			KERN_CONT "(line_length_pck%#x), frame_length_lines(%#x)\n",
+	dbg_sensor("[MOD:D:%d] %s, vt_pic_clk_freq_mhz(%#x) frame_duration = %d us,\
+			(line_length_pck%#x), frame_length_lines(%#x)\n",
 			cis->id, __func__, vt_pic_clk_freq_mhz, frame_duration,
 			line_length_pck, frame_length_lines);
 
@@ -1123,7 +1044,7 @@ int sensor_3h1_cis_set_frame_duration(struct v4l2_subdev *subdev, u32 frame_dura
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -1150,12 +1071,12 @@ int sensor_3h1_cis_set_frame_rate(struct v4l2_subdev *subdev, u32 min_fps)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -1173,7 +1094,7 @@ int sensor_3h1_cis_set_frame_rate(struct v4l2_subdev *subdev, u32 min_fps)
 
 	frame_duration = (1 * 1000 * 1000) / min_fps;
 
-	dbg_sensor(1, "[MOD:D:%d] %s, set FPS(%d), frame duration(%d)\n",
+	dbg_sensor("[MOD:D:%d] %s, set FPS(%d), frame duration(%d)\n",
 			cis->id, __func__, min_fps, frame_duration);
 
 	ret = sensor_3h1_cis_set_frame_duration(subdev, frame_duration);
@@ -1187,7 +1108,7 @@ int sensor_3h1_cis_set_frame_rate(struct v4l2_subdev *subdev, u32 min_fps)
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -1209,13 +1130,13 @@ int sensor_3h1_cis_adjust_analog_gain(struct v4l2_subdev *subdev, u32 input_agai
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!target_permile);
+	BUG_ON(!subdev);
+	BUG_ON(!target_permile);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -1229,7 +1150,7 @@ int sensor_3h1_cis_adjust_analog_gain(struct v4l2_subdev *subdev, u32 input_agai
 
 	again_permile = sensor_cis_calc_again_permile(again_code);
 
-	dbg_sensor(1, "[%s] min again(%d), max(%d), input_again(%d), code(%d), permile(%d)\n", __func__,
+	dbg_sensor("[%s] min again(%d), max(%d), input_again(%d), code(%d), permile(%d)\n", __func__,
 			cis_data->max_analog_gain[0],
 			cis_data->min_analog_gain[0],
 			input_again,
@@ -1257,13 +1178,13 @@ int sensor_3h1_cis_set_analog_gain(struct v4l2_subdev *subdev, struct ae_param *
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!again);
+	BUG_ON(!subdev);
+	BUG_ON(!again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1278,29 +1199,25 @@ int sensor_3h1_cis_set_analog_gain(struct v4l2_subdev *subdev, struct ae_param *
 	long_gain = (u16)sensor_cis_calc_again_code(again->long_val);
 
 	if (long_gain < cis->cis_data->min_analog_gain[0]) {
-		info("[%s] not proper long_gain value, reset to min_analog_gain\n", __func__);
 		long_gain = cis->cis_data->min_analog_gain[0];
 	}
 	if (long_gain > cis->cis_data->max_analog_gain[0]) {
-		info("[%s] not proper long_gain value, reset to max_analog_gain\n", __func__);
 		long_gain = cis->cis_data->max_analog_gain[0];
 	}
 
 	if (short_gain < cis->cis_data->min_analog_gain[0]) {
-		info("[%s] not proper short_gain value, reset to min_analog_gain\n", __func__);
 		short_gain = cis->cis_data->min_analog_gain[0];
 	}
 	if (short_gain > cis->cis_data->max_analog_gain[0]) {
-		info("[%s] not proper short_gain value, reset to max_analog_gain\n", __func__);
 		short_gain = cis->cis_data->max_analog_gain[0];
 	}
 
-	dbg_sensor(1, "[MOD:D:%d] %s(vsync cnt = %d),"
-		KERN_CONT "input short gain = %d us, input long gain = %d us,"
-		KERN_CONT "analog short gain(%#x), analog short gain(%#x)\n",
-		cis->id, __func__, cis->cis_data->sen_vsync_count,
-		again->short_val, again->long_val,
-		short_gain, long_gain);
+	dbg_sensor("[MOD:D:%d] %s(vsync cnt = %d), \
+			input short gain = %d us, input long gain = %d us, \
+			analog short gain(%#x), analog short gain(%#x)\n",
+			cis->id, __func__, cis->cis_data->sen_vsync_count,
+			again->short_val, again->long_val,
+			short_gain, long_gain);
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
 	hold = sensor_3h1_cis_group_param_hold_func(subdev, 0x01);
@@ -1327,7 +1244,7 @@ int sensor_3h1_cis_set_analog_gain(struct v4l2_subdev *subdev, struct ae_param *
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -1355,12 +1272,12 @@ int sensor_3h1_cis_get_analog_gain(struct v4l2_subdev *subdev, u32 *again)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!again);
+	BUG_ON(!subdev);
+	BUG_ON(!again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
+	BUG_ON(!cis);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1382,12 +1299,12 @@ int sensor_3h1_cis_get_analog_gain(struct v4l2_subdev *subdev, u32 *again)
 
 	*again = sensor_cis_calc_again_permile(analog_gain);
 
-	dbg_sensor(1, "[MOD:D:%d] %s, cur_again = %d us, analog_gain(%#x)\n",
+	dbg_sensor("[MOD:D:%d] %s, cur_again = %d us, analog_gain(%#x)\n",
 			cis->id, __func__, *again, analog_gain);
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -1415,13 +1332,13 @@ int sensor_3h1_cis_get_min_analog_gain(struct v4l2_subdev *subdev, u32 *min_agai
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!min_again);
+	BUG_ON(!subdev);
+	BUG_ON(!min_again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1442,12 +1359,11 @@ int sensor_3h1_cis_get_min_analog_gain(struct v4l2_subdev *subdev, u32 *min_agai
 
 	*min_again = cis_data->min_analog_gain[1];
 
-	dbg_sensor(1, "[%s] code %d, permile %d\n", __func__,
-		cis_data->min_analog_gain[0], cis_data->min_analog_gain[1]);
+	dbg_sensor("[%s] code %d, permile %d\n", __func__, cis_data->min_analog_gain[0], cis_data->min_analog_gain[1]);
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -1468,13 +1384,13 @@ int sensor_3h1_cis_get_max_analog_gain(struct v4l2_subdev *subdev, u32 *max_agai
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!max_again);
+	BUG_ON(!subdev);
+	BUG_ON(!max_again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1495,12 +1411,11 @@ int sensor_3h1_cis_get_max_analog_gain(struct v4l2_subdev *subdev, u32 *max_agai
 
 	*max_again = cis_data->max_analog_gain[1];
 
-	dbg_sensor(1, "[%s] code %d, permile %d\n", __func__,
-		cis_data->max_analog_gain[0], cis_data->max_analog_gain[1]);
+	dbg_sensor("[%s] code %d, permile %d\n", __func__, cis_data->max_analog_gain[0], cis_data->max_analog_gain[1]);
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -1523,13 +1438,13 @@ int sensor_3h1_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_param 
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1544,24 +1459,20 @@ int sensor_3h1_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_param 
 	short_gain = (u16)sensor_cis_calc_dgain_code(dgain->short_val);
 
 	if (long_gain < cis->cis_data->min_digital_gain[0]) {
-		info("[%s] not proper long_gain value, reset to min_digital_gain\n", __func__);
 		long_gain = cis->cis_data->min_digital_gain[0];
 	}
 	if (long_gain > cis->cis_data->max_digital_gain[0]) {
-		info("[%s] not proper long_gain value, reset to max_digital_gain\n", __func__);
 		long_gain = cis->cis_data->max_digital_gain[0];
 	}
 
 	if (short_gain < cis->cis_data->min_digital_gain[0]) {
-		info("[%s] not proper short_gain value, reset to min_digital_gain\n", __func__);
 		short_gain = cis->cis_data->min_digital_gain[0];
 	}
 	if (short_gain > cis->cis_data->max_digital_gain[0]) {
-		info("[%s] not proper short_gain value, reset to max_digital_gain\n", __func__);
 		short_gain = cis->cis_data->max_digital_gain[0];
 	}
 
-	dbg_sensor(1, "[MOD:D:%d] %s, input_dgain = %d/%d us, long_gain(%#x), short_gain(%#x)\n",
+	dbg_sensor("[MOD:D:%d] %s, input_dgain = %d/%d us, long_gain(%#x), short_gain(%#x)\n",
 			cis->id, __func__, dgain->long_val, dgain->short_val, long_gain, short_gain);
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
@@ -1572,7 +1483,7 @@ int sensor_3h1_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_param 
 	}
 
 	/* DGain WDR Mode */
-	if (sensor_3h1_cis_is_wdr_mode_on(cis_data)) {
+	if (fimc_is_vender_wdr_mode_on(cis_data)) {
 		fimc_is_sensor_write16(client, 0x31E8, 0x0100);
 	} else {
 		fimc_is_sensor_write16(client, 0x31E8, 0x0000);
@@ -1584,14 +1495,14 @@ int sensor_3h1_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_param 
 		goto p_err;
 
 	/* Long digital gain */
-	if (sensor_3h1_cis_is_wdr_mode_on(cis_data)) {
+	if (fimc_is_vender_wdr_mode_on(cis_data)) {
 		ret = fimc_is_sensor_write16(client, 0x0C82, long_gain);
 		if (ret < 0)
 			goto p_err;
 	}
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -1619,12 +1530,12 @@ int sensor_3h1_cis_get_digital_gain(struct v4l2_subdev *subdev, u32 *dgain)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
+	BUG_ON(!cis);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1646,12 +1557,12 @@ int sensor_3h1_cis_get_digital_gain(struct v4l2_subdev *subdev, u32 *dgain)
 
 	*dgain = sensor_cis_calc_dgain_permile(digital_gain);
 
-	dbg_sensor(1, "[MOD:D:%d] %s, cur_dgain = %d us, digital_gain(%#x)\n",
+	dbg_sensor("[MOD:D:%d] %s, cur_dgain = %d us, digital_gain(%#x)\n",
 			cis->id, __func__, *dgain, digital_gain);
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -1679,13 +1590,13 @@ int sensor_3h1_cis_get_min_digital_gain(struct v4l2_subdev *subdev, u32 *min_dga
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!min_dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!min_dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1706,12 +1617,11 @@ int sensor_3h1_cis_get_min_digital_gain(struct v4l2_subdev *subdev, u32 *min_dga
 
 	*min_dgain = cis_data->min_digital_gain[1];
 
-	dbg_sensor(1, "[%s] code %d, permile %d\n", __func__,
-		cis_data->min_digital_gain[0], cis_data->min_digital_gain[1]);
+	dbg_sensor("[%s] code %d, permile %d\n", __func__, cis_data->min_digital_gain[0], cis_data->min_digital_gain[1]);
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -1732,13 +1642,13 @@ int sensor_3h1_cis_get_max_digital_gain(struct v4l2_subdev *subdev, u32 *max_dga
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!max_dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!max_dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1759,12 +1669,11 @@ int sensor_3h1_cis_get_max_digital_gain(struct v4l2_subdev *subdev, u32 *max_dga
 
 	*max_dgain = cis_data->max_digital_gain[1];
 
-	dbg_sensor(1, "[%s] code %d, permile %d\n", __func__,
-		cis_data->max_digital_gain[0], cis_data->max_digital_gain[1]);
+	dbg_sensor("[%s] code %d, permile %d\n", __func__, cis_data->max_digital_gain[0], cis_data->max_digital_gain[1]);
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
-	dbg_sensor(1, "[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
+	dbg_sensor("[%s] time %lu us\n", __func__, (end.tv_sec - st.tv_sec)*1000000 + (end.tv_usec - st.tv_usec));
 #endif
 
 p_err:
@@ -1772,12 +1681,12 @@ p_err:
 }
 
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
-static int sensor_3h1_cis_update_mipi_info(struct v4l2_subdev *subdev)
+int sensor_3h1_cis_update_settle_info(struct v4l2_subdev *subdev)
 {
+	int i = 0, mipi_index = 0;
 	struct fimc_is_cis *cis = NULL;
 	struct fimc_is_device_sensor *device;
-	const struct cam_mipi_sensor_mode *cur_mipi_sensor_mode;
-	int found = -1;
+	struct fimc_is_module_enum *module;
 
 	device = (struct fimc_is_device_sensor *)v4l2_get_subdev_hostdata(subdev);
 	if (device == NULL) {
@@ -1791,42 +1700,32 @@ static int sensor_3h1_cis_update_mipi_info(struct v4l2_subdev *subdev)
 		return -1;
 	}
 
-	if (device->cfg->mode >= sensor_3h1_mipi_sensor_mode_size) {
-		err("sensor mode is out of bound");
+	mipi_index = cis->mipi_clock_index_new;
+	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(device->subdev_module);
+	if (module == NULL) {
+		err("module is NULL");
 		return -1;
 	}
 
-	cur_mipi_sensor_mode = &sensor_3h1_mipi_sensor_mode[device->cfg->mode];
-
-	if (cur_mipi_sensor_mode->mipi_channel_size == 0 ||
-		cur_mipi_sensor_mode->mipi_channel == NULL) {
-		dbg_sensor(1, "skip select mipi channel\n");
-		return -1;
-	}
-
-	found = fimc_is_vendor_select_mipi_by_rf_channel(cur_mipi_sensor_mode->mipi_channel,
-				cur_mipi_sensor_mode->mipi_channel_size);
-	if (found != -1) {
-		if (found < cur_mipi_sensor_mode->sensor_setting_size) {
-			device->cfg->mipi_speed = cur_mipi_sensor_mode->sensor_setting[found].mipi_rate;
-			cis->mipi_clock_index_new = found;
-			info("%s - update mipi rate : %d\n", __func__, device->cfg->mipi_speed);
-		} else {
-			err("sensor setting size is out of bound");
+	for (i = 0; i < module->cfgs; i++) {
+		if (sensor_3h1_settle_mipi_clock_list[i] != NULL) {
+			module->cfg[i].settle = sensor_3h1_settle_mipi_clock_list[i][mipi_index];
 		}
 	}
 
 	return 0;
 }
 
-static int sensor_3h1_cis_get_mipi_clock_string(struct v4l2_subdev *subdev, char *cur_mipi_str)
+int sensor_3h1_cis_update_mipi_index_info(struct v4l2_subdev *subdev, u32 rat, u32 channel)
 {
 	struct fimc_is_cis *cis = NULL;
 	struct fimc_is_device_sensor *device;
-	const struct cam_mipi_sensor_mode *cur_mipi_sensor_mode;
-	int mode = 0;
-
-	cur_mipi_str[0] = '\0';
+	int j = 0, i = 0;
+	int index = (channel % 10000) / 1000;
+	const struct earfcn_mipi_info *info;
+	const struct earfcn_mipi_info **rat_array;
+	const struct earfcn_mipi_info_sub *sub_info;
+	bool find = false;
 
 	device = (struct fimc_is_device_sensor *)v4l2_get_subdev_hostdata(subdev);
 	if (device == NULL) {
@@ -1840,32 +1739,45 @@ static int sensor_3h1_cis_get_mipi_clock_string(struct v4l2_subdev *subdev, char
 		return -1;
 	}
 
-	if (cis->cis_data->stream_on) {
-		mode = cis->cis_data->sens_config_index_cur;
-
-		if (mode >= sensor_3h1_mipi_sensor_mode_size) {
-			err("sensor mode is out of bound");
-			return -1;
-		}
-
-		cur_mipi_sensor_mode = &sensor_3h1_mipi_sensor_mode[mode];
-
-		if (cur_mipi_sensor_mode->sensor_setting_size == 0 ||
-			cur_mipi_sensor_mode->sensor_setting == NULL) {
-			err("sensor_setting is not available");
-			return -1;
-		}
-
-		if (cis->mipi_clock_index_new < 0 ||
-			cur_mipi_sensor_mode->sensor_setting[cis->mipi_clock_index_new].str_mipi_clk == NULL) {
-			err("mipi_clock_index_new is not available");
-			return -1;
-		}
-
-		sprintf(cur_mipi_str, "%s",
-			cur_mipi_sensor_mode->sensor_setting[cis->mipi_clock_index_new].str_mipi_clk);
+	if (rat < CAMERA_RAT_BASE || rat >= CAMERA_RAT_MAX) {
+		err("RAT is out of range [%d]", rat);
+		return -1;
 	}
 
+	rat -= CAMERA_RAT_BASE;
+	rat_array = sensor_3h1_RAT[rat];
+	if (rat_array == NULL) {
+		err("mipi variation not support [%d] NULL", rat);
+		return -1;
+	}
+
+	for (j = 0; j < sensor_3h1_RAT_sizes[rat]; j++) {
+		info = rat_array[j];
+		if (info->min <= channel && channel < info->max) {
+			sub_info = info->info_sub[index];
+			for (i = 0; i < MAX_SUB_NUM_COL; i++) {
+				if (sub_info[i].sub_max == -1)
+					break;
+
+				if (sub_info[i].sub_max < channel)
+					continue;
+
+				if (sub_info[i].sub_min <= channel) {
+					cis->mipi_clock_index_new = sub_info[i].idx;
+					find = true;
+					info("find mipi index %d %d %d \n", sub_info[i].sub_min, sub_info[i].sub_max,
+								cis->mipi_clock_index_new);
+				}
+				break;
+			}
+			break;
+		}
+	}
+
+	if (find == false) {
+		err("find mipi index faild %d", channel);
+		cis->mipi_clock_index_new = CAMERA_MIPI_CLOCK_DEFAULT;
+	}
 	return 0;
 }
 #endif
@@ -1895,15 +1807,16 @@ static struct fimc_is_cis_ops cis_ops = {
 	.cis_get_max_digital_gain = sensor_3h1_cis_get_max_digital_gain,
 	.cis_compensate_gain_for_extremely_br = sensor_cis_compensate_gain_for_extremely_br,
 	.cis_wait_streamoff = sensor_cis_wait_streamoff,
-	.cis_wait_streamon = sensor_cis_wait_streamon,
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
-	.cis_update_mipi_info = sensor_3h1_cis_update_mipi_info,
-	.cis_get_mipi_clock_string = sensor_3h1_cis_get_mipi_clock_string,
+	.cis_update_settle_info = sensor_3h1_cis_update_settle_info,
+	.cis_update_mipi_index_info = sensor_3h1_cis_update_mipi_index_info,
 #endif
-	.cis_check_rev = sensor_3h1_cis_check_rev,
+#ifdef USE_FACE_UNLOCK_AE_AWB_INIT
+        .cis_set_initial_exposure = sensor_cis_set_initial_exposure,
+#endif
 };
 
-static int cis_3h1_probe(struct i2c_client *client,
+int cis_3h1_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -1919,12 +1832,10 @@ static int cis_3h1_probe(struct i2c_client *client,
 	struct device *dev;
 	struct device_node *dnode;
 	int i;
-#ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
-	int index;
-#endif
 
-	FIMC_BUG(!client);
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!client);
+	if (!fimc_is_dev)
+		return -EPROBE_DEFER;
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -1941,7 +1852,7 @@ static int cis_3h1_probe(struct i2c_client *client,
 		goto p_err;
 	}
 
-	sensor_id_len /= (unsigned int)sizeof(*sensor_id_spec);
+	sensor_id_len /= sizeof(*sensor_id_spec);
 
 	probe_info("%s sensor_id_spec %d, sensor_id_len %d\n", __func__,
 			*sensor_id_spec, sensor_id_len);
@@ -1983,10 +1894,9 @@ static int cis_3h1_probe(struct i2c_client *client,
 		cis->client = client;
 		sensor_peri->module->client = cis->client;
 		cis->i2c_lock = NULL;
-		cis->ctrl_delay = N_PLUS_TWO_FRAME;
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
-		cis->mipi_clock_index_cur = CAM_MIPI_NOT_INITIALIZED;
-		cis->mipi_clock_index_new = CAM_MIPI_NOT_INITIALIZED;
+		cis->mipi_clock_index_cur = CAMERA_MIPI_CLOCK_DEFAULT;
+		cis->mipi_clock_index_new = CAMERA_MIPI_CLOCK_DEFAULT;
 #endif
 		cis->cis_data = kzalloc(sizeof(cis_shared_data), GFP_KERNEL);
 		if (!cis->cis_data) {
@@ -2000,10 +1910,12 @@ static int cis_3h1_probe(struct i2c_client *client,
 		cis->bayer_order = OTF_INPUT_ORDER_BAYER_GR_BG;
 
 		if (of_property_read_bool(dnode, "sensor_f_number")) {
-			if (of_property_read_u32(dnode, "sensor_f_number", &cis->aperture_num))
+			ret = of_property_read_u32(dnode, "sensor_f_number", &cis->aperture_num);
+			if (ret) {
 				warn("f-number read is fail(%d)",ret);
+			}
 		} else {
-			cis->aperture_num = F1_9;
+			cis->aperture_num = F2_2;
 		}
 
 		probe_info("%s f-number %d\n", __func__, cis->aperture_num);
@@ -2011,12 +1923,18 @@ static int cis_3h1_probe(struct i2c_client *client,
 		cis->use_dgain = true;
 		cis->hdr_ctrl_by_again = false;
 
+#ifdef USE_FACE_UNLOCK_AE_AWB_INIT
+                cis->use_initial_ae = of_property_read_bool(dnode, "use_initial_ae");
+                probe_info("%s use initial_ae(%d)\n", __func__, cis->use_initial_ae);
+#endif
+
 		v4l2_set_subdevdata(subdev_cis, cis);
 		v4l2_set_subdev_hostdata(subdev_cis, device);
 		snprintf(subdev_cis->name, V4L2_SUBDEV_NAME_SIZE, "cis-subdev.%d", cis->id);
 	}
 
-	if (of_property_read_string(dnode, "setfile", &setfile)) {
+	ret = of_property_read_string(dnode, "setfile", &setfile);
+	if (ret) {
 		err("setfile index read fail(%d), take default setfile!!", ret);
 		setfile = "default";
 	}
@@ -2027,14 +1945,7 @@ static int cis_3h1_probe(struct i2c_client *client,
 		sensor_3h1_setfiles = sensor_3h1_setfiles_A;
 		sensor_3h1_setfile_sizes = sensor_3h1_setfile_A_sizes;
 		sensor_3h1_pllinfos = sensor_3h1_pllinfos_A;
-		sensor_3h1_max_setfile_num = ARRAY_SIZE(sensor_3h1_setfiles_A);
-
-#ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
-		sensor_3h1_mipi_sensor_mode = sensor_3h1_setfile_A_mipi_sensor_mode;
-		sensor_3h1_mipi_sensor_mode_size = ARRAY_SIZE(sensor_3h1_setfile_A_mipi_sensor_mode);
-		sensor_3h1_verify_sensor_mode = sensor_3h1_setfile_A_verify_sensor_mode;
-		sensor_3h1_verify_sensor_mode_size = ARRAY_SIZE(sensor_3h1_setfile_A_verify_sensor_mode);
-#endif
+		sensor_3h1_max_setfile_num = sizeof(sensor_3h1_setfiles_A) / sizeof(sensor_3h1_setfiles_A[0]);
 	}
 #if 0
 	else if (strcmp(setfile, "setB") == 0) {
@@ -2042,7 +1953,7 @@ static int cis_3h1_probe(struct i2c_client *client,
 		sensor_3h1_setfiles = sensor_3h1_setfiles_B;
 		sensor_3h1_setfile_sizes = sensor_3h1_setfile_B_sizes;
 		sensor_3h1_pllinfos = sensor_3h1_pllinfos_B;
-		sensor_3h1_max_setfile_num = ARRAY_SIZE(sensor_3h1_setfiles_B);
+		sensor_3h1_max_setfile_num = sizeof(sensor_3h1_setfiles_B) / sizeof(sensor_3h1_setfiles_B[0]);
 	}
 #endif
 	else {
@@ -2050,66 +1961,42 @@ static int cis_3h1_probe(struct i2c_client *client,
 		sensor_3h1_setfiles = sensor_3h1_setfiles_A;
 		sensor_3h1_setfile_sizes = sensor_3h1_setfile_A_sizes;
 		sensor_3h1_pllinfos = sensor_3h1_pllinfos_A;
-		sensor_3h1_max_setfile_num = ARRAY_SIZE(sensor_3h1_setfiles_A);
-
-#ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
-		sensor_3h1_mipi_sensor_mode = sensor_3h1_setfile_A_mipi_sensor_mode;
-		sensor_3h1_mipi_sensor_mode_size = ARRAY_SIZE(sensor_3h1_setfile_A_mipi_sensor_mode);
-		sensor_3h1_verify_sensor_mode = sensor_3h1_setfile_A_verify_sensor_mode;
-		sensor_3h1_verify_sensor_mode_size = ARRAY_SIZE(sensor_3h1_setfile_A_verify_sensor_mode);
-#endif
+		sensor_3h1_max_setfile_num = sizeof(sensor_3h1_setfiles_A) / sizeof(sensor_3h1_setfiles_A[0]);
 	}
 
-#ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
-	for (i = 0; i < sensor_3h1_verify_sensor_mode_size; i++) {
-		index = sensor_3h1_verify_sensor_mode[i];
-
-		if (fimc_is_vendor_verify_mipi_channel(sensor_3h1_mipi_sensor_mode[index].mipi_channel,
-					sensor_3h1_mipi_sensor_mode[index].mipi_channel_size)) {
-			panic("wrong mipi channel");
-			break;
-		}
-	}
-#endif
 	probe_info("%s done\n", __func__);
 
 p_err:
 	return ret;
 }
 
-static const struct of_device_id sensor_cis_3h1_match[] = {
+static int cis_3h1_remove(struct i2c_client *client)
+{
+	int ret = 0;
+	return ret;
+}
+
+static const struct of_device_id exynos_fimc_is_cis_3h1_match[] = {
 	{
 		.compatible = "samsung,exynos5-fimc-is-cis-3h1",
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, sensor_cis_3h1_match);
+MODULE_DEVICE_TABLE(of, exynos_fimc_is_cis_3h1_match);
 
-static const struct i2c_device_id sensor_cis_3h1_idt[] = {
+static const struct i2c_device_id cis_3h1_idt[] = {
 	{ SENSOR_NAME, 0 },
 	{},
 };
 
-static struct i2c_driver sensor_cis_3h1_driver = {
-	.probe	= cis_3h1_probe,
+static struct i2c_driver cis_3h1_driver = {
 	.driver = {
 		.name	= SENSOR_NAME,
 		.owner	= THIS_MODULE,
-		.of_match_table = sensor_cis_3h1_match,
-		.suppress_bind_attrs = true,
+		.of_match_table = exynos_fimc_is_cis_3h1_match
 	},
-	.id_table = sensor_cis_3h1_idt
+	.probe	= cis_3h1_probe,
+	.remove	= cis_3h1_remove,
+	.id_table = cis_3h1_idt
 };
-
-static int __init sensor_cis_3h1_init(void)
-{
-	int ret;
-
-	ret = i2c_add_driver(&sensor_cis_3h1_driver);
-	if (ret)
-		err("failed to add %s driver: %d\n",
-			sensor_cis_3h1_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall_sync(sensor_cis_3h1_init);
+module_i2c_driver(cis_3h1_driver);

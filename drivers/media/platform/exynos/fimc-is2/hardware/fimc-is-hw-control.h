@@ -33,12 +33,12 @@
 #define DEBUG_POINT_FRAME_START		1
 #define DEBUG_POINT_FRAME_END		2
 #define DEBUG_POINT_FRAME_DMA_END	3
-#define DEBUG_POINT_MAX			8 /* HACK: original value is 4 */
+#define DEBUG_POINT_MAX			4
 
 #define SET_FILE_MAGIC_NUMBER		(0x12345679)
 #define FIMC_IS_MAX_SCENARIO		(64)
 #define FIMC_IS_MAX_SETFILE		(64)
-#define FIMC_IS_SHOT_TIMEOUT		(4000) /* ms */
+#define FIMC_IS_SHOT_TIMEOUT		(3000) /* ms */
 
 #define SETFILE_DESIGN_BIT_3AA_ISP	(3)
 #define SETFILE_DESIGN_BIT_DRC		(4)
@@ -58,9 +58,6 @@
 	__raw_writel(__raw_readl((addr)) | (1 << (bit)), (addr))
 #define FIMC_IS_CLOCK_OFF(addr, bit) \
 	__raw_writel(__raw_readl((addr)) & ~(1 << (bit)), (addr))
-
-#define MCSC_INPUT_FROM_ISP_PATH	1
-#define MCSC_INPUT_FROM_DCP_PATH	3
 
 /* sysfs variable for debug */
 extern struct fimc_is_sysfs_debug sysfs_debug;
@@ -242,7 +239,6 @@ struct fimc_is_clk_gate {
  */
 struct fimc_is_hw_ip {
 	u32					id;
-	char					name[FIMC_IS_STR_LEN];
 	bool					is_leader;
 	ulong					state;
 	const struct fimc_is_hw_ip_ops		*ops;
@@ -276,7 +272,10 @@ struct fimc_is_hw_ip {
 	/* for dump sfr */
 	u8					*sfr_dump;
 	u8					*sfr_b_dump;
-	bool					sfr_dump_flag;
+#if defined(DEBUG_REPROCESSING_NDONE)
+	u8					*sfr_dump_debug[DEBUG_POINT_MAX];
+	u8					*sfr_b_dump_debug[DEBUG_POINT_MAX];
+#endif
 	atomic_t				rsccount;
 	atomic_t				run_rsccount;
 
@@ -293,21 +292,19 @@ struct fimc_is_hw_ip {
 #if defined(MULTI_SHOT_TASKLET)
 	struct tasklet_struct			tasklet_mshot;
 #elif defined(MULTI_SHOT_KTHREAD)
-	struct task_struct			*mshot_task;
-	struct kthread_worker			mshot_worker;
-	struct kthread_work 			mshot_work;
+	struct task_struct			*task_mshot;
+	bool					task_mshot_flag;
+	struct semaphore			smp_mshot;
 #endif
 };
 
 #define CALL_HW_OPS(hw, op, args...)	\
-	(((hw)->ops && (hw)->ops->op) ? ((hw)->ops->op(hw, args)) : 0)
+	(((hw)->ops->op) ? ((hw)->ops->op(hw, args)) : 0)
 
 struct fimc_is_hw_ip_ops {
-	int (*open)(struct fimc_is_hw_ip *hw_ip, u32 instance,
-		struct fimc_is_group *group);
-	int (*init)(struct fimc_is_hw_ip *hw_ip, u32 instance,
-		struct fimc_is_group *group, bool flag, u32 module_id);
-	int (*deinit)(struct fimc_is_hw_ip *hw_ip, u32 instance);
+	int (*open)(struct fimc_is_hw_ip *hw_ip, u32 instance, u32 *size);
+	int (*init)(struct fimc_is_hw_ip *hw_ip, struct fimc_is_group *group,
+		bool flag, u32 module_id);
 	int (*close)(struct fimc_is_hw_ip *hw_ip, u32 instance);
 	int (*enable)(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map);
 	int (*disable)(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map);
@@ -353,14 +350,12 @@ struct fimc_is_hardware {
 	/* for access mcuctl regs */
 	void __iomem			*base_addr_mcuctl;
 
-	atomic_t			streaming[SENSOR_POSITION_END];
+	atomic_t			streaming[FIMC_IS_STREAM_COUNT];
 	atomic_t			bug_count;
 	atomic_t			log_count;
-
-#ifdef HW_BUG_WA_NO_CONTOLL_PER_FRAME
-	struct semaphore		smp_mcsc_hw_bug;
+#if defined(DEBUG_REPROCESSING_NDONE)
+	atomic_t			sfr_dump_debug_count;
 #endif
-	bool				video_mode;
 };
 
 #define framemgr_e_barrier_common(this, index, flag)		\
@@ -407,6 +402,7 @@ void fimc_is_hardware_process_stop(struct fimc_is_hardware *hardware, u32 instan
 int fimc_is_hardware_open(struct fimc_is_hardware *hardware, u32 hw_id,
 	struct fimc_is_group *group, u32 instance, bool rep_flag, u32 module_id);
 int fimc_is_hardware_close(struct fimc_is_hardware *hardware, u32 hw_id, u32 instance);
+void fimc_is_hardware_clear(struct fimc_is_hardware *hardware);
 int fimc_is_hardware_frame_done(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
 	int wq_id, u32 output_id, enum ShotErrorType done_type, bool get_meta);
 int fimc_is_hardware_frame_ndone(struct fimc_is_hw_ip *ldr_hw_ip,
@@ -421,8 +417,10 @@ void fimc_is_hardware_size_dump(struct fimc_is_hw_ip *hw_ip);
 void fimc_is_hardware_clk_gate_dump(struct fimc_is_hardware *hardware);
 int fimc_is_hardware_runtime_resume(struct fimc_is_hardware *hardware);
 int fimc_is_hardware_runtime_suspend(struct fimc_is_hardware *hardware);
-void fimc_is_hardware_sfr_dump(struct fimc_is_hardware *hardware, u32 hw_id, bool flag_print_log);
-void print_hw_frame_count(struct fimc_is_hw_ip *hw_ip);
+void fimc_is_hardware_sfr_dump(struct fimc_is_hardware *hardware);
+#if defined(DEBUG_REPROCESSING_NDONE)
+void fimc_is_hardware_sfr_dump_debug(struct fimc_is_hardware *hardware, u32 shadow_ctrl);
+#endif
 void print_all_hw_frame_count(struct fimc_is_hardware *hardware);
 void fimc_is_hardware_clk_gate(struct fimc_is_hw_ip *hw_ip, u32 instance,
 	bool on, bool close);

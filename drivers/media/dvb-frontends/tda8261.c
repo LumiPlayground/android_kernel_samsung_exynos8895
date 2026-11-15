@@ -161,7 +161,7 @@ static int tda8261_release(struct dvb_frontend *fe)
 	return 0;
 }
 
-static const struct dvb_tuner_ops tda8261_ops = {
+static struct dvb_tuner_ops tda8261_ops = {
 
 	.info = {
 		.name		= "TDA8261",

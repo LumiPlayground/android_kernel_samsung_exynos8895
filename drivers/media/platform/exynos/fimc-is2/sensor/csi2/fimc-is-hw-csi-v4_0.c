@@ -135,11 +135,7 @@ int csi_hw_s_lane(u32 __iomem *base_reg,
 	pixelformat = image->format.pixelformat;
 
 	/* lane number */
-	if (CSIS_V4_2 == fimc_is_hw_get_reg(base_reg, &csi_regs[CSIS_R_CSIS_VERSION]))
-		/* MIPI CSI V4.2 support only 2 or 4 lane */
-		val = fimc_is_hw_set_field_value(val, &csi_fields[CSIS_F_LANE_NUMBER], lanes | (1 << 0));
-	else
-		val = fimc_is_hw_set_field_value(val, &csi_fields[CSIS_F_LANE_NUMBER], lanes);
+	val = fimc_is_hw_set_field_value(val, &csi_fields[CSIS_F_LANE_NUMBER], lanes);
 
 	/* deskew enable (only over than 1.5Gbps) */
 	if (mipi_speed > 1500) {

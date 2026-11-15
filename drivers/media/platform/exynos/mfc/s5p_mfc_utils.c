@@ -43,72 +43,16 @@ int s5p_mfc_check_vb_with_fmt(struct s5p_mfc_fmt *fmt, struct vb2_buffer *vb)
 	return 0;
 }
 
-int mfc_stream_buf_prot(struct s5p_mfc_ctx *ctx,
+int s5p_mfc_stream_buf_prot(struct s5p_mfc_ctx *ctx,
 				struct s5p_mfc_buf *buf, bool en)
 {
 	return 0;
 }
 
-int mfc_raw_buf_prot(struct s5p_mfc_ctx *ctx,
+int s5p_mfc_raw_buf_prot(struct s5p_mfc_ctx *ctx,
 				struct s5p_mfc_buf *buf, bool en)
 {
 	return 0;
-}
-
-void s5p_mfc_raw_protect(struct s5p_mfc_ctx *ctx, struct s5p_mfc_buf *mfc_buf,
-					int index)
-{
-	if (!test_bit(index, &ctx->raw_protect_flag)) {
-		if (mfc_raw_buf_prot(ctx, mfc_buf, true)) {
-			mfc_err_ctx("failed to CFW_PROT\n");
-		} else {
-			set_bit(index, &ctx->raw_protect_flag);
-			mfc_debug(2, "[index:%d] raw protect, flag: %#lx\n",
-					index, ctx->raw_protect_flag);
-		}
-	}
-}
-
-void s5p_mfc_raw_unprotect(struct s5p_mfc_ctx *ctx, struct s5p_mfc_buf *mfc_buf,
-					int index)
-{
-	if (test_bit(index, &ctx->raw_protect_flag)) {
-		if (mfc_raw_buf_prot(ctx, mfc_buf, false)) {
-			mfc_err_ctx("failed to CFW_UNPROT\n");
-		} else {
-			clear_bit(index, &ctx->raw_protect_flag);
-			mfc_debug(2, "[index:%d] raw unprotect, flag: %#lx\n",
-					index, ctx->raw_protect_flag);
-		}
-	}
-}
-
-void s5p_mfc_stream_protect(struct s5p_mfc_ctx *ctx, struct s5p_mfc_buf *mfc_buf,
-					int index)
-{
-	if (!test_bit(index, &ctx->stream_protect_flag)) {
-		if (mfc_stream_buf_prot(ctx, mfc_buf, true)) {
-			mfc_err_ctx("failed to CFW_PROT\n");
-		} else {
-			set_bit(index, &ctx->stream_protect_flag);
-			mfc_debug(2, "[index:%d] stream protect, flag: %#lx\n",
-					index, ctx->stream_protect_flag);
-		}
-	}
-}
-
-void s5p_mfc_stream_unprotect(struct s5p_mfc_ctx *ctx, struct s5p_mfc_buf *mfc_buf,
-					int index)
-{
-	if (test_bit(index, &ctx->stream_protect_flag)) {
-		if (mfc_stream_buf_prot(ctx, mfc_buf, false)) {
-			mfc_err_ctx("failed to CFW_UNPROT\n");
-		} else {
-			clear_bit(index, &ctx->stream_protect_flag);
-			mfc_debug(2, "[index:%d] stream unprotect, flag: %#lx\n",
-					index, ctx->stream_protect_flag);
-		}
-	}
 }
 
 static int mfc_calc_plane(int width, int height, int is_tiled)
@@ -145,35 +89,13 @@ static void mfc_set_linear_stride_size(struct s5p_mfc_ctx *ctx,
 	case V4L2_PIX_FMT_NV12MT:
 	case V4L2_PIX_FMT_NV12M:
 	case V4L2_PIX_FMT_NV12N:
+	case V4L2_PIX_FMT_NV12N_10B:
 	case V4L2_PIX_FMT_NV21M:
 	case V4L2_PIX_FMT_NV16M:
 	case V4L2_PIX_FMT_NV61M:
 		raw->stride[0] = ALIGN(ctx->img_width, 16);
 		raw->stride[1] = ALIGN(ctx->img_width, 16);
 		raw->stride[2] = 0;
-		break;
-	case V4L2_PIX_FMT_NV12M_S10B:
-	case V4L2_PIX_FMT_NV12N_10B:
-	case V4L2_PIX_FMT_NV21M_S10B:
-	case V4L2_PIX_FMT_NV16M_S10B:
-	case V4L2_PIX_FMT_NV61M_S10B:
-		raw->stride[0] = S10B_8B_STRIDE(ctx->img_width);
-		raw->stride[1] = S10B_8B_STRIDE(ctx->img_width);
-		raw->stride[2] = 0;
-		raw->stride_2bits[0] = S10B_2B_STRIDE(ctx->img_width);
-		raw->stride_2bits[1] = S10B_2B_STRIDE(ctx->img_width);
-		raw->stride_2bits[2] = 0;
-		break;
-	case V4L2_PIX_FMT_NV12M_P010:
-	case V4L2_PIX_FMT_NV21M_P010:
-	case V4L2_PIX_FMT_NV61M_P210:
-	case V4L2_PIX_FMT_NV16M_P210:
-		raw->stride[0] = ALIGN(ctx->img_width, 16) * 2;
-		raw->stride[1] = ALIGN(ctx->img_width, 16) * 2;
-		raw->stride[2] = 0;
-		raw->stride_2bits[0] = 0;
-		raw->stride_2bits[1] = 0;
-		raw->stride_2bits[2] = 0;
 		break;
 	case V4L2_PIX_FMT_RGB24:
 		ctx->raw_buf.stride[0] = ctx->img_width * 3;
@@ -209,9 +131,8 @@ void s5p_mfc_dec_calc_dpb_size(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev;
 	struct s5p_mfc_dec *dec;
-	struct s5p_mfc_raw_info *raw;
+	struct s5p_mfc_raw_info *raw, *tiled_ref;
 	int i;
-	int extra = MFC_LINEAR_BUF_SIZE;
 
 	if (!ctx) {
 		mfc_err_dev("no mfc context to run\n");
@@ -223,81 +144,117 @@ void s5p_mfc_dec_calc_dpb_size(struct s5p_mfc_ctx *ctx)
 	raw->total_plane_size = 0;
 
 	dec = ctx->dec_priv;
-
-	for (i = 0; i < raw->num_planes; i++) {
-		raw->plane_size[i] = 0;
-		raw->plane_size_2bits[i] = 0;
-	}
+	tiled_ref = &dec->tiled_ref;
 
 	switch (ctx->dst_fmt->fourcc) {
-	case V4L2_PIX_FMT_NV12M_S10B:
-	case V4L2_PIX_FMT_NV21M_S10B:
-		raw->plane_size[0] = NV12M_Y_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size[1] = NV12M_CBCR_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size_2bits[0] = NV12M_Y_2B_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size_2bits[1] = NV12M_CBCR_2B_SIZE(ctx->img_width, ctx->img_height);
+	case V4L2_PIX_FMT_NV12MT_16X16:
+		raw->plane_size[0] =
+			mfc_calc_plane(ctx->img_width, ctx->img_height, 1);
+		raw->plane_size[1] =
+			mfc_calc_plane(ctx->img_width, (ctx->img_height >> 1), 1);
+		raw->plane_size[2] = 0;
 		break;
 	case V4L2_PIX_FMT_NV12M:
 	case V4L2_PIX_FMT_NV21M:
-		raw->plane_size[0] = mfc_calc_plane(ctx->img_width, ctx->img_height, 0) + extra;
-		raw->plane_size[1] = mfc_calc_plane(ctx->img_width, ctx->img_height, 0) / 2 + extra;
+		raw->plane_size[0] =
+			mfc_calc_plane(ctx->img_width, ctx->img_height, 0);
+		raw->plane_size[1] =
+			mfc_calc_plane(ctx->img_width, (ctx->img_height >> 1), 0);
+		raw->plane_size[2] = 0;
 		break;
-	case V4L2_PIX_FMT_NV12M_P010:
-	case V4L2_PIX_FMT_NV21M_P010:
-		raw->plane_size[0] = mfc_calc_plane(ctx->img_width, ctx->img_height, 0) * 2 + extra;
-		raw->plane_size[1] = mfc_calc_plane(ctx->img_width, ctx->img_height, 0) + extra;
+	case V4L2_PIX_FMT_NV12N:
+	case V4L2_PIX_FMT_NV12N_10B:
+		raw->plane_size[0] = NV12N_Y_SIZE(ctx->img_width, ctx->img_height);
+		raw->plane_size[1] = NV12N_CBCR_SIZE(ctx->img_width, ctx->img_height);
+		raw->plane_size[2] = 0;
 		break;
 	case V4L2_PIX_FMT_YUV420M:
 	case V4L2_PIX_FMT_YVU420M:
-		raw->plane_size[0] = mfc_calc_plane(ctx->img_width, ctx->img_height, 0) + extra;
-		raw->plane_size[1] = mfc_calc_plane(ctx->img_width, ctx->img_height, 0) / 2 + extra;
-		raw->plane_size[2] = mfc_calc_plane(ctx->img_width, ctx->img_height, 0) / 2 + extra;
-		break;
-	case V4L2_PIX_FMT_NV16M_S10B:
-	case V4L2_PIX_FMT_NV61M_S10B:
-		raw->plane_size[0] = NV16M_Y_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size[1] = NV16M_CBCR_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size_2bits[0] = NV16M_Y_2B_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size_2bits[1] = NV16M_CBCR_2B_SIZE(ctx->img_width, ctx->img_height);
-		break;
-	case V4L2_PIX_FMT_NV16M:
-	case V4L2_PIX_FMT_NV61M:
-		raw->plane_size[0] = mfc_calc_plane(ctx->img_width, ctx->img_height, 0) + extra;
-		raw->plane_size[1] = mfc_calc_plane(ctx->img_width, ctx->img_height, 0) + extra;
-		break;
-	case V4L2_PIX_FMT_NV16M_P210:
-	case V4L2_PIX_FMT_NV61M_P210:
-		raw->plane_size[0] = mfc_calc_plane(ctx->img_width, ctx->img_height, 0) * 2 + extra;
-		raw->plane_size[1] = mfc_calc_plane(ctx->img_width, ctx->img_height, 0) * 2 + extra;
-		break;
-	/* non-contiguous single fd format */
-	case V4L2_PIX_FMT_NV12N_10B:
-		raw->plane_size[0] = NV12N_10B_Y_8B_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size[1] = NV12N_10B_CBCR_8B_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size_2bits[0] = NV12N_10B_Y_2B_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size_2bits[1] = NV12N_10B_CBCR_2B_SIZE(ctx->img_width, ctx->img_height);
-		break;
-	case V4L2_PIX_FMT_NV12N:
-		raw->plane_size[0] = NV12N_Y_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size[1] = NV12N_CBCR_SIZE(ctx->img_width, ctx->img_height);
+		raw->plane_size[0] =
+			mfc_calc_plane(ctx->img_width, ctx->img_height, 0);
+		raw->plane_size[1] =
+			mfc_calc_plane(ctx->img_width >> 1, ctx->img_height >> 1, 0);
+		raw->plane_size[2] =
+			mfc_calc_plane(ctx->img_width >> 1, ctx->img_height >> 1, 0);
 		break;
 	case V4L2_PIX_FMT_YUV420N:
 		raw->plane_size[0] = YUV420N_Y_SIZE(ctx->img_width, ctx->img_height);
 		raw->plane_size[1] = YUV420N_CB_SIZE(ctx->img_width, ctx->img_height);
 		raw->plane_size[2] = YUV420N_CR_SIZE(ctx->img_width, ctx->img_height);
 		break;
+	case V4L2_PIX_FMT_NV16M:
+	case V4L2_PIX_FMT_NV61M:
+		raw->plane_size[0] =
+			mfc_calc_plane(ctx->img_width, ctx->img_height, 0) + 64;
+		raw->plane_size[1] =
+			mfc_calc_plane(ctx->img_width, ctx->img_height, 0) + 64;
+		raw->plane_size[2] = 0;
+		break;
 	default:
+		raw->plane_size[0] = 0;
+		raw->plane_size[1] = 0;
+		raw->plane_size[2] = 0;
 		mfc_err_ctx("Invalid pixelformat : %s\n", ctx->dst_fmt->name);
 		break;
 	}
 
 	mfc_set_linear_stride_size(ctx, ctx->dst_fmt);
 
+	switch (ctx->dst_fmt->fourcc) {
+		case V4L2_PIX_FMT_NV12M:
+		case V4L2_PIX_FMT_NV21M:
+			raw->plane_size[0] += 64;
+			raw->plane_size[1] =
+				(((ctx->img_width + 15)/16)*16)
+				*(((ctx->img_height + 15)/16)*8) + 64;
+			break;
+		case V4L2_PIX_FMT_YUV420M:
+		case V4L2_PIX_FMT_YVU420M:
+			raw->plane_size[0] += 64;
+			raw->plane_size[1] =
+				(((ctx->img_width + 15)/16)*16)
+				*(((ctx->img_height + 15)/16)*8) + 64;
+			raw->plane_size[2] =
+				(((ctx->img_width + 15)/16)*16)
+				*(((ctx->img_height + 15)/16)*8) + 64;
+			break;
+		default:
+			break;
+	}
+
 	for (i = 0; i < raw->num_planes; i++) {
 		if (raw->plane_size[i] < ctx->min_dpb_size[i]) {
 			mfc_info_dev("plane[%d] size is changed %d -> %d\n",
 					i, raw->plane_size[i], ctx->min_dpb_size[i]);
 			raw->plane_size[i] = ctx->min_dpb_size[i];
+		}
+	}
+
+	if (ctx->is_10bit) {
+		switch (ctx->dst_fmt->fourcc) {
+			case V4L2_PIX_FMT_NV12M:
+			case V4L2_PIX_FMT_NV21M:
+				raw->stride_2bits[0] = ALIGN(ctx->img_width / 4, 16);
+				raw->stride_2bits[1] = ALIGN(ctx->img_width / 4, 16);
+				raw->stride_2bits[2] = 0;
+				raw->plane_size_2bits[0] =
+					ALIGN(ctx->img_width / 4, 16) * ctx->img_height + 64;
+				raw->plane_size_2bits[1] =
+					ALIGN(ctx->img_width / 4, 16) * (ctx->img_height / 2) + 64;
+				raw->plane_size_2bits[2] = 0;
+				break;
+			case V4L2_PIX_FMT_NV12N_10B:
+				raw->stride_2bits[0] = ALIGN(ctx->img_width / 4, 16);
+				raw->stride_2bits[1] = ALIGN(ctx->img_width / 4, 16);
+				raw->stride_2bits[2] = 0;
+				raw->plane_size_2bits[0] = NV12N_10B_Y_2B_SIZE(ctx->img_width, ctx->img_height);
+				raw->plane_size_2bits[1] = NV12N_10B_CBCR_2B_SIZE(ctx->img_width, ctx->img_height);
+				raw->plane_size_2bits[2] = 0;
+				break;
+			default:
+				mfc_err_ctx("HEVC 10bit: not supported format: %s\n",
+						ctx->dst_fmt->name);
+				break;
 		}
 	}
 
@@ -319,12 +276,13 @@ void s5p_mfc_dec_calc_dpb_size(struct s5p_mfc_ctx *ctx)
 	if (IS_H264_DEC(ctx) || IS_H264_MVC_DEC(ctx)) {
 		ctx->mv_size = DEC_MV_SIZE_MB(ctx->img_width, ctx->img_height);
 		ctx->mv_size = ALIGN(ctx->mv_size, 32);
-	} else if (IS_HEVC_DEC(ctx) || IS_BPG_DEC(ctx)) {
+	} else if (IS_HEVC_DEC(ctx)) {
 		ctx->mv_size = DEC_HEVC_MV_SIZE(ctx->img_width, ctx->img_height);
 		ctx->mv_size = ALIGN(ctx->mv_size, 32);
 	} else {
 		ctx->mv_size = 0;
 	}
+
 }
 
 void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx)
@@ -332,7 +290,7 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_dev *dev;
 	struct s5p_mfc_raw_info *raw;
 	unsigned int mb_width, mb_height, default_size;
-	int i, extra;
+	int i, add_size;
 
 	if (!ctx) {
 		mfc_err_dev("no mfc context to run\n");
@@ -344,79 +302,68 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx)
 	raw->total_plane_size = 0;
 	mb_width = WIDTH_MB(ctx->img_width);
 	mb_height = HEIGHT_MB(ctx->img_height);
-	extra = MFC_LINEAR_BUF_SIZE;
+	add_size = MFC_LINEAR_BUF_SIZE;
 	default_size = mb_width * mb_height * 256;
-
-	for (i = 0; i < raw->num_planes; i++) {
-		raw->plane_size[i] = 0;
-		raw->plane_size_2bits[i] = 0;
-	}
 
 	switch (ctx->src_fmt->fourcc) {
 	case V4L2_PIX_FMT_YUV420M:
 	case V4L2_PIX_FMT_YUV420N:
 	case V4L2_PIX_FMT_YVU420M:
-		raw->plane_size[0] = ALIGN(default_size, 256) + extra;
-		raw->plane_size[1] = ALIGN(default_size >> 2, 256) + extra;
-		raw->plane_size[2] = ALIGN(default_size >> 2, 256) + extra;
-		break;
-	case V4L2_PIX_FMT_NV12M_S10B:
-	case V4L2_PIX_FMT_NV21M_S10B:
-		raw->plane_size[0] = NV12M_Y_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size[1] = NV12M_CBCR_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size_2bits[0] = NV12M_Y_2B_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size_2bits[1] = NV12M_CBCR_2B_SIZE(ctx->img_width, ctx->img_height);
+		ctx->raw_buf.plane_size[0] = ALIGN(default_size, 256);
+		ctx->raw_buf.plane_size[1] = ALIGN(default_size >> 2, 256);
+		ctx->raw_buf.plane_size[2] = ALIGN(default_size >> 2, 256);
 		break;
 	case V4L2_PIX_FMT_NV12MT_16X16:
 	case V4L2_PIX_FMT_NV12M:
 	case V4L2_PIX_FMT_NV12N:
 	case V4L2_PIX_FMT_NV21M:
-		raw->plane_size[0] = ALIGN(default_size, 256) + extra;
-		raw->plane_size[1] = ALIGN(default_size / 2, 256) + extra;
-		break;
-	case V4L2_PIX_FMT_NV12M_P010:
-	case V4L2_PIX_FMT_NV21M_P010:
-		raw->plane_size[0] = ALIGN(default_size, 256) * 2 + extra;
-		raw->plane_size[1] = ALIGN(default_size, 256) + extra;
-		break;
-	case V4L2_PIX_FMT_NV16M_S10B:
-	case V4L2_PIX_FMT_NV61M_S10B:
-		raw->plane_size[0] = NV16M_Y_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size[1] = NV16M_CBCR_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size_2bits[0] = NV16M_Y_2B_SIZE(ctx->img_width, ctx->img_height);
-		raw->plane_size_2bits[1] = NV16M_CBCR_2B_SIZE(ctx->img_width, ctx->img_height);
+		raw->plane_size[0] = ALIGN(default_size, 256);
+		raw->plane_size[1] = ALIGN(default_size / 2, 256);
+		raw->plane_size[2] = 0;
 		break;
 	case V4L2_PIX_FMT_NV16M:
 	case V4L2_PIX_FMT_NV61M:
-		raw->plane_size[0] = ALIGN(default_size, 256) + extra;
-		raw->plane_size[1] = ALIGN(default_size, 256) + extra;
+		raw->plane_size[0] = ALIGN(default_size, 256);
+		raw->plane_size[1] = ALIGN(default_size, 256);
+		raw->plane_size[2] = 0;
 		break;
-	case V4L2_PIX_FMT_NV16M_P210:
-	case V4L2_PIX_FMT_NV61M_P210:
-		raw->plane_size[0] = ALIGN(default_size, 256) * 2 + extra;
-		raw->plane_size[1] = ALIGN(default_size, 256) * 2 + extra;
+	case V4L2_PIX_FMT_RGB565:
+		raw->plane_size[0] = ALIGN(default_size * 2, 256);
+		raw->plane_size[1] = 0;
+		raw->plane_size[2] = 0;
+		break;
+	case V4L2_PIX_FMT_RGB24:
+		raw->plane_size[0] = ALIGN(default_size * 3, 256);
+		raw->plane_size[1] = 0;
+		raw->plane_size[2] = 0;
+		break;
+	case V4L2_PIX_FMT_BGR32:
+	case V4L2_PIX_FMT_RGB32X:
+	case V4L2_PIX_FMT_ARGB32:
+		raw->plane_size[0] = ALIGN(default_size * 4, 256);
+		raw->plane_size[1] = 0;
+		raw->plane_size[2] = 0;
 		break;
 	default:
+		raw->plane_size[0] = 0;
+		raw->plane_size[1] = 0;
+		raw->plane_size[2] = 0;
 		mfc_err_ctx("Invalid pixel format(%d)\n", ctx->src_fmt->fourcc);
 		break;
 	}
 
-	mfc_set_linear_stride_size(ctx, ctx->src_fmt);
+	/* Add extra if necessary */
+	for (i = 0; i < raw->num_planes; i++)
+		raw->plane_size[i] += add_size;
 
 	for (i = 0; i < raw->num_planes; i++) {
 		raw->total_plane_size += raw->plane_size[i];
 		mfc_debug(2, "Plane[%d] size = %d, stride = %d\n",
 			i, raw->plane_size[i], raw->stride[i]);
 	}
-	if (ctx->is_10bit) {
-		for (i = 0; i < raw->num_planes; i++) {
-			raw->total_plane_size += raw->plane_size_2bits[i];
-			mfc_debug(2, "Plane[%d] 2bit size = %d, stride = %d\n",
-					i, raw->plane_size_2bits[i],
-					raw->stride_2bits[i]);
-		}
-	}
 	mfc_debug(2, "total plane size: %d\n", raw->total_plane_size);
+
+	mfc_set_linear_stride_size(ctx, ctx->src_fmt);
 }
 
 void s5p_mfc_cleanup_assigned_dpb(struct s5p_mfc_ctx *ctx)
@@ -440,9 +387,15 @@ void s5p_mfc_cleanup_assigned_dpb(struct s5p_mfc_ctx *ctx)
 		mfc_debug(2, "raw_protect_flag(%#lx) will be released\n",
 				ctx->raw_protect_flag);
 		for (i = 0; i < MFC_MAX_DPBS; i++) {
-			dst_mb = dec->assigned_dpb[i];
-
-			s5p_mfc_raw_unprotect(ctx, dst_mb, i);
+			if (test_bit(i, &ctx->raw_protect_flag)) {
+				dst_mb = dec->assigned_dpb[i];
+				if (s5p_mfc_raw_buf_prot(ctx, dst_mb, false))
+					mfc_err_ctx("failed to CFW_UNPROT\n");
+				else
+					clear_bit(i, &ctx->raw_protect_flag);
+				mfc_debug(2, "[%d] dec dst buf un-prot_flag: %#lx\n",
+						i, ctx->raw_protect_flag);
+			}
 		}
 		s5p_mfc_clear_assigned_dpb(ctx);
 	}
@@ -469,7 +422,14 @@ void s5p_mfc_unprotect_released_dpb(struct s5p_mfc_ctx *ctx, unsigned int releas
 		for (i = 0; i < MFC_MAX_DPBS; i++) {
 			if (released_flag & (1 << i)) {
 				dst_mb = dec->assigned_dpb[i];
-				s5p_mfc_raw_unprotect(ctx, dst_mb, i);
+				if (test_bit(i, &ctx->raw_protect_flag)) {
+					if (s5p_mfc_raw_buf_prot(ctx, dst_mb, false))
+						mfc_err_ctx("failed to CFW_UNPROT\n");
+					else
+						clear_bit(i, &ctx->raw_protect_flag);
+				}
+				mfc_debug(2, "[%d] dec dst buf un-prot_flag: %#lx\n",
+						i, ctx->raw_protect_flag);
 			}
 		}
 	}
@@ -496,7 +456,14 @@ void s5p_mfc_protect_dpb(struct s5p_mfc_ctx *ctx, struct s5p_mfc_buf *dst_mb)
 
 	if (ctx->is_drm) {
 		dec->assigned_dpb[dst_index] = dst_mb;
-		s5p_mfc_raw_protect(ctx, dst_mb, dst_index);
+		if (!test_bit(dst_index, &ctx->raw_protect_flag)) {
+			if (s5p_mfc_raw_buf_prot(ctx, dst_mb, true))
+				mfc_err_ctx("failed to CFW_PROT\n");
+			else
+				set_bit(dst_index, &ctx->raw_protect_flag);
+		}
+		mfc_debug(2, "[%d] dec dst buf prot_flag: %#lx\n",
+				dst_index, ctx->raw_protect_flag);
 	}
 }
 

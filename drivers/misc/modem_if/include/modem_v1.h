@@ -17,7 +17,6 @@
 
 #include <linux/platform_device.h>
 #include <linux/miscdevice.h>
-#include <linux/shm_ipc.h>
 
 enum modem_t {
 	SEC_CMC221,
@@ -80,12 +79,7 @@ enum sipc_ver {
 };
 
 #define STR_CP_FAIL "cp_fail"
-#define STR_CP_WDT	"cp_wdt"	/* CP watchdog timer */
-
-enum uart_direction {
-	AP = 0,
-	CP = 1,
-};
+#define STR_CP_WDT  "cp_wdt"    /* CP watchdog timer */
 
 enum iodev_attr_bit {
 	ATTR_SIPC4,
@@ -95,18 +89,18 @@ enum iodev_attr_bit {
 	ATTR_HANDOVER,
 	ATTR_LEGACY_RFS,
 	ATTR_RX_FRAGMENT,
-	ATTR_SBD_IPC,		/* IPC using SBD designed from MIPI-LLI */
-	ATTR_NO_LINK_HEADER,	/* Link-layer header is not needed	*/
-	ATTR_NO_CHECK_MAXQ,		/* no need to check rxq overflow condition */
+	ATTR_SBD_IPC,       /* IPC using SBD designed from MIPI-LLI */
+	ATTR_NO_LINK_HEADER,    /* Link-layer header is not needed  */
+	ATTR_NO_CHECK_MAXQ,     /* no need to check rxq overflow condition */
 };
-#define IODEV_ATTR(b)	(0x1 << b)
+#define IODEV_ATTR(b)   (0x1 << b)
 
 /**
  * struct modem_io_t - declaration for io_device
  * @name:	device name
  * @id:		for SIPC4, contains format & channel information
  *		(id & 11100000b)>>5 = format  (eg, 0=FMT, 1=RAW, 2=RFS)
- *		(id & 00011111b)	= channel (valid only if format is RAW)
+ *		(id & 00011111b)    = channel (valid only if format is RAW)
  *		for SIPC5, contains only 8-bit channel ID
  * @format:	device format
  * @io_type:	type of this io_device
@@ -178,68 +172,51 @@ enum shmem_type {
 #define SHMEM_SIZE_1MB		(1 << 20)	/* 1 MB */
 #define SHMEM_SIZE_2MB		(2 << 20)	/* 2 MB */
 #define SHMEM_SIZE_4MB		(4 << 20)	/* 4 MB */
-#define SHMEM_SIZE_8MB		(8 << 20)	/* 8 MB */
-
 
 struct modem_mbox {
 	unsigned mbx_ap2cp_msg;
 	unsigned mbx_cp2ap_msg;
+	unsigned mbx_ap2cp_active;	/* PDA_ACTIVE	*/
+	unsigned mbx_cp2ap_active;	/* PHONE_ACTIVE	*/
+	unsigned mbx_ap2cp_wakeup;	/* CP_WAKEUP	*/
+	unsigned mbx_cp2ap_wakeup;	/* AP_WAKEUP	*/
 	unsigned mbx_ap2cp_status;	/* AP_STATUS	*/
 	unsigned mbx_cp2ap_status;	/* CP_STATUS	*/
-	unsigned int int_ap2cp_uart_noti;
+	unsigned mbx_ap2cp_sec;		/* AP Time(sec)	*/
+	unsigned mbx_ap2cp_usec;	/* AP Time(usec) */
 
 	int int_ap2cp_msg;
-	int int_ap2cp_wakeup;
 	int int_ap2cp_active;
+	int int_ap2cp_wakeup;
 	int int_ap2cp_status;
 
 	int irq_cp2ap_msg;
 	int irq_cp2ap_active;
+	int irq_cp2ap_wakeup;
 	int irq_cp2ap_status;
-	int irq_cp2ap_wake_lock;
 
 	/* Performance request */
-	unsigned mbx_ap2cp_perf_req;
-	unsigned mbx_cp2ap_perf_req;
-	unsigned mbx_cp2ap_perf_req_cpu;
-	unsigned mbx_cp2ap_perf_req_mif;
-	unsigned mbx_cp2ap_perf_req_int;
-	unsigned mbx_cp2ap_pcie_l1ss_disable;
-	unsigned mbx_ap2cp_mif_freq;
+	unsigned int mbx_ap2cp_perf_req;
+	unsigned int mbx_cp2ap_perf_req;
+	unsigned int mbx_cp2ap_perf_req_cpu;
+	unsigned int mbx_cp2ap_perf_req_mif;
+	unsigned int mbx_cp2ap_perf_req_int;
+	unsigned int mbx_cp2ap_pcie_l1ss_disable;
 
-	unsigned int_ap2cp_perf_req;
-	unsigned irq_cp2ap_perf_req;
-	unsigned irq_cp2ap_perf_req_cpu;
-	unsigned irq_cp2ap_perf_req_mif;
-	unsigned irq_cp2ap_perf_req_int;
-	unsigned irq_cp2ap_pcie_l1ss_disable;
+	unsigned int int_ap2cp_perf_req;
+	unsigned int irq_cp2ap_perf_req;
+	unsigned int irq_cp2ap_perf_req_cpu;
+	unsigned int irq_cp2ap_perf_req_mif;
+	unsigned int irq_cp2ap_perf_req_int;
+	unsigned int irq_cp2ap_pcie_l1ss_disable;
 
-	/* Status Bit Info */
-	unsigned int sbi_lte_active_mask;
-	unsigned int sbi_lte_active_pos;
-	unsigned int sbi_wake_lock_mask;
-	unsigned int sbi_wake_lock_pos;
-	unsigned int sbi_cp_status_mask;
-	unsigned int sbi_cp_status_pos;
-
-	unsigned int sbi_pda_active_mask;
-	unsigned int sbi_pda_active_pos;
-	unsigned int sbi_ap_status_mask;
-	unsigned int sbi_ap_status_pos;
-
-	unsigned int sbi_uart_noti_mask;
-	unsigned int sbi_uart_noti_pos;
+	unsigned int mbx_ap2cp_et_dac_cal;
 
 	/* System (H/W) revision */
 	unsigned mbx_ap2cp_sys_rev;
 	unsigned mbx_ap2cp_pmic_rev;
 	unsigned mbx_ap2cp_pkg_id;
-
-	unsigned int *ap_clk_table;
-	unsigned int ap_clk_cnt;
-
-	unsigned int *mif_clk_table;
-	unsigned int mif_clk_cnt;
+	unsigned mbx_ap2cp_lock_value;
 };
 
 struct modem_pmu {
@@ -292,10 +269,42 @@ struct modem_data {
 	unsigned gpio_ap_dump_int;
 	unsigned gpio_flm_uart_sel;
 	unsigned gpio_cp_warm_reset;
+#if defined(CONFIG_MACH_M0_CTC)
+	unsigned gpio_flm_uart_sel_rev06;
+#endif
 
-#if defined(CONFIG_LTE_MODEM_S5E7580) | defined(CONFIG_LTE_MODEM_S5E8890) |\
-	defined(CONFIG_LTE_MODEM_S5E8895) | defined(CONFIG_LTE_MODEM_S5E7872) |\
-	defined(CONFIG_LTE_MODEM_S5E9810)
+	unsigned gpio_sim_detect;
+	int irq_sim_detect;
+
+#ifdef CONFIG_MACH_U1_KOR_LGT
+	unsigned gpio_cp_reset_msm;
+	unsigned gpio_boot_sw_sel;
+	void (*vbus_on)(void);
+	void (*vbus_off)(void);
+	struct regulator *cp_vbus;
+#endif
+
+#ifdef CONFIG_TDSCDMA_MODEM_SPRD8803
+	unsigned gpio_ipc_mrdy;
+	unsigned gpio_ipc_srdy;
+	unsigned gpio_ipc_sub_mrdy;
+	unsigned gpio_ipc_sub_srdy;
+	unsigned gpio_ap_cp_int1;
+	unsigned gpio_ap_cp_int2;
+#endif
+
+#ifdef CONFIG_SEC_DUAL_MODEM_MODE
+	unsigned gpio_sim_io_sel;
+	unsigned gpio_cp_ctrl1;
+	unsigned gpio_cp_ctrl2;
+#endif
+
+#ifdef CONFIG_SOC_EXYNOS3470
+	unsigned int hw_revision;
+	unsigned int package_id;
+	struct modem_mbox *mbx;
+	struct modem_pmu *pmu;
+#else
 	unsigned int hw_revision;
 	unsigned int package_id;
 	unsigned int lock_value;
@@ -342,8 +351,6 @@ struct modem_data {
 
 	void (*gpio_revers_bias_clear)(void);
 	void (*gpio_revers_bias_restore)(void);
-
-	struct resource *syscp_info;
 };
 
 #define MODEM_BOOT_DEV_SPI "modem_boot_spi"
@@ -369,6 +376,7 @@ struct utc_time {
 	u8 min;
 	u8 sec;
 	u16 msec;
+	u16 us;
 } __packed;
 
 extern void get_utc_time(struct utc_time *utc);

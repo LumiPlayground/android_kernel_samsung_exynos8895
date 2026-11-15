@@ -35,3 +35,4 @@
 #define RX_ADV_MIN_ACTIVATETIME_CAP	0x9a
 
 #endif /* _MPHY_H_ */
+

@@ -23,22 +23,20 @@
 #include <linux/file.h>
 #include <linux/mcu_ipc.h>
 #include <linux/of_gpio.h>
-#include <soc/samsung/exynos-pmu.h>
-#include <soc/samsung/pmu-cp.h>
 #include <linux/smc.h>
-#ifdef CONFIG_PCI_EXYNOS
 #include <linux/exynos-pci-ctrl.h>
-#endif
+
 #include "modem_prj.h"
 #include "modem_utils.h"
 #include "modem_link_device_shmem.h"
-#ifdef CONFIG_CP_PMUCAL
-#include <soc/samsung/cal-if.h>
-#endif
-#include <linux/modem_notifier.h>
+#include "pmu-cp.h"
 
 #define MIF_INIT_TIMEOUT	(300 * HZ)
 #define MBREG_MAX_NUM 64
+
+static struct pm_qos_request pm_qos_req_mif;
+static struct pm_qos_request pm_qos_req_cpu;
+static struct pm_qos_request pm_qos_req_int;
 
 static struct modem_ctl *g_mc;
 
@@ -47,28 +45,20 @@ static ssize_t modem_ctrl_show(struct device *dev,
 {
 	int ret = 0;
 	struct modem_ctl *mc = dev_get_drvdata(dev);
-	u32 reg;
 
 	ret = snprintf(buf, PAGE_SIZE, "Check Mailbox Registers\n");
-
-	reg = mbox_extract_value(MCU_CP, mc->mbx_ap_status,
-		mc->sbi_ap_status_mask, mc->sbi_ap_status_pos);
-	ret += snprintf(&buf[ret], PAGE_SIZE - ret, "AP2CP_STATUS : %d\n", reg);
-
-	reg = mbox_extract_value(MCU_CP, mc->mbx_cp_status,
-		mc->sbi_cp_status_mask, mc->sbi_cp_status_pos);
-	ret += snprintf(&buf[ret], PAGE_SIZE - ret, "CP2AP_STATUS : %d\n", reg);
-
-	reg = mbox_extract_value(MCU_CP, mc->mbx_ap_status,
-		mc->sbi_pda_active_mask, mc->sbi_pda_active_pos);
-	ret += snprintf(&buf[ret], PAGE_SIZE - ret, "PDA_ACTIVE : %d\n", reg);
-
-	reg = mbox_extract_value(MCU_CP, mc->mbx_cp_status,
-		mc->sbi_lte_active_mask, mc->sbi_lte_active_pos);
-	ret += snprintf(&buf[ret], PAGE_SIZE - ret, "PHONE_ACTIVE : %d\n", reg);
-
+	ret += snprintf(&buf[ret], PAGE_SIZE - ret, "AP2CP_STATUS : %d\n",
+				mbox_get_value(mc->mbx_ap_status));
+	ret += snprintf(&buf[ret], PAGE_SIZE - ret, "CP2AP_STATUS : %d\n",
+				mbox_get_value(mc->mbx_cp_status));
+	ret += snprintf(&buf[ret], PAGE_SIZE - ret, "PDA_ACTIVE : %d\n",
+				mbox_get_value(mc->mbx_pda_active));
 	ret += snprintf(&buf[ret], PAGE_SIZE - ret, "CP2AP_DVFS_REQ : %d\n",
-				mbox_get_value(MCU_CP, mc->mbx_perf_req));
+				mbox_get_value(mc->mbx_perf_req));
+	ret += snprintf(&buf[ret], PAGE_SIZE - ret, "PHONE_ACTIVE : %d\n",
+				mbox_get_value(mc->mbx_phone_active));
+	ret += snprintf(&buf[ret], PAGE_SIZE - ret, "HW_REVISION : %d\n",
+				mbox_get_value(mc->mbx_sys_rev));
 
 	return ret;
 }
@@ -87,40 +77,22 @@ static ssize_t modem_ctrl_store(struct device *dev,
 	switch (ops_num) {
 	case 1:
 		mif_info("Reset CP (Stop)!!!\n");
-#ifdef CONFIG_CP_PMUCAL
-		if (cal_cp_status() > 0) {
-#else
-		if (exynos_get_cp_power_status() > 0) {
-#endif
-			mif_err("CP aleady Power on, try reset\n");
-			mbox_set_interrupt(MCU_CP, mc->int_cp_wakeup);
-#ifdef CONFIG_CP_PMUCAL
-			cal_cp_reset_assert();
-#else
-			exynos_cp_reset();
-#endif
-			mbox_sw_reset(MCU_CP);
-		}
+		exynos_cp_reset(mc);
 		break;
 
 	case 2:
 		mif_info("Reset CP - Release (Start)!!!\n");
-#ifdef CONFIG_CP_PMUCAL
-		cal_cp_reset_release();
-#else
-		exynos_cp_release();
-#endif
+		exynos_cp_release(mc);
 		break;
 
 	case 3:
 		mif_info("force_crash_exit!!!\n");
 		mc->ops.modem_force_crash_exit(mc);
 		break;
+
 	case 4:
 		mif_info("Modem Power OFF!!!\n");
-#ifndef CONFIG_CP_PMUCAL
-		exynos_set_cp_power_onoff(CP_POWER_OFF);
-#endif
+		exynos_set_cp_power_onoff(mc, CP_POWER_OFF);
 		break;
 
 	default:
@@ -136,6 +108,116 @@ static ssize_t modem_ctrl_store(struct device *dev,
 
 static DEVICE_ATTR(modem_ctrl, 0644, modem_ctrl_show, modem_ctrl_store);
 
+static void bh_pm_qos_req(struct work_struct *ws)
+{
+	struct modem_ctl *mc;
+	unsigned int qos_val;
+	unsigned int level;
+
+	mc = container_of(ws, struct modem_ctl, pm_qos_work);
+
+	qos_val = mbox_get_value(mc->mbx_perf_req);
+	mif_err("pm_qos:0x%x requested\n", qos_val);
+
+	level = (qos_val & 0xff);
+	if (level > 0 && level <= mc->ap_clk_cnt) {
+		mif_err("Lock CPU(%u)\n", mc->ap_clk_table[level - 1]);
+		pm_qos_update_request(&pm_qos_req_cpu,
+				mc->ap_clk_table[level - 1]);
+	} else {
+		mif_err("Unlock CPU(%u)\n", level);
+		pm_qos_update_request(&pm_qos_req_cpu, 0);
+	}
+
+	level = (qos_val >> 8) & 0xff;
+	if (level > 0 && level <= mc->mif_clk_cnt) {
+		mif_err("Lock MIF(%u)\n", mc->mif_clk_table[level - 1]);
+		pm_qos_update_request(&pm_qos_req_mif,
+				mc->mif_clk_table[level - 1]);
+	} else {
+		mif_err("Unlock MIF(%u)\n", level);
+		pm_qos_update_request(&pm_qos_req_mif, 0);
+	}
+
+	level = (qos_val >> 16) & 0xff;
+	if (level > 0 && level <= mc->int_clk_cnt) {
+		mif_err("Lock INT(%u)\n", mc->int_clk_table[level - 1]);
+		pm_qos_update_request(&pm_qos_req_int,
+				mc->int_clk_table[level - 1]);
+	} else {
+		mif_err("Unlock INT(%u)\n", level);
+		pm_qos_update_request(&pm_qos_req_int, 0);
+	}
+
+	mbox_set_value(mc->mbx_perf_req, 0);
+}
+
+static void bh_pm_qos_req_cpu(struct work_struct *ws)
+{
+	struct modem_ctl *mc;
+	int qos_val;
+	int cpu_val;
+
+	mc = container_of(ws, struct modem_ctl, pm_qos_work_cpu);
+
+	qos_val = mbox_get_value(mc->mbx_perf_req_cpu);
+	mif_err("pm_qos:0x%x requested\n", qos_val);
+
+	cpu_val = (qos_val & 0xff);
+	if (cpu_val > 0 && cpu_val <= mc->ap_clk_cnt) {
+		mif_err("Lock CPU[%d] : %u\n", cpu_val,
+				mc->ap_clk_table[cpu_val - 1]);
+		pm_qos_update_request(&pm_qos_req_cpu, mc->ap_clk_table[cpu_val - 1]);
+	} else {
+		mif_err("Unlock CPU(req_val : %d)\n", qos_val);
+		pm_qos_update_request(&pm_qos_req_cpu, 0);
+	}
+}
+
+static void bh_pm_qos_req_mif(struct work_struct *ws)
+{
+	struct modem_ctl *mc;
+	int qos_val;
+	int mif_val;
+
+	mc = container_of(ws, struct modem_ctl, pm_qos_work_mif);
+
+	qos_val = mbox_get_value(mc->mbx_perf_req_mif);
+	mif_err("pm_qos:0x%x requested\n", qos_val);
+
+	mif_val = (qos_val & 0xff);
+	if (mif_val > 0 && mif_val <= mc->mif_clk_cnt) {
+		mif_err("Lock MIF[%d] : %u\n", mif_val,
+				mc->mif_clk_table[mif_val - 1]);
+		pm_qos_update_request(&pm_qos_req_mif, mc->mif_clk_table[mif_val - 1]);
+	} else {
+		mif_err("Unlock MIF(req_val : %d)\n", qos_val);
+		pm_qos_update_request(&pm_qos_req_mif, 0);
+	}
+}
+
+static void bh_pm_qos_req_int(struct work_struct *ws)
+{
+	struct modem_ctl *mc;
+	int qos_val;
+	int int_val;
+
+	mc = container_of(ws, struct modem_ctl, pm_qos_work_int);
+
+	qos_val = mbox_get_value(mc->mbx_perf_req_int);
+	mif_err("pm_qos:0x%x requested\n", qos_val);
+
+	int_val = (qos_val & 0xff);
+	if (int_val > 0 && int_val <= mc->int_clk_cnt) {
+		mif_err("Lock INT[%d] : %u\n", int_val,
+				mc->int_clk_table[int_val - 1]);
+		pm_qos_update_request(&pm_qos_req_int, mc->int_clk_table[int_val - 1]);
+	} else {
+		mif_err("Unlock INT(req_val : %d)\n", qos_val);
+		pm_qos_update_request(&pm_qos_req_int, 0);
+	}
+}
+
 static irqreturn_t cp_wdt_handler(int irq, void *arg)
 {
 	struct modem_ctl *mc = (struct modem_ctl *)arg;
@@ -145,14 +227,7 @@ static irqreturn_t cp_wdt_handler(int irq, void *arg)
 	mif_disable_irq(&mc->irq_cp_wdt);
 	mif_err("%s: ERR! CP_WDOG occurred\n", mc->name);
 
-	if (cp_online(mc))
-		modem_notify_event(MODEM_EVENT_WATCHDOG);
-
-#ifdef CONFIG_CP_PMUCAL
-	cal_cp_reset_req_clear();
-#else
-	exynos_clear_cp_reset();
-#endif
+	exynos_clear_cp_reset(mc);
 
 	new_state = STATE_CRASH_EXIT;
 	ld->mode = LINK_MODE_ULOAD;
@@ -173,11 +248,7 @@ static irqreturn_t cp_fail_handler(int irq, void *arg)
 	mif_disable_irq(&mc->irq_cp_fail);
 	mif_err("%s: ERR! CP_FAIL occurred\n", mc->name);
 
-#ifdef CONFIG_CP_PMUCAL
-	cal_cp_active_clear();
-#else
-	exynos_cp_active_clear();
-#endif
+	exynos_cp_active_clear(mc);
 
 	new_state = STATE_CRASH_RESET;
 	ld->mode = LINK_MODE_OFFLINE;
@@ -193,13 +264,8 @@ static void cp_active_handler(void *arg)
 {
 	struct modem_ctl *mc = (struct modem_ctl *)arg;
 	struct link_device *ld = get_current_link(mc->iod);
-#ifdef CONFIG_CP_PMUCAL
-	int cp_on = cal_cp_status();
-#else
-	int cp_on = exynos_get_cp_power_status();
-#endif
-	int cp_active = mbox_extract_value(MCU_CP, mc->mbx_cp_status,
-					mc->sbi_lte_active_mask, mc->sbi_lte_active_pos);
+	int cp_on = exynos_get_cp_power_status(mc);
+	int cp_active = mbox_get_value(mc->mbx_phone_active);
 	int old_state = mc->phone_state;
 	int new_state = mc->phone_state;
 
@@ -217,9 +283,6 @@ static void cp_active_handler(void *arg)
 	}
 
 	if (old_state != new_state) {
-		/* corner case */
-		if (old_state == STATE_ONLINE)
-			modem_notify_event(MODEM_EVENT_EXIT);
 		mif_err("new_state = %s\n", get_cp_state_str(new_state));
 		mc->bootd->modem_state_changed(mc->bootd, new_state);
 		mc->iod->modem_state_changed(mc->iod, new_state);
@@ -258,15 +321,13 @@ static void dvfs_req_handler_int(void *arg)
 	schedule_work(&mc->pm_qos_work_int);
 }
 
-#ifdef CONFIG_PCI_EXYNOS
-extern int exynos_pcie_l1ss_ctrl(int enable, int id);
 static void pcie_l1ss_disable_handler(void *arg)
 {
+#if defined(CONFIG_PCI_EXYNOS_L1SS)
 	struct modem_mbox *mbx = (struct modem_mbox *)arg;
 	unsigned int req;
 
-	req = mbox_get_value(MCU_CP, mbx->mbx_cp2ap_pcie_l1ss_disable);
-
+	req = mbox_get_value(mbx->mbx_cp2ap_pcie_l1ss_disable);
 	if (req == 1) {
 		exynos_pcie_l1ss_ctrl(0, PCIE_L1SS_CTRL_MODEM_IF);
 		mif_err("cp requests pcie l1ss disable\n");
@@ -276,13 +337,8 @@ static void pcie_l1ss_disable_handler(void *arg)
 	} else {
 		mif_err("unsupported request: pcie_l1ss_disable\n");
 	}
-}
-#else
-static void pcie_l1ss_disable_handler(void *arg)
-{
-	mif_err("CONFIG_PCI_EXYNOS is not set!\n");
-}
 #endif
+}
 
 static int get_hw_rev(struct device_node *np)
 {
@@ -309,56 +365,31 @@ static int get_hw_rev(struct device_node *np)
 	return hw_rev;
 }
 
-#ifdef CONFIG_SIM_DETECT
-static unsigned int get_sim_socket_detection(struct device_node *np)
-{
-	unsigned gpio_ds_det;
-
-	gpio_ds_det = of_get_named_gpio(np, "mif,gpio_ds_det", 0);
-	if (!gpio_is_valid(gpio_ds_det)) {
-		mif_err("gpio_ds_det: Invalid gpio\n");
-		return 0;
-	}
-
-	return gpio_get_value(gpio_ds_det);
-}
-#else
-static unsigned int get_sim_socket_detection(struct device_node *np)
-{
-	unsigned int sim_socket_num = 1;
-	mif_dt_read_u32(np, "mif,sim_socket_num", sim_socket_num);
-	mif_err("mif,sim_socket_num : %d", sim_socket_num);
-
-	return sim_socket_num - 1;
-}
-#endif
-
-#define AP2CP_CFG_DONE BIT(0)
-#define AP2CP_CFG_ADDR		0x14820000
 static int sh333ap_on(struct modem_ctl *mc)
 {
 	struct platform_device *pdev = to_platform_device(mc->dev);
 	struct device_node *np = pdev->dev.of_node;
 	struct link_device *ld = get_current_link(mc->iod);
-	int cp_active = mbox_extract_value(MCU_CP, mc->mbx_cp_status,
-			mc->sbi_lte_active_mask, mc->sbi_lte_active_pos);
-	int cp_status = mbox_extract_value(MCU_CP, mc->mbx_cp_status,
-			mc->sbi_cp_status_mask, mc->sbi_cp_status_pos);
+	int cp_active = mbox_get_value(mc->mbx_phone_active);
+	int cp_status = mbox_get_value(mc->mbx_cp_status);
 	int ret;
 	int i;
-	unsigned long int flags;
-	int sys_rev, ds_det;
-	unsigned int mbx_ap_status;
-	unsigned int sbi_ds_det_mask, sbi_ds_det_pos;
-	unsigned int sbi_sys_rev_mask, sbi_sys_rev_pos;
 #if defined(CONFIG_LTE_MODEM_S5E7890) || defined(CONFIG_LTE_MODEM_S5E8890)
 	struct modem_data *modem = mc->mdm_data;
+#endif
+
+#ifdef CONFIG_SOC_EXYNOS8890
+	u32 __maybe_unused et_dac_cal;
+	register u64 reg0 __asm__("x0");
+	register u64 reg1 __asm__("x1");
+	register u64 reg2 __asm__("x2");
+	register u64 reg3 __asm__("x3");
 #endif
 
 	mif_info("+++\n");
 	mif_info("cp_active:%d cp_status:%d\n", cp_active, cp_status);
 
-	exynos_pmu_cp_init();
+	exynos_pmu_cp_init(mc);
 	usleep_range(10000, 11000);
 
 	if (!wake_lock_active(&mc->mc_wake_lock))
@@ -368,38 +399,11 @@ static int sh333ap_on(struct modem_ctl *mc)
 	ld->mode = LINK_MODE_OFFLINE;
 
 	for (i = 0; i < MBREG_MAX_NUM; i++)
-		mbox_set_value(MCU_CP, i, 0);
+		mbox_set_value(i, 0);
 
-	mif_dt_read_u32(np, "mbx_ap2cp_united_status", mbx_ap_status);
-	mif_dt_read_u32(np, "sbi_sys_rev_mask", sbi_sys_rev_mask);
-	mif_dt_read_u32(np, "sbi_sys_rev_pos", sbi_sys_rev_pos);
-	mif_dt_read_u32(np, "sbi_ds_det_mask", sbi_ds_det_mask);
-	mif_dt_read_u32(np, "sbi_ds_det_pos", sbi_ds_det_pos);
+	mbox_set_value(mc->mbx_sys_rev, get_hw_rev(np));
+	mif_err("System Revision %d\n", mbox_get_value(mc->mbx_sys_rev));
 
-	spin_lock_irqsave(&mc->ap_status_lock, flags);
-
-	sys_rev = get_hw_rev(np);
-	if (sys_rev >= 0) {
-		mbox_update_value(MCU_CP, mbx_ap_status, sys_rev,
-			sbi_sys_rev_mask, sbi_sys_rev_pos);
-	} else {
-		mif_err("get_hw_rev() ERROR\n");
-	}
-
-	ds_det = get_sim_socket_detection(np);
-	if (ds_det >= 0) {
-		mbox_update_value(MCU_CP, mbx_ap_status, ds_det,
-			sbi_ds_det_mask, sbi_ds_det_pos);
-	} else {
-		mif_err("get_sim_socket_detection() ERROR\n");
-	}
-
-	mif_err("System Revision %d\n", sys_rev);
-	mif_err("SIM Socket Detection %d\n", ds_det);
-
-	spin_unlock_irqrestore(&mc->ap_status_lock, flags);
-
-/* TODO : find out if following logic is really needed */
 #if defined(CONFIG_LTE_MODEM_S5E7890) || defined(CONFIG_LTE_MODEM_S5E8890)
 	/* copy memory cal value from ap to cp */
 	memmove(modem->ipc_base + 0x1000, mc->sysram_alive, 0x800);
@@ -408,56 +412,39 @@ static int sh333ap_on(struct modem_ctl *mc)
 	mif_err("CP build info : %s\n", mc->info_cp_build);
 	mif_err("CP carrior info : %s\n", mc->info_cp_carr);
 #endif
-	spin_lock_irqsave(&mc->ap_status_lock, flags);
-	mbox_update_value(MCU_CP, mc->mbx_ap_status, 1,
-		mc->sbi_ap_status_mask, mc->sbi_ap_status_pos);
-	spin_unlock_irqrestore(&mc->ap_status_lock, flags);
 
-	if (IS_ENABLED(CONFIG_LTE_MODEM_S5E9810)) {
-		void __iomem *AP2CP_CFG;
-		/* CP_INIT, AP_BAAW setting is executed in el3_mon when coldboot
-		 * If AP2CP_CFG is set, then CP_CPU will work
-		 */
-		AP2CP_CFG = devm_ioremap(mc->dev, AP2CP_CFG_ADDR, SZ_64);
-		if (AP2CP_CFG == NULL) {
-			mif_err("%s: AP2CP_CFG ioremap failed.\n", __func__);
-			ret = -EACCES;
-			return ret;
-		} else {
-			mif_err("AP2CP_CFG : 0x%p\n", AP2CP_CFG);
-		}
+#ifdef CONFIG_SOC_EXYNOS8890
+	/* Transfer ET_DAC_CAL tuning bit to CP */
+	reg0 = 0;
+	reg1 = 0;
+	reg2 = 0;
+	reg3 = 0;
 
-		mif_err("__raw_readl(AP2CP_CFG): 0x%08x\n", __raw_readl(AP2CP_CFG));
-		__raw_writel(AP2CP_CFG_DONE, AP2CP_CFG);
-		mif_err("__raw_readl(AP2CP_CFG): 0x%08x\n", __raw_readl(AP2CP_CFG));
-		mif_err("CP_CPU will work right now!!!\n");
-		devm_iounmap(mc->dev, AP2CP_CFG);
-	} else
-#ifdef CONFIG_CP_PMUCAL
-	{
-		ret = cal_cp_status();
-		if (ret) {
-			mif_err("CP aleady Init, Just reset release!\n");
-			cal_cp_reset_release();
-		} else {
-			mif_err("CP first Init!\n");
-			cal_cp_init();
-		}
-	}
-#else
-	{
-		ret = exynos_set_cp_power_onoff(CP_POWER_ON);
-		if (ret < 0) {
-			exynos_cp_reset();
-			usleep_range(10000, 11000);
-			exynos_set_cp_power_onoff(CP_POWER_ON);
-			usleep_range(10000, 11000);
-			exynos_cp_release();
-		} else {
-			msleep(300);
-		}
-	}
+	/* SMC_ID = 0x82001014, CMD_ID = 0x2002, read_idx=0x1C */
+	ret = exynos_smc(0x82001014, 0, 0x2002, 0x1C);
+	__asm__ volatile(
+			"\t"
+			: "+r"(reg0), "+r"(reg1), "+r"(reg2), "+r"(reg3)
+			);
+	et_dac_cal = (uint32_t)((0x00000000FFFF0000 & reg2) >> 16);
+
+	mif_err("ret = 0x%x, et_cac_cal value = 0x%x\n", ret, et_dac_cal);
+	mbox_set_value(mc->mbx_et_dac_cal,(u32)et_dac_cal);
 #endif
+
+	mbox_set_value(mc->mbx_pda_active, 1);
+
+	ret = exynos_set_cp_power_onoff(mc, CP_POWER_ON);
+	if (ret < 0) {
+		exynos_cp_reset(mc);
+		usleep_range(10000, 11000);
+		exynos_set_cp_power_onoff(mc, CP_POWER_ON);
+		usleep_range(10000, 11000);
+		exynos_cp_release(mc);
+	} else {
+		msleep(300);
+	}
+
 	mif_info("---\n");
 	return 0;
 }
@@ -465,11 +452,7 @@ static int sh333ap_on(struct modem_ctl *mc)
 static int sh333ap_off(struct modem_ctl *mc)
 {
 	struct link_device *ld = get_current_link(mc->iod);
-#ifdef CONFIG_CP_PMUCAL
-	int cp_on = cal_cp_status();
-#else
-	int cp_on = exynos_get_cp_power_status();
-#endif
+	int cp_on = exynos_get_cp_power_status(mc);
 	unsigned long timeout = msecs_to_jiffies(3000);
 	unsigned long remain;
 	mif_info("+++\n");
@@ -488,23 +471,7 @@ static int sh333ap_off(struct modem_ctl *mc)
 	}
 
 exit:
-#ifdef CONFIG_CP_PMUCAL
-	if (cal_cp_status() > 0) {
-#else
-	if (exynos_get_cp_power_status() > 0) {
-#endif
-		mif_err("CP aleady Power on, try reset\n");
-		mbox_set_interrupt(MCU_CP, mc->int_cp_wakeup);
-#ifdef CONFIG_CP_PMUCAL
-		cal_cp_reset_assert();
-#if defined(CONFIG_LTE_MODEM_S5E9810)
-		cal_cp_reset_release();
-#endif
-#else
-		exynos_cp_reset();
-#endif
-		mbox_sw_reset(MCU_CP);
-	}
+	exynos_cp_reset(mc);
 
 	mif_info("---\n");
 	return 0;
@@ -520,29 +487,10 @@ static int sh333ap_reset(struct modem_ctl *mc)
 
 	mif_err("+++\n");
 
-	if (cp_online(mc))
-		modem_notify_event(MODEM_EVENT_RESET);
-
 	mc->phone_state = STATE_OFFLINE;
 	ld->mode = LINK_MODE_OFFLINE;
 
-#ifdef CONFIG_CP_PMUCAL
-	if (cal_cp_status() > 0) {
-#else
-	if (exynos_get_cp_power_status() > 0) {
-#endif
-		mif_err("CP aleady Power on, try reset\n");
-		mbox_set_interrupt(MCU_CP, mc->int_cp_wakeup);
-#ifdef CONFIG_CP_PMUCAL
-		cal_cp_reset_assert();
-#if defined(CONFIG_LTE_MODEM_S5E9810)
-		cal_cp_reset_release();
-#endif
-#else
-		exynos_cp_reset();
-#endif
-		mbox_sw_reset(MCU_CP);
-	}
+	exynos_cp_reset(mc);
 
 	usleep_range(10000, 11000);
 
@@ -554,7 +502,6 @@ static int sh333ap_boot_on(struct modem_ctl *mc)
 {
 	struct link_device *ld = get_current_link(mc->bootd);
 	int cnt = 100;
-	unsigned long int flags;
 	mif_info("+++\n");
 
 	ld->mode = LINK_MODE_BOOT;
@@ -562,25 +509,17 @@ static int sh333ap_boot_on(struct modem_ctl *mc)
 	mc->bootd->modem_state_changed(mc->bootd, STATE_BOOTING);
 	mc->iod->modem_state_changed(mc->iod, STATE_BOOTING);
 
-	while (mbox_extract_value(MCU_CP, mc->mbx_cp_status,
-		mc->sbi_cp_status_mask, mc->sbi_cp_status_pos) == 0) {
+	while (mbox_get_value(mc->mbx_cp_status) == 0) {
 		if (--cnt > 0)
 			usleep_range(10000, 20000);
-		else {
-			mif_err("mbx_cp_status == 0, return -EACCES !!!!!!\n");
+		else
 			return -EACCES;
-		}
 	}
-
-	mif_err("mbx_cp_status == 1 ==>  CP booting in Progress...\n");
 
 	mif_disable_irq(&mc->irq_cp_wdt);
 	mif_enable_irq(&mc->irq_cp_fail);
 
-	spin_lock_irqsave(&mc->ap_status_lock, flags);
-	mbox_update_value(MCU_CP, mc->mbx_ap_status, 1,
-		mc->sbi_ap_status_mask, mc->sbi_ap_status_pos);
-	spin_unlock_irqrestore(&mc->ap_status_lock, flags);
+	mbox_set_value(mc->mbx_ap_status, 1);
 
 	mif_info("---\n");
 	return 0;
@@ -601,8 +540,6 @@ static int sh333ap_boot_off(struct modem_ctl *mc)
 		err = -EAGAIN;
 		goto exit;
 	}
-
-	mif_err("Got INT_CMD_PHONE_START from CP. CP booting completion!!!\n");
 
 	mif_enable_irq(&mc->irq_cp_wdt);
 
@@ -654,23 +591,7 @@ static int sh333ap_dump_reset(struct modem_ctl *mc)
 	if (!wake_lock_active(&mc->mc_wake_lock))
 		wake_lock(&mc->mc_wake_lock);
 
-#ifdef CONFIG_CP_PMUCAL
-	if (cal_cp_status() > 0) {
-#else
-	if (exynos_get_cp_power_status() > 0) {
-#endif
-		mif_err("CP aleady Power on, try reset\n");
-		mbox_set_interrupt(MCU_CP, mc->int_cp_wakeup);
-#ifdef CONFIG_CP_PMUCAL
-		cal_cp_reset_assert();
-#if defined(CONFIG_LTE_MODEM_S5E9810)
-		cal_cp_reset_release();
-#endif
-#else
-		exynos_cp_reset();
-#endif
-		mbox_sw_reset(MCU_CP);
-	}
+	exynos_cp_reset(mc);
 
 	mif_err("---\n");
 	return 0;
@@ -680,7 +601,6 @@ static int sh333ap_dump_start(struct modem_ctl *mc)
 {
 	int err;
 	struct link_device *ld = get_current_link(mc->bootd);
-	unsigned long int flags;
 	mif_err("+++\n");
 
 	if (!ld->dump_start) {
@@ -692,36 +612,9 @@ static int sh333ap_dump_start(struct modem_ctl *mc)
 	if (err)
 		return err;
 
-	if (IS_ENABLED(CONFIG_SOC_EXYNOS9810)) {
-		void __iomem *AP2CP_CFG;
-		/* CP_INIT, AP_BAAW setting is executed in el3_mon when coldboot
-		 * If AP2CP_CFG is set, then CP_CPU will work
-		 */
-		AP2CP_CFG = devm_ioremap(mc->dev, AP2CP_CFG_ADDR, SZ_64);
-		if (AP2CP_CFG == NULL) {
-			mif_err("%s: AP2CP_CFG ioremap failed.\n", __func__);
-			return -EACCES;
-		} else {
-			mif_err("AP2CP_CFG : 0x%p\n", AP2CP_CFG);
-		}
+	err = exynos_cp_release(mc);
 
-		mif_err("__raw_readl(AP2CP_CFG): 0x%08x\n", __raw_readl(AP2CP_CFG));
-		__raw_writel(AP2CP_CFG_DONE, AP2CP_CFG);
-		mif_err("__raw_readl(AP2CP_CFG): 0x%08x\n", __raw_readl(AP2CP_CFG));
-		mif_err("CP_CPU will work right now!!!\n");
-		devm_iounmap(mc->dev, AP2CP_CFG);
-	} else {
-#ifdef CONFIG_CP_PMUCAL
-		cal_cp_reset_release();
-#else
-		err = exynos_cp_release();
-#endif
-    }
-
-	spin_lock_irqsave(&mc->ap_status_lock, flags);
-	mbox_update_value(MCU_CP, mc->mbx_ap_status, 1,
-		mc->sbi_ap_status_mask, mc->sbi_ap_status_pos);
-	spin_unlock_irqrestore(&mc->ap_status_lock, flags);
+	mbox_set_value(mc->mbx_ap_status, 1);
 
 	mif_err("---\n");
 	return err;
@@ -743,28 +636,16 @@ static int sh333ap_get_meminfo(struct modem_ctl *mc, unsigned long arg)
 
 static int sh333ap_suspend_modemctl(struct modem_ctl *mc)
 {
-	unsigned long int flags;
-
-	spin_lock_irqsave(&mc->ap_status_lock, flags);
-	mbox_update_value(MCU_CP, mc->mbx_ap_status, 0,
-		mc->sbi_ap_status_mask, mc->sbi_ap_status_pos);
-	spin_unlock_irqrestore(&mc->ap_status_lock, flags);
-
-	mbox_set_interrupt(MCU_CP, mc->int_pda_active);
+	mbox_set_value(mc->mbx_pda_active, 0);
+	mbox_set_interrupt(mc->int_pda_active);
 
 	return 0;
 }
 
 static int sh333ap_resume_modemctl(struct modem_ctl *mc)
 {
-	unsigned long int flags;
-
-	spin_lock_irqsave(&mc->ap_status_lock, flags);
-	mbox_update_value(MCU_CP, mc->mbx_ap_status, 1,
-		mc->sbi_ap_status_mask, mc->sbi_ap_status_pos);
-	spin_unlock_irqrestore(&mc->ap_status_lock, flags);
-
-	mbox_set_interrupt(MCU_CP, mc->int_pda_active);
+	mbox_set_value(mc->mbx_pda_active, 1);
+	mbox_set_interrupt(mc->int_pda_active);
 
 	/* Below codes will be used next time.
 	if (get_cp2ap_status(mc))
@@ -792,11 +673,18 @@ static void sh333ap_get_ops(struct modem_ctl *mc)
 
 static void sh333ap_get_pdata(struct modem_ctl *mc, struct modem_data *modem)
 {
+	struct platform_device *pdev = to_platform_device(mc->dev);
+	struct device *dev = &pdev->dev;
+	struct device_node *np = pdev->dev.of_node;
 	struct modem_mbox *mbx = modem->mbx;
+	const struct property *prop;
+	const __be32 *val;
+	int nr;
 
+	mc->mbx_pda_active = mbx->mbx_ap2cp_active;
 	mc->int_pda_active = mbx->int_ap2cp_active;
-	mc->int_cp_wakeup = mbx->int_ap2cp_wakeup;
 
+	mc->mbx_phone_active = mbx->mbx_cp2ap_active;
 	mc->irq_phone_active = mbx->irq_cp2ap_active;
 
 	mc->mbx_ap_status = mbx->mbx_ap2cp_status;
@@ -810,33 +698,68 @@ static void sh333ap_get_pdata(struct modem_ctl *mc, struct modem_data *modem)
 	mc->irq_perf_req_mif = mbx->irq_cp2ap_perf_req_mif;
 	mc->mbx_perf_req_int = mbx->mbx_cp2ap_perf_req_int;
 	mc->irq_perf_req_int = mbx->irq_cp2ap_perf_req_int;
-	mc->irq_cp_wakelock = mbx->irq_cp2ap_wake_lock;
+
+	mc->mbx_et_dac_cal = mbx->mbx_ap2cp_et_dac_cal;
 
 	mc->mbx_sys_rev = mbx->mbx_ap2cp_sys_rev;
 	mc->mbx_pmic_rev = mbx->mbx_ap2cp_pmic_rev;
 	mc->mbx_pkg_id = mbx->mbx_ap2cp_pkg_id;
+	mc->mbx_lock_value = mbx->mbx_ap2cp_lock_value;
 
 	mc->hw_revision = modem->hw_revision;
 	mc->package_id = modem->package_id;
 	mc->lock_value = modem->lock_value;
 
-	mc->int_uart_noti = mbx->int_ap2cp_uart_noti;
+	/* get AP core clock table from DT */
+	prop = of_find_property(np, "mif,ap_clk_table", NULL);
+	if (!prop || !prop->value) {
+		mif_err("failed to get ap_clk_table prop\n");
+		mc->ap_clk_cnt = 0;
+	} else {
+		nr = prop->length / sizeof(u32);
+		mc->ap_clk_cnt = nr;
 
-	mc->sbi_wake_lock_mask = mbx->sbi_wake_lock_mask;
-	mc->sbi_wake_lock_pos = mbx->sbi_wake_lock_pos;
-	mc->sbi_lte_active_mask = mbx->sbi_lte_active_mask;
-	mc->sbi_lte_active_pos = mbx->sbi_lte_active_pos;
-	mc->sbi_cp_status_mask = mbx->sbi_cp_status_mask;
-	mc->sbi_cp_status_pos = mbx->sbi_cp_status_pos;
+		mc->ap_clk_table = devm_kzalloc(dev, sizeof(u32) * nr, GFP_KERNEL);
+		if (!mc->ap_clk_table)
+			mif_err("ap_clk_table: failed to alloc memory\n");
+		val = prop->value;
+		while (nr--)
+			mc->ap_clk_table[nr] = be32_to_cpup(val++);
+	}
 
-	mc->sbi_pda_active_mask = mbx->sbi_pda_active_mask;
-	mc->sbi_pda_active_pos = mbx->sbi_pda_active_pos;
-	mc->sbi_ap_status_mask = mbx->sbi_ap_status_mask;
-	mc->sbi_ap_status_pos = mbx->sbi_ap_status_pos;
+	/* get MIF clock table from DT */
+	prop = of_find_property(np, "mif,mif_clk_table", NULL);
+	if (!prop || !prop->value) {
+		mif_err("failed to get mif_clk_table prop\n");
+		mc->mif_clk_cnt = 0;
+	} else {
+		nr = prop->length / sizeof(u32);
+		mc->mif_clk_cnt = nr;
 
-	mc->sbi_uart_noti_mask = mbx->sbi_uart_noti_mask;
-	mc->sbi_uart_noti_pos = mbx->sbi_uart_noti_pos;
+		mc->mif_clk_table = devm_kzalloc(dev, sizeof(u32) * nr, GFP_KERNEL);
+		if (!mc->mif_clk_table)
+			mif_err("mif_clk_table: failed to alloc memory\n");
+		val = prop->value;
+		while (nr--)
+			mc->mif_clk_table[nr] = be32_to_cpup(val++);
+	}
 
+	/* get INT clock table from DT */
+	prop = of_find_property(np, "mif,int_clk_table", NULL);
+	if (!prop || !prop->value) {
+		mif_err("failed to get int_clk_table prop\n");
+		mc->int_clk_cnt = 0;
+	} else {
+		nr = prop->length / sizeof(u32);
+		mc->int_clk_cnt = nr;
+
+		mc->int_clk_table = devm_kzalloc(dev, sizeof(u32) * nr, GFP_KERNEL);
+		if (!mc->int_clk_table)
+			mif_err("int_clk_table: failed to alloc memory\n");
+		val = prop->value;
+		while (nr--)
+			mc->int_clk_table[nr] = be32_to_cpup(val++);
+	}
 }
 
 int init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
@@ -844,7 +767,7 @@ int init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	struct platform_device *pdev = to_platform_device(mc->dev);
 	int ret = 0;
 	int irq_num;
-	/*struct resource *sysram_alive;*/ /*TODO: findout it is needed or not*/
+	struct resource *sysram_alive;
 	unsigned long flags = IRQF_NO_SUSPEND | IRQF_NO_THREAD;
 	struct modem_mbox *mbx;
 
@@ -856,9 +779,6 @@ int init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	sh333ap_get_pdata(mc, pdata);
 	dev_set_drvdata(mc->dev, mc);
 	mbx = pdata->mbx;
-
-	/* Init spin_lock for ap2cp status mbx */
-	spin_lock_init(&mc->ap_status_lock);
 
 	wake_lock_init(&mc->mc_wake_lock, WAKE_LOCK_SUSPEND, "umts_wake_lock");
 
@@ -897,36 +817,48 @@ int init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	/*
 	** Register DVFS_REQ MBOX interrupt handler
 	*/
-	mbox_request_irq(MCU_CP, mc->irq_perf_req, dvfs_req_handler, mc);
+	mbox_request_irq(mc->irq_perf_req, dvfs_req_handler, mc);
 	mif_err("dvfs_req_handler registered\n");
 
-	mbox_request_irq(MCU_CP, mc->irq_perf_req_cpu,
+	mbox_request_irq(mc->irq_perf_req_cpu,
 			dvfs_req_handler_cpu, mc);
 	mif_err("dvfs_req_handler_cpu registered\n");
 
-	mbox_request_irq(MCU_CP, mc->irq_perf_req_mif,
+	mbox_request_irq(mc->irq_perf_req_mif,
 			dvfs_req_handler_mif, mc);
 	mif_err("dvfs_req_handler_mif registered\n");
 
-	mbox_request_irq(MCU_CP, mc->irq_perf_req_int,
+	mbox_request_irq(mc->irq_perf_req_int,
 			dvfs_req_handler_int, mc);
 	mif_err("dvfs_req_handler_int registered\n");
 
 	/*
 	** Register PCIE_CTRL MBOX interrupt handler
 	*/
-	mbox_request_irq(MCU_CP, mbx->irq_cp2ap_pcie_l1ss_disable,
+	mbox_request_irq(mbx->irq_cp2ap_pcie_l1ss_disable,
 			pcie_l1ss_disable_handler, mbx);
 	mif_err("pcie_l1ss_disable_handler registered\n");
 
 	/*
 	** Register LTE_ACTIVE MBOX interrupt handler
 	*/
-	mbox_request_irq(MCU_CP, mc->irq_phone_active, cp_active_handler, mc);
+	mbox_request_irq(mc->irq_phone_active, cp_active_handler, mc);
 	mif_err("cp_active_handler registered\n");
 
-	/* Register global value for mif_freq */
-	g_mc = mc;
+	pm_qos_add_request(&pm_qos_req_cpu, PM_QOS_CLUSTER0_FREQ_MIN, 0);
+	pm_qos_add_request(&pm_qos_req_mif, PM_QOS_BUS_THROUGHPUT, 0);
+	pm_qos_add_request(&pm_qos_req_int, PM_QOS_DEVICE_THROUGHPUT, 0);
+	INIT_WORK(&mc->pm_qos_work, bh_pm_qos_req);
+	INIT_WORK(&mc->pm_qos_work_cpu, bh_pm_qos_req_cpu);
+	INIT_WORK(&mc->pm_qos_work_mif, bh_pm_qos_req_mif);
+	INIT_WORK(&mc->pm_qos_work_int, bh_pm_qos_req_int);
+
+	sysram_alive = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	mc->sysram_alive = devm_ioremap_resource(&pdev->dev, sysram_alive);
+	if (IS_ERR(mc->sysram_alive)) {
+		ret = PTR_ERR(mc->sysram_alive);
+		return ret;
+	}
 
 	init_completion(&mc->off_cmpl);
 

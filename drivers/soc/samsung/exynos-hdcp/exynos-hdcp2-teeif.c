@@ -98,7 +98,7 @@ int hdcp_tee_comm(struct hci_message *hci)
 	__inval_cache_range((void *)hci, (void *)((uint8_t *)hci + sizeof(struct hci_message)));
 
 	if (ret) {
-		hdcp_info("SWd returned(%x)\n", ret);
+		hdcp_info("SWd returned(%d)\n", ret);
 		return ret;
 	}
 
@@ -162,7 +162,7 @@ int teei_set_rxinfo(uint8_t *version, size_t version_len,
 	/* todo: input check */
 
 	/* Update TCI buffer */
-	hci->cmd_id = HDCP_TEEI_SET_RXINFO;
+	hci->cmd_id = HDCP_TEEI_GET_TXINFO;
 	memcpy(hci->setrxinfo.version, version, version_len);
 	memcpy(hci->setrxinfo.caps_mask, caps_mask, caps_mask_len);
 
@@ -418,7 +418,6 @@ int teei_encrypt_packet(uint8_t *input, size_t input_len,
 
 	hdcp_debug("teeif command(%x)\n", hci->cmd_id);
 	hdcp_debug("input(%llx), output(%llx)\n", hci->encpacket.input_addr, hci->encpacket.output_addr);
-
 	if ((ret = hdcp_tee_comm(hci)) < 0)
 		return ret;
 
@@ -436,25 +435,25 @@ int teei_set_rcvlist_info(uint8_t *rx_info,
 	struct hci_message *hci = hctx.msg;
 	/* todo: input check */
 
+	/* Update TCI buffer */
+
 	hci->cmd_id = HDCP_TEEI_SET_RCV_ID_LIST;
-
-	memcpy(hci->setrcvlist.rcvid_lst, rcvid_list, HDCP_RP_RCVID_LIST_LEN);
+	memcpy(hci->setrcvlist.rx_info, rx_info, HDCP_RP_RX_INFO_LEN);
+	memcpy(hci->setrcvlist.seq_num_v, seq_num_v, HDCP_RP_SEQ_NUM_V_LEN);
 	memcpy(hci->setrcvlist.v_prime, v_prime, HDCP_RP_HMAC_V_LEN / 2);
-	/* Only used DP */
-	if (rx_info != NULL && seq_num_v != NULL) {
-		memcpy(hci->setrcvlist.rx_info, rx_info, HDCP_RP_RX_INFO_LEN);
-		memcpy(hci->setrcvlist.seq_num_v, seq_num_v, HDCP_RP_SEQ_NUM_V_LEN);
-	}
+	memcpy(hci->setrcvlist.rcvid_lst, rcvid_list, HDCP_RP_RCVID_LIST_LEN);
 
-
-	ret = hdcp_tee_comm(hci);
-	if (ret != 0) {
+	if ((ret = hdcp_tee_comm(hci)) < 0) {
 		*valid = 1;
 		return ret;
 	}
+
 	memcpy(v, hci->setrcvlist.v, HDCP_RP_HMAC_V_LEN / 2);
 	*valid = 0;
 
+	/* check returned message from SWD */
+
+	/* return verification result */
 	return 0;
 }
 
@@ -487,52 +486,18 @@ int teei_gen_stream_manage(uint16_t stream_num,
 	return ret;
 }
 
-int teei_verify_m_prime(uint8_t *m_prime, uint8_t *input, size_t input_len)
+int teei_verify_m_prime(uint8_t *m_prime)
 {
 	int ret = 0;
 	struct hci_message *hci = hctx.msg;
+	/* todo: input check */
 
+	/* Update TCI buffer */
 	hci->cmd_id = HDCP_TEEI_VERIFY_M_PRIME;
 	memcpy(hci->verifymprime.m_prime, m_prime, HDCP_RP_HMAC_M_LEN);
-	if (input && input_len < sizeof(hci->verifymprime.strmsg)) {
-		memcpy(hci->verifymprime.strmsg, input, input_len);
-		hci->verifymprime.str_len = input_len;
-	}
-
-	ret = hdcp_tee_comm(hci);
-
-	return ret;
-}
-
-int teei_wrapped_key(uint8_t *key, uint32_t wrapped, uint32_t key_len)
-{
-	int ret = 0;
-	struct hci_message *hci = hctx.msg;
-
-	hci->cmd_id = HDCP_TEEI_WRAP_KEY;
-
-	if (key_len > (sizeof(hci->wrap_key.enc_key) - HDCP_WRAP_AUTH_TAG)) {
-		hdcp_err("(un)wraaping key size is wrong. 0x%x\n", key_len);
-		return HDCP_ERROR_WRONG_SIZE;
-	}
-
-	if (key_len < HDCP_WRAP_AUTH_TAG || key_len > HDCP_WRAP_MAX_SIZE - HDCP_WRAP_AUTH_TAG)
-		return HDCP_ERROR_WRONG_SIZE;
-
-	if (wrapped == UNWRAP)
-		memcpy(hci->wrap_key.enc_key, key, key_len + HDCP_WRAP_AUTH_TAG);
-	else
-		memcpy(hci->wrap_key.key, key, key_len);
-
-	hci->wrap_key.wrapped = wrapped;
-	hci->wrap_key.key_len = key_len;
 
 	if ((ret = hdcp_tee_comm(hci)) < 0)
 		return ret;
 
-	if (hci->wrap_key.wrapped == WRAP) {
-		memcpy(key, hci->wrap_key.enc_key, key_len + HDCP_WRAP_AUTH_TAG);
-	}
-
-	return ret;
+	return 0;
 }

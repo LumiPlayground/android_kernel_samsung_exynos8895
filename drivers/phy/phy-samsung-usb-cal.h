@@ -48,7 +48,7 @@
 #define EXYNOS_USBCON_VER_F2_MAX	0xF2FF
 
 #define EXYNOS_USBCON_VER_MAJOR_VER_MASK	0xFF00
-#define EXYNOS_USBCON_VER_SS_CAP			0x0010
+#define EXYNOS_USBCON_VER_SS_CAP		0x0010
 
 enum exynos_usbphy_mode {
 	USBPHY_MODE_DEV = 0,
@@ -115,8 +115,8 @@ enum exynos_usbphy_tune_para {
 };
 
 struct exynos_usb_tune_param {
-	char name[16];
-	int value;
+	char name[20];
+	u32 value;
 };
 
 #define EXYNOS_USB_TUNE_LAST	0x4C415354
@@ -125,7 +125,7 @@ struct exynos_usb_tune_param {
 struct exynos_usbphy_hs_tune {
 	u8 tx_vref;
 	u8 tx_pre_emp;
-	u8 tx_pre_emp_puls;
+	u8 tx_pre_emp_plus;
 	u8 tx_res;
 	u8 tx_rise;
 	u8 tx_hsxv;

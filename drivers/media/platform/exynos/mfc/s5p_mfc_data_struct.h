@@ -13,7 +13,7 @@
 #ifndef __S5P_MFC_DATA_STRUCT_H
 #define __S5P_MFC_DATA_STRUCT_H __FILE__
 
-#ifdef CONFIG_ARM_EXYNOS_DEVFREQ
+#ifdef CONFIG_ARM_EXYNOS8895_BUS_DEVFREQ
 #define CONFIG_MFC_USE_BUS_DEVFREQ
 #endif
 
@@ -28,6 +28,7 @@
 #include <media/videobuf2-v4l2.h>
 
 #include "exynos_mfc_media.h"
+#include "s5p_mfc_nal_q_struct.h"
 
 #define MFC_NUM_CONTEXTS		32
 #define MFC_MAX_PLANES			3
@@ -39,9 +40,6 @@
 #define MFC_SFR_LOGGING_COUNT_SET1	28
 #define MFC_SFR_LOGGING_COUNT_SET2	32
 #define MFC_LOGGING_DATA_SIZE		950
-
-#define HWFC_MAX_BUF			10
-#define OTF_MAX_BUF			30
 
 /* Maximum number of temporal layers */
 #define VIDEO_MAX_TEMPORAL_LAYERS	7
@@ -66,8 +64,6 @@ enum mfc_ip_version {
 	IP_VER_MFC_8J_0,
 	IP_VER_MFC_8J_1,
 	IP_VER_MFC_8K_0,
-	IP_VER_MFC_7K_0,
-	IP_VER_MFC_9L_0,
 };
 
 /*
@@ -92,8 +88,6 @@ enum s5p_mfc_node_type {
 	MFCNODE_ENCODER = 1,
 	MFCNODE_DECODER_DRM = 2,
 	MFCNODE_ENCODER_DRM = 3,
-	MFCNODE_ENCODER_OTF = 4,
-	MFCNODE_ENCODER_OTF_DRM = 5,
 };
 
 /**
@@ -156,12 +150,18 @@ enum s5p_mfc_check_state {
 	MFCSTATE_DEC_S3D_REALLOC,
 };
 
+/**
+ * enum s5p_mfc_buf_cacheable_mask - The mask for cacheble setting
+ */
+enum s5p_mfc_buf_cacheable_mask {
+	MFCMASK_DST_CACHE = (1 << 0),
+	MFCMASK_SRC_CACHE = (1 << 1),
+};
+
 enum mfc_buf_usage_type {
 	MFCBUF_INVALID = 0,
 	MFCBUF_NORMAL,
 	MFCBUF_DRM,
-	MFCBUF_NORMAL_FW,
-	MFCBUF_DRM_FW,
 };
 
 enum mfc_buf_process_type {
@@ -203,6 +203,7 @@ enum s5p_mfc_debug_cause {
 	MFC_CAUSE_FAIL_RISC_ON			= 11,
 	MFC_CAUSE_FAIL_DPB_FLUSH		= 12,
 	MFC_CAUSE_FAIL_CHACHE_FLUSH		= 13,
+	MFC_CAUSE_NO_MAPPING_AREA		= 14,
 	/* last information */
 	MFC_LAST_INFO_BLACK_BAR			= 26,
 	MFC_LAST_INFO_NAL_QUEUE			= 27,
@@ -240,6 +241,8 @@ struct s5p_mfc_debug {
 	u32	dynamic_used;
 	u32	last_src_addr;
 	u32	last_dst_addr[MFC_MAX_PLANES];
+	/* for SYSMMU */
+	struct	_sysmmu_fi *mmu_fi;
 	/* total logging data */
 	char	errorinfo[MFC_LOGGING_DATA_SIZE];
 };
@@ -300,7 +303,6 @@ struct s5p_mfc_pm {
 
 struct s5p_mfc_fw {
 	int		date;
-	int		fimv_info;
 	size_t		size;
 	int		status;
 	int		drm_status;
@@ -333,34 +335,19 @@ struct s5p_mfc_variant {
 	int	num_entities;
 };
 
-struct s5p_mfc_debugfs {
-	struct dentry *root;
-	struct dentry *mfc_info;
-	struct dentry *debug_info;
-	struct dentry *debug_level;
-	struct dentry *debug_ts;
-	struct dentry *dbg_enable;
-	struct dentry *nal_q_dump;
-	struct dentry *nal_q_disable;
-	struct dentry *nal_q_parallel_disable;
-	struct dentry *otf_dump;
-};
-
 /**
  * struct s5p_mfc_special_buf - represents internal used buffer
- * @daddr:		device virtual address
+ * @alloc:		allocation-specific contexts for each buffer
+ *			(videobuf2 allocator)
+ * @daddr:		offset of each buffer, will be used for MFC
  * @virt:		kernel virtual address, only valid when the
  *			buffer accessed by driver
  */
 struct s5p_mfc_special_buf {
-	enum mfc_buf_usage_type		buftype;
-	struct ion_handle		*handle;
-	struct dma_buf			*dma_buf;
-	struct dma_buf_attachment	*attachment;
-	struct sg_table			*sgt;
-	dma_addr_t			daddr;
-	void				*vaddr;
-	size_t				size;
+	void		*alloc;
+	dma_addr_t	daddr;
+	void		*vaddr;
+	size_t		size;
 };
 
 #ifdef CONFIG_MFC_USE_BUS_DEVFREQ
@@ -399,7 +386,6 @@ struct s5p_mfc_qos {
 	unsigned int freq_kfc;
 	unsigned int mo_value;
 	unsigned int mo_10bit_value;
-	unsigned int mo_uhd_enc60_value;
 	unsigned int time_fw;
 };
 #endif
@@ -410,254 +396,10 @@ struct s5p_mfc_platdata {
 	int min_rate;
 #ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 	int num_qos_steps;
-	int max_qos_steps;
 	int max_mb;
 	struct s5p_mfc_qos *qos_table;
 #endif
 };
-
-/************************ NAL_Q data structure ************************/
-#define NAL_Q_ENABLE 1
-
-#define NAL_Q_IN_ENTRY_SIZE		256
-#define NAL_Q_OUT_ENTRY_SIZE		256
-
-#define NAL_Q_IN_DEC_STR_SIZE		112
-#define NAL_Q_IN_ENC_STR_SIZE		204
-#define NAL_Q_OUT_DEC_STR_SIZE		248
-#define NAL_Q_OUT_ENC_STR_SIZE		64
-
-#define NAL_Q_IN_QUEUE_SIZE		16 /* 256*16 = 4096 bytes */
-#define NAL_Q_OUT_QUEUE_SIZE		16 /* 256*16 = 4096 bytes */
-
-typedef struct __DecoderInputStr {
-	int StartCode; /* = 0xAAAAAAAA; Decoder input structure marker */
-	int CommandId;
-	int InstanceId;
-	int PictureTag;
-	unsigned int CpbBufferAddr;
-	int CpbBufferSize;
-	int CpbBufferOffset;
-	int StreamDataSize;
-	int AvailableDpbFlagUpper;
-	int AvailableDpbFlagLower;
-	int DynamicDpbFlagUpper;
-	int DynamicDpbFlagLower;
-	unsigned int FrameAddr[3];
-	int FrameSize[3];
-	int NalStartOptions;
-	int FrameStrideSize[3];
-	int Frame2BitSize[2];
-	int Frame2BitStrideSize[2];
-	unsigned int ScratchBufAddr;
-	int ScratchBufSize;
-	char reserved[NAL_Q_IN_ENTRY_SIZE - NAL_Q_IN_DEC_STR_SIZE];
-} DecoderInputStr; /* 28*4 = 112 bytes */
-
-typedef struct __EncoderInputStr {
-	int StartCode; /* 0xBBBBBBBB; Encoder input structure marker */
-	int CommandId;
-	int InstanceId;
-	int PictureTag;
-	unsigned int FrameAddr[3];
-	unsigned int StreamBufferAddr;
-	int StreamBufferSize;
-	int StreamBufferOffset;
-	int RcRoiCtrl;
-	unsigned int RoiBufferAddr;
-	int ParamChange;
-	int IrSize;
-	int GopConfig;
-	int RcFrameRate;
-	int RcBitRate;
-	int MsliceMode;
-	int MsliceSizeMb;
-	int MsliceSizeBits;
-	int FrameInsertion;
-	int HierarchicalBitRateLayer[7];
-	int H264RefreshPeriod;
-	int HevcRefreshPeriod;
-	int RcQpBound;
-	int RcQpBoundPb;
-	int FixedPictureQp;
-	int PictureProfile;
-	int BitCountEnable;
-	int MaxBitCount;
-	int MinBitCount;
-	int NumTLayer;
-	int H264NalControl;
-	int HevcNalControl;
-	int Vp8NalControl;
-	int Vp9NalControl;
-	int H264HDSvcExtension0;
-	int H264HDSvcExtension1;
-	int GopConfig2;
-	int Frame2bitAddr[2];
-	int Weight;
-	int ExtCtbQpAddr;
-	int WeightUpper;
-	int RcMode;
-	char reserved[NAL_Q_IN_ENTRY_SIZE - NAL_Q_IN_ENC_STR_SIZE];
-} EncoderInputStr; /* 51*4 = 204 bytes */
-
-typedef struct __DecoderOutputStr {
-	int StartCode; /* 0xAAAAAAAA; Decoder output structure marker */
-	int CommandId;
-	int InstanceId;
-	int ErrorCode;
-	int PictureTagTop;
-	int PictureTimeTop;
-	int DisplayFrameWidth;
-	int DisplayFrameHeight;
-	int DisplayStatus;
-	unsigned int DisplayAddr[3];
-	int DisplayFrameType;
-	int DisplayCropInfo1;
-	int DisplayCropInfo2;
-	int DisplayPictureProfile;
-	int DisplayAspectRatio;
-	int DisplayExtendedAr;
-	int DecodedNalSize;
-	int UsedDpbFlagUpper;
-	int UsedDpbFlagLower;
-	int SeiAvail;
-	int FramePackArrgmentId;
-	int FramePackSeiInfo;
-	int FramePackGridPos;
-	int DisplayRecoverySeiInfo;
-	int H264Info;
-	int DisplayFirstCrc;
-	int DisplaySecondCrc;
-	int DisplayThirdCrc;
-	int DisplayFirst2BitCrc;
-	int DisplaySecond2BitCrc;
-	int DecodedFrameWidth;
-	int DecodedFrameHeight;
-	int DecodedStatus;
-	unsigned int DecodedAddr[3];
-	int DecodedFrameType;
-	int DecodedCropInfo1;
-	int DecodedCropInfo2;
-	int DecodedPictureProfile;
-	int DecodedRecoverySeiInfo;
-	int DecodedFirstCrc;
-	int DecodedSecondCrc;
-	int DecodedThirdCrc;
-	int DecodedFirst2BitCrc;
-	int DecodedSecond2BitCrc;
-	int PictureTagBot;
-	int PictureTimeBot;
-	int ChromaFormat;
-	int Mpeg4Info;
-	int HevcInfo;
-	int Vc1Info;
-	int VideoSignalType;
-	int ContentLightLevelInfoSei;
-	int MasteringDisplayColourVolumeSei0;
-	int MasteringDisplayColourVolumeSei1;
-	int MasteringDisplayColourVolumeSei2;
-	int MasteringDisplayColourVolumeSei3;
-	int MasteringDisplayColourVolumeSei4;
-	int MasteringDisplayColourVolumeSei5;
-	char reserved[NAL_Q_OUT_ENTRY_SIZE - NAL_Q_OUT_DEC_STR_SIZE];
-} DecoderOutputStr; /* 62*4 =  248 bytes */
-
-typedef struct __EncoderOutputStr {
-	int StartCode; /* 0xBBBBBBBB; Encoder output structure marker */
-	int CommandId;
-	int InstanceId;
-	int ErrorCode;
-	int PictureTag;
-	unsigned int EncodedFrameAddr[3];
-	unsigned int StreamBufferAddr;
-	int StreamBufferOffset;
-	int StreamSize;
-	int SliceType;
-	int NalDoneInfo;
-	unsigned int ReconLumaDpbAddr;
-	unsigned int ReconChromaDpbAddr;
-	int EncCnt;
-	char reserved[NAL_Q_OUT_ENTRY_SIZE - NAL_Q_OUT_ENC_STR_SIZE];
-} EncoderOutputStr; /* 16*4 = 64 bytes */
-
-/**
- * enum nal_queue_state - The state for nal queue operation.
- */
-typedef enum _nal_queue_state {
-	NAL_Q_STATE_CREATED = 0,
-	NAL_Q_STATE_INITIALIZED,
-	NAL_Q_STATE_STARTED, /* when s5p_mfc_nal_q_start() is called */
-	NAL_Q_STATE_STOPPED, /* when s5p_mfc_nal_q_stop() is called */
-} nal_queue_state;
-
-typedef struct _nal_in_queue {
-	union {
-		DecoderInputStr dec;
-		EncoderInputStr enc;
-	} entry[NAL_Q_IN_QUEUE_SIZE];
-} nal_in_queue;
-
-typedef struct _nal_out_queue {
-	union {
-		DecoderOutputStr dec;
-		EncoderOutputStr enc;
-	} entry[NAL_Q_OUT_QUEUE_SIZE];
-} nal_out_queue;
-
-struct _nal_queue_handle;
-typedef struct _nal_queue_in_handle {
-	struct _nal_queue_handle *nal_q_handle;
-	struct s5p_mfc_special_buf in_buf;
-	unsigned int in_exe_count;
-	nal_in_queue *nal_q_in_addr;
-} nal_queue_in_handle;
-
-typedef struct _nal_queue_out_handle {
-	struct _nal_queue_handle *nal_q_handle;
-	struct s5p_mfc_special_buf out_buf;
-	unsigned int out_exe_count;
-	nal_out_queue *nal_q_out_addr;
-	int nal_q_ctx;
-} nal_queue_out_handle;
-
-typedef struct _nal_queue_handle {
-	nal_queue_in_handle *nal_q_in_handle;
-	nal_queue_out_handle *nal_q_out_handle;
-	nal_queue_state nal_q_state;
-	spinlock_t lock;
-	int nal_q_exception;
-} nal_queue_handle;
-
-/************************ OTF data structure ************************/
-struct _otf_buf_addr {
-	dma_addr_t otf_daddr[HWFC_MAX_BUF][3];
-	struct dma_buf_attachment *otf_buf_attach[HWFC_MAX_BUF];
-};
-
-struct _otf_buf_info {
-	int pixel_format;
-	int width;
-	int height;
-	int buffer_count;
-	struct dma_buf *bufs[HWFC_MAX_BUF];
-};
-
-struct _otf_debug {
-	struct s5p_mfc_special_buf stream_buf[OTF_MAX_BUF];
-	unsigned int stream_size[OTF_MAX_BUF];
-	unsigned char frame_cnt;
-};
-
-struct _otf_handle {
-	int otf_work_bit;
-	int otf_buf_index;
-	int otf_job_id;
-	u64 otf_time_stamp;
-	struct _otf_buf_addr otf_buf_addr;
-	struct _otf_buf_info otf_buf_info;
-	struct _otf_debug otf_debug;
-};
-/********************************************************************/
 
 /**
  * struct s5p_mfc_dev - The struct containing driver internal parameters.
@@ -668,8 +410,6 @@ struct s5p_mfc_dev {
 	struct video_device	*vfd_enc;
 	struct video_device	*vfd_dec_drm;
 	struct video_device	*vfd_enc_drm;
-	struct video_device	*vfd_enc_otf;
-	struct video_device	*vfd_enc_otf_drm;
 	struct device		*device;
 #ifdef CONFIG_ION_EXYNOS
 	struct ion_client	*mfc_ion_client;
@@ -678,8 +418,6 @@ struct s5p_mfc_dev {
 	void __iomem		*regs_base;
 	void __iomem		*sysmmu0_base;
 	void __iomem		*sysmmu1_base;
-	void __iomem		*hwfc_base;
-
 	int			irq;
 	struct resource		*mfc_mem;
 
@@ -723,11 +461,16 @@ struct s5p_mfc_dev {
 	struct workqueue_struct *watchdog_wq;
 	struct work_struct watchdog_work;
 
+	struct vb2_alloc_ctx *alloc_ctx;
+
 	/* for DRM */
 	int curr_ctx_is_drm;
 	int num_drm_inst;
 	struct s5p_mfc_special_buf fw_buf;
 	struct s5p_mfc_special_buf drm_fw_buf;
+	struct vb2_alloc_ctx *alloc_ctx_fw;
+	struct vb2_alloc_ctx *alloc_ctx_drm_fw;
+	struct vb2_alloc_ctx *alloc_ctx_drm;
 
 	struct workqueue_struct *butler_wq;
 	struct work_struct butler_work;
@@ -742,7 +485,9 @@ struct s5p_mfc_dev {
 	struct pm_qos_request qos_req_cluster0;
 #endif
 	int qos_has_enc_ctx;
-	struct mutex qos_mutex;
+#ifdef CONFIG_EXYNOS8890_BTS_OPTIMIZATION
+	int qos_extra;
+#endif
 #endif
 	int id;
 	atomic_t clk_ref;
@@ -765,9 +510,6 @@ struct s5p_mfc_dev {
 #ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 	struct bts_bw mfc_bw;
 #endif
-
-	struct s5p_mfc_debugfs debugfs;
-
 	int last_cmd;
 	int last_int;
 	struct timeval last_cmd_time;
@@ -785,6 +527,7 @@ struct s5p_mfc_h264_enc_params {
 	s8 loop_filter_alpha;
 	s8 loop_filter_beta;
 	enum v4l2_mpeg_video_h264_entropy_mode entropy_mode;
+	u8 num_ref_pic_4p;
 	u8 _8x8_transform;
 	u32 rc_framerate;
 	u8 rc_frame_qp;
@@ -873,10 +616,10 @@ struct s5p_mfc_vp9_enc_params {
 	u8 hier_qp_enable;
 	u8 hier_qp_layer[3];
 	u32 hier_bit_layer[3];
+	u8 num_refs_for_p;
 	u8 num_hier_layer;
 	u8 max_partition_depth;
 	u8 intra_pu_split_disable;
-	u8 profile;
 };
 
 /**
@@ -900,6 +643,7 @@ struct s5p_mfc_vp8_enc_params {
 	u8 hier_qp_enable;
 	u8 hier_qp_layer[3];
 	u32 hier_bit_layer[3];
+	u8 num_refs_for_p;
 	u8 intra_4x4mode_disable;
 	u8 num_hier_layer;
 };
@@ -927,6 +671,7 @@ struct s5p_mfc_hevc_enc_params {
 	u8 rc_p_frame_qp;
 	u8 rc_b_frame_qp;
 	u8 max_partition_depth;
+	u8 num_refs_for_p;
 	u8 refreshtype;
 	u16 refreshperiod;
 	s32 lf_beta_offset_div2;
@@ -963,14 +708,6 @@ struct s5p_mfc_hevc_enc_params {
 /**
  *
  */
-struct s5p_mfc_bpg_enc_params {
-	u32 thumb_size;
-	u32 exif_size;
-};
-
-/**
- *
- */
 struct s5p_mfc_enc_params {
 	u16 width;
 	u16 height;
@@ -993,8 +730,7 @@ struct s5p_mfc_enc_params {
 	u8 frame_tag;
 	u8 ratio_intra;
 
-	u8 num_b_frame;		/* H.264, HEVC, MPEG4 */
-	u8 num_refs_for_p;	/* H.264, HEVC, VP8, VP9 */
+	u8 num_b_frame;		/* H.264/MPEG4 */
 	u8 rc_mb;		/* H.264: MFCv5, MPEG4/H.263: MFCv6 */
 	u8 rc_pvc;
 	u16 vbv_buf_size;
@@ -1002,7 +738,6 @@ struct s5p_mfc_enc_params {
 	enum v4l2_mpeg_mfc51_video_frame_skip_mode frame_skip_mode;
 	u8 fixed_target_bit;
 	u8 num_hier_max_layer;
-	u8 weighted_enable;
 	u8 roi_enable;
 	u8 ivf_header_disable;	/* VP8, VP9 */
 
@@ -1011,29 +746,12 @@ struct s5p_mfc_enc_params {
 	u32 i_frm_ctrl_mode;
 	u32 i_frm_ctrl;
 
-	u32 check_color_range;
-	u32 color_range;
-	u32 colour_primaries;
-	u32 transfer_characteristics;
-	u32 matrix_coefficients;
-
-	u32 static_info_enable;
-	u32 max_pic_average_light;
-	u32 max_content_light;
-	u32 max_display_luminance;
-	u32 min_display_luminance;
-	u32 white_point;
-	u32 display_primaries_0;
-	u32 display_primaries_1;
-	u32 display_primaries_2;
-
 	union {
 		struct s5p_mfc_h264_enc_params h264;
 		struct s5p_mfc_mpeg4_enc_params mpeg4;
 		struct s5p_mfc_vp8_enc_params vp8;
 		struct s5p_mfc_vp9_enc_params vp9;
 		struct s5p_mfc_hevc_enc_params hevc;
-		struct s5p_mfc_bpg_enc_params bpg;
 	} codec;
 };
 
@@ -1184,17 +902,23 @@ struct s5p_mfc_dec {
 
 	unsigned long consumed;
 	unsigned long remained_size;
+	unsigned int dpb_flush;
 
 	enum v4l2_memory dst_memtype;
 	int sei_parse;
 	int stored_tag;
 	dma_addr_t y_addr_for_pb;
 
+	int internal_dpb;
 	int cr_left, cr_right, cr_top, cr_bot;
 
 	int detect_black_bar;
 	bool black_bar_updated;
 	struct v4l2_rect black_bar;
+
+	/* For 7.x */
+	int tiled_buf_cnt;
+	struct s5p_mfc_raw_info tiled_ref;
 
 	/* For dynamic DPB */
 	int is_dynamic_dpb;
@@ -1204,15 +928,15 @@ struct s5p_mfc_dec {
 
 	struct dec_dpb_ref_info *ref_info;
 	int assigned_fd[MFC_MAX_DPBS];
+	dma_addr_t assigned_addr[MFC_MAX_DPBS][MFC_MAX_PLANES];
+	struct dma_buf *assigned_dmabufs[MFC_MAX_DPBS][MFC_MAX_PLANES];
+	struct dma_buf_attachment *assigned_attach[MFC_MAX_DPBS][MFC_MAX_PLANES];
+	int assigned_refcnt[MFC_MAX_DPBS];
+	struct mutex dpb_mutex;
 	struct mfc_user_shared_handle sh_handle;
 	struct s5p_mfc_buf *assigned_dpb[MFC_MAX_DPBS];
 
-	struct dma_buf *assigned_dmabufs[MFC_MAX_DPBS][2][MFC_MAX_PLANES];
-	struct dma_buf_attachment *assigned_attach[MFC_MAX_DPBS][2][MFC_MAX_PLANES];
-	dma_addr_t assigned_addr[MFC_MAX_DPBS][2][MFC_MAX_PLANES];
-	int assigned_refcnt[MFC_MAX_DPBS];
-	struct mutex dpb_mutex;
-
+	int profile;
 	int has_multiframe;
 	int is_dpb_full;
 
@@ -1227,19 +951,15 @@ struct s5p_mfc_dec {
 	unsigned int frame_size[3][30];
 	unsigned char frame_cnt;
 
-	unsigned int num_of_tile_over_4;
 	unsigned int super64_bframe;
-
-	unsigned int color_range;
-	unsigned int color_space;
 };
 
 struct s5p_mfc_enc {
 	struct s5p_mfc_enc_params params;
 
 	unsigned int dst_buf_size;
-	unsigned int header_size;
 
+	int frame_count;
 	enum v4l2_mpeg_mfc51_video_frame_type frame_type;
 	enum v4l2_mpeg_mfc51_video_force_frame_type force_frame_type;
 
@@ -1296,9 +1016,9 @@ struct s5p_mfc_ctx {
 
 	struct s5p_mfc_buf_queue src_buf_queue;
 	struct s5p_mfc_buf_queue dst_buf_queue;
+	struct s5p_mfc_buf_queue ref_buf_queue;
 	struct s5p_mfc_buf_queue src_buf_nal_queue;
 	struct s5p_mfc_buf_queue dst_buf_nal_queue;
-	struct s5p_mfc_buf_queue ref_buf_queue;
 	spinlock_t buf_queue_lock;
 
 	enum s5p_mfc_inst_type type;
@@ -1342,6 +1062,7 @@ struct s5p_mfc_ctx {
 	/* Control values */
 	int codec_mode;
 	__u32 pix_format;
+	int cacheable;
 
 	/* Extra Buffers */
 	struct s5p_mfc_special_buf instance_ctx_buf;
@@ -1352,12 +1073,10 @@ struct s5p_mfc_ctx {
 	struct s5p_mfc_ctrls_ops *c_ops;
 
 	size_t scratch_buf_size;
-	size_t loopfilter_luma_size;
-	size_t loopfilter_chroma_size;
 
 	/* Profile infomation */
 	int is_10bit;
-	int is_422format;
+	int is_422_10_intra;
 
 	/* for DRM */
 	int is_drm;
@@ -1370,9 +1089,9 @@ struct s5p_mfc_ctx {
 	int qos_req_step;
 	struct list_head qos_list;
 #endif
-	unsigned int qos_ratio;
-	unsigned long framerate;
-	unsigned long last_framerate;
+	int qos_ratio;
+	int framerate;
+	int last_framerate;
 
 	struct mfc_timestamp ts_array[MFC_TIME_INDEX];
 	struct list_head ts_list;
@@ -1383,7 +1102,6 @@ struct s5p_mfc_ctx {
 
 	unsigned long raw_protect_flag;
 	unsigned long stream_protect_flag;
-	struct _otf_handle *otf_handle;
 
 	int frame_cnt;
 	u32 last_src_addr;

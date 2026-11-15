@@ -177,7 +177,7 @@ static int vts_platform_open(struct snd_pcm_substream *substream)
 		dev_info(dev, "%s open --\n", __func__);
 		result = vts_set_dmicctrl(data->vts_data->pdev,
 					VTS_MICCONF_FOR_RECORD, true);
-		if (result < 0) {
+		if (IS_ERR_VALUE(result)) {
 			dev_err(dev, "%s: MIC control configuration failed\n", __func__);
 			pm_runtime_put_sync(dev);
 		}
@@ -207,7 +207,7 @@ static int vts_platform_close(struct snd_pcm_substream *substream)
 		dev_info(dev, "%s close --\n", __func__);
 		result = vts_set_dmicctrl(data->vts_data->pdev,
 					VTS_MICCONF_FOR_RECORD, false);
-		if (result < 0)
+		if (IS_ERR_VALUE(result))
 			dev_warn(dev, "%s: MIC control configuration failed\n", __func__);
 	}
 
@@ -299,13 +299,13 @@ static int samsung_vts_dma_probe(struct platform_device *pdev)
 	data->vts_data = platform_get_drvdata(data->pdev_vts);
 
 	result = of_property_read_u32_index(np, "id", 0, &data->id);
-	if (result < 0) {
+	if (IS_ERR_VALUE(result)) {
 		dev_err(dev, "id property reading fail\n");
 		return result;
 	}
 
 	result = of_property_read_string(np, "type", &type);
-	if (result < 0) {
+	if (IS_ERR_VALUE(result)) {
 		dev_err(dev, "type property reading fail\n");
 		return result;
 	}

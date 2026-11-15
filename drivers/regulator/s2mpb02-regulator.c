@@ -40,10 +40,35 @@ struct s2mpb02_data {
 	int opmode[S2MPB02_REGULATOR_MAX];
 };
 
+#ifdef CONFIG_SEC_PM_DEBUG
+static char debug_temp[100] = "\0";
+
+static int __init pmic_setup(char *s)
+{
+	if (!s)
+		return -EINVAL;
+	strcpy(debug_temp, s);
+	pr_info("%s: %s\n", __func__, debug_temp);
+
+	return 0;
+}
+early_param("sub_pmic", pmic_setup);
+#endif
+
 static int s2m_enable(struct regulator_dev *rdev)
 {
 	struct s2mpb02_data *info = rdev_get_drvdata(rdev);
 	struct i2c_client *i2c = info->iodev->i2c;
+
+#ifdef CONFIG_SEC_PM_DEBUG
+	pr_info("%s: %s enable (0x%x)\n", __func__, rdev->desc->name, rdev->desc->enable_reg);
+
+	if (*debug_temp != '\0') {
+		if (strstr(debug_temp, rdev->desc->name)) {
+			dump_stack();
+		}
+	}
+#endif
 
 	return s2mpb02_update_reg(i2c, rdev->desc->enable_reg,
 				  info->opmode[rdev_get_id(rdev)],
@@ -55,6 +80,16 @@ static int s2m_disable_regmap(struct regulator_dev *rdev)
 	struct s2mpb02_data *info = rdev_get_drvdata(rdev);
 	struct i2c_client *i2c = info->iodev->i2c;
 	u8 val;
+
+#ifdef CONFIG_SEC_PM_DEBUG
+	pr_info("%s: %s disable (0x%x)\n", __func__, rdev->desc->name, rdev->desc->enable_reg);
+
+	if (*debug_temp != '\0') {
+		if (strstr(debug_temp, rdev->desc->name)) {
+			dump_stack();
+		}
+	}
+#endif
 
 	if (rdev->desc->enable_is_inverted)
 		val = rdev->desc->enable_mask;
@@ -294,12 +329,20 @@ static int s2mpb02_pmic_dt_parse_pdata(struct s2mpb02_dev *iodev,
 {
 	struct device_node *pmic_np, *regulators_np, *reg_np;
 	struct s2mpb02_regulator_data *rdata;
-	unsigned long i;
+	unsigned int i;
+	int ret;
 
 	pmic_np = iodev->dev->of_node;
 	if (!pmic_np) {
 		dev_err(iodev->dev, "could not find pmic sub-node\n");
 		return -ENODEV;
+	}
+
+	ret = of_property_read_u32(pmic_np, "b1_remote_sense_en",
+		&pdata->b1_rms_en);
+	if (ret) {
+		dev_info(iodev->dev, "no node for b1_remote_sense_en\n");
+		pdata->b1_rms_en = 0;
 	}
 
 	regulators_np = of_find_node_by_name(pmic_np, "regulators");
@@ -406,6 +449,9 @@ static int s2mpb02_pmic_probe(struct platform_device *pdev)
 		}
 	}
 
+	/* BUCK1 remote sense enable */
+	s2mpb02_update_reg(i2c, 0x0B, pdata->b1_rms_en << 5, 0x20);
+
 	return 0;
  err:
 	pr_info("[%s:%d] err:\n", __FILE__, __LINE__);
@@ -432,6 +478,7 @@ static int s2mpb02_pmic_remove(struct platform_device *pdev)
 
 static const struct platform_device_id s2mpb02_pmic_id[] = {
 	{"s2mpb02-regulator", 0},
+	{"s2mpb02-5g-pmic", 0},
 	{},
 };
 MODULE_DEVICE_TABLE(platform, s2mpb02_pmic_id);

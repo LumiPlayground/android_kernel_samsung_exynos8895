@@ -17,21 +17,13 @@
 #include <linux/delay.h>
 #include <linux/io.h>
 #include <media/v4l2-subdev.h>
+#include <linux/debugfs.h>
 
-#include "./panels/decon_lcd.h"
-#if defined(CONFIG_SOC_EXYNOS8895)
+
 #include "regs-dsim.h"
-#else
-#include "regs-dsim_8890.h"
-#endif
-
-#include <video/mipi_display.h>
-#if defined(CONFIG_EXYNOS_DECON_LCD_S6E3HA6)
-#include "./panels/s6e3ha6_param.h"
-#elif defined(CONFIG_EXYNOS_DECON_LCD_S6E3HF4)
-#include "./panels/s6e3hf4_param.h"
-#endif
-
+#include "decon_lcd.h"
+#include "../panel/panel_drv.h"
+//#include "../panel/panel.h"
 
 extern int dsim_log_level;
 
@@ -53,11 +45,16 @@ extern int dsim_log_level;
 
 #define MIPI_WR_TIMEOUT			msecs_to_jiffies(33)
 #define MIPI_RD_TIMEOUT			msecs_to_jiffies(100)
+// Only for Exynos8895 EVT 0
+#define DSIM_FIFO_SIZE  512
+#define MIPI_DSI_WRITE	0x00
+#define MIPI_DSI_WR_MEM 0x99
 
 #define dsim_err(fmt, ...)							\
 	do {									\
 		if (dsim_log_level >= 3) {					\
 			pr_err(pr_fmt(fmt), ##__VA_ARGS__);			\
+			exynos_ss_printk(fmt, ##__VA_ARGS__);			\
 		}								\
 	} while (0)
 
@@ -65,6 +62,7 @@ extern int dsim_log_level;
 	do {									\
 		if (dsim_log_level >= 4) {					\
 			pr_warn(pr_fmt(fmt), ##__VA_ARGS__);			\
+			exynos_ss_printk(fmt, ##__VA_ARGS__);			\
 		}								\
 	} while (0)
 
@@ -81,13 +79,9 @@ extern int dsim_log_level;
 	} while (0)
 
 #define call_panel_ops(q, op, args...)				\
-	(((q)->panel_ops->op) ? ((q)->panel_ops->op(args)) : 0)
+	(((q)->mipi_drv->op) ? ((q)->mipi_drv->op(args)) : 0)
 
 extern struct dsim_device *dsim_drvdata[MAX_DSIM_CNT];
-extern struct dsim_lcd_driver s6e3ha2k_mipi_lcd_driver;
-extern struct dsim_lcd_driver emul_disp_mipi_lcd_driver;
-extern struct dsim_lcd_driver s6e3hf4_mipi_lcd_driver;
-extern struct dsim_lcd_driver s6e3ha6_mipi_lcd_driver;
 
 #if defined(CONFIG_SOC_EXYNOS8895)
 /* define video timer interrupt */
@@ -201,13 +195,44 @@ struct dsim_resources {
 	struct clk *dphy_byte;
 	struct clk *rgb_vclk0;
 	struct clk *pclk_disp;
-	int lcd_power[2];
-	int lcd_reset;
+	//int lcd_power[2];
+	//int lcd_reset;
 	int irq;
 	void __iomem *regs;
 	void __iomem *ss_regs;
 	void __iomem *ver_regs;
 };
+
+struct panel_ops {
+	int (*early_probe)(struct dsim_device *dsim);
+	int (*probe)(struct dsim_device *dsim);
+	int (*suspend)(struct dsim_device *dsim);
+	int (*displayon)(struct dsim_device *dsim);
+	int (*resume)(struct dsim_device *dsim);
+	int (*dump)(struct dsim_device *dsim);
+};
+
+struct mipi_panel_drv {
+	struct panel_info *panel_info;
+	int (*probe)(struct dsim_device *dsim);
+	int (*suspend)(struct dsim_device *dsim);
+	int (*displayon)(struct dsim_device *dsim);
+	int (*resume)(struct dsim_device *dsim);
+	int (*dump)(struct dsim_device *dsim);
+};
+
+
+#define MAX_UNDERRUN_LIST	10
+
+struct dsim_underrun_info {
+	ktime_t time;
+	unsigned long mif_freq;
+	unsigned long int_freq;
+	unsigned long disp_freq;
+	unsigned int prev_bw;
+	unsigned int cur_bw;
+};
+
 
 struct dsim_device {
 	int id;
@@ -220,9 +245,6 @@ struct dsim_device {
 	struct phy *phy;
 	spinlock_t slock;
 
-	struct dsim_lcd_driver *panel_ops;
-	struct decon_lcd lcd_info;
-
 	struct v4l2_subdev sd;
 	struct dsim_clks clks;
 	struct timer_list cmd_timer;
@@ -232,20 +254,27 @@ struct dsim_device {
 	struct completion ph_wr_comp;
 	struct completion rd_comp;
 
+	struct decon_lcd *lcd_info;
+
+	struct mipi_panel_drv *mipi_drv;
+
+	struct v4l2_subdev *panel_sd;
+	struct panel_state *panel_state;
+
 	int total_underrun_cnt;
 	int version;
+	u32 pmu_info[3];
+//#ifdef CONFIG_DUMPSTATE_LOGGING
+	struct dentry *debug_root;
+	struct dentry *debug_info;
+
+	int under_list_idx;
+	struct dsim_underrun_info under_list[MAX_UNDERRUN_LIST];
+//#endif
 };
 
-struct dsim_lcd_driver {
-	int (*probe)(struct dsim_device *dsim);
-	int (*suspend)(struct dsim_device *dsim);
-	int (*displayon)(struct dsim_device *dsim);
-	int (*resume)(struct dsim_device *dsim);
-	int (*dump)(struct dsim_device *dsim);
-};
-
-int dsim_write_data(struct dsim_device *dsim, u32 id, unsigned long d0, u32 d1);
-int dsim_read_data(struct dsim_device *dsim, u32 id, u32 addr, u32 cnt, u8 *buf);
+int dsim_write_data(struct dsim_device *dsim, u8 id, u8 *cmd, u32 size);
+int dsim_read_data(struct dsim_device *dsim, u8 id, u8 addr, u8 *buf, u16 size);
 int dsim_wait_for_cmd_done(struct dsim_device *dsim);
 
 static inline struct dsim_device *get_dsim_drvdata(u32 id)
@@ -253,115 +282,6 @@ static inline struct dsim_device *get_dsim_drvdata(u32 id)
 	return dsim_drvdata[id];
 }
 
-static inline int dsim_rd_data(u32 id, u32 cmd_id, u32 addr, u32 size, u8 *buf)
-{
-	int ret;
-	struct dsim_device *dsim = get_dsim_drvdata(id);
-
-	ret = dsim_read_data(dsim, cmd_id, addr, size, buf);
-	if (ret)
-		return ret;
-
-	return 0;
-}
-
-static inline int dsim_wr_data(u32 id, u32 cmd_id, unsigned long d0, u32 d1)
-{
-	int ret;
-	struct dsim_device *dsim = get_dsim_drvdata(id);
-	u32 max_pl_size = 60;
-	u8 *param;
-	int cmd_cnt, i, j;
-	u8 offset_addr;
-	u8 pl_data[60] = {0, };
-
-	if (dsim->version) {
-		ret = dsim_write_data(dsim, cmd_id, d0, d1);
-		if (ret)
-			return ret;
-
-	} else {
-		switch (cmd_id) {
-		case MIPI_DSI_GENERIC_LONG_WRITE:
-		case MIPI_DSI_DCS_LONG_WRITE:
-		case MIPI_DSI_DSC_PPS:
-			if (d1 > max_pl_size) {
-				param = (u8 *)d0;
-				cmd_cnt = d1 / max_pl_size;
-				ret = dsim_write_data(dsim,
-						MIPI_DSI_DCS_LONG_WRITE,
-						(unsigned long)SEQ_TEST_KEY_ON_F0,
-						sizeof(SEQ_TEST_KEY_ON_F0));
-				if (ret)
-					return ret;
-
-				if (cmd_id == MIPI_DSI_DSC_PPS)
-					offset_addr = 0x9E;
-				else
-					offset_addr = *param;
-
-				for (i = 0; i < cmd_cnt; i++) {
-					for (j = 0; j < max_pl_size; j++) {
-						if (!i) {
-							pl_data[j] = *param++;
-						} else {
-							cmd_id = MIPI_DSI_DCS_LONG_WRITE;
-							if (j == 0)
-								pl_data[j] = offset_addr;
-							else
-								pl_data[j] = *param++;
-							/* send global command with next number of param*/
-							SEQ_TSET_GLOBAL[1] = (i * max_pl_size) - (i - 1);
-							ret = dsim_write_data(dsim,
-									MIPI_DSI_DCS_LONG_WRITE,
-									(unsigned long) SEQ_TSET_GLOBAL,
-									sizeof(SEQ_TSET_GLOBAL));
-							if (ret)
-								return ret;
-						}
-					}
-
-					ret = dsim_write_data(dsim, cmd_id,
-							(unsigned long)pl_data, max_pl_size);
-					if (ret)
-						return ret;
-				}
-
-				if (d1 % max_pl_size) {
-					cmd_id = MIPI_DSI_DCS_LONG_WRITE;
-					for (j = 0; j < (d1 % max_pl_size + i); j++) {
-						if (j == 0)
-							pl_data[j] = offset_addr;
-						else
-							pl_data[j] = *param++;
-					}
-					/* send global command with next number of param*/
-					SEQ_TSET_GLOBAL[1] = i * max_pl_size - (i - 1);
-					ret = dsim_write_data(dsim,
-							MIPI_DSI_DCS_LONG_WRITE,
-							(unsigned long) SEQ_TSET_GLOBAL, sizeof(SEQ_TSET_GLOBAL));
-					if (ret)
-						return ret;
-
-					ret = dsim_write_data(dsim, cmd_id,
-							(unsigned long)pl_data, (d1 % max_pl_size) + i);
-					if (ret)
-						return ret;
-				}
-			} else {
-				ret = dsim_write_data(dsim, cmd_id, d0, d1);
-			}
-			break;
-
-		default:
-			ret = dsim_write_data(dsim, cmd_id, d0, d1);
-			if (ret)
-				return ret;
-			break;
-		}
-	}
-	return 0;
-}
 
 static inline int dsim_wait_for_cmd_completion(u32 id)
 {
@@ -422,10 +342,11 @@ void dsim_reg_stop(u32 id, u32 lanes);
 void dsim_reg_wr_tx_payload(u32 id, u32 payload);
 u32 dsim_reg_header_fifo_is_empty(u32 id);
 void dsim_reg_clear_int(u32 id, u32 int_src);
+void dsim_reg_clear_int_all(u32 id);
 void dsim_reg_set_fifo_ctrl(u32 id, u32 cfg);
 void dsim_reg_enable_shadow_read(u32 id, u32 en);
 u32 dsim_reg_is_writable_fifo_state(u32 id);
-void dsim_reg_wr_tx_header(u32 id, u32 data_id, unsigned long data0, u32 data1, u32 bta_type);
+void dsim_reg_wr_tx_header(u32 id, u8 data_id, u8 data0, u8 data1, u32 bta_type);
 void dsim_set_bist(u32 id, u32 en);
 void dsim_reg_set_partial_update(u32 id, struct decon_lcd *lcd_info);
 void dsim_reg_set_bta_type(u32 id, u32 bta_type);
@@ -437,9 +358,20 @@ void dsim_reg_enable_word_clock(u32 id, u32 en);
 void dsim_reg_set_esc_clk_prescaler(u32 id, u32 en, u32 p);
 u32 dsim_reg_is_pll_stable(u32 id);
 
+
 #define DSIM_IOC_ENTER_ULPS		_IOW('D', 0, u32)
-#define DSIM_IOC_GET_LCD_INFO		_IOW('D', 5, struct decon_lcd *)
 #define DSIM_IOC_DUMP			_IOW('D', 8, u32)
 #define DSIM_IOC_GET_WCLK		_IOW('D', 9, u32)
+#define DSIM_IOC_FUNC_RST		_IOW('D', 12, u32)
+#define DSIM_IOC_CLEAR_IRQ		_IOW('D', 13, u32)
 
+#ifdef CONFIG_SUPPORT_DOZE
+#define DSIM_IOC_DOZE			_IOW('D', 10, u32)
+#define DSIM_IOC_DOZE_SUSPEND	_IOW('D', 11, u32)
+#endif
+
+#ifdef CONFIG_SUPPORT_DSU
+#define DSIM_IOC_SET_DSU		_IOW('D', 10, struct dsu_info *)
+void dsim_set_dsu_update(u32 id, struct decon_lcd *lcd_info);
+#endif
 #endif /* __SAMSUNG_DSIM_H__ */

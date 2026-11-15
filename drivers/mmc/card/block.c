@@ -1236,7 +1236,7 @@ static void mmc_card_error_logging(struct mmc_card *card, struct mmc_blk_request
 		if (status & R1_WP_VIOLATION || brq->stop.resp[0] & R1_WP_VIOLATION || brq->cmd.resp[0] & R1_WP_VIOLATION) {
 			err_log[index].wp_cnt++;
 			 if (!(err_log[index].wp_cnt % 100))
-				noti = true; 
+				noti = true;
 		}
 		if (status & R1_OUT_OF_RANGE || brq->stop.resp[0] & R1_OUT_OF_RANGE || brq->cmd.resp[0] & R1_OUT_OF_RANGE) {
 			err_log[index].oor_cnt++;

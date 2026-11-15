@@ -147,8 +147,7 @@ typedef u32 sysmmu_pte_t;
 #define REG_L2TLB_CFG		0x200
 
 /* For SysMMU v7.x */
-#define REG_MMU_CAPA0_V7	0x870
-#define REG_MMU_CAPA1_V7	0x874
+#define REG_MMU_CAPA_V7		0x870
 #define REG_PUBLIC_WAY_CFG	0x120
 #define REG_PRIVATE_WAY_CFG(n)		(0x200 + ((n) * 0x10))
 #define REG_PRIVATE_ADDR_START(n)	(0x204 + ((n) * 0x10))
@@ -165,33 +164,6 @@ typedef u32 sysmmu_pte_t;
 #define REG_SBB_LINK		0x1108
 #define REG_SBB_ATTR		0x110C
 
-/* For SysMMU v7.1 */
-#define MMU_CAPA1_EXIST(reg)	((reg >> 11) & 0x1)
-#define MMU_CAPA1_TYPE(reg)	((reg >> 28) & 0xF)
-#define MMU_CAPA1_NUM_TLB(reg)	((reg >> 4) & 0xFF)
-#define MMU_CAPA1_NUM_PORT(reg)	((reg) & 0xF)
-#define MMU_TLB_INFO(n)		(0x2000 + ((n) * 0x20))
-#define MMU_CAPA1_NUM_TLB_SET(reg)	((reg >> 16) & 0xFF)
-#define MMU_CAPA1_NUM_TLB_WAY(reg)	((reg) & 0xFF)
-#define REG_MMU_TLB_CFG(n)		(0x2000 + ((n) * 0x20) + 0x4)
-#define REG_MMU_TLB_MATCH_CFG(n)	(0x2000 + ((n) * 0x20) + 0x8)
-#define REG_MMU_TLB_MATCH_SVA(n)	(0x2000 + ((n) * 0x20) + 0xC)
-#define REG_MMU_TLB_MATCH_EVA(n)	(0x2000 + ((n) * 0x20) + 0x10)
-#define REG_MMU_TLB_MATCH_ID(n)		(0x2000 + ((n) * 0x20) + 0x14)
-#define REG_CAPA1_TLB_READ		0x8000
-#define REG_CAPA1_TLB_VPN		0x8004
-#define REG_CAPA1_TLB_PPN		0x8008
-#define REG_CAPA1_TLB_ATTR		0x800C
-#define REG_CAPA1_SBB_READ		0x8020
-#define REG_CAPA1_SBB_VPN		0x8024
-#define REG_CAPA1_SBB_LINK		0x8028
-#define REG_CAPA1_SBB_ATTR		0x802C
-#define REG_SLOT_RSV(n)			(0x4000 + ((n) * 0x20))
-#define MMU_CAPA1_SET_TLB_READ_ENTRY(tid, set, way, line)		\
-			((set) | ((way) << 8) | ((line) << 16) | ((tid) << 20))
-#define MMU_TLB_CFG_MASK(reg)		((reg) & ((0x7 << 5) | (0x3 << 2) | (0x1 << 1)))
-#define MMU_TLB_MATCH_CFG_MASK(reg)	((reg) & ((0xFFFF << 16) | (0x3 << 8)))
-
 #define MMU_CAPA_NUM_SBB_ENTRY(reg)	((reg >> 12) & 0xF)
 #define MMU_CAPA_NUM_TLB_SET(reg)	((reg >> 8) & 0xF)
 #define MMU_CAPA_NUM_TLB_WAY(reg)	((reg) & 0xFF)
@@ -199,9 +171,6 @@ typedef u32 sysmmu_pte_t;
 			((set) | ((way) << 8) | ((line) << 16))
 #define MMU_TLB_ENTRY_VALID(reg)	((reg) >> 28)
 #define MMU_SBB_ENTRY_VALID(reg)	((reg) >> 28)
-
-#define MMU_VADDR_FROM_SBB(reg)		(((reg) & 0xFFFFF) << 12)
-#define MMU_PADDR_FROM_SBB(reg)		(((reg) & 0x3FFFFFF) << 10)
 
 #define MMU_FAULT_INFO_READ_REQUEST	0
 #define MMU_FAULT_INFO_WRITE_REQUEST	1
@@ -282,49 +251,16 @@ struct tlb_priv_id {
 	unsigned int id;
 };
 
-struct tlb_port_cfg {
-	unsigned int cfg;
-	unsigned int id;
-};
-
-/*
- * flags[7:4] specifies TLB matching types.
- * 0x1 : TLB way dedication
- * 0x2 : TLB port dedication
- */
-#define TLB_TYPE_MASK(x)	((x) & (0xF << 4))
-#define TLB_TYPE_WAY		(0x1 << 4)
-#define TLB_TYPE_PORT		(0x2 << 4)
-#define IS_TLB_WAY_TYPE(data)	(TLB_TYPE_MASK((data)->tlb_props.flags)	\
-				== TLB_TYPE_WAY)
-#define IS_TLB_PORT_TYPE(data)	(TLB_TYPE_MASK((data)->tlb_props.flags)	\
-				== TLB_TYPE_PORT)
-
 #define TLB_WAY_PRIVATE_ID	(1 << 0)
 #define TLB_WAY_PRIVATE_ADDR	(1 << 1)
 #define TLB_WAY_PUBLIC		(1 << 2)
-
-struct tlb_way_props {
+struct tlb_props {
+	int flags;
 	int priv_id_cnt;
 	int priv_addr_cnt;
 	unsigned int public_cfg;
 	struct tlb_priv_id *priv_id_cfg;
 	struct tlb_priv_addr *priv_addr_cfg;
-};
-
-struct tlb_port_props {
-	int port_id_cnt;
-	int slot_cnt;
-	struct tlb_port_cfg *port_cfg;
-	unsigned int *slot_cfg;
-};
-
-struct tlb_props {
-	int flags;
-	union {
-		struct tlb_way_props way_props;
-		struct tlb_port_props port_props;
-	};
 };
 
 /*
@@ -426,26 +362,19 @@ static inline void __raw_sysmmu_enable(void __iomem *sfrbase)
 	__raw_writel(CTRL_ENABLE, sfrbase + REG_MMU_CTRL);
 }
 
-#define sysmmu_unblock __raw_sysmmu_enable
-
 void dump_sysmmu_tlb_pb(void __iomem *sfrbase);
 
-static inline bool sysmmu_block(void __iomem *sfrbase)
+static inline bool sysmmu_control(void __iomem *sfrbase, bool enable)
 {
-	int i = SYSMMU_BLOCK_POLLING_COUNT;
+	int cnt = SYSMMU_BLOCK_POLLING_COUNT;
+	u32 val = enable ? CTRL_ENABLE : CTRL_DISABLE;
 
 	__raw_writel(CTRL_BLOCK, sfrbase + REG_MMU_CTRL);
-	while ((i > 0) && !(__raw_readl(sfrbase + REG_MMU_STATUS) & 1))
-		--i;
+	while (!(__raw_readl(sfrbase + REG_MMU_STATUS) & 0x1) && (cnt-- > 0))
+		;
+	BUG_ON(cnt <= 0);
 
-	if (!(__raw_readl(sfrbase + REG_MMU_STATUS) & 1)) {
-		/*
-		 * TODO: dump_sysmmu_tlb_pb(sfrbase);
-		 */
-		panic("Failed to block System MMU!");
-		sysmmu_unblock(sfrbase);
-		return false;
-	}
+	writel_relaxed(val, sfrbase + REG_MMU_CTRL);
 
 	return true;
 }

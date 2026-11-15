@@ -52,7 +52,7 @@ int fpga_dphy_init(struct v4l2_subdev *subdev, u32 val)
 		err("fpga_dphy_client set fail, 30\n");
 	}
 
-	usleep_range(1000, 1000);
+	udelay(1000);
 	ret = fimc_is_sensor_write8(fpga_dphy_client, 38, 0x18);
 	if (ret) {
 		err("fpga_dphy_client set fail, 38\n");

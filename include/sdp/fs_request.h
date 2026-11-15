@@ -11,6 +11,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
 #ifndef FS_REQUEST_H_
@@ -42,37 +46,37 @@ typedef struct sdp_fs_command {
 	int req_id;
 
 	int opcode;
-	int user_id;
-	int part_id;
-	unsigned long ino;
-	int pid;
-} sdp_fs_command_t;
+    int user_id;
+    int part_id;
+    unsigned long ino;
+    int pid;
+}sdp_fs_command_t;
 
 extern int sdp_fs_request(sdp_fs_command_t *sdp_req, fs_request_cb_t callback);
 
 static inline sdp_fs_command_t *sdp_fs_command_alloc(int opcode, int pid,
-	int userid, int partid, unsigned long ino, gfp_t gfp) {
-	sdp_fs_command_t *cmd;
+        int userid, int partid, unsigned long ino, gfp_t gfp) {
+    sdp_fs_command_t *cmd;
 
-	cmd = kmalloc(sizeof(sdp_fs_command_t), gfp);
+    cmd = kmalloc(sizeof(sdp_fs_command_t), gfp);
 
-	if (cmd == NULL) {
-		printk(KERN_ERR "sdp_fs_command_alloc is failed\n");
-		return NULL;
-	}
+    if(cmd == NULL) {
+	printk(KERN_ERR "sdp_fs_command_alloc is failed\n");
+	return NULL;
+    }
 
-	cmd->opcode = opcode;
-	cmd->pid = pid;
-	cmd->user_id = userid;
-	cmd->part_id = partid;
-	cmd->ino = ino;
+    cmd->opcode = opcode;
+    cmd->pid = pid;
+    cmd->user_id = userid;
+    cmd->part_id = partid;
+    cmd->ino = ino;
 
-	return cmd;
+    return cmd;
 }
 
 static inline void sdp_fs_command_free(sdp_fs_command_t *cmd)
 {
-	kzfree(cmd);
+    kzfree(cmd);
 }
 
 #endif /* FS_REQUEST_H_ */

@@ -19,7 +19,6 @@
 #elif defined(CONFIG_VIDEOBUF2_ION)
 #include <media/videobuf2-ion.h>
 #endif
-#include "fimc-is-framemgr.h"
 
 struct fimc_is_vb2_buf;
 struct fimc_is_vb2_buf_ops {
@@ -32,27 +31,12 @@ struct fimc_is_vb2_buf_ops {
 						bool exact);
 	void (*buf_prepare)(struct fimc_is_vb2_buf *vbuf, bool exact);
 	void (*buf_finish)(struct fimc_is_vb2_buf *vbuf, bool exact);
-	dma_addr_t (*bufcon_map)(struct fimc_is_vb2_buf *vbuf, struct device *dev, int idx, struct dma_buf *dmabuf);
-	void (*bufcon_unmap)(struct fimc_is_vb2_buf *vbuf, int idx);
-};
-
-enum fimc_is_vbuf_cache_state {
-	FIMC_IS_VBUF_CACHE_INVALIDATE,
 };
 
 struct fimc_is_vb2_buf {
 	struct vb2_v4l2_buffer		vb;
-	ulong				kva[FIMC_IS_MAX_PLANES];
-	dma_addr_t			dva[FIMC_IS_MAX_PLANES];
-
-	/* for cache operation */
-	unsigned long			cache_state;
-	struct list_head		cache_flush_list;
-
-	/* buffer container operation */
-	struct dma_buf_attachment		*attachment[FIMC_IS_MAX_PLANES];
-	struct sg_table				*sgt[FIMC_IS_MAX_PLANES];
-	struct dma_buf				*bufs[FIMC_IS_MAX_PLANES];
+	ulong				kva[VIDEO_MAX_PLANES];
+	dma_addr_t			dva[VIDEO_MAX_PLANES];
 
 	const struct fimc_is_vb2_buf_ops *ops;
 };
@@ -72,20 +56,18 @@ struct fimc_is_priv_buf_ops {
 };
 
 struct fimc_is_priv_buf {
-	struct vb2_ion_cookie			cookie;
-	size_t					size;
-	size_t					align;
-	void					*ctx;
-	void					*kvaddr;
+	void	*cookie;
+	size_t	size;
+	size_t	align;
+	void	*ctx;
+	void	*kvaddr;
 
-	const struct fimc_is_priv_buf_ops	*ops;
-	void					*priv;
-	struct ion_handle			*handle;
-	struct dma_buf				*dma_buf;
-	struct dma_buf_attachment		*attachment;
-	enum dma_data_direction			direction;
-	void					*kva;
+	const struct fimc_is_priv_buf_ops *ops;
+	void	*priv;
 };
+
+#define vb_to_vb2_v4l2_buffer(x)				\
+	container_of(x, struct vb2_v4l2_buffer, vb2_buf)
 
 #define vb_to_fimc_is_vb2_buf(x)				\
 	container_of(x, struct fimc_is_vb2_buf, vb)
@@ -106,7 +88,7 @@ struct fimc_is_priv_buf {
 	((buf)->ops->op ? (buf)->ops->op((buf), args) : 0)
 
 struct fimc_is_mem_ops {
-	void *(*init)(struct platform_device *pdev);
+	void *(*init)(struct platform_device *pdev, long flag);
 	void (*cleanup)(void *ctx);
 	int (*resume)(void *ctx);
 	void (*suspend)(void *ctx);
@@ -115,20 +97,9 @@ struct fimc_is_mem_ops {
 	struct fimc_is_priv_buf *(*alloc)(void *ctx, size_t size, size_t align);
 };
 
-struct fimc_is_ion_ctx {
-	struct device		*dev;
-	struct ion_client	*client;
-	unsigned long		alignment;
-	long			flags;
-
-	/* protects iommu_active_cnt and protected */
-	struct mutex		lock;
-	int			iommu_active_cnt;
-};
-
 struct fimc_is_mem {
-	struct fimc_is_ion_ctx				*default_ctx;
-	struct fimc_is_ion_ctx				*phcontig_ctx;
+	struct vb2_alloc_ctx				*default_ctx;
+	struct vb2_alloc_ctx				*phcontig_ctx;
 	const struct fimc_is_mem_ops			*fimc_is_mem_ops;
 	const struct vb2_mem_ops			*vb2_mem_ops;
 	const struct fimc_is_vb2_buf_ops		*fimc_is_vb2_buf_ops;
@@ -156,21 +127,17 @@ struct fimc_is_minfo {
 	struct fimc_is_priv_buf *pb_rear_cal;
 	struct fimc_is_priv_buf *pb_front_cal;
 	struct fimc_is_priv_buf *pb_debug;
-	struct fimc_is_priv_buf *pb_event;
 	struct fimc_is_priv_buf *pb_fshared;
 	struct fimc_is_priv_buf *pb_dregion;
 	struct fimc_is_priv_buf *pb_pregion;
-	struct fimc_is_priv_buf *pb_heap_rta; /* RTA HEAP */
-	struct fimc_is_priv_buf *pb_heap_ddk; /* DDK HEAP */
+	struct fimc_is_priv_buf *pb_lib;
 	struct fimc_is_priv_buf *pb_taaisp;
 	struct fimc_is_priv_buf *pb_lhfd;
 	struct fimc_is_priv_buf *pb_vra;
 	struct fimc_is_priv_buf *pb_tpu;
-	struct fimc_is_priv_buf *pb_mcsc_dnr;
 
 	size_t		total_size;
 	ulong		kvaddr_debug_cnt;
-	ulong		kvaddr_event_cnt;
 
 	dma_addr_t	dvaddr;
 	ulong		kvaddr;
@@ -179,9 +146,6 @@ struct fimc_is_minfo {
 	phys_addr_t	phaddr_debug;
 	dma_addr_t	dvaddr_debug;
 	ulong		kvaddr_debug;
-	phys_addr_t	phaddr_event;
-	dma_addr_t	dvaddr_event;
-	ulong		kvaddr_event;
 	dma_addr_t	dvaddr_fshared;
 	ulong		kvaddr_fshared;
 	dma_addr_t	dvaddr_region;
@@ -195,8 +159,6 @@ struct fimc_is_minfo {
 	ulong		kvaddr_lhfd;	/* NUM_FD_INTERNAL_BUF = 3 */
 	dma_addr_t	dvaddr_vra;
 	ulong		kvaddr_vra;
-	dma_addr_t	dvaddr_mcsc_dnr;
-	ulong		kvaddr_mcsc_dnr;
 
 	ulong		kvaddr_setfile;
 	ulong		kvaddr_rear_cal;

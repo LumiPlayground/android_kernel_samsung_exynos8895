@@ -276,8 +276,9 @@ static int notrace persistent_ram_update_user(struct persistent_ram_zone *prz,
 	struct persistent_ram_buffer *buffer = prz->buffer;
 	int ret = unlikely(__copy_from_user(buffer->data + start, s, count)) ?
 		-EFAULT : 0;
-
-	exynos_ss_hook_pmsg(buffer->data + start, count);
+#ifdef CONFIG_EXYNOS_SNAPSHOT_HOOK_LOGGER
+        exynos_ss_hook_pmsg(buffer->data + start, count);
+#endif
 	persistent_ram_update_ecc(prz, start, count);
 	return ret;
 }
@@ -404,7 +405,7 @@ static void *persistent_ram_vmap(phys_addr_t start, size_t size,
 	page_start = start - offset_in_page(start);
 	page_count = DIV_ROUND_UP(size + offset_in_page(start), PAGE_SIZE);
 
-#ifndef CONFIG_EXYNOS_SNAPSHOT
+#ifndef CONFIG_EXYNOS_SNAPSHOT_PSTORE
 	if (memtype)
 		prot = pgprot_noncached(PAGE_KERNEL);
 	else

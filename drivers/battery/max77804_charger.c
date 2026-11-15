@@ -1095,7 +1095,7 @@ static int sec_chg_set_property(struct power_supply *psy,
 					     | CHG_CNFG_00_DIS_MUIC_CTRL_MASK));
 		}
 		break;
-#if defined(CONFIG_SAMSUNG_BATTERY_ENG_TEST)
+#if defined(CONFIG_ENG_BATTERY_CONCEPT)
 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
 	{
 		u8 ctrl3, cnfg12;

@@ -181,6 +181,12 @@ config CAMERA_SENSOR_SR261_OBJ
         default n
         help
           Use to build SR261 camera sensor.
+config CAMERA_SENSOR_5E6_OBJ
+        bool "Use 5E6 camera sensor"
+        depends on CAMERA_MODULE_SELECT
+        default n
+        help
+          Use to build 5E6 camera sensor.
 config CAMERA_SENSOR_4E6_OBJ
         bool "Use 4E6 camera sensor"
         depends on CAMERA_MODULE_SELECT

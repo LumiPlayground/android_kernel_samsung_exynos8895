@@ -200,21 +200,11 @@ xfs_xattr_put_listent(
 		}
 #endif
 
-		/*
-		 * Only show root namespace entries if we are actually allowed to
-		 * see them.
-		 */
-		if (!capable(CAP_SYS_ADMIN))
-			return 0;
-
-		prefix = XATTR_TRUSTED_PREFIX;
-		prefix_len = XATTR_TRUSTED_PREFIX_LEN;
-	} else if (flags & XFS_ATTR_SECURE) {
-		prefix = XATTR_SECURITY_PREFIX;
-		prefix_len = XATTR_SECURITY_PREFIX_LEN;
-	} else {
-		prefix = XATTR_USER_PREFIX;
-		prefix_len = XATTR_USER_PREFIX_LEN;
+	arraytop = context->count + prefix_len + namelen + 1;
+	if (arraytop > context->firstu) {
+		context->count = -1;	/* insufficient space */
+		context->seen_enough = 1;
+		return 0;
 	}
 
 	return __xfs_xattr_put_listent(context, prefix, prefix_len, name,

@@ -1059,7 +1059,7 @@ int fimc_is_comp_read_ver(void *core_data)
 	companion_ver =  0;
 	/* check validation(Read data must be 0x73C1) */
 	fimc_is_comp_single_read(core, 0x02, &companion_ver, 2);
-	info("%s: Companion version: 0x%04x\n", __func__, companion_ver);
+	info("Companion version: 0x%04x\n", companion_ver);
 
 	if (companion_ver == 0x00A0) {
 		ret = fimc_is_comp_single_write(core, 0x0256, 0x0001);

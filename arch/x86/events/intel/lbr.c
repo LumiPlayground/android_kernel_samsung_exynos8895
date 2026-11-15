@@ -163,7 +163,7 @@ static void __intel_pmu_lbr_enable(bool pmi)
 	 * did not change.
 	 */
 	if (cpuc->lbr_sel)
-		lbr_select = cpuc->lbr_sel->config & x86_pmu.lbr_sel_mask;
+		lbr_select = cpuc->lbr_sel->config;
 	if (!pmi && cpuc->lbr_sel)
 		wrmsrl(MSR_LBR_SELECT, lbr_select);
 
@@ -531,7 +531,6 @@ static void intel_pmu_lbr_read_64(struct cpu_hw_events *cpuc)
 	int num = x86_pmu.lbr_nr;
 
 	if (cpuc->lbr_sel) {
-		need_info = !(cpuc->lbr_sel->config & LBR_NO_INFO);
 		if (cpuc->lbr_sel->config & LBR_CALL_STACK)
 			num = tos;
 	}

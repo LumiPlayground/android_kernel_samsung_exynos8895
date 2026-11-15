@@ -1,13 +1,12 @@
-config EXYNOS_SCORE
-	bool "Samsung EXYNOS SCore common driver"
-	depends on ARCH_EXYNOS
+menuconfig EXYNOS_SCORE
+        bool "SCORE driver"
+        select EXYNOS_SCORE_PLATFORM
+        select EXYNOS_SCORE_INTERFACE
+        help
+          This is a SCORE Driver
 
-config EXYNOS_SCORE_V2
-	bool "Samsung EXYNOS9810 SCore driver"
-	depends on SOC_EXYNOS9810
-	depends on EXYNOS_SCORE
+if EXYNOS_SCORE
 
-config EXYNOS_SCORE_V3
-	bool "Samsung EXYNOS9820 SCore driver"
-	depends on SOC_EXYNOS9820
-	depends on EXYNOS_SCORE
+source "drivers/vision/score/platform/Kconfig"
+
+endif

@@ -24,28 +24,6 @@
 #include "regs-mcu_ipc.h"
 #include "mcu_ipc.h"
 
-#define	USE_FIXED_AFFINITY
-
-void mcu_ipc_reg_dump(enum mcu_ipc_region id)
-{
-	unsigned long flags;
-	u32 i, value;
-
-	if (id >= MCU_MAX)
-		return;
-
-	spin_lock_irqsave(&mcu_dat[id].reg_lock, flags);
-
-	for (i = 0; i < 4; i++) {
-		value = mcu_ipc_readl(id, EXYNOS_MCU_IPC_ISSR0 + (4 * i));
-		dev_err(mcu_dat[id].mcu_ipc_dev, "mbox dump: 0x%02x: 0x%04x\n",
-			i, value);
-	}
-
-	spin_unlock_irqrestore(&mcu_dat[id].reg_lock, flags);
-}
-EXPORT_SYMBOL(mcu_ipc_reg_dump);
-
 static irqreturn_t mcu_ipc_handler(int irq, void *data)
 {
 	u32 irq_stat, i;
@@ -319,50 +297,6 @@ static void mcu_ipc_clear_all_interrupt(enum mcu_ipc_region id)
 }
 
 #ifdef CONFIG_ARGOS
-static int set_irq_affinity(struct device *dev)
-{
-	struct mcu_argos_info *argos_info = dev->driver_data;
-
-	if (argos_info != NULL) {
-		dev_dbg(dev, "set default irq affinity (0x%x)\n", argos_info->affinity);
-		return irq_set_affinity(argos_info->irq, cpumask_of(argos_info->affinity));
-	} else {
-		/* skip other mcu_ipc device that has no irq affinity : gnss, ... */
-		return 0;
-	}
-}
-
-#ifdef USE_FIXED_AFFINITY
-static int set_fixed_affinity(struct device *dev, int irq, u32 mask)
-{
-	struct mcu_argos_info *argos_info;
-
-	argos_info = devm_kzalloc(dev, sizeof(struct mcu_argos_info), GFP_KERNEL);
-	if (!argos_info) {
-		dev_err(dev, "Failed to alloc argos info sturct\n");
-		return -ENOMEM;
-	}
-	argos_info->irq = irq;
-	argos_info->affinity = mask;
-	dev_set_drvdata(dev, argos_info);
-	return set_irq_affinity(dev);
-}
-#else
-static int set_runtime_affinity(enum mcu_ipc_region id, int irq, u32 mask)
-{
-	if (!zalloc_cpumask_var(&mcu_dat[id].dmask, GFP_KERNEL))
-		return -ENOMEM;
-	if (!zalloc_cpumask_var(&mcu_dat[id].imask, GFP_KERNEL))
-		return -ENOMEM;
-
-	cpumask_or(mcu_dat[id].imask, mcu_dat[id].imask, cpumask_of(mask));
-	cpumask_copy(mcu_dat[id].dmask, get_default_cpu_mask());
-
-	return argos_irq_affinity_setup_label(irq, "IPC", mcu_dat[id].imask,
-			mcu_dat[id].dmask);
-}
-#endif
-
 static int mcu_ipc_set_affinity(enum mcu_ipc_region id, struct device *dev, int irq)
 {
 	struct device_node *np = dev->of_node;
@@ -381,11 +315,16 @@ static int mcu_ipc_set_affinity(enum mcu_ipc_region id, struct device *dev, int 
 
 	dev_info(dev, "irq_affinity_mask = 0x%x\n", irq_affinity_mask);
 
-#ifdef USE_FIXED_AFFINITY
-	return set_fixed_affinity(dev, irq, irq_affinity_mask);
-#else
-	return set_runtime_affinity(id, irq, irq_affinity_mask);
-#endif
+	if (!zalloc_cpumask_var(&mcu_dat[id].dmask, GFP_KERNEL))
+		return -ENOMEM;
+	if (!zalloc_cpumask_var(&mcu_dat[id].imask, GFP_KERNEL))
+		return -ENOMEM;
+
+	cpumask_or(mcu_dat[id].imask, mcu_dat[id].imask, cpumask_of(irq_affinity_mask));
+	cpumask_copy(mcu_dat[id].dmask, get_default_cpu_mask());
+
+	return argos_irq_affinity_setup_label(irq, "IPC", mcu_dat[id].imask,
+			mcu_dat[id].dmask);
 }
 #else
 static int mcu_ipc_set_affinity(enum mcu_ipc_region id, struct device *dev, int irq)
@@ -510,9 +449,6 @@ static int mcu_ipc_suspend(struct device *dev)
 static int mcu_ipc_resume(struct device *dev)
 {
 	/* TODO */
-#ifdef CONFIG_ARGOS
-	set_irq_affinity(dev);
-#endif
 	return 0;
 }
 #else

@@ -28,7 +28,7 @@
 #define SIZE_OF_BUFFER (SZ_2M)
 #endif
 
-#define S_IRWUG (0660)
+#define S_IRWUG (S_IRUSR|S_IRGRP|S_IWUSR|S_IWGRP)
 
 struct abox_log_kernel_buffer {
 	char *buffer;
@@ -43,8 +43,6 @@ struct abox_log_buffer_info {
 	struct device *dev;
 	int id;
 	bool file_created;
-	atomic_t opened;
-	ssize_t file_index;
 	struct mutex lock;
 	struct ABOX_LOG_BUFFER *log_buffer;
 	struct abox_log_kernel_buffer kernel_buffer;
@@ -65,8 +63,8 @@ static void abox_log_memcpy(struct device *dev,
 #ifdef VERBOSE_LOG
 		dev_dbg(dev, "0: %s\n", src);
 #endif
-		memcpy(kernel_buffer->buffer + kernel_buffer->index, src,
-				left_size);
+		memcpy(kernel_buffer->buffer + kernel_buffer->index,
+				src, left_size);
 		src += left_size;
 		size -= left_size;
 		kernel_buffer->index = 0;
@@ -76,7 +74,7 @@ static void abox_log_memcpy(struct device *dev,
 	dev_dbg(dev, "1: %s\n", src);
 #endif
 	memcpy(kernel_buffer->buffer + kernel_buffer->index, src, size);
-	kernel_buffer->index += (unsigned int)size;
+	kernel_buffer->index += size;
 }
 
 static void abox_log_file_name(struct device *dev,
@@ -116,12 +114,13 @@ static void abox_log_file_save(struct device *dev,
 
 	if (log_buffer->index_reader > index_writer) {
 		vfs_write(filp, log_buffer->buffer + log_buffer->index_reader,
-			log_buffer->size - log_buffer->index_reader,
-			&filp->f_pos);
+				log_buffer->size - log_buffer->index_reader,
+				&filp->f_pos);
 		vfs_write(filp, log_buffer->buffer, index_writer, &filp->f_pos);
 	} else {
 		vfs_write(filp, log_buffer->buffer + log_buffer->index_reader,
-			index_writer - log_buffer->index_reader, &filp->f_pos);
+				index_writer - log_buffer->index_reader,
+				&filp->f_pos);
 	}
 
 	vfs_fsync(filp, 0);
@@ -199,16 +198,12 @@ void abox_log_schedule_flush_all(struct device *dev)
 {
 	if (test_and_clear_bit(0, &abox_log_flush_all_work_rearm_self))
 		cancel_delayed_work(&abox_log_flush_all_work);
+
 	schedule_delayed_work(&abox_log_flush_all_work, msecs_to_jiffies(100));
 }
 EXPORT_SYMBOL(abox_log_schedule_flush_all);
 
-void abox_log_drain_all(struct device *dev)
-{
-	cancel_delayed_work(&abox_log_flush_all_work);
-	abox_log_flush_all(dev);
-}
-EXPORT_SYMBOL(abox_log_drain_all);
+static ssize_t abox_log_file_index;
 
 static int abox_log_file_open(struct inode *inode, struct  file *file)
 {
@@ -216,22 +211,8 @@ static int abox_log_file_open(struct inode *inode, struct  file *file)
 
 	dev_dbg(info->dev, "%s\n", __func__);
 
-	if (atomic_cmpxchg(&info->opened, 0, 1))
-		return -EBUSY;
-
-	info->file_index = -1;
-	file->private_data = info;
-
-	return 0;
-}
-
-static int abox_log_file_release(struct inode *inode, struct file *file)
-{
-	struct abox_log_buffer_info *info = inode->i_private;
-
-	dev_dbg(info->dev, "%s\n", __func__);
-
-	atomic_cmpxchg(&info->opened, 1, 0);
+	file->private_data = inode->i_private;
+	abox_log_file_index = -1;
 
 	return 0;
 }
@@ -241,26 +222,27 @@ static ssize_t abox_log_file_read(struct file *file, char __user *buf,
 {
 	struct abox_log_buffer_info *info = file->private_data;
 	struct abox_log_kernel_buffer *kernel_buffer = &info->kernel_buffer;
+	char *buffer = kernel_buffer->buffer;
 	unsigned int index;
 	size_t end, size;
-	bool first = (info->file_index < 0);
-	int ret;
+	bool first = (abox_log_file_index < 0);
+	int result;
 
 	dev_dbg(info->dev, "%s(%zu, %lld)\n", __func__, count, *ppos);
 
 	mutex_lock(&info->lock);
 
-	if (first) {
-		info->file_index = likely(kernel_buffer->wrap) ?
+	if (abox_log_file_index < 0) {
+		abox_log_file_index = likely(kernel_buffer->wrap) ?
 				kernel_buffer->index : 0;
 	}
 
 	do {
 		index = kernel_buffer->index;
-		end = ((info->file_index < index) ||
-				((info->file_index == index) && !first)) ?
+		end = ((abox_log_file_index < index) ||
+				((abox_log_file_index == index)	&& !first)) ?
 				index : SIZE_OF_BUFFER;
-		size = min(end - info->file_index, count);
+		size = min(end - abox_log_file_index, count);
 		if (size == 0) {
 			mutex_unlock(&info->lock);
 			if (file->f_flags & O_NONBLOCK) {
@@ -269,31 +251,30 @@ static ssize_t abox_log_file_read(struct file *file, char __user *buf,
 			}
 			kernel_buffer->updated = false;
 
-			ret = wait_event_interruptible(kernel_buffer->wq,
+			result = wait_event_interruptible(kernel_buffer->wq,
 					kernel_buffer->updated);
-			if (ret != 0) {
+			if (result != 0) {
 				dev_dbg(info->dev, "interrupted\n");
-				return ret;
+				return result;
 			}
 			mutex_lock(&info->lock);
 		}
 #ifdef VERBOSE_LOG
 		dev_dbg(info->dev, "loop %zu, %zu, %zd, %zu\n", size, end,
-				info->file_index, count);
+				abox_log_file_index, count);
 #endif
 	} while (size == 0);
 
-	dev_dbg(info->dev, "start=%zd, end=%zd size=%zd\n", info->file_index,
-			end, size);
-	if (copy_to_user(buf, kernel_buffer->buffer + info->file_index,
-			size)) {
+	dev_dbg(info->dev, "start=%zd, end=%zd size=%zd\n",
+			abox_log_file_index, end, size);
+	if (copy_to_user(buf, buffer + abox_log_file_index, size)) {
 		mutex_unlock(&info->lock);
 		return -EFAULT;
 	}
 
-	info->file_index += size;
-	if (info->file_index >= SIZE_OF_BUFFER)
-		info->file_index = 0;
+	abox_log_file_index += size;
+	if (abox_log_file_index >= SIZE_OF_BUFFER)
+		abox_log_file_index = 0;
 
 	mutex_unlock(&info->lock);
 
@@ -315,7 +296,6 @@ static unsigned int abox_log_file_poll(struct file *file, poll_table *wait)
 
 static const struct file_operations abox_log_fops = {
 	.open = abox_log_file_open,
-	.release = abox_log_file_release,
 	.read = abox_log_file_read,
 	.poll = abox_log_file_poll,
 	.llseek = generic_file_llseek,
@@ -345,7 +325,6 @@ void abox_log_register_buffer_work_func(struct work_struct *work)
 	mutex_init(&info->lock);
 	info->id = id;
 	info->file_created = false;
-	atomic_set(&info->opened, 0);
 	info->kernel_buffer.buffer = vzalloc(SIZE_OF_BUFFER);
 	info->kernel_buffer.index = 0;
 	info->kernel_buffer.wrap = false;
@@ -355,7 +334,7 @@ void abox_log_register_buffer_work_func(struct work_struct *work)
 	list_add_tail(&info->list, &abox_log_list_head);
 
 	snprintf(name, sizeof(name), "log-%02d", id);
-	debugfs_create_file(name, 0664, abox_dbg_get_root_dir(), info,
+	debugfs_create_file(name, S_IRWUG, abox_dbg_get_root_dir(), info,
 			&abox_log_fops);
 }
 
@@ -392,31 +371,30 @@ int abox_log_register_buffer(struct device *dev, int id,
 EXPORT_SYMBOL(abox_log_register_buffer);
 
 #ifdef TEST
-static struct ABOX_LOG_BUFFER *abox_log_test_buffer;
+struct ABOX_LOG_BUFFER *abox_log_test_buffer;
 static void abox_log_test_work_func(struct work_struct *work);
 DECLARE_DELAYED_WORK(abox_log_test_work, abox_log_test_work_func);
 static void abox_log_test_work_func(struct work_struct *work)
 {
-	struct ABOX_LOG_BUFFER *log = abox_log_test_buffer;
 	static unsigned int i;
+	struct ABOX_LOG_BUFFER *test = abox_log_test_buffer;
 	char buffer[32];
-	char *buffer_index = buffer;
-	int size, left;
+	char *index = buffer;
+	int size, left_size;
 
 	pr_debug("%s: %d\n", __func__, i);
 
 	size = snprintf(buffer, sizeof(buffer), "%d ", i++);
 
-	if (log->index_writer + size > log->size) {
-		left = log->size - log->index_writer;
-		memcpy(&log->buffer[log->index_writer], buffer_index, left);
-		log->index_writer = 0;
-		buffer_index += left;
+	if (test->index_writer + size > test->size) {
+		left_size = test->size - test->index_writer;
+		memcpy(&test->buffer[test->index_writer], index, left_size);
+		test->index_writer = 0;
+		index += left_size;
 	}
-
-	left = size - (buffer_index - buffer);
-	memcpy(&log->buffer[log->index_writer], buffer_index, left);
-	log->index_writer += left;
+	left_size = size - (index - buffer);
+	memcpy(&test->buffer[test->index_writer], index, left_size);
+	test->index_writer += left_size;
 
 	abox_log_flush_all(NULL);
 

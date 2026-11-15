@@ -38,13 +38,12 @@
 #include "ehci.h"
 
 #define DRIVER_DESC "EHCI generic platform driver"
-#define EHCI_MAX_CLKS 4
-#define EHCI_MAX_RSTS 4
+#define EHCI_MAX_CLKS 3
 #define hcd_to_ehci_priv(h) ((struct ehci_platform_priv *)hcd_to_ehci(h)->priv)
 
 struct ehci_platform_priv {
 	struct clk *clks[EHCI_MAX_CLKS];
-	struct reset_control *rsts[EHCI_MAX_RSTS];
+	struct reset_control *rst;
 	struct phy **phys;
 	int num_phys;
 	bool reset_on_resume;
@@ -150,7 +149,7 @@ static int ehci_platform_probe(struct platform_device *dev)
 	struct usb_ehci_pdata *pdata = dev_get_platdata(&dev->dev);
 	struct ehci_platform_priv *priv;
 	struct ehci_hcd *ehci;
-	int err, irq, phy_num, clk = 0, rst;
+	int err, irq, phy_num, clk = 0;
 
 	if (usb_disabled())
 		return -ENODEV;
@@ -235,20 +234,16 @@ static int ehci_platform_probe(struct platform_device *dev)
 		}
 	}
 
-	for (rst = 0; rst < EHCI_MAX_RSTS; rst++) {
-		priv->rsts[rst] = devm_reset_control_get_shared_by_index(
-					&dev->dev, rst);
-		if (IS_ERR(priv->rsts[rst])) {
-			err = PTR_ERR(priv->rsts[rst]);
-			if (err == -EPROBE_DEFER)
-				goto err_reset;
-			priv->rsts[rst] = NULL;
-			break;
-		}
-
-		err = reset_control_deassert(priv->rsts[rst]);
+	priv->rst = devm_reset_control_get_optional(&dev->dev, NULL);
+	if (IS_ERR(priv->rst)) {
+		err = PTR_ERR(priv->rst);
+		if (err == -EPROBE_DEFER)
+			goto err_put_clks;
+		priv->rst = NULL;
+	} else {
+		err = reset_control_deassert(priv->rst);
 		if (err)
-			goto err_reset;
+			goto err_put_clks;
 	}
 
 	if (pdata->big_endian_desc)
@@ -305,8 +300,8 @@ err_power:
 	if (pdata->power_off)
 		pdata->power_off(dev);
 err_reset:
-	while (--rst >= 0)
-		reset_control_assert(priv->rsts[rst]);
+	if (priv->rst)
+		reset_control_assert(priv->rst);
 err_put_clks:
 	while (--clk >= 0)
 		clk_put(priv->clks[clk]);
@@ -324,15 +319,15 @@ static int ehci_platform_remove(struct platform_device *dev)
 	struct usb_hcd *hcd = platform_get_drvdata(dev);
 	struct usb_ehci_pdata *pdata = dev_get_platdata(&dev->dev);
 	struct ehci_platform_priv *priv = hcd_to_ehci_priv(hcd);
-	int clk, rst;
+	int clk;
 
 	usb_remove_hcd(hcd);
 
 	if (pdata->power_off)
 		pdata->power_off(dev);
 
-	for (rst = 0; rst < EHCI_MAX_RSTS && priv->rsts[rst]; rst++)
-		reset_control_assert(priv->rsts[rst]);
+	if (priv->rst)
+		reset_control_assert(priv->rst);
 
 	for (clk = 0; clk < EHCI_MAX_CLKS && priv->clks[clk]; clk++)
 		clk_put(priv->clks[clk]);
@@ -350,7 +345,8 @@ static int ehci_platform_suspend(struct device *dev)
 {
 	struct usb_hcd *hcd = dev_get_drvdata(dev);
 	struct usb_ehci_pdata *pdata = dev_get_platdata(dev);
-	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device *pdev =
+		container_of(dev, struct platform_device, dev);
 	bool do_wakeup = device_may_wakeup(dev);
 	int ret;
 
@@ -368,7 +364,8 @@ static int ehci_platform_resume(struct device *dev)
 {
 	struct usb_hcd *hcd = dev_get_drvdata(dev);
 	struct usb_ehci_pdata *pdata = dev_get_platdata(dev);
-	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device *pdev =
+		container_of(dev, struct platform_device, dev);
 	struct ehci_platform_priv *priv = hcd_to_ehci_priv(hcd);
 
 	if (pdata->power_on) {

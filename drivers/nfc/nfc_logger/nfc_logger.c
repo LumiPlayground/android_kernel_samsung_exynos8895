@@ -90,7 +90,7 @@ void nfc_print_hex_dump(void *buf, void *pref, size_t size)
 
 	for (i = 0; i < size; i++) {
 		len = snprintf(ptmp, 4, "%02x ", *ptr++);
-		ptmp = ptmp + len;
+		ptmp += len;
 		if (((i+1)%16) == 0) {
 			nfc_logger_print("%s%s\n", pref, tmp);
 			ptmp = tmp;

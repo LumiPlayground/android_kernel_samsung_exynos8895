@@ -562,7 +562,7 @@ int set_magnetic_cal_param_to_ssp(struct ssp_data *data)
 	msg->cmd = MSG2SSP_AP_MAG_CAL_PARAM;
 	msg->length = MAC_CAL_PARAM_SIZE_AKM;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = kzalloc(MAC_CAL_PARAM_SIZE_AKM, GFP_KERNEL);
+	msg->buffer = (char *) kzalloc(MAC_CAL_PARAM_SIZE_AKM, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	memcpy(msg->buffer, mag_caldata_akm, MAC_CAL_PARAM_SIZE_AKM);

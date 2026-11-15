@@ -4,7 +4,7 @@
  *
  * Copyright (c) 2016 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com
-
+ 
  * Exynos-Console-Debugger for Exynos SoC
  * This codes are based on fiq_debugger of google
  * /driver/staging/android/fiq_debugger

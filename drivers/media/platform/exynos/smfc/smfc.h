@@ -104,6 +104,8 @@ struct smfc_dev {
 	u32 hwver;
 	u32 flags;
 
+	void *vb2_alloc_ctx;
+
 	struct clk *clk_gate;
 	struct clk *clk_gate2; /* available if clk_gate is valid */
 	struct pm_qos_request qosreq_int;

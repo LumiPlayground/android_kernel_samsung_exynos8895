@@ -16,17 +16,18 @@
 
 #include "iva_mem.h"
 
+#define iva_ion_sync_all			flush_cache_all
+
 /* [INTERNAL USE ONLY] threshold value for whole cache flush */
 #ifndef SZ_8M
-#define SZ_8M				0x800000
+#define SZ_8M 					0x800000
 #endif
 
-#define ION_FLUSH_ALL_HIGHLIMIT		SZ_8M
+#define ION_FLUSH_ALL_HIGHLIMIT 		SZ_8M
 
-void iva_ion_sync_sg_for_cpu(struct iva_dev_data *iva, struct iva_mem_map *iva_map_node)
+void iva_ion_sync_sg_for_cpu(struct device *dev,
+		struct iva_dev_data *iva, struct iva_mem_map *iva_map_node)
 {
-	struct device *dev = iva->dev;
-
 	if (!(GET_IVA_CACHE_TYPE(iva_map_node->flags) & ION_FLAG_CACHED)) {
 		dev_warn(dev, "no need to sync (no set cacheflag)\n");
 		return;
@@ -42,23 +43,22 @@ void iva_ion_sync_sg_for_cpu(struct iva_dev_data *iva, struct iva_mem_map *iva_m
 	}
 
 	if (iva_map_node->act_size >= ION_FLUSH_ALL_HIGHLIMIT)
-		flush_cache_all();
+		iva_ion_sync_all();
 	else
 		dma_sync_sg_for_cpu(NULL, iva_map_node->sg_table->sgl,
 			      iva_map_node->sg_table->nents, DMA_BIDIRECTIONAL);
 }
 
-void iva_ion_sync_sg_for_device(struct iva_dev_data *iva, struct iva_mem_map *iva_map_node)
+void iva_ion_sync_sg_for_device(struct device *dev,
+		struct iva_dev_data *iva, struct iva_mem_map *iva_map_node)
 {
-	struct device *dev = iva->dev;
-
 	if (!(GET_IVA_CACHE_TYPE(iva_map_node->flags) & ION_FLAG_CACHED)) {
 		dev_warn(dev, "no need to sync (no set cacheflag)\n");
 		return;
 	}
 
 	if (iva_map_node->act_size >= ION_FLUSH_ALL_HIGHLIMIT)
-		flush_cache_all();
+		iva_ion_sync_all();
 	else {
 		if (!iva_map_node->sg_table) {
 			iva_map_node->sg_table = ion_sg_table(iva->ion_client,

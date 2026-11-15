@@ -114,8 +114,6 @@ struct __packed mif_log {
 	u8 log_msg;
 	u8 ps_msg;
 	u8 router_msg;
-	u8 rcs_msg;
-	u8 ppt_msg;
 	u8 debug_log;
 };
 extern struct mif_log log_info;

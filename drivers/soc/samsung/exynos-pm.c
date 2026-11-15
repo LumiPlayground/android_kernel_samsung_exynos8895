@@ -27,15 +27,29 @@
 #include <soc/samsung/exynos-pmu.h>
 #include <soc/samsung/exynos-powermode.h>
 
+#ifdef CONFIG_SOC_EXYNOS8895
+#include <sound/samsung/vts.h>
+#include <sound/samsung/abox.h>
+
+#ifdef CONFIG_SEC_PM
+#include <linux/regulator/consumer.h>
+#endif
+
+#ifdef CONFIG_SEC_PM_DEBUG
+#include <linux/seq_file.h>
+#endif
+#endif
+
 #define WAKEUP_STAT_EINT                (1 << 0)
 #define WAKEUP_STAT_RTC_ALARM           (1 << 1)
+#if defined(CONFIG_SOC_EXYNOS8895) && defined(CONFIG_SEC_PM_DEBUG)
+#define WAKEUP_STAT_INT_MBOX            (1 << 24)
+#endif
 /*
  * PMU register offset
  */
 #define EXYNOS_PMU_WAKEUP_STAT		0x0600
 #define EXYNOS_PMU_EINT_WAKEUP_MASK	0x060C
-#define EXYNOS_PMU_EINT_WAKEUP_MASK2	0x061C
-#define EXYNOS9810_FLEXPMU_INFORM       0x0880
 
 #define BOOT_CPU			0
 
@@ -57,11 +71,17 @@ struct exynos_pm_info {
 	unsigned int num_gic;			/* Total number of GIC sources */
 	bool is_early_wakeup;
 	bool is_usbl2_suspend;
+#ifdef CONFIG_SOC_EXYNOS8895
+	bool is_cp_call;
+	unsigned int cp_call_mode_idx;		/* power mode to be used in cp_call scenario */
+	unsigned int cp_call_psci_idx;		/* psci index to be used in cp_call scenario */
+#endif
 	unsigned int suspend_mode_idx;		/* power mode to be used in suspend scenario */
 	unsigned int suspend_psci_idx;		/* psci index to be used in suspend scenario */
 	u8 num_extra_stat;			/* Total number of extra wakeup_stat */
 	unsigned int *extra_wakeup_stat;	/* Extra wakeup stat SFRs offset */
 #ifdef CONFIG_SEC_PM_DEBUG
+	bool has_ws_irq;
 	struct wakeup_stat_irq ws_irq;		/* SPI numbers for WAKEUP_STAT register */
 	struct wakeup_stat_irq *ews_irq;	/* SPI numbers for extra_wakeup_stat registers */
 #endif
@@ -74,7 +94,9 @@ static struct exynos_pm_info *pm_info;
 struct exynos_pm_dbg {
 	u32 test_early_wakeup;
 	u32 test_usbl2_suspend;
-	u32 inform;
+#ifdef CONFIG_SOC_EXYNOS8895
+	u32 test_cp_call;
+#endif
 	u32 mif_dn_cnt;
 
 };
@@ -87,12 +109,10 @@ static void exynos_show_wakeup_reason_eint(void)
 	long unsigned int ext_int_pend;
 	u64 eint_wakeup_mask;
 	bool found = 0;
-	unsigned int val0 = 0, val1 = 0;
+	unsigned int val0 = 0;
 
 	exynos_pmu_read(EXYNOS_PMU_EINT_WAKEUP_MASK, &val0);
-	exynos_pmu_read(EXYNOS_PMU_EINT_WAKEUP_MASK2, &val1);
-	eint_wakeup_mask = val1;
-	eint_wakeup_mask = ((eint_wakeup_mask << 32) | val0);
+	eint_wakeup_mask = val0;
 
 	for (i = 0, size = 8; i < pm_info->num_eint; i += size) {
 		ext_int_pend =
@@ -217,16 +237,22 @@ static void exynos_show_wakeup_reason(bool sleep_abort)
 	exynos_show_wakeup_registers(wakeup_stat);
 
 #ifdef CONFIG_SEC_PM_DEBUG
-	exynos_show_wakeup_reason_detail(wakeup_stat);
-#else
+	if (pm_info->has_ws_irq) {
+		exynos_show_wakeup_reason_detail(wakeup_stat);
+		return;
+	}
+#endif
 	if (wakeup_stat & WAKEUP_STAT_RTC_ALARM)
 		pr_info("%s Resume caused by RTC alarm\n", EXYNOS_PM_PREFIX);
+#if defined(CONFIG_SOC_EXYNOS8895) && defined(CONFIG_SEC_PM_DEBUG)
+	else if (wakeup_stat & WAKEUP_STAT_INT_MBOX)
+		pr_info("%s Resume caused by modem mailbox interrupt\n", EXYNOS_PM_PREFIX);
+#endif
 	else if (wakeup_stat & WAKEUP_STAT_EINT)
 		exynos_show_wakeup_reason_eint();
 	else
 		pr_info("%s Resume caused by wakeup_stat 0x%08x\n",
 			EXYNOS_PM_PREFIX, wakeup_stat);
-#endif
 }
 
 #ifdef CONFIG_CPU_IDLE
@@ -296,6 +322,23 @@ static int exynos_pm_syscore_suspend(void)
 		return -EINVAL;
 	}
 
+#ifdef CONFIG_SOC_EXYNOS8895
+	pm_info->is_cp_call = abox_is_on();
+	if (pm_info->is_cp_call || pm_dbg->test_cp_call) {
+		exynos_prepare_sys_powerdown(pm_info->cp_call_mode_idx);
+		pr_info("%s %s: Enter CP Call scenario. (mode_idx = %d)\n",
+				EXYNOS_PM_PREFIX, __func__, pm_info->cp_call_mode_idx);
+		return 0;
+	}
+
+	if (vts_is_on()) {
+		exynos_prepare_sys_powerdown(SLEEP_VTS_ON);
+		pr_info("%s %s: Enter Suspend scenario. (mode_idx = %d)\n",
+				EXYNOS_PM_PREFIX, __func__, SLEEP_VTS_ON);
+		return 0;
+	}
+#endif
+
 	pm_info->is_usbl2_suspend = false;
 	if (pm_info->usbl2_suspend_available) {
 		if (!IS_ERR_OR_NULL(pm_info->usb_is_connect))
@@ -317,6 +360,13 @@ static int exynos_pm_syscore_suspend(void)
 
 static void exynos_pm_syscore_resume(void)
 {
+#ifdef CONFIG_SOC_EXYNOS8895
+	if (pm_info->is_cp_call || pm_dbg->test_cp_call)
+		exynos_wakeup_sys_powerdown(pm_info->cp_call_mode_idx, pm_info->is_early_wakeup);
+	else if (vts_is_on())
+		exynos_wakeup_sys_powerdown(SLEEP_VTS_ON, pm_info->is_early_wakeup);
+	else
+#endif
 	if (pm_info->is_usbl2_suspend || pm_dbg->test_usbl2_suspend)
 		exynos_wakeup_sys_powerdown(pm_info->usbl2_suspend_mode_idx, pm_info->is_early_wakeup);
 	else
@@ -338,6 +388,16 @@ static struct syscore_ops exynos_pm_syscore_ops = {
 extern void gpio_dvs_check_sleepgpio(void);
 #endif
 
+#if defined(CONFIG_SOC_EXYNOS8895) && defined(CONFIG_SEC_PM)
+static int exynos_pm_prepare(void)
+{
+	/* TODO */
+	regulator_showall_enabled();
+
+	return 0;
+}
+#endif
+
 static int exynos_pm_enter(suspend_state_t state)
 {
 	unsigned int psci_index;
@@ -352,7 +412,12 @@ static int exynos_pm_enter(suspend_state_t state)
 	/************************ Caution !!! ****************************/
 	gpio_dvs_check_sleepgpio();
 #endif /* CONFIG_SEC_GPIO_DVS */
-	psci_index = pm_info->suspend_psci_idx;
+#ifdef CONFIG_SOC_EXYNOS8895
+	if (pm_info->is_cp_call || pm_dbg->test_cp_call)
+		psci_index = pm_info->cp_call_psci_idx;
+	else
+#endif
+		psci_index = pm_info->suspend_psci_idx;
 
 	/* Send an IPI if test_early_wakeup flag is set */
 	if (pm_dbg->test_early_wakeup)
@@ -380,15 +445,68 @@ static int exynos_pm_enter(suspend_state_t state)
 				EXYNOS_PM_PREFIX, post_mif - prev_mif, post_mif);
 
 	pm_dbg->mif_dn_cnt = post_mif;
-	exynos_pmu_read(EXYNOS9810_FLEXPMU_INFORM, &pm_dbg->inform);
 
 	return pm_info->is_early_wakeup;
 }
 
 static const struct platform_suspend_ops exynos_pm_ops = {
 	.enter		= exynos_pm_enter,
+#if defined(CONFIG_SOC_EXYNOS8895) && defined(CONFIG_SEC_PM)
+	.prepare	= exynos_pm_prepare,
+#endif
 	.valid		= suspend_valid_only_mem,
 };
+
+#if defined(CONFIG_SOC_EXYNOS8895) && defined(CONFIG_SEC_PM_DEBUG)
+enum dvfs_id {
+	cal_asv_dvfs_big,
+	cal_asv_dvfs_little,
+	cal_asv_dvfs_g3d,
+	cal_asv_dvfs_mif,
+	cal_asv_dvfs_int,
+	cal_asv_dvfs_cam,
+	cal_asv_dvfs_disp,
+	cal_asv_dvs_g3dm,
+	num_of_dvfs,
+};
+
+enum asv_group {
+	asv_max_lv,
+	dvfs_freq,
+	dvfs_voltage,
+	dvfs_group,
+	table_group,
+	num_of_asc,
+};
+
+extern int asv_get_information(enum dvfs_id id,
+	enum asv_group grp, unsigned int lv);
+
+static int asv_summary_show(struct seq_file *s, void *d)
+{
+	seq_printf(s, "big:%u, LITTLE:%u, INT:%u, MIF:%u, G3D:%u, ISP:%u\n",
+		asv_get_information(cal_asv_dvfs_big, dvfs_group, 0),
+		asv_get_information(cal_asv_dvfs_little, dvfs_group, 0),
+		asv_get_information(cal_asv_dvfs_int, dvfs_group, 0),
+		asv_get_information(cal_asv_dvfs_mif, dvfs_group, 0),
+		asv_get_information(cal_asv_dvfs_g3d, dvfs_group, 0),
+		asv_get_information(cal_asv_dvfs_disp, dvfs_group, 0));
+
+	return 0;
+}
+
+static int asv_summary_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, asv_summary_show, inode->i_private);
+}
+
+const static struct file_operations asv_summary_fops = {
+	.open		= asv_summary_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+#endif /* CONFIG_SOC_EXYNOS8895 && CONFIG_SEC_PM_DEBUG */
 
 int register_usb_is_connect(bool (*func)(void))
 {
@@ -411,6 +529,17 @@ bool is_test_usbl2_suspend_set(void)
 	return pm_dbg->test_usbl2_suspend;
 }
 EXPORT_SYMBOL_GPL(is_test_usbl2_suspend_set);
+
+#ifdef CONFIG_SOC_EXYNOS8895
+bool is_test_cp_call_set(void)
+{
+	if (!pm_dbg)
+		return false;
+
+	return pm_dbg->test_cp_call;
+}
+EXPORT_SYMBOL_GPL(is_test_cp_call_set);
+#endif
 
 #ifdef CONFIG_DEBUG_FS
 static void __init exynos_pm_debugfs_init(void)
@@ -436,6 +565,15 @@ static void __init exynos_pm_debugfs_init(void)
 					EXYNOS_PM_PREFIX, __func__);
 		return;
 	}
+
+#ifdef CONFIG_SOC_EXYNOS8895
+	d = debugfs_create_u32("test_cp_call", 0644, root, &pm_dbg->test_cp_call);
+	if (!d) {
+		pr_err("%s %s: could't create debugfs test_cp_call\n",
+					EXYNOS_PM_PREFIX, __func__);
+		return;
+	}
+#endif
 }
 #endif
 
@@ -483,6 +621,7 @@ static void parse_dt_wakeup_stat_irqno(struct device_node *np)
 				__func__, ret);
 		return;
 	}
+	pm_info->has_ws_irq = true;
 
 	/* extra_wakeup_stat_irqno */
 	root = of_find_node_by_name(np, "extra_wakeup_stat_irqno");
@@ -591,6 +730,22 @@ static __init int exynos_pm_drvinit(void)
 			BUG();
 		}
 
+#ifdef CONFIG_SOC_EXYNOS8895
+		ret = of_property_read_u32(np, "cp_call_mode_idx", &pm_info->cp_call_mode_idx);
+		if (ret) {
+			pr_err("%s %s: unabled to get cp_call_mode_idx from DT\n",
+					EXYNOS_PM_PREFIX, __func__);
+			BUG();
+		}
+
+		ret = of_property_read_u32(np, "cp_call_psci_idx", &pm_info->cp_call_psci_idx);
+		if (ret) {
+			pr_err("%s %s: unabled to get cp_call_psci_idx from DT\n",
+					EXYNOS_PM_PREFIX, __func__);
+			BUG();
+		}
+#endif
+
 		ret = of_property_read_u32(np, "usbl2_suspend_available", &pm_info->usbl2_suspend_available);
 		if (ret) {
 			pr_info("%s %s: Not support usbl2_suspend mode\n",
@@ -626,6 +781,10 @@ static __init int exynos_pm_drvinit(void)
 	register_syscore_ops(&exynos_pm_syscore_ops);
 #ifdef CONFIG_DEBUG_FS
 	exynos_pm_debugfs_init();
+
+#if defined(CONFIG_SOC_EXYNOS8895) && defined(CONFIG_SEC_PM_DEBUG)
+	debugfs_create_file("asv_summary", S_IRUSR, NULL, NULL, &asv_summary_fops);
+#endif
 #endif
 
 #if defined(CONFIG_SEC_FACTORY)
@@ -638,11 +797,3 @@ static __init int exynos_pm_drvinit(void)
 	return 0;
 }
 arch_initcall(exynos_pm_drvinit);
-
-static __init int exynos_pm_inform_init(void)
-{
-	exynos_pmu_read(EXYNOS9810_FLEXPMU_INFORM, &pm_dbg->inform);
-
-	return 0;
-}
-device_initcall(exynos_pm_inform_init);

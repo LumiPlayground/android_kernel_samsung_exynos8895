@@ -20,8 +20,6 @@
  * CONFIG -PLATFORM CONFIG
  * =================================================================================================
  */
-/* This count is defined by count of fimc_is_sensor in the dtsi file */
-#define FIMC_IS_HW_SENSOR_COUNT 4
 
 #define SOC_30S
 #define SOC_30C
@@ -55,8 +53,7 @@
 /* Post Processing Configruation */
 /* #define ENABLE_DRC */
 /* #define ENABLE_DIS */
-#define ENABLE_DNR_IN_TPU
-/* #define ENABLE_DNR_IN_MCSC */
+#define ENABLE_DNR
 #define ENABLE_VRA
 
 #define USE_ONE_BINARY
@@ -83,19 +80,7 @@
 #undef OVERFLOW_PANIC_ENABLE_CSIS
 /* #define ENABLE_DIRECT_CLOCK_GATE */
 #define ENABLE_HMP_BOOST
-
-/* FIMC-IS task priority setting */
-#define TASK_SENSOR_WORK_PRIO		(FIMC_IS_MAX_PRIO - 48) /* 52 */
-#define TASK_GRP_OTF_INPUT_PRIO		(FIMC_IS_MAX_PRIO - 49) /* 51 */
-#define TASK_GRP_DMA_INPUT_PRIO		(FIMC_IS_MAX_PRIO - 50) /* 50 */
-#define TASK_MSHOT_WORK_PRIO		(FIMC_IS_MAX_PRIO - 43) /* 57 */
-#define TASK_LIB_OTF_PRIO		(FIMC_IS_MAX_PRIO - 44) /* 56 */
-#define TASK_LIB_AF_PRIO		(FIMC_IS_MAX_PRIO - 45) /* 55 */
-#define TASK_LIB_ISP_DMA_PRIO		(FIMC_IS_MAX_PRIO - 46) /* 54 */
-#define TASK_LIB_3AA_DMA_PRIO		(FIMC_IS_MAX_PRIO - 47) /* 53 */
-#define TASK_LIB_AA_PRIO		(FIMC_IS_MAX_PRIO - 48) /* 52 */
-#define TASK_LIB_RTA_PRIO		(FIMC_IS_MAX_PRIO - 49) /* 51 */
-#define TASK_LIB_VRA_PRIO		(FIMC_IS_MAX_PRIO - 45) /* 55 */
+#define DEBUG_REPROCESSING_NDONE
 
 /*
  * =================================================================================================
@@ -104,6 +89,7 @@
  */
 
 #define FIMC_IS_MAX_TASK		(40)
+#define MAX_FPS_DUAL_SYNC		(24)
 
 #if defined(CONFIG_ARM_EXYNOS8895_BUS_DEVFREQ)
 #define CONFIG_FIMC_IS_BUS_DEVFREQ
@@ -113,7 +99,7 @@
 #else
 #define DDK_OVERFLOW_RECOVERY		(1)	/* 0: do not execute recovery, 1: execute recovery */
 #endif
-#define CAPTURE_NODE_MAX		5
+#define CAPTURE_NODE_MAX		6
 #define OTF_YUV_FORMAT			(OTF_INPUT_FORMAT_YUV422)
 #define USE_YUV_RANGE_BY_ISP
 /* #define ENABLE_3AA_DMA_CROP */
@@ -123,7 +109,6 @@
 #define TPU_COMPRESSOR
 #define USE_I2C_LOCK
 #undef ENABLE_FULL_BYPASS
-/* #define SENSOR_REQUEST_DELAY		2 */
 
 #ifdef ENABLE_IRQ_MULTI_TARGET
 #define FIMC_IS_HW_IRQ_FLAG     IRQF_GIC_MULTI_TARGET
@@ -141,14 +126,4 @@
 #define I2C_MUTEX_LOCK(lock)
 #define I2C_MUTEX_UNLOCK(lock)
 #endif
-
-#define ENABLE_DBG_EVENT_PRINT
-
-#define USE_PHY_LINK
-#define NOT_SEPERATED_SYSREG
-#define QOS_INTCAM
-#define EXPANSION_DVFS_TABLE
-
-#define CHAIN_USE_VC_TASKLET	1
-
 #endif

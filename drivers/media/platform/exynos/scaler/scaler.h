@@ -98,9 +98,6 @@ extern int sc_log_level;
 		(x == V4L2_PIX_FMT_NV21M) || (x == V4L2_PIX_FMT_YUV420M) || \
 		(x == V4L2_PIX_FMT_YVU420M) || (x == V4L2_PIX_FMT_NV12MT_16X16))
 #define sc_fmt_is_ayv12(x)	((x) == V4L2_PIX_FMT_YVU420)
-#define sc_fmt_is_s10bit_yuv(x)	((x == V4L2_PIX_FMT_NV12M_S10B) || \
-		(x == V4L2_PIX_FMT_NV12N_10B) || (x == V4L2_PIX_FMT_NV16M_S10B) || \
-		(x == V4L2_PIX_FMT_NV61M_S10B))
 #define sc_dith_val(a, b, c)	((a << SCALER_DITH_R_SHIFT) |	\
 		(b << SCALER_DITH_G_SHIFT) | (c << SCALER_DITH_B_SHIFT))
 
@@ -114,10 +111,6 @@ extern int sc_log_level;
 #define V4L2_CID_2D_COLOR_FILL		(V4L2_CID_EXYNOS_BASE + 104)
 #define V4L2_CID_2D_DITH		(V4L2_CID_EXYNOS_BASE + 105)
 #define V4L2_CID_2D_FMT_PREMULTI	(V4L2_CID_EXYNOS_BASE + 106)
-
-/* for performance */
-#define SC_CID_FRAMERATE		(V4L2_CID_EXYNOS_BASE + 110)
-#define SC_FRAMERATE_MAX		(500)
 
 /* for denoising filter */
 #define SC_CID_DNOISE_FT		(V4L2_CID_EXYNOS_BASE + 150)
@@ -145,6 +138,8 @@ struct sc_csc_tab {
 	int wide_709[9];
 	int narrow_2020[9];
 	int wide_2020[9];
+	int narrow_p3[9];
+	int wide_p3[9];
 };
 
 enum sc_clk_status {
@@ -260,8 +255,6 @@ struct sc_variant {
 	u8 prescale:1;
 	u8 ratio_20bit:1;
 	u8 initphase:1;
-	u8 pixfmt_10bit:1;
-	u8 extra_buf:1;
 };
 
 /*
@@ -288,15 +281,13 @@ struct sc_fmt {
 	u8	cspan:1;
 };
 
-enum {
-	SC_PLANE_Y = 0,
-	SC_PLANE_CB,
-	SC_PLANE_CR,
-};
-
 struct sc_addr {
-	dma_addr_t	ioaddr[SC_MAX_PLANES];
-	unsigned int	size[SC_MAX_PLANES];
+	dma_addr_t	y;
+	dma_addr_t	cb;
+	dma_addr_t	cr;
+	unsigned int	ysize;
+	unsigned int	cbsize;
+	unsigned int	crsize;
 };
 
 /*
@@ -320,6 +311,7 @@ struct sc_frame {
 
 struct sc_int_frame {
 	struct sc_frame			frame;
+	struct ion_client		*client;
 	struct ion_handle		*handle[3];
 	struct sc_addr			src_addr;
 	struct sc_addr			dst_addr;
@@ -383,12 +375,6 @@ struct sc_qch_dbg {
 	u32 log[G2D_QCH_NUM];
 };
 
-struct sc_qos_table {
-	unsigned int freq_mif;
-	unsigned int freq_int;
-	unsigned int data_size;
-};
-
 struct sc_ctx;
 
 /*
@@ -444,19 +430,11 @@ struct sc_dev {
 	u32				cfw;
 	int				dbg_idx;
 	struct sc_qch_dbg		*qch_dbg;
-	struct ion_client		*client;
-	struct sc_qos_table		*qos_table;
-	int qos_table_cnt;
 };
 
 enum SC_CONTEXT_TYPE {
 	SC_CTX_V4L2_TYPE,
 	SC_CTX_M2M1SHOT_TYPE
-};
-
-struct sc_qos_request {
-	struct pm_qos_request mif_req;
-	struct pm_qos_request int_req;
 };
 
 /*
@@ -510,9 +488,6 @@ struct sc_ctx {
 	struct sc_csc			csc;
 	struct sc_init_phase		init_phase;
 	struct sc_dnoise_filter		dnoise_ft;
-	struct sc_qos_request		pm_qos;
-	int				pm_qos_lv;
-	int				framerate;
 };
 
 static inline struct sc_frame *ctx_get_frame(struct sc_ctx *ctx,
@@ -549,13 +524,12 @@ void sc_hwset_src_crop(struct sc_dev *sc, struct v4l2_rect *rect,
 		       const struct sc_fmt *fmt,
 		       unsigned int pre_h_ratio, unsigned int pre_v_ratio);
 void sc_hwset_dst_crop(struct sc_dev *sc, struct v4l2_rect *rect);
-void sc_hwset_src_addr(struct sc_dev *sc, struct sc_frame *frame);
-void sc_hwset_dst_addr(struct sc_dev *sc, struct sc_frame *frame);
+void sc_hwset_src_addr(struct sc_dev *sc, struct sc_addr *addr);
+void sc_hwset_dst_addr(struct sc_dev *sc, struct sc_addr *addr);
 void sc_hwset_hcoef(struct sc_dev *sc, unsigned int coef);
 void sc_hwset_vcoef(struct sc_dev *sc, unsigned int coef);
 
 void sc_hwregs_dump(struct sc_dev *sc);
-void sc_ctx_dump(struct sc_ctx *ctx);
 
 #ifdef CONFIG_VIDEOBUF2_ION
 static inline int sc_get_dma_address(void *cookie, dma_addr_t *addr)

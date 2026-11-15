@@ -141,8 +141,8 @@ static int sensor_virtual_zebu_s_param(struct v4l2_subdev *subdev, struct v4l2_s
 	struct v4l2_fract *tpf;
 	u64 duration;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!param);
+	BUG_ON(!subdev);
+	BUG_ON(!param);
 
 	pr_info("%s\n", __func__);
 
@@ -343,8 +343,8 @@ int sensor_virtual_zebu_vision_probe(struct i2c_client *client,
 	}
 
 	/* virtual_zebu */
-	module = &device->module_enum[atomic_read(&device->module_count)];
-	atomic_inc(&device->module_count);
+	module = &device->module_enum[atomic_read(&core->resourcemgr.rsccount_module)];
+	atomic_inc(&core->resourcemgr.rsccount_module);
 	clear_bit(FIMC_IS_MODULE_GPIO_ON, &module->state);
 	module->sensor_id = SENSOR_VIRTUAL_ZEBU_NAME;
 	module->subdev = subdev_module;
@@ -495,8 +495,8 @@ int sensor_virtual_zebu_probe(struct platform_device *pdev)
 	}
 
 	/* S5Kvirtual_zebu */
-	module = &device->module_enum[atomic_read(&device->module_count)];
-	atomic_inc(&device->module_count);
+	module = &device->module_enum[atomic_read(&core->resourcemgr.rsccount_module)];
+	atomic_inc(&core->resourcemgr.rsccount_module);
 	module->pdata = pdata;
 	module->dev = dev;
 	module->sensor_id = SENSOR_NAME_VIRTUAL_ZEBU;

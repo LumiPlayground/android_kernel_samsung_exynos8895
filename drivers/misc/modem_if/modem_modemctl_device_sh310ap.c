@@ -468,7 +468,7 @@ static int sh310ap_dump_start(struct modem_ctl *mc)
 static int sh310ap_get_meminfo(struct modem_ctl *mc, unsigned long arg)
 {
 	struct meminfo mem_info;
-	struct modem_data *modem = mc->mdm_data;
+	struct modem_data *modem= mc->mdm_data;
 
 	mem_info.base_addr = modem->shmem_base;
 	mem_info.size = modem->ipcmem_offset;
@@ -572,7 +572,7 @@ int init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	/*
 	** Register CP_FAIL interrupt handler
 	*/
-	irq_num = platform_get_irq(pdev, 0);
+	irq_num = platform_get_irq(pdev, 0);	//18
 	mif_init_irq(&mc->irq_cp_fail, irq_num, "cp_fail", flags);
 
 	ret = mif_request_irq(&mc->irq_cp_fail, cp_fail_handler, mc);
@@ -588,7 +588,7 @@ int init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	/*
 	** Register CP_WDT interrupt handler
 	*/
-	irq_num = platform_get_irq(pdev, 1);
+	irq_num = platform_get_irq(pdev, 1);		// 479
 	mif_init_irq(&mc->irq_cp_wdt, irq_num, "cp_wdt", flags);
 
 	ret = mif_request_irq(&mc->irq_cp_wdt, cp_wdt_handler, mc);

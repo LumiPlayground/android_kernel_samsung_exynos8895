@@ -368,6 +368,8 @@ EXPORT_SYMBOL(kstrtobool);
  * Since "base" would be a nonsense argument, this open-codes the
  * _from_user helper instead of using the helper macro below.
  */
+
+
 int kstrtobool_from_user(const char __user *s, size_t count, bool *res)
 {
 	/* Longest string needed to differentiate, newline, terminator */

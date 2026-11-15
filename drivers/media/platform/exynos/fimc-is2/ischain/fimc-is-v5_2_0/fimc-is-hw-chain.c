@@ -19,6 +19,8 @@
 #if defined(CONFIG_SECURE_CAMERA_USE)
 #include <linux/smc.h>
 #endif
+#include <linux/videodev2.h>
+#include <linux/videodev2_exynos_camera.h>
 
 #include <asm/neon.h>
 
@@ -28,7 +30,6 @@
 #include "fimc-is-regs.h"
 #include "fimc-is-core.h"
 #include "fimc-is-hw-chain.h"
-#include "fimc-is-hw-settle-10nm-lpe.h"
 #include "fimc-is-device-sensor.h"
 #include "fimc-is-device-flite.h"
 #include "fimc-is-device-csi.h"
@@ -146,8 +147,6 @@ void fimc_is_hw_group_init(struct fimc_is_group *group)
 	group->subdev[ENTRY_VRA] = NULL;
 	group->subdev[ENTRY_DCP] = NULL;
 	group->subdev[ENTRY_SRDZ] = NULL;
-
-	INIT_LIST_HEAD(&group->subdev_list);
 }
 
 int fimc_is_hw_group_cfg(void *group_data)
@@ -157,7 +156,7 @@ int fimc_is_hw_group_cfg(void *group_data)
 	struct fimc_is_device_sensor *sensor;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = (struct fimc_is_group *)group_data;
 
@@ -177,12 +176,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_SSVC3] = &sensor->ssvc3;
 		group->subdev[ENTRY_BNS] = &sensor->bns;
 
-		list_add_tail(&sensor->group_sensor.leader.list, &group->subdev_list);
-		list_add_tail(&sensor->ssvc0.list, &group->subdev_list);
-		list_add_tail(&sensor->ssvc1.list, &group->subdev_list);
-		list_add_tail(&sensor->ssvc2.list, &group->subdev_list);
-		list_add_tail(&sensor->ssvc3.list, &group->subdev_list);
-		list_add_tail(&sensor->bns.list, &group->subdev_list);
 		return ret;
 	}
 #endif
@@ -201,10 +194,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_3AC] = &device->txc;
 		group->subdev[ENTRY_3AP] = &device->txp;
 
-		list_add_tail(&device->group_3aa.leader.list, &group->subdev_list);
-		list_add_tail(&device->txc.list, &group->subdev_list);
-		list_add_tail(&device->txp.list, &group->subdev_list);
-
 		device->txc.param_dma_ot = PARAM_3AA_VDMA4_OUTPUT;
 		device->txp.param_dma_ot = PARAM_3AA_VDMA2_OUTPUT;
 		break;
@@ -213,10 +202,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_ISP] = &device->group_isp.leader;
 		group->subdev[ENTRY_IXC] = &device->ixc;
 		group->subdev[ENTRY_IXP] = &device->ixp;
-
-		list_add_tail(&device->group_isp.leader.list, &group->subdev_list);
-		list_add_tail(&device->ixc.list, &group->subdev_list);
-		list_add_tail(&device->ixp.list, &group->subdev_list);
 		break;
 	case GROUP_SLOT_DIS:
 		fimc_is_hw_group_init(group);
@@ -224,10 +209,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_DXC] = &device->dxc;
 		group->subdev[ENTRY_ODC] = NULL;
 		group->subdev[ENTRY_DNR] = &device->dnr;
-
-		list_add_tail(&device->group_dis.leader.list, &group->subdev_list);
-		list_add_tail(&device->dxc.list, &group->subdev_list);
-		list_add_tail(&device->dnr.list, &group->subdev_list);
 		break;
 	case GROUP_SLOT_MCS:
 		fimc_is_hw_group_init(group);
@@ -238,14 +219,6 @@ int fimc_is_hw_group_cfg(void *group_data)
 		group->subdev[ENTRY_M3P] = &device->m3p;
 		group->subdev[ENTRY_M4P] = &device->m4p;
 		group->subdev[ENTRY_VRA] = &device->group_vra.leader;
-
-		list_add_tail(&device->group_mcs.leader.list, &group->subdev_list);
-		list_add_tail(&device->m0p.list, &group->subdev_list);
-		list_add_tail(&device->m1p.list, &group->subdev_list);
-		list_add_tail(&device->m2p.list, &group->subdev_list);
-		list_add_tail(&device->m3p.list, &group->subdev_list);
-		list_add_tail(&device->m4p.list, &group->subdev_list);
-		list_add_tail(&device->group_vra.leader.list, &group->subdev_list);
 
 		device->m0p.param_dma_ot = PARAM_MCS_OUTPUT0;
 		device->m1p.param_dma_ot = PARAM_MCS_OUTPUT1;
@@ -277,7 +250,7 @@ int fimc_is_hw_group_open(void *group_data)
 	struct fimc_is_group *group;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	leader = &group->leader;
@@ -343,7 +316,7 @@ int fimc_is_hw_camif_cfg(void *sensor_data)
 	struct fimc_is_device_ischain *ischain;
 	bool is_otf = false;
 
-	FIMC_BUG(!sensor_data);
+	BUG_ON(!sensor_data);
 
 	sensor = sensor_data;
 	ischain = sensor->ischain;
@@ -423,7 +396,7 @@ int fimc_is_hw_camif_open(void *sensor_data)
 	struct fimc_is_device_flite *flite;
 	struct fimc_is_device_csi *csi;
 
-	FIMC_BUG(!sensor_data);
+	BUG_ON(!sensor_data);
 
 	sensor = sensor_data;
 	flite = (struct fimc_is_device_flite *)v4l2_get_subdevdata(sensor->subdev_flite);
@@ -498,27 +471,30 @@ void fimc_is_hw_ischain_qe_cfg(void)
 	iounmap(qe_3aa_regs);
 	iounmap(qe_isphq_regs);
 
-	dbg_hw(2, "%s()\n", __func__);
+	dbg_hw("%s() \n", __func__);
 }
 
 int fimc_is_hw_ischain_cfg(void *ischain_data)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
+	struct fimc_is_resourcemgr *resourcemgr;
 	struct fimc_is_device_ischain *device;
 	struct fimc_is_device_sensor *sensor;
 	struct fimc_is_device_csi *csi;
 	int i, sensor_cnt = 0;
-	void __iomem *cam_regs;
+	void __iomem *cam_regs = NULL;
 	void __iomem *isplp_regs;
 	void __iomem *isphq_regs;
 	u32 isplp_val = 0, isphq_val = 0, cam_val = 0;
 	u32 isplp_backup = 0, isphq_backup = 0, cam_backup = 0;
 	u32 input_bns = 0, input_wobns = 1;
 	u32 input_3aaw = 0, input_3aa = 1;
+	u32 input_isplp = 0, input_isphq = 1;
 	u32 input_mcsc_src0;
+	int chain_config = 0; /* 0: pure bayer, 1: processed bayer */
 
-	FIMC_BUG(!ischain_data);
+	BUG_ON(!ischain_data);
 
 	device = (struct fimc_is_device_ischain *)ischain_data;
 	if (test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state))
@@ -526,17 +502,21 @@ int fimc_is_hw_ischain_cfg(void *ischain_data)
 
 	core = (struct fimc_is_core *)platform_get_drvdata(device->pdev);
 	sensor = device->sensor;
-	FIMC_BUG(!sensor);
+	BUG_ON(!sensor);
 
 	csi = (struct fimc_is_device_csi *)v4l2_get_subdevdata(sensor->subdev_csi);
-	FIMC_BUG(!csi);
+	BUG_ON(!csi);
+
+	resourcemgr = device->resourcemgr;
+	chain_config = core->chain_config;
 
 	/* checked single/dual camera */
 	for (i = 0; i < FIMC_IS_STREAM_COUNT; i++)
 		if (test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[i].state)))
 			sensor_cnt++;
 
-	dbg_hw(1, "[%d]%s(%d): sensor_cnt(%d)\n", device->instance, __func__, __LINE__, sensor_cnt);
+	dbg_hw("[%d]%s(%d): sensor_cnt(%d)\n", device->instance, __func__, __LINE__, sensor_cnt);
+
 #if defined(CONFIG_SECURE_CAMERA_USE)
 	if (core->secure_state != FIMC_IS_STATE_SECURED)
 #endif
@@ -567,7 +547,6 @@ int fimc_is_hw_ischain_cfg(void *ischain_data)
 	cam_backup = cam_val;
 	isplp_backup = isplp_val;
 	isphq_backup = isphq_val;
-
 	/*
 	 * 1 &2) Select BNS & WOBNS input
 	 *    CSIS0 : 0 (BACK) <= Always
@@ -575,69 +554,118 @@ int fimc_is_hw_ischain_cfg(void *ischain_data)
 	 *    CSIS2 : 2 (TELE)
 	 *    CSIS3 : 3 (IRIS)
 	 */
-	input_3aaw = 0;
-	input_3aa  = 1;
 
-	if (sensor_cnt > 1) {
-		/* PIP scenario */
-		input_bns = 0;
+	if (resourcemgr->hal_version == IS_HAL_VER_1_0 && chain_config) {
+		/* processed bayer */
+		input_3aaw = 1; /* WOBNS output -> 3AAW */
+		input_3aa  = 0; /* BNS output   -> 3AA  */
 
-		if (test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[1].state))
-			&& !test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[2].state)))
-			input_wobns = 1;
-		else if (!test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[1].state))
-			&& test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[2].state)))
-			input_wobns = 2;
-		else
-			input_wobns = 1;
+		input_isplp = 1; /* 3AA  -> ISPLP */
+		input_isphq = 0; /* 3AAW -> ISPHQ */
 
-		if (test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[1].state))
-			&& test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[3].state))) {
-			/* Color IRIS */
-			input_3aaw = 1;
-			input_3aa  = 0;
+		if (sensor_cnt > 1) {
+			/* PIP scenario */
+			input_bns = 0;
+
+			if (test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[1].state))
+					&& !test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[2].state)))
+				input_wobns = 1;
+			else if (!test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[1].state))
+					&& test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[2].state)))
+				input_wobns = 2;
+			else
+				input_wobns = 1;
+		} else {
+			/* SINGLE scenario */
+			switch (csi->instance) {
+			case 0:
+				input_bns = 0;
+				input_wobns = 1;
+				break;
+			case 1: /* Fall Through */
+			case 2:
+				input_bns = 0;
+				input_wobns = csi->instance;
+				break;
+			case 3:
+				/* Color IRIS */
+				input_bns = 0;
+				input_wobns = 1;
+				break;
+			default:
+				input_wobns = 1;
+				break;
+			}
 		}
 	} else {
-		/* SINGLE scenario */
-		switch (csi->instance) {
-		case 0:
-			input_bns = 0;
-			input_wobns = 1;
-			break;
-		case 1:
-			input_bns = 0;
-			input_wobns = csi->instance;
+		/* pure bayer scenario */
+		input_3aaw = 0; /* BNS output   -> 3AAW */
+		input_3aa  = 1; /* WOBNS output -> 3AA  */
 
-			if (test_bit(FIMC_IS_GROUP_OTF_INPUT, &device->group_3aa.state)) {
-				/* VT call, Color IRIS */
+		input_isplp = 0; /* 3AAW -> ISPLP */
+		input_isphq = 1; /* 3AA  -> ISPHQ */
+
+		if (sensor_cnt > 1) {
+			/* PIP scenario */
+			input_bns = 0;
+
+			if (test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[1].state))
+				&& !test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[2].state)))
+				input_wobns = 1;
+			else if (!test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[1].state))
+				&& test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[2].state)))
+				input_wobns = 2;
+			else
+				input_wobns = 1;
+
+			if (test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[1].state))
+				&& test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[3].state))) {
+				/* Color IRIS */
 				input_3aaw = 1;
 				input_3aa  = 0;
-			} else {
-				/* PIP */
-				input_3aaw = 0;
-				input_3aa  = 1;
 			}
-			break;
-		case 2:
-			input_bns = 0;
-			input_wobns = csi->instance;
-			break;
-		case 3:
-			/* Color IRIS */
-			input_bns = 0;
-			input_wobns = 1;
+		} else {
+			/* SINGLE scenario */
+			switch (csi->instance) {
+			case 0:
+				input_bns = 0;
+				input_wobns = 1;
+				break;
+			case 1:
+				input_bns = 0;
+				input_wobns = csi->instance;
 
-			input_3aaw = 1;
-			input_3aa  = 0;
-			break;
-		default:
-			input_wobns = 1;
-			break;
+				if (test_bit(FIMC_IS_GROUP_OTF_INPUT, &device->group_3aa.state)) {
+					/* VT call, Color IRIS */
+					input_3aaw = 1;
+					input_3aa  = 0;
+				} else {
+					/* PIP */
+					input_3aaw = 0;
+					input_3aa  = 1;
+				}
+				break;
+			case 2:
+				input_bns = 0;
+				input_wobns = csi->instance;
+				break;
+			case 3:
+				/* Color IRIS */
+				input_bns = 0;
+				input_wobns = 1;
+
+				input_3aaw = 1;
+				input_3aa  = 0;
+				break;
+			default:
+				input_wobns = 1;
+				break;
+			}
 		}
 	}
-	info_itfc("%s: input[bns:%d, wobns:%d], input[3aaw:%d, 3aa:%d], sensor_cnt(%d)\n",
+	info_itfc("%s: input[bns:%d, wobns:%d], input[3aaw:%d, 3aa:%d], sensor_cnt(%d), chain_config(%d)\n",
 		__func__, input_bns, input_wobns,
-		input_3aaw, input_3aa, sensor_cnt);
+		input_3aaw, input_3aa, sensor_cnt, chain_config);
 	cam_val = fimc_is_hw_set_field_value(cam_val,
 		&sysreg_cam_fields[SYSREG_CAM_F_GLUEMUX_BNS_VAL], input_bns);
 	cam_val = fimc_is_hw_set_field_value(cam_val,
@@ -659,7 +687,7 @@ int fimc_is_hw_ischain_cfg(void *ischain_data)
 	 *    3AA(3AA1)  : 1
 	 */
 	isplp_val = fimc_is_hw_set_field_value(isplp_val,
-		&sysreg_isplp_fields[SYSREG_ISPLP_F_GLUEMUX_ISPLP_SEL], 0);
+		&sysreg_isplp_fields[SYSREG_ISPLP_F_GLUEMUX_ISPLP_SEL], input_isplp);
 
 	/*
 	 * 5) Select ISPHQ(ISP1) input
@@ -667,7 +695,7 @@ int fimc_is_hw_ischain_cfg(void *ischain_data)
 	 *    3AA(3AA1)  : 1 <= Always
 	 */
 	isphq_val = fimc_is_hw_set_field_value(isphq_val,
-		&sysreg_isphq_fields[SYSREG_ISPHQ_F_GLUEMUX_ISPHQ_SEL], 1);
+		&sysreg_isphq_fields[SYSREG_ISPHQ_F_GLUEMUX_ISPHQ_SEL], input_isphq);
 
 	/*
 	 * 6) Select MC-Scaler SRC0 input
@@ -745,196 +773,174 @@ int fimc_is_hw_ischain_cfg(void *ischain_data)
 		iounmap(isplp_regs);
 		iounmap(isphq_regs);
 	}
-
 	return ret;
 }
 
-static inline void fimc_is_isr1_ddk(void *data)
+static irqreturn_t interface_3aa_isr1(int irq, void *data)
 {
-	struct fimc_is_interface_hwip *itf_hw = NULL;
-	struct hwip_intr_handler *intr_hw = NULL;
+	struct fimc_is_interface_hwip *itf_3aa = NULL;
+	struct hwip_intr_handler *intr_3aa = NULL;
 
-	itf_hw = (struct fimc_is_interface_hwip *)data;
-	intr_hw = &itf_hw->handler[INTR_HWIP1];
+	itf_3aa = (struct fimc_is_interface_hwip *)data;
+	intr_3aa = &itf_3aa->handler[INTR_HWIP1];
 
-	if (intr_hw->valid) {
+	if (intr_3aa->valid) {
 		fimc_is_enter_lib_isr();
-		intr_hw->handler(intr_hw->id, intr_hw->ctx);
+		intr_3aa->handler(intr_3aa->id, intr_3aa->ctx);
 		fimc_is_exit_lib_isr();
 	} else {
-		err_itfc("[ID:%d](1) empty handler!!", itf_hw->id);
+		err_itfc("[%d]3aa(1) empty handler!!", itf_3aa->id);
 	}
+
+	return IRQ_HANDLED;
 }
 
-static inline void fimc_is_isr2_ddk(void *data)
+static irqreturn_t interface_3aa_isr2(int irq, void *data)
 {
-	struct fimc_is_interface_hwip *itf_hw = NULL;
-	struct hwip_intr_handler *intr_hw = NULL;
+	struct fimc_is_interface_hwip *itf_3aa = NULL;
+	struct hwip_intr_handler *intr_3aa = NULL;
 
-	itf_hw = (struct fimc_is_interface_hwip *)data;
-	intr_hw = &itf_hw->handler[INTR_HWIP2];
+	itf_3aa = (struct fimc_is_interface_hwip *)data;
+	intr_3aa = &itf_3aa->handler[INTR_HWIP2];
 
-	if (intr_hw->valid) {
+	if (intr_3aa->valid) {
 		fimc_is_enter_lib_isr();
-		intr_hw->handler(intr_hw->id, intr_hw->ctx);
+		intr_3aa->handler(intr_3aa->id, intr_3aa->ctx);
 		fimc_is_exit_lib_isr();
 	} else {
-		err_itfc("[ID:%d](2) empty handler!!", itf_hw->id);
+		err_itfc("[%d]3aa(2) empty handler!!", itf_3aa->id);
 	}
+
+	return IRQ_HANDLED;
 }
 
-static inline void fimc_is_isr1_host(void *data)
+static irqreturn_t interface_isp_isr1(int irq, void *data)
 {
-	struct fimc_is_interface_hwip *itf_hw = NULL;
-	struct hwip_intr_handler *intr_hw = NULL;
+	struct fimc_is_interface_hwip *itf_isp = NULL;
+	struct hwip_intr_handler *intr_isp = NULL;
 
-	itf_hw = (struct fimc_is_interface_hwip *)data;
-	intr_hw = &itf_hw->handler[INTR_HWIP1];
+	itf_isp = (struct fimc_is_interface_hwip *)data;
+	intr_isp = &itf_isp->handler[INTR_HWIP1];
 
-	if (intr_hw->valid)
-		intr_hw->handler(intr_hw->id, (void *)itf_hw->hw_ip);
+	if (intr_isp->valid) {
+		fimc_is_enter_lib_isr();
+		intr_isp->handler(intr_isp->id, intr_isp->ctx);
+		fimc_is_exit_lib_isr();
+	} else {
+		err_itfc("[%d]isp(1) empty handler!!", itf_isp->id);
+	}
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t interface_isp_isr2(int irq, void *data)
+{
+	struct fimc_is_interface_hwip *itf_isp = NULL;
+	struct hwip_intr_handler *intr_isp = NULL;
+
+	itf_isp = (struct fimc_is_interface_hwip *)data;
+	intr_isp = &itf_isp->handler[INTR_HWIP2];
+
+	if (intr_isp->valid) {
+		fimc_is_enter_lib_isr();
+		intr_isp->handler(intr_isp->id, intr_isp->ctx);
+		fimc_is_exit_lib_isr();
+	} else {
+		err_itfc("[%d]isp(2) empty handler!!", itf_isp->id);
+	}
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t interface_tpu_isr1(int irq, void *data)
+{
+	struct fimc_is_interface_hwip *itf_tpu = NULL;
+	struct hwip_intr_handler *intr_tpu = NULL;
+
+	itf_tpu = (struct fimc_is_interface_hwip *)data;
+	intr_tpu = &itf_tpu->handler[INTR_HWIP1];
+
+	if (intr_tpu->valid) {
+		fimc_is_enter_lib_isr();
+		intr_tpu->handler(intr_tpu->id, intr_tpu->ctx);
+		fimc_is_exit_lib_isr();
+	} else {
+		err_itfc("[%d]tpu(1) empty handler!!", itf_tpu->id);
+	}
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t interface_tpu_isr2(int irq, void *data)
+{
+	struct fimc_is_interface_hwip *itf_tpu = NULL;
+	struct hwip_intr_handler *intr_tpu = NULL;
+
+	itf_tpu = (struct fimc_is_interface_hwip *)data;
+	intr_tpu = &itf_tpu->handler[INTR_HWIP2];
+
+	if (intr_tpu->valid) {
+		fimc_is_enter_lib_isr();
+		intr_tpu->handler(intr_tpu->id, intr_tpu->ctx);
+		fimc_is_exit_lib_isr();
+	} else {
+		err_itfc("[%d]tpu(2) empty handler!!", itf_tpu->id);
+	}
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t interface_scaler_isr(int irq, void *data)
+{
+	struct fimc_is_interface_hwip *itf_scaler = NULL;
+	struct hwip_intr_handler *intr_scaler = NULL;
+
+	itf_scaler = (struct fimc_is_interface_hwip *)data;
+	intr_scaler = &itf_scaler->handler[INTR_HWIP1];
+
+	if (intr_scaler->valid)
+		intr_scaler->handler(intr_scaler->id, (void *)itf_scaler->hw_ip);
 	else
-		err_itfc("[ID:%d] empty handler!!", itf_hw->id);
+		err_itfc("[%d]scaler empty handler!!", itf_scaler->id);
 
-}
-
-static irqreturn_t fimc_is_isr1_3aa0(int irq, void *data)
-{
-	fimc_is_isr1_ddk(data);
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t fimc_is_isr2_3aa0(int irq, void *data)
+static irqreturn_t interface_vra_isr1(int irq, void *data)
 {
-	fimc_is_isr2_ddk(data);
-	return IRQ_HANDLED;
-}
+	struct fimc_is_interface_hwip *itf_vra = NULL;
+	struct hwip_intr_handler *intr_vra = NULL;
 
-static irqreturn_t fimc_is_isr1_3aa1(int irq, void *data)
-{
-	fimc_is_isr1_ddk(data);
-	return IRQ_HANDLED;
-}
+	itf_vra = (struct fimc_is_interface_hwip *)data;
+	intr_vra = &itf_vra->handler[INTR_HWIP1];
 
-static irqreturn_t fimc_is_isr2_3aa1(int irq, void *data)
-{
-	fimc_is_isr2_ddk(data);
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t fimc_is_isr1_isp0(int irq, void *data)
-{
-	fimc_is_isr1_ddk(data);
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t fimc_is_isr2_isp0(int irq, void *data)
-{
-	fimc_is_isr2_ddk(data);
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t fimc_is_isr1_isp1(int irq, void *data)
-{
-	fimc_is_isr1_ddk(data);
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t fimc_is_isr2_isp1(int irq, void *data)
-{
-	fimc_is_isr2_ddk(data);
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t fimc_is_isr1_tpu0(int irq, void *data)
-{
-	fimc_is_isr1_ddk(data);
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t fimc_is_isr2_tpu0(int irq, void *data)
-{
-	fimc_is_isr2_ddk(data);
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t fimc_is_isr1_tpu1(int irq, void *data)
-{
-	fimc_is_isr1_ddk(data);
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t fimc_is_isr2_tpu1(int irq, void *data)
-{
-	fimc_is_isr2_ddk(data);
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t fimc_is_isr1_mcs0(int irq, void *data)
-{
-	fimc_is_isr1_host(data);
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t fimc_is_isr1_mcs1(int irq, void *data)
-{
-	fimc_is_isr1_host(data);
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t fimc_is_isr1_vra(int irq, void *data)
-{
-	struct fimc_is_interface_hwip *itf_hw = NULL;
-	struct hwip_intr_handler *intr_hw = NULL;
-
-	itf_hw = (struct fimc_is_interface_hwip *)data;
-	intr_hw = &itf_hw->handler[INTR_HWIP1];
-
-	if (intr_hw->valid) {
+	if (intr_vra->valid) {
 		fimc_is_enter_lib_isr();
-		intr_hw->handler(intr_hw->id, itf_hw->hw_ip);
+		intr_vra->handler(intr_vra->id, (void *)itf_vra->hw_ip);
 		fimc_is_exit_lib_isr();
 	} else {
-		err_itfc("[ID:%d](2) empty handler!!", itf_hw->id);
+		err_itfc("[%d]vra(1) empty handler!!", itf_vra->id);
 	}
 
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t fimc_is_isr2_vra(int irq, void *data)
+static irqreturn_t interface_vra_isr2(int irq, void *data)
 {
-	struct fimc_is_interface_hwip *itf_hw = NULL;
-	struct hwip_intr_handler *intr_hw = NULL;
+	struct fimc_is_interface_hwip *itf_vra = NULL;
+	struct hwip_intr_handler *intr_vra = NULL;
 
-	itf_hw = (struct fimc_is_interface_hwip *)data;
-	intr_hw = &itf_hw->handler[INTR_HWIP2];
+	itf_vra = (struct fimc_is_interface_hwip *)data;
+	intr_vra = &itf_vra->handler[INTR_HWIP2];
 
-	if (intr_hw->valid) {
+	if (intr_vra->valid) {
 		fimc_is_enter_lib_isr();
-		intr_hw->handler(intr_hw->id, itf_hw->hw_ip);
+		intr_vra->handler(intr_vra->id, (void *)itf_vra->hw_ip);
 		fimc_is_exit_lib_isr();
 	} else {
-		err_itfc("[ID:%d](2) empty handler!!", itf_hw->id);
+		err_itfc("[%d]vra(2) empty handler!!", itf_vra->id);
 	}
 
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t fimc_is_isr1_dcp(int irq, void *data)
-{
-	fimc_is_isr1_ddk(data);
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t fimc_is_isr2_dcp(int irq, void *data)
-{
-	fimc_is_isr2_ddk(data);
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t fimc_is_isr1_srdz(int irq, void *data)
-{
-	fimc_is_isr1_host(data);
 	return IRQ_HANDLED;
 }
 
@@ -1140,8 +1146,8 @@ int fimc_is_hw_get_address(void *itfc_data, void *pdev_data, int hw_id)
 	struct platform_device *pdev = NULL;
 	struct fimc_is_interface_hwip *itf_hwip = NULL;
 
-	FIMC_BUG(!itfc_data);
-	FIMC_BUG(!pdev_data);
+	BUG_ON(!itfc_data);
+	BUG_ON(!pdev_data);
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 	pdev = (struct platform_device *)pdev_data;
@@ -1368,7 +1374,7 @@ int fimc_is_hw_get_irq(void *itfc_data, void *pdev_data, int hw_id)
 	struct platform_device *pdev = NULL;
 	int ret = 0;
 
-	FIMC_BUG(!itfc_data);
+	BUG_ON(!itfc_data);
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 	pdev = (struct platform_device *)pdev_data;
@@ -1508,82 +1514,253 @@ int fimc_is_hw_get_irq(void *itfc_data, void *pdev_data, int hw_id)
 	return ret;
 }
 
-//#define DECLARE_FUNC_NAME(NUM, NAME) fimc_is_isr##NUM_##NAME
-static inline int __fimc_is_hw_request_irq(struct fimc_is_interface_hwip *itf_hwip,
-	const char *name,
-	int isr_num,
-	irqreturn_t (*func)(int, void *))
-{
-	size_t name_len = 0;
-	int ret = 0;
-
-	name_len = sizeof(itf_hwip->irq_name[isr_num]);
-	snprintf(itf_hwip->irq_name[isr_num], name_len, "fimc%s-%d", name, isr_num);
-	ret = request_irq(itf_hwip->irq[isr_num], func,
-		FIMC_IS_HW_IRQ_FLAG,
-		itf_hwip->irq_name[isr_num],
-		itf_hwip);
-	if (ret) {
-		err_itfc("[HW:%s] request_irq [%d] fail", name, isr_num);
-		return -EINVAL;
-	}
-	itf_hwip->handler[isr_num].id = isr_num;
-	itf_hwip->handler[isr_num].valid = true;
-
-	return ret;
-}
-
 int fimc_is_hw_request_irq(void *itfc_data, int hw_id)
 {
 	struct fimc_is_interface_hwip *itf_hwip = NULL;
+	u32 name_len = 0;
 	int ret = 0;
 
-	FIMC_BUG(!itfc_data);
+	BUG_ON(!itfc_data);
 
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 
 	switch (hw_id) {
 	case DEV_HW_3AA0:
-		ret = __fimc_is_hw_request_irq(itf_hwip, "3aa0", INTR_HWIP1, fimc_is_isr1_3aa0);
-		ret = __fimc_is_hw_request_irq(itf_hwip, "3aa0", INTR_HWIP2, fimc_is_isr2_3aa0);
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP1]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP1], name_len, "fimc3a0-1");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP1], interface_3aa_isr1,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP1],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [1] fail", hw_id);
+			return -EINVAL;
+		}
+
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP2]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP2], name_len, "fimc3a0-2");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP2], interface_3aa_isr2,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP2],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [2] fail", hw_id);
+			return -EINVAL;
+		}
+
 		break;
 	case DEV_HW_3AA1:
-		ret = __fimc_is_hw_request_irq(itf_hwip, "3aa1", INTR_HWIP1, fimc_is_isr1_3aa1);
-		ret = __fimc_is_hw_request_irq(itf_hwip, "3aa1", INTR_HWIP2, fimc_is_isr2_3aa1);
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP1]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP1], name_len, "fimc3a1-1");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP1], interface_3aa_isr1,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP1],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [1] fail", hw_id);
+			return -EINVAL;
+		}
+
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP2]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP2], name_len, "fimc3a1-2");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP2], interface_3aa_isr2,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP2],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [2] fail", hw_id);
+			return -EINVAL;
+		}
 		break;
 	case DEV_HW_ISP0:
-		ret = __fimc_is_hw_request_irq(itf_hwip, "isp0", INTR_HWIP1, fimc_is_isr1_isp0);
-		ret = __fimc_is_hw_request_irq(itf_hwip, "isp0", INTR_HWIP2, fimc_is_isr2_isp0);
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP1]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP1], name_len, "fimcisp0-1");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP1], interface_isp_isr1,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP1],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [1] fail", hw_id);
+			return -EINVAL;
+		}
+
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP2]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP2], name_len, "fimcisp0-2");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP2], interface_isp_isr2,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP2],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [2] fail", hw_id);
+			return -EINVAL;
+		}
 		break;
 	case DEV_HW_ISP1:
-		ret = __fimc_is_hw_request_irq(itf_hwip, "isp1", INTR_HWIP1, fimc_is_isr1_isp1);
-		ret = __fimc_is_hw_request_irq(itf_hwip, "isp1", INTR_HWIP2, fimc_is_isr2_isp1);
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP1]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP1], name_len, "fimcisp1-1");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP1], interface_isp_isr1,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP1],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [1] fail", hw_id);
+			return -EINVAL;
+		}
+
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP2]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP2], name_len, "fimcisp1-2");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP2], interface_isp_isr2,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP2],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [2] fail", hw_id);
+			return -EINVAL;
+		}
 		break;
 	case DEV_HW_TPU0:
-		ret = __fimc_is_hw_request_irq(itf_hwip, "tpu0", INTR_HWIP1, fimc_is_isr1_tpu0);
-		ret = __fimc_is_hw_request_irq(itf_hwip, "tpu0", INTR_HWIP2, fimc_is_isr2_tpu0);
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP1]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP1], name_len, "fimctpu0-1");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP1], interface_tpu_isr1,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP1],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [1] fail", hw_id);
+			return -EINVAL;
+		}
+		itf_hwip->handler[INTR_HWIP1].valid = true;
+
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP2]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP2], name_len, "fimctpu0-2");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP2], interface_tpu_isr2,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP2],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [2] fail", hw_id);
+			return -EINVAL;
+		}
+		itf_hwip->handler[INTR_HWIP2].valid = true;
 		break;
 	case DEV_HW_TPU1:
-		ret = __fimc_is_hw_request_irq(itf_hwip, "tpu1", INTR_HWIP1, fimc_is_isr1_tpu1);
-		ret = __fimc_is_hw_request_irq(itf_hwip, "tpu1", INTR_HWIP2, fimc_is_isr2_tpu1);
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP1]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP1], name_len, "fimctpu1-1");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP1], interface_tpu_isr1,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP1],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [1] fail", hw_id);
+			return -EINVAL;
+		}
+		itf_hwip->handler[INTR_HWIP1].valid = true;
+
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP2]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP2], name_len, "fimctpu1-2");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP2], interface_tpu_isr2,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP2],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [2] fail", hw_id);
+			return -EINVAL;
+		}
+		itf_hwip->handler[INTR_HWIP2].valid = true;
 		break;
 	case DEV_HW_MCSC0:
-		ret = __fimc_is_hw_request_irq(itf_hwip, "mcs0", INTR_HWIP1, fimc_is_isr1_mcs0);
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP1]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP1], name_len, "fimcmcs-0");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP1], interface_scaler_isr,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP1],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [1] fail", hw_id);
+			return -EINVAL;
+		}
+		itf_hwip->handler[INTR_HWIP1].valid = true;
 		break;
 	case DEV_HW_MCSC1:
-		ret = __fimc_is_hw_request_irq(itf_hwip, "mcs1", INTR_HWIP1, fimc_is_isr1_mcs1);
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP1]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP1], name_len, "fimcmcs-1");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP1], interface_scaler_isr,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP1],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [1] fail", hw_id);
+			return -EINVAL;
+		}
+		itf_hwip->handler[INTR_HWIP1].valid = true;
 		break;
 	case DEV_HW_VRA:
-		ret = __fimc_is_hw_request_irq(itf_hwip, "vra", INTR_HWIP1, fimc_is_isr1_vra); /* VRA CH0 */
-		ret = __fimc_is_hw_request_irq(itf_hwip, "vra", INTR_HWIP2, fimc_is_isr2_vra); /* VRA CH1 */
+		/* VRA CH0 */
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP1]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP1], name_len, "fimcvra-0");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP1], interface_vra_isr1,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP1],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [1] fail", hw_id);
+			return -EINVAL;
+		}
+		itf_hwip->handler[INTR_HWIP1].id = INTR_HWIP1;
+		itf_hwip->handler[INTR_HWIP1].valid = true;
+
+		/* VRA CH1 */
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP2]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP2], name_len, "fimcvra-1");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP2], interface_vra_isr2,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP2],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [2] fail", hw_id);
+			return -EINVAL;
+		}
+		itf_hwip->handler[INTR_HWIP2].id = INTR_HWIP2;
+		itf_hwip->handler[INTR_HWIP2].valid = true;
 		break;
 	case DEV_HW_DCP:
-		ret = __fimc_is_hw_request_irq(itf_hwip, "dcp", INTR_HWIP1, fimc_is_isr1_dcp);
-		ret = __fimc_is_hw_request_irq(itf_hwip, "dcp", INTR_HWIP2, fimc_is_isr2_dcp);
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP1]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP1], name_len, "fimcdcp-1");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP1], interface_tpu_isr1,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP1],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [1] fail", hw_id);
+			return -EINVAL;
+		}
+		itf_hwip->handler[INTR_HWIP1].valid = true;
+
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP2]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP2], name_len, "fimcdcp-2");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP2], interface_tpu_isr2,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP2],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [2] fail", hw_id);
+			return -EINVAL;
+		}
+		itf_hwip->handler[INTR_HWIP2].valid = true;
 		break;
 	case DEV_HW_SRDZ:
-		ret = __fimc_is_hw_request_irq(itf_hwip, "srdz", INTR_HWIP1, fimc_is_isr1_srdz);
+		name_len = sizeof(itf_hwip->irq_name[INTR_HWIP1]);
+		snprintf(itf_hwip->irq_name[INTR_HWIP1], name_len, "fimcsrdz-1");
+		ret = request_irq(itf_hwip->irq[INTR_HWIP1], interface_scaler_isr,
+			FIMC_IS_HW_IRQ_FLAG,
+			itf_hwip->irq_name[INTR_HWIP1],
+			itf_hwip);
+		if (ret) {
+			err_itfc("[ID:%d] request_irq [1] fail", hw_id);
+			return -EINVAL;
+		}
+		itf_hwip->handler[INTR_HWIP1].valid = true;
 		break;
 	default:
 		probe_err("hw_id(%d) is invalid", hw_id);
@@ -1658,7 +1835,7 @@ int fimc_is_hw_s_ctrl(void *itfc_data, int hw_id, enum hw_s_ctrl_id id, void *va
 			struct fimc_is_core *core;
 #endif
 
-			FIMC_BUG(!itfc_data);
+			BUG_ON(!itfc_data);
 
 			itfc = (struct fimc_is_interface_ischain *)itfc_data;
 			base_addr = itfc->regs_mcuctl;
@@ -1709,8 +1886,8 @@ int fimc_is_hw_s_ctrl(void *itfc_data, int hw_id, enum hw_s_ctrl_id id, void *va
 			struct fimc_is_device_ischain *device;
 			unsigned long data = (unsigned long)val;
 
-			FIMC_BUG(!vctx);
-			FIMC_BUG(!GET_DEVICE(vctx));
+			BUG_ON(!vctx);
+			BUG_ON(!GET_DEVICE(vctx));
 
 			device = GET_DEVICE(vctx);
 
@@ -1749,7 +1926,7 @@ int fimc_is_hw_query_cap(void *cap_data, int hw_id)
 {
 	int ret = 0;
 
-	FIMC_BUG(!cap_data);
+	BUG_ON(!cap_data);
 
 	switch (hw_id) {
 	case DEV_HW_MCSC0:
@@ -1775,7 +1952,6 @@ int fimc_is_hw_query_cap(void *cap_data, int hw_id)
 			cap->out_hwfc[3] = MCSC_CAP_SUPPORT;
 			cap->out_hwfc[4] = MCSC_CAP_SUPPORT;
 			cap->enable_shared_output = true;
-			cap->tdnr = MCSC_CAP_NOT_SUPPORT;
 		}
 		break;
 	default:
@@ -1793,37 +1969,56 @@ void __iomem *fimc_is_hw_get_sysreg(ulong core_regs)
 	return ioremap_nocache(SYSREG_CAM_BASE_ADDR, 0x10000);
 }
 
-u32 fimc_is_hw_find_settle(u32 mipi_speed)
+u32 fimc_is_hw_g_state(void __iomem *regs, u32 hw_id)
 {
-	u32 align_mipi_speed;
-	u32 find_mipi_speed;
-	size_t max;
-	int s, e, m;
+	u32 reg_val = 0, sfr_offset;
 
-	align_mipi_speed = ALIGN(mipi_speed, 10);
-	max = sizeof(fimc_is_csi_settle_table) / sizeof(u32);
-
-	s = 0;
-	e = max - 2;
-
-	if (fimc_is_csi_settle_table[s] < align_mipi_speed)
-		return fimc_is_csi_settle_table[s + 1];
-
-	if (fimc_is_csi_settle_table[e] > align_mipi_speed)
-		return fimc_is_csi_settle_table[e + 1];
-
-	/* Binary search */
-	while (s <= e) {
-		m = ALIGN((s + e) / 2, 2);
-		find_mipi_speed = fimc_is_csi_settle_table[m];
-
-		if (find_mipi_speed == align_mipi_speed)
-			break;
-		else if (find_mipi_speed > align_mipi_speed)
-			s = m + 2;
-		else
-			e = m - 2;
+	if (!regs) {
+		err_itfc("[ID:%d]%s: regs = NULL\n", hw_id, __func__);
+		return 0;
 	}
 
-	return fimc_is_csi_settle_table[m + 1];
+	switch (hw_id) {
+	case DEV_HW_3AA0: /* 3AAW */
+	case DEV_HW_3AA1:
+	case DEV_HW_ISP0: /* ISPLP */
+	case DEV_HW_ISP1: /* ISPHQ */
+		sfr_offset = 0x0; /* global_enable */
+		reg_val = readl(regs + sfr_offset);
+		info_itfc("[ID:%d]%s: [0x%04X:0x%08X]\n", hw_id, __func__, sfr_offset, reg_val);
+		/* fall through */
+	case DEV_HW_TPU0:
+	case DEV_HW_TPU1:
+		sfr_offset = 0x24; /* idleness_status */
+		reg_val = readl(regs + sfr_offset);
+		info_itfc("[ID:%d]%s: [0x%04X:0x%08X]\n", hw_id, __func__, sfr_offset, reg_val);
+		break;
+	case DEV_HW_MCSC0:
+		sfr_offset = 0x0; /* global_enable */
+		reg_val = readl(regs + sfr_offset);
+		info_itfc("[ID:%d]%s: [0x%04X:0x%08X]\n", hw_id, __func__, sfr_offset, reg_val);
+
+		sfr_offset = 0x794; /* running_status */
+		reg_val = readl(regs + sfr_offset);
+		info_itfc("[ID:%d]%s: [0x%04X:0x%08X]\n", hw_id, __func__, sfr_offset, reg_val);
+		break;
+	case DEV_HW_MCSC1:
+		sfr_offset = 0x4; /* global_enable */
+		reg_val = readl(regs + sfr_offset);
+		info_itfc("[ID:%d]%s: [0x%04X:0x%08X]\n", hw_id, __func__, sfr_offset, reg_val);
+
+		sfr_offset = 0x794; /* running_status */
+		reg_val = readl(regs + sfr_offset);
+		info_itfc("[ID:%d]%s: [0x%04X:0x%08X]\n", hw_id, __func__, sfr_offset, reg_val);
+		break;
+	case DEV_HW_VRA:
+		sfr_offset = 0x3010; /* idleness_status */
+		reg_val = readl(regs + sfr_offset);
+		info_itfc("[ID:%d]%s: [0x%04X:0x%08X]\n", hw_id, __func__, sfr_offset, reg_val);
+		break;
+	default:
+		break;
+	}
+
+	return reg_val;
 }

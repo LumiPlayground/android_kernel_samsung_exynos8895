@@ -23,8 +23,7 @@
 
 #define AFE_BASE_END_OFFSET 8
 
-static int mtk_regmap_update_bits(struct regmap *map, int reg,
-			   unsigned int mask,
+int mtk_regmap_update_bits(struct regmap *map, int reg, unsigned int mask,
 			   unsigned int val)
 {
 	if (reg < 0)
@@ -32,7 +31,7 @@ static int mtk_regmap_update_bits(struct regmap *map, int reg,
 	return regmap_update_bits(map, reg, mask, val);
 }
 
-static int mtk_regmap_write(struct regmap *map, int reg, unsigned int val)
+int mtk_regmap_write(struct regmap *map, int reg, unsigned int val)
 {
 	if (reg < 0)
 		return 0;

@@ -41,16 +41,6 @@
 
 #define CP_WAKEUP_HOLD_TIME	500		/* 500 ms */
 
-#define MEM_CRASH_REASON_CP	0
-#define MEM_CRASH_REASON_AP	1
-#define MEM_CRASH_REASON_RIL	2
-#define MEM_CRASH_REASON_SIZE	512
-
-struct crash_reason {
-	u32 owner;
-	char string[MEM_CRASH_REASON_SIZE];
-};
-
 struct shmem_4mb_phys_map {
 	u32 magic;
 	u32 access;
@@ -79,8 +69,8 @@ struct shmem_4mb_phys_map {
 struct shmem_circ {
 	u32 __iomem *head;
 	u32 __iomem *tail;
-	u8	__iomem *buff;
-	u32			 size;
+	u8  __iomem *buff;
+	u32          size;
 };
 
 struct shmem_ipc_device {
@@ -119,40 +109,12 @@ struct shmem_link_device {
 	u32 size;		/* size of SHMEM */
 	u32 __iomem *base;	/* virtual address to the "IPC" region */
 
-	u8 __iomem *vss_base;
-	u8 __iomem *acpm_base;
-	int acpm_size;
-
 	/* MBOX number & IRQ */
-	unsigned int mbx_cp2ap_msg;
-	unsigned int irq_cp2ap_msg;
+	unsigned mbx_cp2ap_msg;	/* MBOX# for IPC */
+	int irq;		/* IRQ# for IPC  */
 
-	unsigned int mbx_ap2cp_msg;
-	unsigned int int_ap2cp_msg;
-	unsigned int int_ap2cp_wakeup;
-
-	unsigned int mbx_mif_freq;
-
-	unsigned int mbx_perf_req_cpu;
-	unsigned int mbx_perf_req_mif;
-	unsigned int mbx_perf_req_int;
-
-	unsigned int irq_perf_req_cpu;
-	unsigned int irq_perf_req_mif;
-	unsigned int irq_perf_req_int;
-
-	struct work_struct pm_qos_work_cpu;
-	struct work_struct pm_qos_work_mif;
-	struct work_struct pm_qos_work_int;
-
-	unsigned int mbx_cp2ap_wakelock;	/* MBOX# for wakelock */
-	unsigned int irq_cp2ap_wakelock;	/* INTR# for wakelock */
-
-	unsigned int *mif_clk_table;
-	unsigned int mif_clk_cnt;
-
-	unsigned int *ap_clk_table;
-	unsigned int ap_clk_cnt;
+	unsigned mbx_ap2cp_msg;
+	int int_ap2cp_msg;
 
 	/* SHMEM GPIO & IRQ */
 	unsigned gpio_ap_wakeup;
@@ -180,10 +142,8 @@ struct shmem_link_device {
 	/* Wakelock for SHMEM device */
 	struct wake_lock wlock;
 	char wlock_name[MIF_MAX_NAME_LEN];
-
 	struct wake_lock ap_wlock;
 	char ap_wlock_name[MIF_MAX_NAME_LEN];
-
 	struct wake_lock cp_wlock;
 	char cp_wlock_name[MIF_MAX_NAME_LEN];
 
@@ -223,8 +183,6 @@ struct shmem_link_device {
 	struct delayed_work cp_sleep_dwork;
 	atomic_t ref_cnt;
 	spinlock_t pm_lock;
-
-	struct crash_reason crash_reason;
 };
 
 /* converts from struct link_device* to struct xxx_link_device* */
@@ -565,7 +523,7 @@ static inline bool all_rxq_empty(struct shmem_link_device *shmd,
  * Returns an error code.
  */
 static inline int get_rxq_rcvd(struct shmem_link_device *shmd, int dev,
-				   struct mem_status *mst, struct circ_status *circ)
+			       struct mem_status *mst, struct circ_status *circ)
 {
 	struct link_device *ld = &shmd->ld;
 
@@ -576,10 +534,9 @@ static inline int get_rxq_rcvd(struct shmem_link_device *shmd, int dev,
 	circ->size = circ_get_usage(circ->qsize, circ->in, circ->out);
 
 	if (circ_valid(circ->qsize, circ->in, circ->out)) {
-		//if ((dev == 0))
-			mif_info("%s: %s_RXQ qsize[%u] in[%u] out[%u] rcvd[%u]\n",
-				ld->name, get_dev_name(dev), circ->qsize, circ->in,
-				circ->out, circ->size);
+		mif_debug("%s: %s_RXQ qsize[%u] in[%u] out[%u] rcvd[%u]\n",
+			ld->name, get_dev_name(dev), circ->qsize, circ->in,
+			circ->out, circ->size);
 		return 0;
 	} else {
 		mif_err("%s: ERR! %s_RXQ invalid (qsize[%d] in[%d] out[%d])\n",
@@ -749,8 +706,8 @@ static inline int init_shmem_ipc(struct shmem_link_device *shmd)
 	struct link_device *ld = &shmd->ld;
 
 	if (ld->mode == LINK_MODE_IPC &&
-		get_magic(shmd) == SHM_IPC_MAGIC &&
-		get_access(shmd) == 1) {
+	    get_magic(shmd) == SHM_IPC_MAGIC &&
+	    get_access(shmd) == 1) {
 		mif_err("%s: IPC already initialized\n", ld->name);
 		return 0;
 	}

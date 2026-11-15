@@ -174,25 +174,10 @@ void set_pmd_at(struct mm_struct *mm, unsigned long addr,
 		return;
 
 	if ((pmd_val(pmd) ^ pmd_val(orig)) & _PAGE_PMD_HUGE) {
-		/*
-		 * Note that this routine only sets pmds for THP pages.
-		 * Hugetlb pages are handled elsewhere.  We need to check
-		 * for huge zero page.  Huge zero pages are like hugetlb
-		 * pages in that there is no RSS, but there is the need
-		 * for TSB entries.  So, huge zero page counts go into
-		 * hugetlb_pte_count.
-		 */
-		if (pmd_val(pmd) & _PAGE_PMD_HUGE) {
-			if (is_huge_zero_page(pmd_page(pmd)))
-				mm->context.hugetlb_pte_count++;
-			else
-				mm->context.thp_pte_count++;
-		} else {
-			if (is_huge_zero_page(pmd_page(orig)))
-				mm->context.hugetlb_pte_count--;
-			else
-				mm->context.thp_pte_count--;
-		}
+		if (pmd_val(pmd) & _PAGE_PMD_HUGE)
+			mm->context.thp_pte_count++;
+		else
+			mm->context.thp_pte_count--;
 
 		/* Do not try to allocate the TSB hash table if we
 		 * don't have one already.  We have various locks held

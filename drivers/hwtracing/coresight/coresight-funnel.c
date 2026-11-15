@@ -217,8 +217,6 @@ static int funnel_probe(struct amba_device *adev, const struct amba_id *id)
 	if (IS_ERR(drvdata->csdev))
 		return PTR_ERR(drvdata->csdev);
 
-	dev_info(dev, "%s initialized\n", (char *)id->data);
-
 	return 0;
 }
 
@@ -250,9 +248,8 @@ static const struct dev_pm_ops funnel_dev_pm_ops = {
 
 static struct amba_id funnel_ids[] = {
 	{
-		.id     = 0x000bb908,
-		.mask   = 0x000fffff,
-		.data	= "FUNNEL",
+		.id     = 0x0003b908,
+		.mask   = 0x0003ffff,
 	},
 	{ 0, 0},
 };

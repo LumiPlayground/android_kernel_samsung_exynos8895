@@ -564,9 +564,6 @@ static int ti_qspi_start_transfer_one(struct spi_master *master,
 
 	mutex_lock(&qspi->list_lock);
 
-	if (qspi->mmap_enabled)
-		ti_qspi_disable_memory_map(spi);
-
 	list_for_each_entry(t, &m->transfers, transfer_list) {
 		qspi->cmd = ((qspi->cmd & ~QSPI_WLEN_MASK) |
 			     QSPI_WLEN(t->bits_per_word));

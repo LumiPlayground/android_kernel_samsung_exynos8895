@@ -46,7 +46,7 @@ struct tsi_dev {
 
 struct tsi_dev *tsi_priv;
 
-void (*tsi_data_callback)(u8 *data, u32 length) = NULL;
+static void (*tsi_data_callback)(u8 *data, u32 length) = NULL;
 static void tdmb_tsi_pull_data(struct work_struct *work);
 static struct workqueue_struct *tdmb_tsi_workqueue;
 static DECLARE_WORK(tdmb_tsi_work, tdmb_tsi_pull_data);
@@ -69,7 +69,6 @@ static struct tsi_pkt *tsi_get_pkt(struct tsi_dev *tsi, struct list_head *head)
 {
 	unsigned long flags;
 	struct tsi_pkt *pkt;
-
 	spin_lock_irqsave(&tsi->tsi_lock, flags);
 
 	if (list_empty(head))	{
@@ -96,7 +95,7 @@ static int tsi_setup_bufs(struct list_head *head, int packet_cnt, u8 *pkt_buff)
 	for (i = 0; i < num_buf; i++) {
 		pkt = kmalloc(sizeof(struct tsi_pkt), GFP_KERNEL);
 		if (!pkt)
-			return list_empty(head) ? -ENOMEM : 0;
+			return list_empty(head) ? -ENOMEM : 0 ;
 
 		pkt->buf = (void *)(u8 *)(pkt_buff + i * buf_size);
 		pkt->len = buf_size;
@@ -156,7 +155,7 @@ static void tdmb_tsi_pull_data(struct work_struct *work)
 	const struct tspp_data_descriptor *tspp_data_desc;
 
 	if (!tsi_priv->tsi_running) {
-		DPRINTK("%s : tsi_running : %d\n",
+		DPRINTK("%s : tsi_runing : %d\n",
 			__func__, tsi_priv->tsi_running);
 		return;
 	}
@@ -166,13 +165,13 @@ static void tdmb_tsi_pull_data(struct work_struct *work)
 		if (pkt == NULL)	{
 			DPRINTK("TSI..No more free bufs..\n");
 			tspp_release_buffer(0, CHANNEL_ID, tspp_data_desc->id);
-			return;
+			return ;
 		}
 
 		if (tspp_data_desc->size == pkt->len)
 			memcpy(pkt->buf, tspp_data_desc->virt_base, tspp_data_desc->size);
 		else
-			DPRINTK("Size err tspp_size:(%d) pkt_len:(%d)\n",
+			DPRINTK("Size err tspp_size:(%d) pkt_len:(%d) \n", \
 						tspp_data_desc->size, pkt->len);
 
 		spin_lock_irqsave(&tsi_priv->tsi_lock, flags);
@@ -184,7 +183,7 @@ static void tdmb_tsi_pull_data(struct work_struct *work)
 
 	while ((pkt = tsi_get_pkt(tsi_priv, &tsi_priv->full_list)) != NULL) {
 #ifdef CONFIG_TSI_LIST_DEBUG
-		DPRINTK("full_list virt:0x%p length:%d\n", pkt->buf, pkt->len);
+		DPRINTK("full_list virt:0x%p length:%d\n",pkt->buf, pkt->len);
 #endif
 		if (tsi_data_callback)
 			tsi_data_callback(pkt->buf, pkt->len);
@@ -197,13 +196,12 @@ static void tdmb_tsi_pull_data(struct work_struct *work)
 static void tdmb_tspp_callback(int channel_id, void *user)
 {
 	if (!tsi_priv->tsi_running) {
-		DPRINTK("%s : tsi_running : %d\n",
+		DPRINTK("%s : tsi_runing : %d\n",
 			__func__, tsi_priv->tsi_running);
 		return;
 	}
 	if (tdmb_tsi_workqueue) {
 		int ret;
-
 		ret = queue_work(tdmb_tsi_workqueue, &tdmb_tsi_work);
 		if (ret == 0)
 			DPRINTK("failed in queue_work\n");
@@ -244,7 +242,6 @@ static int tdmb_tspp_remove_accept_all_filter(int channel_id,
 {
 	struct tspp_filter tspp_filter;
 	int ret;
-
 	if (tsi_priv->filter_exists_flag == 0) {
 		DPRINTK("%s: accept all filter doesn't exist\n",
 				__func__);
@@ -393,7 +390,7 @@ int tdmb_tsi_init(void)
 	spin_lock_init(&tsi_priv->tsi_lock);
 
 	tsi_priv->tsi_running = 0;
-	tsi_priv->filter_exists_flag = 0;
+	tsi_priv->filter_exists_flag=0;
 
 	return 0;
 }
