@@ -143,22 +143,24 @@ static int __set_timestamp(struct vb2_buffer *vb, void *pb)
 			return fd;
 		} else {
 			struct sync_pt *pt;
-			struct sync_fence *fence;
+			struct sync_file *sync_file;
 
-			pt = sw_sync_pt_create(q->timeline, q->timeline_max);
+			pt = sync_pt_create(q->timeline, sizeof(*pt), q->timeline_max);
 			if (!pt) {
 				dprintk(1, "qbuf: failed to create sync_pt\n");
+				put_unused_fd(fd);
 				return -ENOMEM;
 			}
 
-			fence = sync_fence_create("vb2", pt);
-			if (!fence) {
-				sync_pt_free(pt);
-				dprintk(1, "qbuf: failed to create fence\n");
+			sync_file = sync_file_create(&pt->base);
+			fence_put(&pt->base);
+			if (!sync_file) {
+				dprintk(1, "qbuf: failed to create sync_file\n");
+				put_unused_fd(fd);
 				return -ENOMEM;
 			}
 
-			sync_fence_install(fence, fd);
+			fd_install(fd, sync_file->file);
 			b->reserved = fd;
 		}
 	}
@@ -350,7 +352,7 @@ static int __fill_vb2_buffer(struct vb2_buffer *vb,
 	vbuf->reserved2 = b->reserved2;
 
 	if (!!(b->flags & V4L2_BUF_FLAG_USE_SYNC) && ((int)b->reserved >= 0)) {
-		vb->acquire_fence = sync_fence_fdget((int)b->reserved);
+		vb->acquire_fence = sync_file_fdget((int)b->reserved);
 		if (!vb->acquire_fence) {
 			dprintk(1, "failed to import fence fd %u\n",
 				b->reserved);

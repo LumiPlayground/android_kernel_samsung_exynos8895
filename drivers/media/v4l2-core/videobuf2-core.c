@@ -206,7 +206,7 @@ static int __vb2_queue_alloc(struct vb2_queue *q, enum vb2_memory memory,
 	int ret;
 
 	q->timeline_max = 0;
-	q->timeline = sw_sync_timeline_create("vb2");
+	q->timeline = sync_timeline_create("vb2");
 	if (!q->timeline) {
 		dprintk(1, "Failed to create timeline\n");
 		return 0;
@@ -403,7 +403,7 @@ static int __vb2_queue_free(struct vb2_queue *q, unsigned int buffers)
 	}
 
 	if (q->timeline) {
-		sync_timeline_destroy(&q->timeline->obj);
+		sync_timeline_put(q->timeline);
 		q->timeline = NULL;
 	}
 
@@ -893,7 +893,7 @@ void vb2_buffer_done(struct vb2_buffer *vb, enum vb2_buffer_state state)
 		vb->state = state;
 	}
 	atomic_dec(&q->owned_by_drv_count);
-	sw_sync_timeline_inc(q->timeline, 1);
+	sync_timeline_signal(q->timeline, 1);
 	spin_unlock_irqrestore(&q->done_lock, flags);
 
 	trace_vb2_buf_done(q, vb);
@@ -1701,7 +1701,7 @@ static void __vb2_queue_cancel(struct vb2_queue *q)
 
 	list_for_each_entry(vb, &q->queued_list, queued_entry) {
 		if (vb->acquire_fence) {
-			sync_fence_put(vb->acquire_fence);
+			fput(vb->acquire_fence->file);
 			vb->acquire_fence = NULL;
 		}
 	}

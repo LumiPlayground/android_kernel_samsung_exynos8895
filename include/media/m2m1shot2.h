@@ -30,7 +30,7 @@
 
 #include <uapi/linux/m2m1shot2.h>
 
-#include "../../drivers/staging/android/sw_sync.h"
+#include "../../drivers/dma-buf/sync_debug.h"
 
 struct m2m1shot2_device;
 struct m2m1shot2_context;
@@ -96,7 +96,7 @@ struct m2m1shot2_context_format {
  * @fmt		: image format information given by the userspace
  * @memory	: memory type of all buffers in @plane
  * @plane	: buffer information of all planes of the image
- * @fence_waiter: waiter object of @fence of the image to support for
+ * @waiter: waiter object of @fence of the image to support for
  *		  asynchronous fence waiter
  * @fence	: acquire fence of the image. The image processing deos not
  *		  start until @fence is signaled.
@@ -110,8 +110,8 @@ struct m2m1shot2_context_image {
 	unsigned int			num_planes;
 	struct m2m1shot2_dma_buffer	plane[M2M1SHOT2_MAX_PLANES];
 
-	struct sync_fence_waiter	waiter;
-	struct sync_fence		*fence;
+	struct fence_cb		waiter;
+	struct sync_file		*fence;
 };
 
 /**
@@ -251,14 +251,14 @@ struct m2m1shot2_context {
 	struct m2m1shot2_source_image	source[M2M1SHOT2_MAX_IMAGES];
 	struct m2m1shot2_context_image	target;
 
-	struct sw_sync_timeline		*timeline;
+	struct sync_timeline		*timeline;
 	enum m2m1shot2_priority		priority;
 	u32				timeline_max;
 	u32				ctx_private;
 	u32				ctx_private2;
 	u64				work_delay_in_nsec;
 	struct timer_list		timer;
-	struct sync_fence		*release_fence;
+	struct sync_file		*release_fence;
 	spinlock_t			fence_timeout_lock;
 };
 

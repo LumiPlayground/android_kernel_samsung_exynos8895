@@ -17,7 +17,8 @@
 #include <linux/poll.h>
 #include <linux/dma-buf.h>
 
-#include "../../drivers/staging/android/sw_sync.h"
+#include <linux/sync_file.h>
+#include "../../drivers/dma-buf/sync_debug.h"
 
 #define VB2_MAX_FRAME	(32)
 #define VB2_MAX_PLANES	(17)
@@ -224,7 +225,7 @@ struct vb2_buffer {
 	unsigned int		num_planes;
 	struct vb2_plane	planes[VB2_MAX_PLANES];
 
-	struct sync_fence   *acquire_fence;
+	struct sync_file    *acquire_fence;
 
 	/* private: internal use only
 	 *
@@ -493,7 +494,7 @@ struct vb2_queue {
 	struct vb2_fileio_data		*fileio;
 	struct vb2_threadio_data	*threadio;
 
-	struct sw_sync_timeline     *timeline;
+	struct sync_timeline        *timeline;
 	u32             timeline_max;
 
 #ifdef CONFIG_VIDEO_ADV_DEBUG

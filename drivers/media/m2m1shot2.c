@@ -37,8 +37,8 @@
 #define M2M1SHOT2_FENCE_MASK (M2M1SHOT2_IMGFLAG_ACQUIRE_FENCE |		\
 					M2M1SHOT2_IMGFLAG_RELEASE_FENCE)
 
-static void m2m1shot2_fence_callback(struct sync_fence *fence,
-					struct sync_fence_waiter *waiter);
+static void m2m1shot2_fence_callback(struct fence *fence,
+					struct fence_cb *waiter);
 
 static void m2m1shot2_timeout_handler(unsigned long arg);
 
@@ -74,7 +74,7 @@ static int m2m1shot2_open(struct inode *inode, struct file *filp)
 	if (!ctx)
 		return -ENOMEM;
 
-	ctx->timeline = sw_sync_timeline_create(dev_name(m21dev->dev));
+	ctx->timeline = sync_timeline_create(dev_name(m21dev->dev));
 	if (!ctx->timeline) {
 		dev_err(m21dev->dev, "Failed to create timeline\n");
 		ret = -ENOMEM;
@@ -94,13 +94,9 @@ static int m2m1shot2_open(struct inode *inode, struct file *filp)
 
 	filp->private_data = ctx;
 
-	for (ret = 0; ret < M2M1SHOT2_MAX_IMAGES; ret++) {
+	for (ret = 0; ret < M2M1SHOT2_MAX_IMAGES; ret++)
 		ctx->source[ret].img.index = ret;
-		sync_fence_waiter_init(&ctx->source[ret].img.waiter,
-					m2m1shot2_fence_callback);
-	}
 	ctx->target.index = M2M1SHOT2_MAX_IMAGES;
-	sync_fence_waiter_init(&ctx->target.waiter, m2m1shot2_fence_callback);
 
 	ret = m21dev->ops->init_context(ctx);
 	if (ret)
@@ -118,7 +114,7 @@ static int m2m1shot2_open(struct inode *inode, struct file *filp)
 
 	return 0;
 err_init:
-	sync_timeline_destroy(&ctx->timeline->obj);
+	sync_timeline_put(ctx->timeline);
 err_timeline:
 	kfree(ctx);
 	return ret;
@@ -206,10 +202,10 @@ static void m2m1shot2_put_image(struct m2m1shot2_context *ctx,
 	if (!!(img->flags & M2M1SHOT2_IMGFLAG_ACQUIRE_FENCE)) {
 		/*
 		 * confirm the fence callback is not called after img->fence is
-		 * cleared by the deferred behavior of sync_fence_put().
+		 * cleared by the deferred behavior of fput().
 		 */
-		sync_fence_cancel_async(img->fence, &img->waiter);
-		sync_fence_put(img->fence);
+		fence_remove_callback(img->fence->fence, &img->waiter);
+		fput(img->fence->file);
 		img->flags &= ~M2M1SHOT2_IMGFLAG_ACQUIRE_FENCE;
 	}
 
@@ -240,7 +236,7 @@ static void __m2m1shot2_finish_context(struct m2m1shot2_context *ctx,
 	struct m2m1shot2_device *m21dev = ctx->m21dev;
 	unsigned long flags;
 
-	sw_sync_timeline_inc(ctx->timeline, 1);
+	sync_timeline_signal(ctx->timeline, 1);
 
 	spin_lock_irqsave(&m21dev->lock_ctx, flags);
 
@@ -306,11 +302,9 @@ retry:
 	}
 }
 
-#define is_vma_cached(vma) \
-	((pgprot_val(pgprot_noncached((vma)->vm_page_prot)) != \
-	  pgprot_val((vma)->vm_page_prot)) && \
-	 (pgprot_val(pgprot_writecombine((vma)->vm_page_prot)) != \
-	  pgprot_val((vma)->vm_page_prot)))
+#define is_vma_cached(vma)						      \
+	((pgprot_val(pgprot_noncached((vma)->vm_page_prot)) != pgprot_val((vma)->vm_page_prot)) &&    \
+	   (pgprot_val(pgprot_writecombine((vma)->vm_page_prot)) != pgprot_val((vma)->vm_page_prot)))
 
 static void m2m1shot2_unmap_image(struct m2m1shot2_device *m21dev,
 				struct m2m1shot2_context_image *img,
@@ -565,8 +559,8 @@ static void m2m1shot2_schedule_queuework(struct kref *kref)
 }
 
 /* NOTE that this function is called under irq disabled context */
-static void m2m1shot2_fence_callback(struct sync_fence *fence,
-					struct sync_fence_waiter *waiter)
+static void m2m1shot2_fence_callback(struct fence *fence,
+					struct fence_cb *waiter)
 {
 	struct m2m1shot2_context_image *img =
 		container_of(waiter, struct m2m1shot2_context_image, waiter);
@@ -593,7 +587,7 @@ static void m2m1shot2_fence_callback(struct sync_fence *fence,
 	}
 
 	img->flags &= ~M2M1SHOT2_IMGFLAG_ACQUIRE_FENCE;
-	sync_fence_put(img->fence);
+	fput(img->fence->file);
 
 	kref_put(&ctx->starter, m2m1shot2_schedule_queuework);
 
@@ -661,17 +655,17 @@ static void m2m1shot2_timeout_handler(unsigned long arg)
 
 	for (i = 0; i < ctx->num_sources; i++) {
 		if (image[i].img.flags & M2M1SHOT2_IMGFLAG_ACQUIRE_FENCE) {
-			sync_fence_cancel_async(image[i].img.fence,
+			fence_remove_callback(image[i].img.fence->fence,
 						&image[i].img.waiter);
 			image[i].img.flags &= ~M2M1SHOT2_IMGFLAG_ACQUIRE_FENCE;
-			sync_fence_put(image[i].img.fence);
+			fput(image[i].img.fence->file);
 		}
 	}
 
 	if (!!(ctx->target.flags & M2M1SHOT2_IMGFLAG_ACQUIRE_FENCE)) {
-		sync_fence_cancel_async(ctx->target.fence, &ctx->target.waiter);
+		fence_remove_callback(ctx->target.fence->fence, &ctx->target.waiter);
 		ctx->target.flags &= ~M2M1SHOT2_IMGFLAG_ACQUIRE_FENCE;
-		sync_fence_put(ctx->target.fence);
+		fput(ctx->target.fence->file);
 	}
 
 	 m2m1shot2_schedule_queuework(&ctx->starter);
@@ -745,7 +739,7 @@ static void m2m1shot2_cancel_context(struct m2m1shot2_context *ctx)
 	spin_unlock_irqrestore(&ctx->m21dev->lock_ctx, flags);
 
 	/* signal all possible release fences */
-	sw_sync_timeline_inc(ctx->timeline, 1);
+	sync_timeline_signal(ctx->timeline, 1);
 
 	/* to confirm if no reference to a resource exists */
 	if (!!(ctx->flags & M2M1SHOT2_FLAG_NONBLOCK))
@@ -764,7 +758,7 @@ static void m2m1shot2_destroy_context(struct work_struct *work)
 
 	m2m1shot2_cancel_context(ctx);
 
-	sync_timeline_destroy(&ctx->timeline->obj);
+	sync_timeline_put(ctx->timeline);
 
 	spin_lock(&ctx->m21dev->lock_priority);
 	ctx->m21dev->prior_stats[ctx->priority] -= 1;
@@ -1077,8 +1071,8 @@ static int m2m1shot2_get_buffer(struct m2m1shot2_context *ctx,
  */
 static bool m2m1shot2_check_fence_wait(struct m2m1shot2_context *ctx,
 					unsigned int fence_count,
-					struct sync_fence *fence,
-					struct sync_fence_waiter *waiter)
+					struct sync_file *fence,
+					struct fence_cb *waiter)
 {
 	unsigned int i;
 	int ret;
@@ -1089,18 +1083,20 @@ static bool m2m1shot2_check_fence_wait(struct m2m1shot2_context *ctx,
 	}
 
 	/*
-	 * Always increase ctx->starter before sync_fence_wait_async().
+	 * Always increase ctx->starter before sync_file_wait_async().
 	 * If waiter registration is failed (ret < 0)
 	 * or already signaled (ret == 1). it will be just decreased.
 	 */
 	kref_get(&ctx->starter);
-	ret = sync_fence_wait_async(fence, waiter);
+	ret = fence_add_callback(fence->fence, waiter, m2m1shot2_fence_callback);
+	if (ret == -ENOENT)
+		ret = 1;
 	if (ret < 0 || ret == 1) {
 		if (ret < 0)
 			dev_err(ctx->m21dev->dev,
 					"Error occurred in an acquire fence\n");
 		kref_put(&ctx->starter, m2m1shot2_context_schedule_start);
-		sync_fence_put(fence);
+		fput(fence->file);
 		return false;
 	}
 
@@ -1209,7 +1205,7 @@ static int m2m1shot2_get_sources(struct m2m1shot2_context *ctx,
 		image[i].img.fence = NULL;
 
 		if (!!(image[i].img.flags & M2M1SHOT2_IMGFLAG_ACQUIRE_FENCE)) {
-			image[i].img.fence = sync_fence_fdget(source.fence);
+			image[i].img.fence = sync_file_fdget(source.fence);
 			if (image[i].img.fence == NULL) {
 				dev_err(dev, "%s: invalid acquire fence %d\n",
 					__func__, source.fence);
@@ -1239,23 +1235,23 @@ err:
 
 }
 
-static struct sync_fence *m2m1shot2_create_fence(struct m2m1shot2_context *ctx)
+static struct sync_file *m2m1shot2_create_fence(struct m2m1shot2_context *ctx)
 {
 	struct device *dev = ctx->m21dev->dev;
-	struct sync_fence *fence;
+	struct sync_file *fence;
 	struct sync_pt *pt;
 
-	pt = sw_sync_pt_create(ctx->timeline, ctx->timeline_max + 1);
+	pt = sync_pt_create(ctx->timeline, sizeof(*pt), ctx->timeline_max + 1);
 	if (!pt) {
 		dev_err(dev,
 			"%s: failed to create sync_pt\n", __func__);
 		return NULL;
 	}
 
-	fence = sync_fence_create("m2m1shot2", pt);
+	fence = sync_file_create(&pt->base);
 	if (!fence) {
 		dev_err(dev, "%s: failed to create fence\n", __func__);
-		sync_pt_free(pt);
+		fence_put(&pt->base);
 	}
 
 	return fence;
@@ -1325,14 +1321,13 @@ static int m2m1shot2_get_target(struct m2m1shot2_context *ctx,
 	img->fence = NULL;
 
 	if (!!(img->flags & M2M1SHOT2_IMGFLAG_ACQUIRE_FENCE)) {
-		img->fence = sync_fence_fdget(dst->fence);
+		img->fence = sync_file_fdget(dst->fence);
 		if (img->fence == NULL) {
 			dev_err(dev, "%s: invalid acquire fence %d\n",
 				__func__, dst->fence);
 			img->flags &= ~M2M1SHOT2_IMGFLAG_ACQUIRE_FENCE;
 			m2m1shot2_put_buffer(ctx, dst->memory,
 						img->plane, img->num_planes);
-			img->memory = M2M1SHOT2_BUFTYPE_NONE;
 			return -EINVAL;
 		}
 
@@ -1422,7 +1417,7 @@ err:
 }
 
 static int m2m1shot2_install_fence(struct m2m1shot2_context *ctx,
-				   struct sync_fence *fence,
+				   struct sync_file *fence,
 				   s32 __user *pfd)
 {
 	int fd = get_unused_fd_flags(O_CLOEXEC);
@@ -1440,7 +1435,7 @@ static int m2m1shot2_install_fence(struct m2m1shot2_context *ctx,
 		return -EFAULT;
 	}
 
-	sync_fence_install(fence, fd);
+	fd_install(fd, fence->file);
 
 	return fd;
 }
@@ -1450,7 +1445,7 @@ static int m2m1shot2_create_release_fence(struct m2m1shot2_context *ctx,
 					struct m2m1shot2_image __user usersrc[],
 					unsigned int num_sources)
 {
-	struct sync_fence *fence = NULL;
+	struct sync_file *fence = NULL;
 	struct m2m1shot2_context_image *img;
 	unsigned int i, ifd = 0;
 	int fds[M2M1SHOT2_MAX_IMAGES + 1];
@@ -1498,7 +1493,7 @@ static int m2m1shot2_create_release_fence(struct m2m1shot2_context *ctx,
 	}
 
 	/* release a reference of the fence that is increased on creation */
-	sync_fence_put(fence);
+	fput(fence->file);
 
 	ctx->timeline_max++;
 	ctx->release_fence = fence;
@@ -1507,10 +1502,10 @@ static int m2m1shot2_create_release_fence(struct m2m1shot2_context *ctx,
 err:
 	while (ifd-- > 0) {
 		put_unused_fd(fds[ifd]);
-		sync_fence_put(fence);
+		fput(fence->file);
 	}
 
-	sync_fence_put(fence);
+	fput(fence->file);
 
 	return ret;
 }
@@ -1585,7 +1580,6 @@ static long m2m1shot2_ioctl(struct file *filp,
 	case M2M1SHOT2_IOC_REQUEST_PERF:
 	{
 		struct m2m1shot2_performance_data data;
-		int i;
 
 		if (!ctx->m21dev->ops->prepare_perf) {
 			dev_err(ctx->m21dev->dev,
@@ -1601,19 +1595,7 @@ static long m2m1shot2_ioctl(struct file *filp,
 			break;
 		}
 
-		if (data.num_frames >= M2M1SHOT2_PERF_MAX_FRAMES) {
-			ret = -EINVAL;
-			break;
-		}
-
-		for (i = 0; i < data.num_frames; i++) {
-			if (data.frame[i].num_layers >= M2M1SHOT2_MAX_IMAGES) {
-				ret = -EINVAL;
-				break;
-			}
-		}
-		if (!ret)
-			ret = ctx->m21dev->ops->prepare_perf(ctx, &data);
+		ret = ctx->m21dev->ops->prepare_perf(ctx, &data);
 
 		break;
 	}

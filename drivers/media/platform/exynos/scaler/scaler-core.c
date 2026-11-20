@@ -713,27 +713,27 @@ static void sc_fence_work(struct work_struct *work)
 	struct vb2_sc_buffer *svb =
 			container_of(work, struct vb2_sc_buffer, work);
 	struct sc_ctx *ctx = vb2_get_drv_priv(svb->mb.vb.vb2_buf.vb2_queue);
-	struct sync_fence *fence;
+	struct sync_file *sync_file;
 	int ret;
 
 	/* Buffers do not have acquire_fence are never pushed to workqueue */
 	BUG_ON(svb->mb.vb.vb2_buf.acquire_fence == NULL);
 	BUG_ON(!ctx->m2m_ctx);
 
-	fence = svb->mb.vb.vb2_buf.acquire_fence;
+	sync_file = svb->mb.vb.vb2_buf.acquire_fence;
 	svb->mb.vb.vb2_buf.acquire_fence = NULL;
 
-	ret = sync_fence_wait(fence, 1000);
+	ret = sync_file_wait(sync_file, 1000);
 	if (ret == -ETIME) {
 		dev_warn(ctx->sc_dev->dev, "sync_fence_wait() timeout\n");
-		ret = sync_fence_wait(fence, 10 * MSEC_PER_SEC);
+		ret = sync_file_wait(sync_file, 10 * MSEC_PER_SEC);
 
 		if (ret)
 			dev_warn(ctx->sc_dev->dev,
 					"sync_fence_wait() error (%d)\n", ret);
 	}
 
-	sync_fence_put(fence);
+	fput(sync_file->file);
 
 	/* OK to preceed the timed out buffers: It does not harm the system */
 	v4l2_m2m_buf_queue(ctx->m2m_ctx, &svb->mb.vb);
