@@ -42,7 +42,7 @@
 #include "decon.h"
 #include "dsim.h"
 
-#include "../../../../staging/android/sw_sync.h"
+#include <linux/sync_file.h>
 #include "dpp.h"
 #include "displayport.h"
 
@@ -454,7 +454,7 @@ static void decon_free_dma_buf(struct decon_device *decon,
 		return;
 
 	if (dma->fence)
-		sync_fence_put(dma->fence);
+		fput(dma->fence->file);
 
 	ion_iovmm_unmap(dma->attachment, dma->dma_addr);
 
@@ -656,7 +656,7 @@ static int decon_enable(struct decon_device *decon)
 #endif
 	if (decon->dt.out_type == DECON_OUT_DP) {
 		decon_info("DECON_OUT_DP %s timeline:%d, max:%d\n",
-			decon->timeline->obj.name, decon->timeline->value, decon->timeline_max);
+			decon->timeline->name, decon->timeline->value, decon->timeline_max);
 
 		decon_reg_set_dispif_sync_pol(decon->id, videoformat_parameters[g_displayport_videoformat].h_sync_pol ? 0 : 1,
 				videoformat_parameters[g_displayport_videoformat].v_sync_pol ? 0 : 1);
@@ -826,7 +826,7 @@ static int decon_disable(struct decon_device *decon)
 			decon_err("displayport stopping stream failed\n");
 		}
 		decon_info("DECON_OUT_DP %s timeline:%d, max:%d\n",
-			decon->timeline->obj.name, decon->timeline->value, decon->timeline_max);
+			decon->timeline->name, decon->timeline->value, decon->timeline_max);
 
 		decon->bts.ops->bts_update_qos_mif(decon, 0);
 		decon->bts.ops->bts_update_qos_int(decon, 0);
@@ -1357,7 +1357,7 @@ static int decon_set_win_buffer(struct decon_device *decon,
 	int ret, i;
 	u32 alpha_length;
 	struct decon_rect r;
-	struct sync_fence *fence = NULL;
+	struct sync_file *fence = NULL;
 	u32 config_size = 0;
 	u32 alloc_size = 0;
 	u32 byte_per_pixel = 4;
@@ -1380,7 +1380,7 @@ static int decon_set_win_buffer(struct decon_device *decon,
 
 	if (config->fence_fd >= 0) {
 		/* fence is managed by buffer not plane */
-		fence = sync_fence_fdget(config->fence_fd);
+		fence = sync_file_fdget(config->fence_fd);
 		regs->dma_buf_data[idx][0].fence = fence;
 		if (!fence) {
 			decon_err("failed to import fence fd\n");
@@ -2664,7 +2664,7 @@ static int decon_set_win_config(struct decon_device *decon,
 {
 	int num_of_window = 0;
 	struct decon_reg_data *regs;
-	struct sync_fence *fence;
+	struct sync_file *fence;
 	int ret = 0;
 
 	decon_dbg("%s +\n", __func__);
@@ -2767,7 +2767,7 @@ err_prepare:
 		/* video mode should keep previous buffer object */
 		if (decon->lcd_info->mode == DECON_MIPI_COMMAND_MODE)
 			decon_signal_fence(decon);
-		sync_fence_put(fence);
+		fput(fence->file);
 		put_unused_fd(win_data->fence);
 	}
 	kfree(regs);

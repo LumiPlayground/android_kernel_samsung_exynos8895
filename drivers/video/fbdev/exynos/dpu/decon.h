@@ -31,7 +31,8 @@
 #include "decon_lcd.h"
 #include "dsim.h"
 #include "displayport.h"
-#include "../../../../staging/android/sw_sync.h"
+#include <linux/sync_file.h>
+#include "../../../../dma-buf/sync_debug.h"
 #include "../panel/panel_drv.h"
 #ifdef CONFIG_DISPLAY_USE_INFO
 #include "../panel/dpui.h"
@@ -655,7 +656,7 @@ struct decon_dma_buf_data {
 	struct dma_buf_attachment	*attachment;
 	struct sg_table			*sg_table;
 	dma_addr_t			dma_addr;
-	struct sync_fence		*fence;
+	struct sync_file		*fence;
 };
 
 struct decon_win_rect {
@@ -1184,7 +1185,7 @@ struct decon_device {
 
 	struct ion_client *ion_client;
 
-	struct sw_sync_timeline *timeline;
+	struct sync_timeline *timeline;
 	int timeline_max;
 
 	struct v4l2_subdev *out_sd[MAX_DSIM_CNT];
@@ -1607,10 +1608,10 @@ void decon_to_psr_info(struct decon_device *decon, struct decon_mode_info *psr);
 void decon_to_init_param(struct decon_device *decon, struct decon_param *p);
 void decon_create_timeline(struct decon_device *decon, char *name);
 int decon_create_fence(struct decon_device *decon,
-		struct sync_fence **fence, struct decon_reg_data *regs);
-void decon_install_fence(struct sync_fence *fence, int fd);
-int decon_wait_fence(struct sync_fence *fence);
-void decon_fence_err_log(struct decon_device *decon, int idx, struct sync_fence *fence);
+		struct sync_file **fence, struct decon_reg_data *regs);
+void decon_install_fence(struct sync_file *fence, int fd);
+int decon_wait_fence(struct sync_file *fence);
+void decon_fence_err_log(struct decon_device *decon, int idx, struct sync_file *fence);
 int decon_print_fence_err(struct decon_device *decon, struct seq_file *s);
 void decon_signal_fence(struct decon_device *decon);
 

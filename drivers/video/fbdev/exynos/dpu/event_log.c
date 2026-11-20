@@ -324,7 +324,7 @@ void DPU_EVENT_LOG_FENCE(struct v4l2_subdev *sd, struct decon_reg_data *regs, dp
 	int idx = atomic_inc_return(&decon->d.event_log_idx) % DPU_EVENT_LOG_MAX;
 	struct dpu_log *log = &decon->d.event_log[idx];
 	int win = 0;
-	struct sync_fence *fence = NULL;
+	struct sync_file *fence = NULL;
 	static int fence_log_cnt;
 
 	log->time = ktime_get();
@@ -341,18 +341,18 @@ void DPU_EVENT_LOG_FENCE(struct v4l2_subdev *sd, struct decon_reg_data *regs, dp
 		if (fence) {
 #if defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 			snprintf(&log->data.fence.acquire_fence[win][0], ACQUIRE_FENCE_LEN, "%pK:%s:%d",
-				fence, fence->name, sync_status_str(atomic_read(&fence->status)));
+				fence, fence->name, sync_status_str(fence_get_status(fence->fence)));
 #else
 			snprintf(&log->data.fence.acquire_fence[win][0], ACQUIRE_FENCE_LEN, "%p:%s:%d",
-				fence, fence->name, sync_status_str(atomic_read(&fence->status)));
+				fence, fence->name, sync_status_str(fence_get_status(fence->fence)));
 #endif
 		}
 	}
 
 	log->data.fence.release_fence[0] = '\0';
 	if (regs->pt) {
-		snprintf(&log->data.fence.release_fence[0], RELEASE_FENCE_LEN, "decon%d_pt:%d/%d",
-			decon->id, ((struct sw_sync_pt *)(regs->pt))->value, decon->timeline->value);
+		snprintf(&log->data.fence.release_fence[0], RELEASE_FENCE_LEN, "decon%d_pt:%u/%d",
+			decon->id, regs->pt->base.seqno, decon->timeline->value);
 	}
 
 	log->data.fence.timeline_value = decon->timeline->value;
