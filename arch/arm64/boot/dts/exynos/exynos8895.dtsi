@@ -174,10 +174,6 @@
 			little-id = <1>;
 		};
 
-		auto_cpu_mapping {
-			enabled = <1>;
-		};
-
 		cpu0: cpu@100 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a53", "arm,armv8";
